@@ -424,6 +424,8 @@ class StmtEmitter {
   // ── Coerce ────────────────────────────────────────────────────────────────
   std::string coerce(FnCtx& ctx, const std::string& val,
                      const TypeSpec& from_ts, const TypeSpec& to_ts);
+  LirOperand coerce_operand(FnCtx& ctx, const LirOperand& val,
+                            const TypeSpec& from_ts, const TypeSpec& to_ts);
 
 
   // ── to_bool: convert any value to i1 ─────────────────────────────────────

@@ -194,10 +194,15 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, cons
   return emit_compound_assign_value(ctx, lhs, a.op, rhs.str(), rhs_ts);
 }
 
-std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CastExpr& c, const Expr&) {
+LirOperand StmtEmitter::emit_cast_rval_operand(FnCtx& ctx, const CastExpr& c) {
   TypeSpec from_ts{};
-  const std::string val = emit_rval_id(ctx, c.expr, from_ts);
-  return coerce(ctx, val, from_ts, c.to_type.spec);
+  const LirOperand val = emit_rval_operand(ctx, c.expr, from_ts);
+  return coerce_operand(ctx, val, from_ts, c.to_type.spec);
+}
+
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CastExpr& c,
+                                           const Expr&) {
+  return emit_cast_rval_operand(ctx, c).str();
 }
 
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, const Expr& e) {

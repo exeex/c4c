@@ -512,6 +512,10 @@ LirOperand StmtEmitter::emit_rval_operand(FnCtx& ctx, ExprId id,
     LirOperand result = emit_binary_rval_operand(ctx, *binary, e);
     return result.has_authority() ? result : LirOperand::raw(result.str());
   }
+  if (const auto* cast = std::get_if<CastExpr>(&e.payload)) {
+    LirOperand result = emit_cast_rval_operand(ctx, *cast);
+    return result.has_authority() ? result : LirOperand::raw(result.str());
+  }
   return LirOperand::raw(emit_rval_expr(ctx, e));
 }
 

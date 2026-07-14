@@ -74,6 +74,7 @@ std::string emit_logical(FnCtx& ctx, const BinaryExpr& b, const Expr& e);
 // Miscellaneous expression payloads.
 std::string emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const Expr& e);
 std::string emit_rval_payload(FnCtx& ctx, const AssignExpr& a, const Expr& e);
+LirOperand emit_cast_rval_operand(FnCtx& ctx, const CastExpr& c);
 std::string emit_rval_payload(FnCtx& ctx, const CastExpr& c, const Expr& e);
 std::string emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, const Expr& e);
 std::string emit_rval_payload(FnCtx& ctx, const SizeofExpr& s, const Expr& e);

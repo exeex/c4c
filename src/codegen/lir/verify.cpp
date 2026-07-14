@@ -420,6 +420,56 @@ void verify_pointer_operand(const LirOperand& operand, std::string_view field) {
                        {LirOperandKind::SsaValue, LirOperandKind::Global});
 }
 
+void verify_cast_op_authority(const LirCastOp& op) {
+  switch (op.kind) {
+    case LirCastKind::Trunc:
+    case LirCastKind::ZExt:
+    case LirCastKind::SExt:
+    case LirCastKind::FPTrunc:
+    case LirCastKind::FPExt:
+    case LirCastKind::FPToSI:
+    case LirCastKind::FPToUI:
+    case LirCastKind::SIToFP:
+    case LirCastKind::UIToFP:
+    case LirCastKind::PtrToInt:
+    case LirCastKind::IntToPtr:
+    case LirCastKind::Bitcast:
+      break;
+    default:
+      fail_verify("LirCastOp.kind", "invalid native cast kind");
+  }
+
+  if (!op.result.value_id()) return;
+  if (op.from_type.kind() != LirTypeKind::Integer ||
+      op.to_type.kind() != LirTypeKind::Integer) {
+    fail_verify("LirCastOp.from_type",
+                "authoritative scalar integer cast requires integer type refs");
+  }
+  const std::optional<unsigned> from_width =
+      op.from_type.integer_bit_width();
+  const std::optional<unsigned> to_width = op.to_type.integer_bit_width();
+  if (!from_width || !to_width) {
+    fail_verify("LirCastOp.from_type",
+                "authoritative scalar integer cast requires exact widths");
+  }
+  if (op.kind == LirCastKind::Trunc) {
+    if (*to_width >= *from_width) {
+      fail_verify("LirCastOp.to_type",
+                  "integer trunc requires a narrower destination type");
+    }
+    return;
+  }
+  if (op.kind == LirCastKind::ZExt || op.kind == LirCastKind::SExt) {
+    if (*to_width <= *from_width) {
+      fail_verify("LirCastOp.to_type",
+                  "integer extension requires a wider destination type");
+    }
+    return;
+  }
+  fail_verify("LirCastOp.kind",
+              "authoritative scalar integer cast requires trunc/zext/sext");
+}
+
 void verify_optional_count_operand(const LirOperand& operand,
                                    std::string_view field) {
   require_operand_kind(operand, field,
@@ -758,6 +808,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     require_module_type_ref(mod, op->from_type, "LirCastOp.from_type");
     verify_value_operand(op->operand, "LirCastOp.operand");
     require_module_type_ref(mod, op->to_type, "LirCastOp.to_type");
+    verify_cast_op_authority(*op);
     return;
   }
   if (const auto* op = std::get_if<LirGepOp>(&inst)) {

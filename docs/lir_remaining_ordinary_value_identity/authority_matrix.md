@@ -20,7 +20,8 @@ returns `LirOperand::ssa(display, id)`. Current production `fresh_value` calls
 cover CC-LOAD-1 and CC-GEP-1 in `StmtEmitter::emit_rval_operand`, plus the
 Step-3 structured direct integer-call result in `emit_call_with_result` and the
 Step-6 ordinary scalar integer arithmetic branch in
-`emit_binary_rval_operand`. Other active modern result constructions identified
+`emit_binary_rval_operand`, plus the Step-7.1 explicit scalar integer cast in
+`emit_cast_rval_operand`. Other active modern result constructions identified
 below still use `fresh_tmp`, an equivalent direct `%t` increment, or a raw
 string returned by `emit_rval_id`.
 
@@ -88,7 +89,7 @@ grouped only where they share one producer and disposition.
 | `LirLoadOp`: `result,ptr`; `type_str` | Active broadly in PR/PL/PX/PC/PV/PO; CC-LOAD-1 exact producer is PR selected-global branch | CC-LOAD-1 uses `fresh_value` result + global `LinkNameId`; all local/SSA/object routes use text-only operands and `fresh_tmp` | Native `LirTypeRef`; kind/type + ownership-ready; **741 exact** only for selected global | Preserve CC-LOAD-1 as **regression neighbor**. Other routes depend on local/object pointer ownership; probes per route, starting `lir_local_load_identity.c`; **separate pointer/object family** |
 | `LirStoreOp`: `val,ptr`; `type_str` | Active in PL/PX/PC/PI/PV/PS/PO and PF parameter/local setup; CC-STORE-1 exact producer is PL `emit_set_assign_value` via `integer_store_operand_after_coercion` | CC-STORE-1 has native immediate + global `LinkNameId`; other routes text-only/monostate; no result | Native `LirTypeRef`; kind/type + ownership-ready; **741 exact** only for selected global integer | Preserve CC-STORE-1 as **regression neighbor**. SSA value use can share generic propagation, pointer needs object authority; `lir_local_store_identity.c`; **mixed generic/separate** |
 | `LirMemsetOp`: `dst,byte_val,size`; `is_volatile` | Active, PL `emit_store_assignable_value` zero aggregate and PS `emit_non_control_flow_stmt(LocalDecl)` | Text-only/monostate operands; no result | Native bool; verifier kinds only | `lir_memset_native_use_identity.c`; **separate memory/object family** |
-| `LirCastOp`: `result,operand`; `kind,from_type,to_type` | Active in PX/PB/PL/PC/PI/PV/PO and PF fixed-vector parameter setup; representative scalar casts from PX `emit_rval_payload(CastExpr)` | Text-only/monostate operands; result `fresh_tmp` | Native cast enum and type refs; verifier checks kinds/types but not cast legality/ownership | Candidate representative non-call chain neighbor; `lir_scalar_cast_chain_identity.c`; **generic value** plus distinct cast legality |
+| `LirCastOp`: `result,operand`; `kind,from_type,to_type` | Active in PX/PB/PL/PC/PI/PV/PO and PF fixed-vector parameter setup; Step-7.1 representative is PX explicit scalar integer `CastExpr` | Step-7.1 explicit width-changing scalar integer cast uses `fresh_value`, exact input `LirOperand`, and an operand-returning wrapper; other cast producers remain text-only with `fresh_tmp` | Native cast enum and exact from/to refs; authoritative integer results require coherent Trunc or ZExt/SExt widths; generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | `lir_scalar_cast_result_use_identity.c` closes only the representative explicit integer cast/use row. Float, pointer, bitcast, vector, aggregate, and other implicit/coercion producers remain separately unclaimed |
 | `LirGepOp`: `result,ptr,indices`; `element_type,inbounds` | Active in PR/PL/PX/PC/PV and PF parameter setup; CC-GEP-1 exact producer is PR selected-global array branch | CC-GEP-1 uses `fresh_value`, global `LinkNameId`, typed native indices; other routes use `fresh_tmp`, raw base, often raw `LirGepIndex` presentation | Native type/bool; ownership-ready; **741 exact** only for selected-global typed path | Preserve CC-GEP-1 as **regression neighbor**. Other paths require object/base and typed-index work; `lir_local_gep_identity.c`; **separate pointer/object family** |
 | `LirCallOp`: `result`; `callee,direct_callee_link_name_id`; `structured_args[].operand`; typed signature/type/ext/ABI fields; text mirrors | Active, PC: `prepare_call_args`, `emit_void_call`, `emit_call_with_result`, `make_lir_call_op_with_return_type_ref` | Structured direct integer result uses `fresh_value`; the common `OwnedLirTypedCallArg` stores `LirOperand`. Focused direct void fixed integer arguments preserve either the native immediate or the exact CC-LOAD-1 selected-global result ID, with exact type refs, when coercion keeps the representation; other arguments remain monostate compatibility | Direct integer result has exact ID ownership. The focused direct void fixed immediate and selected-global SSA rows have authority-first exact type/count/ext/result verification; SSA uses additionally resolve through current-function ownership | Steps 3-5 close scalar result, fixed immediate, and selected-global SSA rows on the common carrier; indirect/variadic/ABI/aggregate rows and intrinsic results remain unclaimed; text mirrors are presentation-only |
 | `LirBinOp`: `result,lhs,rhs`; `opcode,type_str` | Active, PB scalar/complex arithmetic and logical helpers; also PL compound assignment, PI builtins, PV, PS | Step-6 normalized ordinary scalar integer arithmetic uses `fresh_value` and preserves unchanged source `LirOperand` authority; complex/vector/pointer/logical and other producers remain text-only with `fresh_tmp` | Native opcode/type refs plus exact result/use ownership for the Step-6 row; generic verifier rejects invalid/duplicate definitions and unknown/cross-function uses | `lir_scalar_ordinary_value_chain_identity.c` closes the representative generic scalar seam. Neighboring scalar producers may reuse the mechanism in later bounded packets; aggregate/vector, pointer/object, and CFG rows remain distinct |
@@ -257,11 +258,35 @@ reject through existing reachable checks, while misleading operand displays
 with unchanged IDs pass.
 
 This proves the common allocator/operand mechanism is reusable by neighboring
-ordinary scalar result/use rows such as scalar compare, cast, select, and abs,
-but does not publish those producers. Their opcode-specific contracts remain
-later bounded packets. Aggregate/vector rows need their own type/index/mask
-semantics; CFG, parameters, pointer/object, inline-asm, call, and BIR families
-remain distinct or outside this idea.
+ordinary scalar result/use rows. Step 7.1 publishes the representative explicit
+scalar integer cast; scalar compare, select, and abs remain later bounded
+packets. Aggregate/vector rows need their own type/index/mask semantics; CFG,
+parameters, pointer/object, inline-asm, call, and BIR families remain distinct
+or outside this idea.
+
+## Step-7.1 explicit scalar integer cast contract
+
+The claimed row is an explicit, non-pointer, non-vector scalar integer
+`CastExpr` whose source and destination widths differ. `emit_cast_rval_operand`
+obtains the source through the common operand path and calls the narrow
+`coerce_operand` seam. That seam allocates the `LirCastOp.result` through
+`fresh_value`, preserves the source operand, stores native `LirCastKind` plus
+exact from/to `LirTypeRef` facts, and returns the same result operand. The
+existing string `coerce` path remains unchanged for all other cast producers.
+
+The focused i32-to-i64 SExt result feeds one later i64 Add without another
+representation change, so the Add lhs carries the exact cast result ID.
+Generic function ownership registers the cast result and resolves the later
+use in the current function, rejecting invalid/duplicate results and
+unknown/cross-function uses. Reachable cast verification rejects invalid enum
+values, missing integer endpoint authority, Trunc without narrowing, extension
+without widening, and authoritative non-integer cast alternatives. Misleading
+cast-result/use displays with unchanged IDs pass.
+
+This packet does not claim same-width no-op coercions because they emit no
+`LirCastOp`. Float, pointer, bitcast, vector, aggregate, implicit-coercion, and
+other explicit cast shapes remain compatibility rows. Compare, select, abs,
+CFG/parameters, object identity, calls, inline assembly, and BIR are unchanged.
 
 ## Mechanical coverage check
 
@@ -299,6 +324,10 @@ Current-source spot checks used for this baseline:
   `fresh_value` results and authority-preserving unchanged operands for the
   normalized scalar integer branch while carrying native
   `LirBinaryOpcodeRef`/`LirTypeRef`; other binary branches remain compatibility;
+- representative scalar cast: `expr/misc.cpp` routes explicit `CastExpr`
+  through `coerce_operand`; width-changing scalar integer casts allocate one
+  authoritative result and preserve exact native kind/from/to authority, while
+  other `coerce` producers remain compatibility;
 - 741 neighbors: `expr/coordinator.cpp:474,497` populate selected-global
   `LirGepOp`/`LirLoadOp`; Steps 3 and 6 add the direct integer-call and ordinary
   scalar integer binary result sites;

@@ -1745,6 +1745,35 @@ std::string StmtEmitter::coerce(FnCtx& ctx, const std::string& val, const TypeSp
   return val;
 }
 
+LirOperand StmtEmitter::coerce_operand(FnCtx& ctx, const LirOperand& val,
+                                       const TypeSpec& from_ts,
+                                       const TypeSpec& to_ts) {
+  const bool scalar_integer_cast =
+      from_ts.ptr_level == 0 && from_ts.array_rank == 0 &&
+      to_ts.ptr_level == 0 && to_ts.array_rank == 0 &&
+      !is_vector_value(from_ts) && !is_vector_value(to_ts) &&
+      is_any_int(from_ts.base) && is_any_int(to_ts.base);
+  if (!scalar_integer_cast) {
+    return LirOperand::raw(coerce(ctx, val.str(), from_ts, to_ts));
+  }
+
+  const std::string from_type = llvm_value_ty(mod_, from_ts);
+  const std::string to_type = llvm_value_ty(mod_, to_ts);
+  const int from_bits = int_bits(llvm_storage_base(from_ts));
+  const int to_bits = int_bits(llvm_storage_base(to_ts));
+  if (from_bits == to_bits) return val;
+
+  const LirOperand result = fresh_value(ctx);
+  const LirCastKind kind =
+      to_bits < from_bits
+          ? LirCastKind::Trunc
+          : (is_signed_int(llvm_storage_base(from_ts)) ? LirCastKind::SExt
+                                                        : LirCastKind::ZExt);
+  emit_lir_op(ctx, LirCastOp{result, kind, LirTypeRef(from_type), val,
+                             LirTypeRef(to_type)});
+  return result;
+}
+
 std::string StmtEmitter::to_bool(FnCtx& ctx, const std::string& val, const TypeSpec& ts) {
   const std::string ty = llvm_ty(ts);
   if (ty == "i1") return val;

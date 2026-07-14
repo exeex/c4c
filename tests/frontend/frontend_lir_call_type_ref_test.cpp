@@ -2167,6 +2167,144 @@ int lir_scalar_ordinary_value_chain_identity(void) {
       missing_type, "verifier should reject missing scalar binary type authority");
 }
 
+void test_scalar_cast_result_use_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int lir_scalar_cast_result_use_source;
+long long lir_scalar_cast_result_use_identity(void) {
+  return (long long)lir_scalar_cast_result_use_source + 1LL;
+}
+)c", "x86_64-linux-gnu");
+
+  lir::LirFunction& function =
+      require_function(lowered, "lir_scalar_cast_result_use_identity");
+  std::vector<lir::LirLoadOp*> loads;
+  std::vector<lir::LirCastOp*> casts;
+  std::vector<lir::LirBinOp*> binary_ops;
+  for (auto& block : function.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* load = std::get_if<lir::LirLoadOp>(&inst)) loads.push_back(load);
+      if (auto* cast = std::get_if<lir::LirCastOp>(&inst)) casts.push_back(cast);
+      if (auto* binary = std::get_if<lir::LirBinOp>(&inst)) {
+        binary_ops.push_back(binary);
+      }
+    }
+  }
+  expect_true(loads.size() == 1 && casts.size() == 1 &&
+                  binary_ops.size() == 1,
+              "scalar-cast probe should lower one load, cast, and later binary use");
+  expect_true(casts[0]->kind == lir::LirCastKind::SExt &&
+                  casts[0]->from_type.kind() == lir::LirTypeKind::Integer &&
+                  casts[0]->from_type.integer_bit_width() == 32 &&
+                  casts[0]->to_type.kind() == lir::LirTypeKind::Integer &&
+                  casts[0]->to_type.integer_bit_width() == 64 &&
+                  binary_ops[0]->opcode.typed() == lir::LirBinaryOpcode::Add &&
+                  binary_ops[0]->type_str.kind() == lir::LirTypeKind::Integer &&
+                  binary_ops[0]->type_str.integer_bit_width() == 64,
+              "scalar-cast chain should retain native sext, endpoint, and Add facts");
+  expect_true(loads[0]->result.value_id() && casts[0]->operand.value_id() &&
+                  *casts[0]->operand.value_id() ==
+                      *loads[0]->result.value_id() &&
+                  casts[0]->result.value_id() &&
+                  casts[0]->result.value_id()->valid() &&
+                  binary_ops[0]->lhs.value_id() &&
+                  *binary_ops[0]->lhs.value_id() ==
+                      *casts[0]->result.value_id(),
+              "later scalar use should preserve the exact authoritative cast result ID");
+  lir::verify_module(lowered);
+
+  const auto require_focused_cast = [](lir::LirModule& module)
+      -> std::pair<lir::LirCastOp&, lir::LirBinOp&> {
+    lir::LirFunction& focused =
+        require_function(module, "lir_scalar_cast_result_use_identity");
+    lir::LirCastOp* cast = nullptr;
+    lir::LirBinOp* binary = nullptr;
+    for (auto& block : focused.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirCastOp>(&inst)) {
+          expect_true(cast == nullptr,
+                      "focused scalar-cast fixture should contain one cast");
+          cast = candidate;
+        }
+        if (auto* candidate = std::get_if<lir::LirBinOp>(&inst)) {
+          expect_true(binary == nullptr,
+                      "focused scalar-cast fixture should contain one binary use");
+          binary = candidate;
+        }
+      }
+    }
+    expect_true(cast && binary,
+                "focused scalar-cast fixture should contain its cast/use pair");
+    return {*cast, *binary};
+  };
+
+  lir::LirModule misleading = lowered;
+  auto [misleading_cast, misleading_use] = require_focused_cast(misleading);
+  misleading_cast.result.str() = "@rendered-not-cast-result";
+  misleading_use.lhs.str() = "7";
+  lir::verify_module(misleading);
+
+  lir::LirModule invalid_result = lowered;
+  require_focused_cast(invalid_result).first.result =
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_result, "verifier should reject invalid scalar cast result ID");
+
+  lir::LirModule duplicate_result = lowered;
+  auto [duplicate_cast, duplicate_use] = require_focused_cast(duplicate_result);
+  duplicate_use.result = lir::LirOperand::ssa(
+      "%duplicate", *duplicate_cast.result.value_id());
+  expect_identity_verification_rejected(
+      duplicate_result, "verifier should reject duplicate scalar cast result ID");
+
+  lir::LirModule unknown_use = lowered;
+  require_focused_cast(unknown_use).second.lhs =
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_use, "verifier should reject unknown scalar cast result use");
+
+  lir::LirModule cross_function_use = lowered;
+  cross_function_use.functions.push_back(
+      make_identity_test_function("scalar_cast_owner", lir::LirValueId{99}));
+  require_focused_cast(cross_function_use).second.lhs =
+      lir::LirOperand::ssa("%cross", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      cross_function_use,
+      "verifier should reject cross-function scalar cast result use");
+
+  lir::LirModule invalid_kind = lowered;
+  require_focused_cast(invalid_kind).first.kind =
+      static_cast<lir::LirCastKind>(255);
+  expect_identity_verification_rejected(
+      invalid_kind, "verifier should reject invalid native cast kind");
+
+  lir::LirModule missing_from_type = lowered;
+  require_focused_cast(missing_from_type).first.from_type = lir::LirTypeRef{};
+  expect_identity_verification_rejected(
+      missing_from_type, "verifier should reject missing cast source type authority");
+
+  lir::LirModule missing_to_type = lowered;
+  require_focused_cast(missing_to_type).first.to_type = lir::LirTypeRef{};
+  expect_identity_verification_rejected(
+      missing_to_type,
+      "verifier should reject missing cast destination type authority");
+
+  lir::LirModule conflicting_from_type = lowered;
+  require_focused_cast(conflicting_from_type).first.from_type =
+      lir::LirTypeRef::integer(64);
+  expect_identity_verification_rejected(
+      conflicting_from_type,
+      "verifier should reject cast source type conflicting with extension kind");
+
+  lir::LirModule conflicting_to_type = lowered;
+  require_focused_cast(conflicting_to_type).first.to_type =
+      lir::LirTypeRef::integer(16);
+  expect_identity_verification_rejected(
+      conflicting_to_type,
+      "verifier should reject cast destination type conflicting with extension kind");
+}
+
 }  // namespace
 
 int main() {
@@ -2549,6 +2687,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_direct_void_immediate_arg_identity_boundary();
   test_direct_void_ssa_arg_identity_boundary();
   test_scalar_ordinary_value_chain_identity_boundary();
+  test_scalar_cast_result_use_identity_boundary();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
   return 0;
