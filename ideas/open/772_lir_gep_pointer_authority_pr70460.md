@@ -76,3 +76,33 @@ full-suite candidate from clearing the rejected baseline.
   rework, or a broad GEP/rvalue/table redesign without first-bad-fact evidence.
 - Reject focused-only acceptance that does not preserve malformed fail-closed
   checks and a stated full-suite baseline disposition.
+
+## Resumption Record
+
+- Last accepted progress: Step 1 mapping only; no implementation or test
+  change, proof acceptance, or code commit was made.
+- Interrupted step: Step 1 — `Trace and repair the production GEP pointer
+  authority loss`.
+- First bad fact and blocker: `StmtEmitter::emit_indexed_gep(FnCtx&, const
+  LirOperand&, ...)` at `src/codegen/lir/hir_to_lir/lvalue.cpp:958` receives
+  the typed `DirectConstant(LirValueId)` for `&&lab0`, but sends `.str()`
+  (empty) to the string overload, which emits `RawText(\"\")` as
+  `LirGepOp.ptr`. Retaining that typed direct constant is blocked because the
+  verifier, printer, and backend/lowering contracts only admit SSA/global GEP
+  bases; synthetic SSA is invalid for a function-owned direct label-address
+  constant. That contract work is explicitly outside this idea's scope.
+- Blocker route: `ideas/open/773_lir_gep_direct_label_address_constant_contract.md`
+  owns the narrowly scoped verifier/printer/backend transition for a verified
+  current-function direct label-address constant as `LirGepOp.ptr`.
+- Exact return point: after 773 is accepted, resume this idea at Step 1 by
+  repairing the structured `emit_indexed_gep` direct-constant forwarding seam
+  with the newly supported typed direct-constant authority. Do not repeat the
+  authority mapping or change the blocker contracts here.
+- Remaining action and handoff: add nearby direct-label-address production and
+  malformed-authority coverage for the seam, then run a fresh build plus the
+  focused `pr70460` proof and give the supervisor a full-suite candidate
+  handoff.
+- Proof references: the mapping run used a fresh build with `ctest --test-dir
+  build --output-on-failure -R '^llvm_gcc_c_torture_src_pr70460_c$'`; it failed
+  as expected at empty `LirGepOp.ptr`. Canonical baseline logs retain that
+  baseline. Accepted implementation proof and commit references: none.
