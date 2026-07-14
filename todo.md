@@ -8,17 +8,16 @@ Current Step Title: Repair the targeted warning-inventory route
 
 ## Just Finished
 
-- Step 6 targeted warning-inventory repair complete: the closed boolean-
-  coercion comparison predicates in `src/codegen/lir/hir_to_lir/core.cpp`
-  now use `LirCmpPredicate::Ne` and `LirCmpPredicate::UNe` in `to_bool` and
-  `to_bool_operand`, preserving all type-text handling, operands, and emitted
-  comparison semantics.
+- Step 6 targeted warning-inventory repair complete: all six fixed generic
+  `va_arg` comparison predicates in `src/codegen/lir/hir_to_lir/call/vaarg.cpp`
+  now use `LirCmpPredicate::Sge` / `LirCmpPredicate::Sle`, preserving `i32`
+  type text, offsets, limits, operands, and emitted comparison semantics.
 
 ## Suggested Next
 
-- Step 6: select the next targeted warning-inventory family, excluding the
-  completed boolean-coercion predicates and preferring another closed
-  known-value set that can construct its LIR reference from an enum.
+- Step 6: select the next targeted warning-inventory family; AMD64-specific
+  `va_arg` predicates remain a separate candidate and are outside this
+  completed generic-family packet.
 
 ## Watchouts
 
@@ -59,10 +58,12 @@ Current Step Title: Repair the targeted warning-inventory route
 - Boolean-coercion `ne`/`une` predicates in `to_bool` and `to_bool_operand`
   are a closed known set and now enum-backed; dynamic `ty` paths remain
   intentionally outside this packet.
+- The generic `va_arg` fixed `sge`/`sle` predicates are now enum-backed; do
+  not fold AMD64-specific `va_arg` lowering into this completed family.
 
 ## Proof
 
 - `cmake --build --preset default` succeeded; remaining warnings are deliberate
   local inventory boundaries.
-- `ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$' >
-  test_after.log` passed (1/1); `test_after.log` is the focused proof log.
+- `ctest --test-dir build -j --output-on-failure -R '^backend_' >
+  test_after.log` passed (5/5); `test_after.log` is the focused proof log.

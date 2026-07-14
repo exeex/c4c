@@ -59,7 +59,7 @@ std::string StmtEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::st
   const auto join_target = fresh_direct_target(ctx, fresh_lbl(ctx, "vaarg.join."));
 
   const std::string is_stack0 = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirCmpOp{is_stack0, false, "sge", "i32", offs, "0"});
+  emit_lir_op(ctx, lir::LirCmpOp{is_stack0, false, LirCmpPredicate::Sge, "i32", offs, "0"});
   TypeSpec bool_ts{};
   bool_ts.base = TB_BOOL;
   emit_condbr_and_open_lbl(ctx, to_bool_operand(ctx, lir::LirOperand::raw(is_stack0), bool_ts),
@@ -68,7 +68,7 @@ std::string StmtEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::st
   emit_lir_op(ctx, lir::LirBinOp{next_offs, "add", "i32", offs, std::to_string(slot_bytes)});
   emit_lir_op(ctx, lir::LirStoreOp{std::string("i32"), next_offs, offs_ptr});
   const std::string use_reg = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirCmpOp{use_reg, false, "sle", "i32", next_offs, "0"});
+  emit_lir_op(ctx, lir::LirCmpOp{use_reg, false, LirCmpPredicate::Sle, "i32", next_offs, "0"});
   emit_condbr_and_open_lbl(ctx, to_bool_operand(ctx, lir::LirOperand::raw(use_reg), bool_ts),
                            reg_target, stack_target, reg_target);
   const std::string gr_top_ptr = fresh_tmp(ctx);
@@ -110,7 +110,7 @@ std::string StmtEmitter::emit_aarch64_vaarg_fp_src_ptr(FnCtx& ctx, const std::st
   const auto join_target = fresh_direct_target(ctx, fresh_lbl(ctx, "vaarg.fp.join."));
 
   const std::string is_stack0 = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirCmpOp{is_stack0, false, "sge", "i32", offs, "0"});
+  emit_lir_op(ctx, lir::LirCmpOp{is_stack0, false, LirCmpPredicate::Sge, "i32", offs, "0"});
   TypeSpec bool_ts{};
   bool_ts.base = TB_BOOL;
   emit_condbr_and_open_lbl(ctx, to_bool_operand(ctx, lir::LirOperand::raw(is_stack0), bool_ts),
@@ -119,7 +119,7 @@ std::string StmtEmitter::emit_aarch64_vaarg_fp_src_ptr(FnCtx& ctx, const std::st
   emit_lir_op(ctx, lir::LirBinOp{next_offs, "add", "i32", offs, std::to_string(reg_slot_bytes)});
   emit_lir_op(ctx, lir::LirStoreOp{std::string("i32"), next_offs, offs_ptr});
   const std::string use_reg = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirCmpOp{use_reg, false, "sle", "i32", next_offs, "0"});
+  emit_lir_op(ctx, lir::LirCmpOp{use_reg, false, LirCmpPredicate::Sle, "i32", next_offs, "0"});
   emit_condbr_and_open_lbl(ctx, to_bool_operand(ctx, lir::LirOperand::raw(use_reg), bool_ts),
                            reg_target, stack_target, reg_target);
   const std::string vr_top_ptr = fresh_tmp(ctx);
@@ -192,7 +192,7 @@ std::string StmtEmitter::emit_aarch64_vaarg_hfa(
   const auto join_target = fresh_direct_target(ctx, fresh_lbl(ctx, "vaarg.hfa.join."));
 
   const std::string is_stack0 = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirCmpOp{is_stack0, false, "sge", "i32", offs, "0"});
+  emit_lir_op(ctx, lir::LirCmpOp{is_stack0, false, LirCmpPredicate::Sge, "i32", offs, "0"});
   TypeSpec bool_ts{};
   bool_ts.base = TB_BOOL;
   emit_condbr_and_open_lbl(ctx, to_bool_operand(ctx, lir::LirOperand::raw(is_stack0), bool_ts),
@@ -204,7 +204,7 @@ std::string StmtEmitter::emit_aarch64_vaarg_hfa(
                                  std::to_string(reg_slot_bytes)});
   emit_lir_op(ctx, lir::LirStoreOp{std::string("i32"), next_offs, offs_ptr});
   const std::string use_reg = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirCmpOp{use_reg, false, "sle", "i32", next_offs, "0"});
+  emit_lir_op(ctx, lir::LirCmpOp{use_reg, false, LirCmpPredicate::Sle, "i32", next_offs, "0"});
   emit_condbr_and_open_lbl(ctx, to_bool_operand(ctx, lir::LirOperand::raw(use_reg), bool_ts),
                            reg_target, stack_target, reg_target);
 
