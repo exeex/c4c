@@ -592,6 +592,8 @@ bool is_floating_binary_opcode(LirBinaryOpcode opcode) {
   }
 }
 
+bool integer_immediate_representable(long long value, unsigned bit_width);
+
 void verify_bin_op_authority(const LirBinOp& op) {
   if (!op.result.value_id()) return;
   const std::optional<LirBinaryOpcode> opcode = op.opcode.typed();
@@ -601,6 +603,25 @@ void verify_bin_op_authority(const LirBinOp& op) {
   if (floating_opcode != floating_type) {
     fail_verify("LirBinOp.type_str",
                 "authoritative floating binary opcode and type must agree");
+  }
+  if (!floating_opcode && op.type_str.kind() == LirTypeKind::Integer) {
+    const auto verify_integer_operand_authority = [&op](
+        const LirOperand& operand, std::string_view field) {
+      if (!operand.has_authority() || operand.value_id()) return;
+      if (const LirIntegerImmediate* immediate = operand.integer_immediate()) {
+        const std::optional<unsigned> width = op.type_str.integer_bit_width();
+        if (!width ||
+            !integer_immediate_representable(immediate->value, *width)) {
+          fail_verify(field,
+                      "integer immediate is not representable by binary type");
+        }
+        return;
+      }
+      fail_verify(field,
+                  "authoritative integer binary operand requires SSA or integer immediate authority");
+    };
+    verify_integer_operand_authority(op.lhs, "LirBinOp.lhs");
+    verify_integer_operand_authority(op.rhs, "LirBinOp.rhs");
   }
 }
 

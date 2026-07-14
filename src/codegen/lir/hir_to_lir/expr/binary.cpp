@@ -4,6 +4,35 @@ namespace c4c::codegen::lir {
 
 using namespace stmt_emitter_detail;
 
+namespace {
+
+bool integer_immediate_representable_by_type(const LirOperand& operand,
+                                             const LirTypeRef& type) {
+  const LirIntegerImmediate* immediate = operand.integer_immediate();
+  if (!immediate || type.kind() != LirTypeKind::Integer) return true;
+  const std::optional<unsigned> width = type.integer_bit_width();
+  if (!width || *width == 0) return false;
+  if (*width >= 64) return true;
+  if (immediate->value < 0) {
+    const long long minimum = -(1LL << (*width - 1));
+    return immediate->value >= minimum;
+  }
+  const unsigned long long maximum = (1ULL << *width) - 1ULL;
+  return static_cast<unsigned long long>(immediate->value) <= maximum;
+}
+
+LirOperand preserve_exact_binary_operand(const LirOperand& source,
+                                         const std::string& normalized,
+                                         const LirTypeRef& type) {
+  if (!source.has_authority() || source.str() != normalized ||
+      !integer_immediate_representable_by_type(source, type)) {
+    return LirOperand(normalized);
+  }
+  return source;
+}
+
+}  // namespace
+
 std::string StmtEmitter::emit_complex_binary_arith(FnCtx& ctx, BinaryOp op,
                                                    const std::string& lv,
                                                    const TypeSpec& lts,
@@ -475,14 +504,13 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
           !is_vector_value(lts);
       if (authoritative_scalar_integer || authoritative_scalar_floating) {
         const LirOperand result = fresh_value(ctx);
-        const LirOperand lhs = source_lv.has_authority() && source_lv.str() == lv
-                                   ? source_lv
-                                   : LirOperand(lv);
-        const LirOperand rhs = source_rv.has_authority() && source_rv.str() == rv
-                                   ? source_rv
-                                   : LirOperand(rv);
+        const LirTypeRef type(op_ty);
+        const LirOperand lhs =
+            preserve_exact_binary_operand(source_lv, lv, type);
+        const LirOperand rhs =
+            preserve_exact_binary_operand(source_rv, rv, type);
         emit_lir_op(ctx, lir::LirBinOp{result, std::string(instr),
-                                       LirTypeRef(op_ty), lhs, rhs});
+                                       type, lhs, rhs});
         const std::string coerced = coerce(ctx, result.str(), lts, res_spec);
         return coerced == result.str() ? result : LirOperand::raw(coerced);
       }

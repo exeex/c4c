@@ -4,52 +4,56 @@ Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
 Current Step ID: 7.14
-Current Step Title: Publish builtin-ffs plus-one result/select-use authority
+Current Step Title: Publish builtin-ffs plus-one result/select-use authority (complete)
 
 ## Just Finished
 
-- Completed Plan Step 7.13 for only the i64 builtin-ffs select narrowing chain.
-- Preserved the exact authoritative i64 select ID into an i64-to-i32 Trunc
-  allocated by the existing integer `coerce_operand` seam through
-  `fresh_value`, then preserved the cast result ID into a later i32 Add.
-- Kept the internal cttz call, plus-one binary, zero comparison, select
-  condition, and false arm honest compatibility.
+- Completed Plan Step 7.14 for only the shared i32/i64 builtin-ffs add-one
+  producer and its existing select false-arm use.
+- Allocated the add-one `LirBinOp.result` through `fresh_value`, retained native
+  integer Add and exact i32/i64 type authority, published exact
+  `LirIntegerImmediate{1}`, and preserved the result ID as the false arm.
+- Kept the internal cttz lhs, zero comparison, and select condition honest
+  compatibility; no other builtin, call, binary, or select family was claimed.
 - Added exact-ID and misleading-display positives plus invalid/duplicate,
-  unknown/cross-function, wrong-kind, missing/conflicting endpoint, and
-  nonnarrowing rejections. The matrix records the exact boundary.
+  unknown/cross-function, invalid/conflicting opcode/type, wrong immediate
+  authority, and unrepresentable-immediate rejections. The matrix records the
+  exact boundary.
+- Repaired the full-guard regression exposed by converted integer literals:
+  the common ordinary scalar binary seam now withholds immediate authority when
+  the payload is not representable by the normalized operation width. This
+  preserves legacy modulo/bit-pattern rendering without weakening Step 7.14's
+  exact representable immediate-one contract or the verifier invariant.
 
 ## Suggested Next
 
-- Execute Step 7.14: publish the builtin-ffs scalar plus-one `LirBinOp` result
-  as the exact false-arm use of its existing `LirSelectOp`.
+- Select the next bounded Step-7 ordinary-value identity row from the source
+  idea and establish its exact producer/use boundary before implementation.
 
 ## Watchouts
 
-- Own only PI's scalar integer add-one operation inside `emit_builtin_ffs_call`
-  for the existing i32 and i64 routes. Allocate its `LirBinOp.result` through
-  `fresh_value` and preserve that exact result ID as the existing select's
-  false-arm operand.
-- Retain native integer Add opcode/type authority and publish the structural
-  constant one as `LirIntegerImmediate`; keep the cttz-produced lhs honest
-  monostate until its call-result row is separately owned.
-- Require unique current-function result ownership and exact select-arm use;
-  reject invalid/duplicate results, unknown or cross-function uses, invalid or
-  conflicting opcode/type authority, and malformed immediate alternatives.
-- Accept misleading result/false-arm displays only after native authority is
-  proven. Do not infer the cttz result or any select edge from rendered text.
-- Preserve Steps 7.3 and 7.13. Exclude the cttz call result, zero comparison,
+- Preserve the Step-7.14 contract: only PI's shared scalar i32/i64 add-one is
+  newly authoritative, with exact fresh result, native Add/type, immediate one,
+  and exact false-arm identity.
+- Ordinary scalar binary literals retain authority only when their payload is
+  representable by the normalized operation type. Keep converted modulo/
+  bit-pattern literals compatibility-only until a richer native payload model
+  exists.
+- Keep the cttz-produced lhs honest monostate until its call-result row is
+  separately owned. Do not infer it or any select edge from rendered text.
+- Preserve Steps 7.3 and 7.13 and continue excluding the zero comparison,
   select condition, other builtins/calls/binaries/selects, pointer/vector/
   aggregate/object work, CFG/parameters, inline assembly, and BIR.
 
 ## Proof
 
-- Fresh `cmake --build --preset default` passed for the Step-7.13 wide ffs
-  select-narrowing producer path and focused tests.
-- `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure > test_after.log`
-  passed 1/1 as the focused Step-7.13 proof.
-- The matching narrow `test_before.log` / `test_after.log` monotonic guard
-  passed with non-decreasing passed tests and no new failures.
-- The supervisor's full regression guard passed 3033/3033 before and after,
-  with delta 0 passed / 0 failed and no new failures; canonical proof is in
-  `test_before.log` and `test_after.log`.
-- `git diff --check` passed for the complete Step-7.13 slice.
+- Fresh `cmake --build --preset default` passed after the Step-7.14 regression
+  repair.
+- `ctest --test-dir build -R '^(frontend_lir_call_type_ref|llvm_gcc_c_torture_src_pr68648_c)$' --output-on-failure > test_after.log`
+  passed 2/2: the focused authority contract and the exact torture regression.
+- Focused coverage now proves converted out-of-range integer literals remain
+  compatibility-only while the ffs immediate one remains authoritative and an
+  injected unrepresentable authoritative ffs operand still rejects.
+- The supervisor's matched full regression guard passed 3033/3033 before and
+  after the repair, with delta 0 passed / 0 failed and no new failures.
+- `git diff --check` passed for the complete Step-7.14 slice.

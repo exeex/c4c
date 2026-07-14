@@ -3602,7 +3602,8 @@ int lir_scalar_select_result_use_identity(void) {
                   select.true_val.integer_immediate() &&
                   select.true_val.integer_immediate()->value == 0 &&
                   select.false_val.kind() == lir::LirOperandKind::SsaValue &&
-                  !select.false_val.has_authority(),
+                  select.false_val.value_id() &&
+                  select.false_val.value_id()->valid(),
               "scalar select should retain exact i32 result type and honest available operand authority");
   expect_true(later_use && later_use->opcode.typed() == lir::LirBinaryOpcode::Add &&
                   later_use->type_str.kind() == lir::LirTypeKind::Integer &&
@@ -3770,13 +3771,15 @@ int lir_wide_ffs_select_trunc_identity(void) {
           *later_use->lhs.value_id() == *trunc->result.value_id(),
       "wide ffs should preserve exact select-to-trunc-to-use identities");
   expect_true(!cttz->result.has_authority() &&
-                  !builtin_plus_one->result.has_authority() &&
+                  builtin_plus_one->result.value_id() &&
+                  select->false_val.value_id() &&
+                  *select->false_val.value_id() ==
+                      *builtin_plus_one->result.value_id() &&
                   !zero_cmp->result.has_authority() &&
                   select->cond.kind() == lir::LirOperandKind::SsaValue &&
                   !select->cond.has_authority() &&
-                  select->false_val.kind() == lir::LirOperandKind::SsaValue &&
-                  !select->false_val.has_authority(),
-              "wide ffs internal producers should remain honest compatibility");
+                  select->false_val.kind() == lir::LirOperandKind::SsaValue,
+              "wide ffs remaining internal producers should stay compatibility");
   lir::verify_module(lowered);
 
   struct FocusedChain {
@@ -3898,6 +3901,198 @@ int lir_wide_ffs_select_trunc_identity(void) {
   expect_identity_verification_rejected(
       conflicting_direction,
       "verifier should reject nonnarrowing wide-ffs Trunc endpoints");
+}
+
+void test_builtin_ffs_plus_one_select_use_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int lir_ffs_plus_one_i32_source;
+long long lir_ffs_plus_one_i64_source;
+int lir_ffs_plus_one_i32(void) {
+  return __builtin_ffs(lir_ffs_plus_one_i32_source);
+}
+int lir_ffs_plus_one_i64(void) {
+  return __builtin_ffsll(lir_ffs_plus_one_i64_source);
+}
+)c", "x86_64-linux-gnu");
+
+  struct FocusedPair {
+    lir::LirBinOp* plus_one = nullptr;
+    lir::LirSelectOp* select = nullptr;
+  };
+  const auto require_focused_pair = [](lir::LirModule& module,
+                                       std::string_view function_name) {
+    lir::LirFunction& focused = require_function(module, function_name);
+    FocusedPair pair;
+    for (auto& block : focused.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* binary = std::get_if<lir::LirBinOp>(&inst)) {
+          expect_true(pair.plus_one == nullptr,
+                      "focused ffs fixture should contain one plus-one binary");
+          pair.plus_one = binary;
+        }
+        if (auto* select = std::get_if<lir::LirSelectOp>(&inst)) {
+          expect_true(pair.select == nullptr,
+                      "focused ffs fixture should contain one select");
+          pair.select = select;
+        }
+      }
+    }
+    expect_true(pair.plus_one && pair.select,
+                "focused ffs fixture should contain its plus-one/select pair");
+    return pair;
+  };
+
+  FocusedPair i32 = require_focused_pair(lowered, "lir_ffs_plus_one_i32");
+  FocusedPair i64 = require_focused_pair(lowered, "lir_ffs_plus_one_i64");
+  const auto expect_width_contract = [](const FocusedPair& pair,
+                                        unsigned width) {
+    expect_true(
+        pair.plus_one->result.value_id() &&
+            pair.plus_one->result.value_id()->valid() &&
+            pair.plus_one->opcode.typed() == lir::LirBinaryOpcode::Add &&
+            pair.plus_one->type_str.kind() == lir::LirTypeKind::Integer &&
+            pair.plus_one->type_str.integer_bit_width() == width &&
+            pair.plus_one->lhs.kind() == lir::LirOperandKind::SsaValue &&
+            !pair.plus_one->lhs.has_authority() &&
+            pair.plus_one->rhs.integer_immediate() &&
+            pair.plus_one->rhs.integer_immediate()->value == 1 &&
+            pair.select->false_val.value_id() &&
+            *pair.select->false_val.value_id() ==
+                *pair.plus_one->result.value_id(),
+        "ffs plus-one should preserve native Add/type/immediate authority into select");
+  };
+  expect_width_contract(i32, 32);
+  expect_width_contract(i64, 64);
+  lir::verify_module(lowered);
+
+  lir::LirModule misleading = lowered;
+  FocusedPair misleading_i32 =
+      require_focused_pair(misleading, "lir_ffs_plus_one_i32");
+  FocusedPair misleading_i64 =
+      require_focused_pair(misleading, "lir_ffs_plus_one_i64");
+  misleading_i32.plus_one->result.str() = "@rendered-not-ffs-plus-one";
+  misleading_i32.select->false_val.str() = "7";
+  misleading_i64.plus_one->result.str() = "8";
+  misleading_i64.select->false_val.str() = "@rendered-not-ffs-false-arm";
+  lir::verify_module(misleading);
+
+  lir::LirModule invalid_result = lowered;
+  require_focused_pair(invalid_result, "lir_ffs_plus_one_i32")
+      .plus_one->result =
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_result, "verifier should reject invalid ffs plus-one result ID");
+
+  lir::LirModule duplicate_result = lowered;
+  FocusedPair duplicate =
+      require_focused_pair(duplicate_result, "lir_ffs_plus_one_i32");
+  duplicate.select->result = lir::LirOperand::ssa(
+      "%duplicate", *duplicate.plus_one->result.value_id());
+  expect_identity_verification_rejected(
+      duplicate_result, "verifier should reject duplicate ffs plus-one result ID");
+
+  lir::LirModule unknown_use = lowered;
+  require_focused_pair(unknown_use, "lir_ffs_plus_one_i32")
+      .select->false_val =
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_use, "verifier should reject unknown ffs plus-one select use");
+
+  lir::LirModule cross_function_use = lowered;
+  cross_function_use.functions.push_back(
+      make_identity_test_function("ffs_plus_one_owner", lir::LirValueId{99}));
+  require_focused_pair(cross_function_use, "lir_ffs_plus_one_i64")
+      .select->false_val =
+      lir::LirOperand::ssa("%cross", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      cross_function_use,
+      "verifier should reject cross-function ffs plus-one select use");
+
+  lir::LirModule invalid_opcode = lowered;
+  require_focused_pair(invalid_opcode, "lir_ffs_plus_one_i32")
+      .plus_one->opcode = lir::LirBinaryOpcodeRef("not-an-opcode");
+  expect_identity_verification_rejected(
+      invalid_opcode, "verifier should reject invalid ffs plus-one opcode");
+
+  lir::LirModule conflicting_opcode = lowered;
+  require_focused_pair(conflicting_opcode, "lir_ffs_plus_one_i32")
+      .plus_one->opcode = lir::LirBinaryOpcodeRef(lir::LirBinaryOpcode::FAdd);
+  expect_identity_verification_rejected(
+      conflicting_opcode,
+      "verifier should reject floating opcode on integer ffs plus-one");
+
+  lir::LirModule missing_type = lowered;
+  require_focused_pair(missing_type, "lir_ffs_plus_one_i64")
+      .plus_one->type_str = lir::LirTypeRef{};
+  expect_identity_verification_rejected(
+      missing_type, "verifier should reject missing ffs plus-one type");
+
+  lir::LirModule conflicting_type = lowered;
+  require_focused_pair(conflicting_type, "lir_ffs_plus_one_i64")
+      .plus_one->type_str = lir::LirTypeRef("double");
+  expect_identity_verification_rejected(
+      conflicting_type,
+      "verifier should reject floating type on integer ffs plus-one");
+
+  lir::LirModule wrong_immediate_alternative = lowered;
+  require_focused_pair(wrong_immediate_alternative, "lir_ffs_plus_one_i32")
+      .plus_one->rhs =
+      lir::LirOperand::global("@not-an-integer", c4c::LinkNameId{99});
+  expect_identity_verification_rejected(
+      wrong_immediate_alternative,
+      "verifier should reject noninteger authority for ffs plus-one constant");
+
+  lir::LirModule unrepresentable_immediate = lowered;
+  require_focused_pair(unrepresentable_immediate, "lir_ffs_plus_one_i32")
+      .plus_one->rhs =
+      lir::LirOperand::integer("1099511627776", 1LL << 40);
+  expect_identity_verification_rejected(
+      unrepresentable_immediate,
+      "verifier should reject unrepresentable ffs plus-one immediate");
+
+  lir::LirModule converted_literal_compatibility =
+      lower_lir_module_for_target(R"c(
+int lir_converted_literal_source(void);
+int lir_converted_literal_binary(void) {
+  int value = 1;
+  value |= 4294967295 ^
+           (lir_converted_literal_source() | 4073709551608);
+  return value;
+}
+)c", "x86_64-linux-gnu");
+  bool found_published_representable_literal = false;
+  bool found_unpublished_converted_literal = false;
+  for (const auto& block :
+       require_function(converted_literal_compatibility,
+                        "lir_converted_literal_binary")
+           .blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* binary = std::get_if<lir::LirBinOp>(&inst);
+      if (!binary || !binary->result.value_id() ||
+          binary->type_str.kind() != lir::LirTypeKind::Integer) {
+        continue;
+      }
+      const auto is_unpublished_immediate = [](const lir::LirOperand& operand) {
+        return operand.kind() == lir::LirOperandKind::Immediate &&
+               !operand.has_authority();
+      };
+      found_published_representable_literal |=
+          binary->lhs.integer_immediate() || binary->rhs.integer_immediate();
+      found_unpublished_converted_literal |=
+          is_unpublished_immediate(binary->lhs) ||
+          is_unpublished_immediate(binary->rhs);
+    }
+  }
+  expect_true(
+      found_unpublished_converted_literal,
+      "normalized integer binaries should keep converted out-of-range literals "
+      "compatibility-only");
+  expect_true(
+      found_published_representable_literal,
+      "normalized integer binaries should retain representable immediate authority");
+  lir::verify_module(converted_literal_compatibility);
 }
 
 void test_scalar_abs_result_use_identity_boundary() {
@@ -4463,6 +4658,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_floating_compare_result_use_identity_boundary();
   test_scalar_select_result_use_identity_boundary();
   test_wide_ffs_select_trunc_result_use_identity_boundary();
+  test_builtin_ffs_plus_one_select_use_identity_boundary();
   test_scalar_abs_result_use_identity_boundary();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";

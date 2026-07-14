@@ -29,15 +29,18 @@ LirOperand StmtEmitter::emit_builtin_ffs_call(FnCtx& ctx, ExprId arg_id,
   const std::string cttz = fresh_tmp(ctx);
   emit_lir_op(ctx, make_lir_call_op(cttz, arg.llvm_ty, "@llvm.cttz." + arg.llvm_ty, "",
                                     {{arg.llvm_ty, arg.value}, {"i1", "false"}}));
-  const std::string plus1 = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirBinOp{plus1, "add", arg.llvm_ty, cttz, "1"});
+  const LirOperand plus1 = fresh_value(ctx);
+  emit_lir_op(ctx, lir::LirBinOp{
+                       plus1, LirBinaryOpcodeRef(LirBinaryOpcode::Add),
+                       LirTypeRef(arg.llvm_ty), LirOperand(cttz),
+                       LirOperand::integer("1", 1)});
   const std::string is_zero = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirCmpOp{is_zero, false, "eq", arg.llvm_ty, arg.value, "0"});
   const LirOperand select_result = fresh_value(ctx);
   emit_lir_op(ctx, lir::LirSelectOp{
                        select_result, LirTypeRef(arg.llvm_ty),
                        LirOperand(is_zero), LirOperand::integer("0", 0),
-                       LirOperand(plus1)});
+                       plus1});
   if (!arg.is_i64) return select_result;
   TypeSpec select_ts{};
   select_ts.base = TB_LONGLONG;
