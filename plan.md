@@ -1,132 +1,118 @@
-# LIR Memcpy Selected Pointer/Object Authority Publication Runbook
+# LIR-To-New-BIR Container And Import Completeness Runbook
 
 Status: Active
-Source Idea: ideas/open/748_lir_memcpy_selected_pointer_object_authority_publication.md
-Supersedes: blocked idea 734 until this producer handoff is accepted
-Resumed after: ideas/closed/749_lir_selected_memcpy_current_function_pointer_object_lifetime_authority.md
+Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
+Resumed from: closed idea 748 selected memcpy pointer/object authority handoff
+(`6a12cddab`, `dac9c8f81`)
 
 ## Purpose
 
-Repair exactly the selected PL `LirMemcpyOp` producer authority that idea 734
-cannot obtain from text, then hand the verified row back to its receiver.
+Resume the bounded target-independent Raw-BIR receiver route at the first
+post-Step-7.19 receiver-ready row. Receive exactly the closed-748 selected
+non-volatile fixed-aggregate byval `LirMemcpyOp`; do not repeat accepted work
+or broaden memory support.
 
 ## Goal
 
-Publish typed current-function destination/source/size and pointer-object-
-lifetime ownership for one selected non-volatile memcpy row, with no receiver
-or presentation recovery.
+Import each structured-authority LIR fact into one verified Raw-BIR module
+without loss or partial publication. Never recover a fact from presentation.
 
 ## Core Rule
 
-Structured typed fields are the sole semantic authority. Display operands and
-rendered LLVM may demonstrate parity but must never create, repair, or select
-an identity, object, size, or lifetime fact.
+The selected `LirMemcpyOp::selected_authority` is the sole semantic input:
+destination/source `LirValueId`, i64 immediate size, destination/source
+`LirObjectId`, current-function object owners, and live-at-site facts. Display
+operands remain display-only. The row maps directly to typed Raw-BIR container,
+importer, reachable verifier, and transactional proof.
 
 ## Read First
 
-- `ideas/open/748_lir_memcpy_selected_pointer_object_authority_publication.md`
-- `ideas/closed/749_lir_selected_memcpy_current_function_pointer_object_lifetime_authority.md`
-- `ideas/open/734_lir_to_new_bir_container_completeness.md` (resumption at
-  Step 7.20 after this handoff)
+- `ideas/open/734_lir_to_new_bir_container_completeness.md`
+- `ideas/closed/748_lir_memcpy_selected_pointer_object_authority_publication.md`
 - `docs/lir_remaining_ordinary_value_identity/authority_matrix.md`
-- `src/codegen/lir/ir.hpp`, `src/codegen/lir/verify.cpp`, and the selected PL
-  `emit_lval_dispatch` memcpy producer
+- existing Raw-BIR memory/container builders, views, verifier, and LIR importer
 
-## Accepted Prerequisite Contract
+## Landed Progress
 
-- `LirFunction::selected_memcpy_pointer_authority` is the sole selected
-  carrier from idea 749.
-- It contains `byval_parameter` and `destination_alloca`
-  `LirCurrentFunctionPointerDefinition` entries.
-- Each entry carries a valid `LirValueId`, `ptr` `LirTypeRef`, a distinct
-  `LirObjectId` allocated via `LirFunction::alloc_object()`, `object_owner`
-  equal to the selected current `LirFunction::link_name_id`, role
-  `ByvalParameter` or `DestinationAlloca`, and
-  `live_at_selected_site=true`.
-- It is populated only by the fixed aggregate byval parameter materialization
-  producer in `src/codegen/lir/hir_to_lir/lvalue.cpp` at the selected memcpy
-  site.
-- Idea 749 did not change `LirMemcpyOp` schema/publication/verifier behavior,
-  builtin memcpy, Raw-BIR, or any other memcpy producer.
+- Steps 1 through 5.3.5 established the coverage foundation and accepted typed
+  module/type/value, metadata, direct-call, and ordinary-value rows through
+  normalized i32 `Mul` (`ea4b63135`).
+- Steps 6.1 through 6.5 accepted selected inline-assembly bindings, direct
+  branch receipt, `SExt`, and `SLT` rows (`ad82d1456`, `37014f013`,
+  `97efe9c38`, `39518d27a`, `03448676f`).
+- Steps 7.1 through 7.19 are accepted historical work, including dispatcher
+  rollback, bounded scalar/intrinsic/cast/binary rows, builtin ffs/ctz/clz,
+  and builtin-popcount receipt (`565be6932`). Do not repeat them.
 
 ## Non-Goals
 
-- Do not edit Raw-BIR/importer code or tests, and do not make 734 receiver
-  progress in this plan.
-- Do not generalize to other memcpy, memory/object, stack, parameter, va-list,
-  aggregate/vector, CFG, target, allocation, MIR, or emission work.
-- Do not re-open or reimplement idea 749; consume only its accepted authority
-  contract.
+- no LIR schema/producer edits, presentation-text recovery, target
+  interpretation, allocation, canonicalization, MIR, emission, or legacy-BIR
+  revival
+- no second memcpy row, volatile or dynamic-size memcpy, alias/overlap model,
+  generic pointer/object model, stack/local, globals, parameters outside this
+  fixed byval row, va-list, memset, loads/stores/GEPs, aggregate/vector, CFG,
+  inline-assembly, or other memory/object family
+- no Raw-BIR receipt beyond exactly the closed-748 selected row
 
 ## Execution Rules
 
-1. Keep the selected producer row singular and name its exact source/fixture in
-   the durable handoff before claiming completion.
-2. Preserve textual operands only as compatibility display; do not parse them.
-3. Source destination/source pointer, object, and lifetime facts only from the
-   accepted 749 authority contract for the selected `lvalue.cpp` producer.
-4. Fail verification before consumer-visible publication; no partial authority
-   may survive an invalid selected row.
-5. Prove build, focused producer/verifier coverage, then use the supervisor's
-   matching regression and broader checks as required before handoff.
+1. Implement only the closed-748 selected row and retain every other memcpy
+   row's prior unsupported/fail-closed disposition.
+2. Add the typed Raw-BIR receiving container, importer dispatch, reachable
+   Raw-BIR verifier, and positive/negative transactional coverage together.
+3. Require exactly one selected descriptor when the current-function selected
+   pointer carrier exists; preserve pointer/object identity, owner, and live
+   relation without parsing display operands.
+4. Reject missing, duplicate, invalid, cross-function, mismatched, dead,
+   non-i64/nonpositive-size, or otherwise incoherent authority with no partial
+   Raw-BIR module publication.
+5. Keep all producer authority from closed 748 authoritative; do not alter or
+   revalidate producer scope through an LIR change.
 
 ## Ordered Steps
 
-### Step 1 - Define and populate the selected memcpy typed authority
+### Step 7.20 - Receive the selected `LirMemcpyOp` authority row
 
-Goal: make only the selected PL non-volatile memcpy row carry the typed
-destination/source/size and object/lifetime fields required by its consumer.
+Goal: receive exactly the closed-748 selected fixed-aggregate byval memcpy row
+in typed Raw-BIR, importer dispatch, reachable Raw-BIR verification, and
+transactional positive/negative proof.
 
 Primary targets:
 
-- LIR memcpy schema and the selected `emit_lval_dispatch` producer path
-- narrowly adjacent producer fixture
+- the smallest typed Raw-BIR memcpy/memory receiving container, builder, and
+  immutable view required for this single row
+- LIR-to-Raw-BIR instruction dispatch and reachable Raw-BIR verifier
+- focused backend receiver coverage plus the closed-748 producer regression
+  neighbor
 
 Actions:
 
-- retry exactly the selected fixed aggregate byval parameter materialization
-  row in `src/codegen/lir/hir_to_lir/lvalue.cpp`;
-- retain compatibility spelling independently of authority;
-- populate current-function destination/source `LirValueId`s, typed size
-  authority, and typed destination/source object IDs with their live ownership
-  relation from `LirFunction::selected_memcpy_pointer_authority`; and
-- leave all unselected memcpy producers and operand forms unchanged/fail-closed.
+- consume only `LirMemcpyOp::selected_authority` from the selected non-volatile
+  fixed aggregate byval producer in `src/codegen/lir/hir_to_lir/lvalue.cpp`;
+  map its source/destination IDs, i64 positive immediate size, object IDs,
+  current-function owners, and live-at-site facts without using display
+  operands
+- verify exactly one selected descriptor under the selected pointer carrier,
+  current-function pointer/object ownership, distinct source/destination
+  relation, i64-positive size, and live-site coherence; reject missing,
+  duplicate, cross-owner/function, type/kind, object-link, size, and lifetime
+  failures before Raw-BIR publication
+- prove one selected-row success and neighboring malformed authority failures
+  with whole-module rollback; preserve unselected memcpy rows and every other
+  memory/object family as unsupported and fail-closed
 
 Completion check:
 
-- the selected row has no semantic dependence on monostate/text operands, and
-  the focused fixture exposes the intended typed fields.
+- fresh build, focused receiver plus producer-neighbor proof, supervisor-owned
+  matching regression guard, and the required broader checkpoint establish one
+  verified transactional selected memcpy receipt without presentation recovery
+  or scope expansion.
 
-### Step 2 - Enforce the selected row's verifier boundary
+### Source completion gate (not an executor packet)
 
-Goal: reject incoherent selected-row value, object, owner, type, size, and
-lifetime authority before it can be handed to a receiver.
-
-Actions:
-
-- add only the reachable verifier checks needed for the selected schema;
-- reject missing, invalid, duplicate/cross-function, type/kind, object-link,
-  size, and lifetime failures; and
-- preserve transactional behavior with no fallback to display text.
-
-Completion check:
-
-- each malformed selected-row neighbor fails for typed-authority reasons and
-  valid current-function ownership succeeds.
-
-### Step 3 - Prove the producer and publish the consumer handoff
-
-Goal: establish focused proof and document the exact authority contract for
-idea 734 without receiver work.
-
-Actions:
-
-- run a fresh build and the selected focused producer/verifier coverage;
-- have the supervisor apply matching regression/broader validation as required;
-- write the durable handoff with fields, ownership/lifetime rules, rejection
-  cases, accepted commit/proof, and 734 return point `Step 7.20`.
-
-Completion check:
-
-- an executor can reactivate 734 and receive exactly one row without
-  re-auditing or parsing producer presentation.
+Do not execute this as a placeholder. After Step 7.20, return the runbook to
+plan-owner for an explicit source-completion, repair, replacement, or
+conclusion decision. This source remains open until every valid current-LIR
+row has an evidenced typed receiver disposition and all source acceptance
+criteria are met.

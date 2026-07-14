@@ -82,6 +82,64 @@ Raw-BIR container, importer dispatch, reachable Raw-BIR verifier ownership,
 and positive/negative transactional proof.  All other memory/object and
 adjacent families remain separate and fail closed.
 
+## Closure Record: selected producer contract published
+
+Lifecycle disposition: capability complete; this source is closed after its
+selected producer/schema/verifier boundary was accepted. The consumer must
+reactivate `ideas/open/734_lir_to_new_bir_container_completeness.md` at
+`Step 7.20 - Receive the selected LirMemcpyOp authority row` and may receive
+exactly the row described here. This record does not authorize Raw-BIR receipt,
+importer work, or any other memory family.
+
+Selected producer and contract:
+
+- The sole producer is the fixed aggregate byval parameter materialization in
+  `src/codegen/lir/hir_to_lir/lvalue.cpp`, in `emit_lval_dispatch`: the
+  non-volatile `%lv.param.<param> <- %p.<param>` memcpy. No other memcpy row
+  is selected.
+- `LirMemcpyOp::selected_authority` is optional solely so unselected memcpy
+  rows retain their prior non-authoritative behavior. For the selected row it
+  carries destination and source `LirValueId`s, an i64
+  `LirIntegerImmediate` size, destination/source `LirObjectId`s, each object
+  owner, and destination/source live-at-site facts.
+- Destination is the current function's `destination_alloca`; source is its
+  `byval_parameter`. Both pointer values and objects are valid and distinct,
+  their types are `ptr`, their owners equal the current function's
+  `link_name_id`, and both are live at the selected site. The positive size is
+  native i64. Display operands remain compatibility spelling only and are
+  never semantic input.
+
+Fail-closed verifier boundary:
+
+- When `LirFunction::selected_memcpy_pointer_authority` exists, exactly one
+  `LirMemcpyOp::selected_authority` must exist. The verifier rejects absent or
+  duplicate selected descriptors, a selected descriptor without the
+  current-function pointer carrier, volatile selection, invalid or mismatched
+  pointer IDs, invalid/mismatched objects, cross-function or mismatched
+  owners, non-live facts, non-`ptr` pointer authority, non-i64 or nonpositive
+  size, and any incompatible pointer/object relation.
+- The verifier neither parses nor compares display text, preserves unselected
+  memcpy rows, and rejects malformed selected authority before a consumer can
+  rely on it.
+
+Accepted implementation and proof:
+
+- `6a12cddab` — publishes the selected typed authority at the fixed producer.
+- `dac9c8f81` — verifies the selected authority and its malformed boundaries.
+- Focused build/backend proof:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+  passed 5/5. The supervisor's monotonic canonical before/after regression
+  guard also passed (5/5 in each log, no new failures).
+- Broader supervisor proof after `dac9c8f81`:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure`
+  passed 3034/3034.
+
+Out of scope remains every other memcpy or memory/object family, including
+volatile and dynamic-size memcpy, builtin memcpy, stack/alloca beyond this
+selected relation, globals, parameters outside this byval row, va-list,
+memset, loads, stores, GEPs, aggregate/vector, CFG, Raw-BIR, importer,
+lowering, and presentation-derived authority.
+
 ## Resumption Record: current-function pointer-definition prerequisite
 
 Lifecycle decision: switched to separate blocker
