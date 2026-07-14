@@ -8,17 +8,15 @@ Current Step Title: Receive the checked builtin-clz call/narrow/final-use
 
 ## Just Finished
 
-- Step 7.17 accepted (`701476a5a`): received only producer-verified
-  undefined-zero builtin-ctz Cttz results: i32 through one exact later i32 Add,
-  and i64 through one exact i64-to-i32 Trunc then i32 Add. Matching regression
-  guard was non-decreasing at 2/2; fresh build and broader `^backend_` proof
-  passed 4/4.
+- Step 7.18 complete: received only producer-verified undefined-zero builtin-clz
+  Ctlz results: i32 through one exact later i32 Add, and i64 through one exact
+  i64-to-i32 Trunc then i32 Add. Raw-BIR builder and verifier admit only the
+  typed i32 Ctlz undefined-zero direct final use; Ctpop remains excluded.
 
 ## Suggested Next
 
-- Execute only Step 7.18: PI's i32/i64 builtin-clz Ctlz call result, exact i32
-  Add or i64-to-i32 Trunc-to-Add final-use chain. Do not widen into ctz, ffs,
-  popcount, or prepared-argument receipt.
+- Select the next source-matrix receiver-ready row; keep builtin-clz closed and
+  do not widen it into ctz, ffs, popcount, or prepared-argument receipt.
 
 ## Watchouts
 
@@ -28,7 +26,7 @@ Current Step Title: Receive the checked builtin-clz call/narrow/final-use
 
 ## Proof
 
-- Required fresh build: `cmake --build --preset default`. Focused proof:
+- Fresh build: `cmake --build --preset default`. Focused 2/2 proof:
   `ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$'`;
-  must pass 2/2. The supervisor selects the matching regression guard and
-  broader checkpoint.
+  passed. Log: `test_after.log`. The delegated focused proof is sufficient for
+  this packet; broader checkpoint selection remains with the supervisor.

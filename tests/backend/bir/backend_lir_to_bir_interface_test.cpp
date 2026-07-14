@@ -10557,7 +10557,7 @@ void test_builtin_ctz_call_narrow_final_use_receipt_and_rejections() {
     };
     rejected([](auto&, auto& cttz, auto*, auto&) { cttz.result = lir::LirOperand::raw("%raw"); },
              "missing ctz result authority must reject atomically");
-    rejected([](auto&, auto& cttz, auto*, auto&) { cttz.intrinsic_kind = lir::LirIntrinsicKind::Ctlz; },
+    rejected([](auto&, auto& cttz, auto*, auto&) { cttz.intrinsic_kind = lir::LirIntrinsicKind::Ctpop; },
              "other intrinsic kind must reject atomically");
     rejected([](auto&, auto& cttz, auto*, auto&) { cttz.zero_count_behavior = lir::LirZeroCountBehavior::Defined; },
              "defined-zero ctz must reject atomically");
@@ -10575,6 +10575,55 @@ void test_builtin_ctz_call_narrow_final_use_receipt_and_rejections() {
     call.args_str = "display-only";
     expect(bir::lower_lir_to_raw_bir(misleading).has_value(),
            "ctz receipt must retain native authority despite misleading displays");
+  }
+}
+
+lir::LirModule builtin_clz_final_use_module(unsigned width) {
+  auto module = builtin_ctz_final_use_module(width);
+  auto& ctlz = std::get<lir::LirCallOp>(module.functions[0].blocks[0].insts[1]);
+  ctlz.intrinsic_kind = lir::LirIntrinsicKind::Ctlz;
+  return module;
+}
+
+void test_builtin_clz_call_narrow_final_use_receipt_and_rejections() {
+  for (const auto width : {32U, 64U}) {
+    const auto module = builtin_clz_final_use_module(width);
+    const auto raw = bir::lower_lir_to_raw_bir(module);
+    expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+           "builtin clz final-use chain must publish verified Raw BIR");
+    expect(bir::lower_lir_to_canonical_bir(module).has_value(),
+           "builtin clz final-use chain must canonicalize");
+    const auto rejected = [width](auto mutate, const std::string& message) {
+      auto candidate = builtin_clz_final_use_module(width);
+      auto& block = candidate.functions[0].blocks[0];
+      auto& ctlz = std::get<lir::LirCallOp>(block.insts[1]);
+      auto* trunc = width == 64 ? &std::get<lir::LirCastOp>(block.insts[2]) : nullptr;
+      auto& add = std::get<lir::LirBinOp>(block.insts[width == 64 ? 3 : 2]);
+      mutate(candidate, ctlz, trunc, add);
+      expect(!bir::lower_lir_to_raw_bir(candidate).has_value(), message + " (Raw rollback)");
+      expect(!bir::lower_lir_to_canonical_bir(candidate).has_value(),
+             message + " (Canonical rollback)");
+    };
+    rejected([](auto&, auto& ctlz, auto*, auto&) { ctlz.result = lir::LirOperand::raw("%raw"); },
+             "missing clz result authority must reject atomically");
+    rejected([](auto&, auto& ctlz, auto*, auto&) { ctlz.intrinsic_kind = lir::LirIntrinsicKind::Ctpop; },
+             "other intrinsic kind must reject atomically");
+    rejected([](auto&, auto& ctlz, auto*, auto&) { ctlz.zero_count_behavior = lir::LirZeroCountBehavior::Defined; },
+             "defined-zero clz must reject atomically");
+    rejected([](auto&, auto& ctlz, auto*, auto&) { ctlz.structured_args[1].operand = lir::LirOperand::integer("false", 0); },
+             "false clz flag must reject atomically");
+    rejected([](auto&, auto&, auto*, auto& add) { add.lhs = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); },
+             "unresolved clz final use must reject atomically");
+    if (width == 64)
+      rejected([](auto&, auto&, auto* trunc, auto&) { trunc->kind = lir::LirCastKind::ZExt; },
+               "non-Trunc clz narrowing must reject atomically");
+    auto misleading = builtin_clz_final_use_module(width);
+    auto& call = std::get<lir::LirCallOp>(misleading.functions[0].blocks[0].insts[1]);
+    call.result.str() = "%display-only";
+    call.callee.str() = "@display-only";
+    call.args_str = "display-only";
+    expect(bir::lower_lir_to_raw_bir(misleading).has_value(),
+           "clz receipt must retain native authority despite misleading displays");
   }
 }
 
@@ -11146,6 +11195,7 @@ int main() {
   test_native_intrinsic_receipt_and_rejections();
   test_builtin_ffs_cttz_add_one_receipt_and_rejections();
   test_builtin_ctz_call_narrow_final_use_receipt_and_rejections();
+  test_builtin_clz_call_narrow_final_use_receipt_and_rejections();
   test_builtin_ffs_add_select_false_arm_receipt_and_rejections();
   test_native_intrinsic_i64_trunc_receipt_and_rejections();
   test_scalar_i32_to_i64_sext_receipt_and_rejections();
