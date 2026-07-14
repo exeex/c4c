@@ -7,9 +7,8 @@ Resumed from: closed idea 747 direct-branch successor handoff (`cebc0a3bf`)
 ## Purpose
 
 Continue the bounded target-independent Raw-BIR receiver route without
-repeating accepted work. Receive exactly one ordinary scalar integer comparison
-from the producer-published native predicate, type, operand, and result
-authority.
+repeating accepted work. Receive exactly one producer-published i32 integer
+absolute-value result/use row from native type and value authority.
 
 ## Goal
 
@@ -20,15 +19,14 @@ without loss or partial publication. Never recover a fact from presentation.
 
 Every admitted row maps existing typed LIR authority directly to a typed
 Raw-BIR container, importer path, verifier rule, and transactional proof.
-Native `LirCmpOp` integer mode, predicate, type ref, operands, and result ID
-are the sole authority for the selected compare. `LirBr.successor` remains the
-sole direct-edge authority; presentation is display only.
+The selected `LirAbsOp` native i32 type, current-function argument/result IDs,
+and later typed use are the sole authority. Presentation is display only.
 
 ## Read First
 
 - `ideas/open/734_lir_to_new_bir_container_completeness.md`
 - `docs/lir_remaining_ordinary_value_identity/handoff_to_734.md`
-- `docs/lir_remaining_ordinary_value_identity/authority_matrix.md` (Step-7.2)
+- `docs/lir_remaining_ordinary_value_identity/authority_matrix.md` (Step-7.4)
 - Raw-BIR instruction builders, views, verifier, and LIR importer
 
 ## Landed Progress
@@ -50,6 +48,8 @@ sole direct-edge authority; presentation is display only.
 - Step 6.5: selected i32 `LirCmpOp::Slt` receipt with the admitted global Load
   lhs and native immediate seven (`03448676f`). Do not repeat or generalize
   this compare row.
+- Step 7.1: mixed accepted-row source-order and full-rollback dispatcher proof
+  (`7c259b660`). It added no instruction receipt. Do not widen it.
 
 ## Non-Goals
 
@@ -64,9 +64,9 @@ sole direct-edge authority; presentation is display only.
 1. Implement exactly one handoff row or explicitly shared typed seam per packet.
 2. Add container, importer, reachable Raw-BIR verification, and transactional
    positive/negative proof together.
-3. Resolve the selected compare only through native mode/predicate/type and
-   current-function source IDs or native immediates; names and rendering are
-   diagnostics only after structured authority exists.
+3. Resolve the selected Abs only through its native integer type and
+   current-function source IDs; names and rendering are diagnostics only after
+   structured authority exists.
 4. Preserve full-module rollback for every malformed or unsupported form.
 5. Record a separate producer initiative for any required authority gap.
 
@@ -171,7 +171,7 @@ Completion check:
   verified transactional typed i32 `SLT` compare using structured authority
   only.
 
-### Step 7.1 - Prove mixed accepted-row dispatcher transactionality
+### Step 7.1 - Prove mixed accepted-row dispatcher transactionality (complete)
 
 Goal: cover one production module that dispatches already accepted ordinary
 rows in source order and prove that a later malformed admitted row publishes
@@ -210,11 +210,49 @@ Completion check:
   full rollback of the one malformed final compare, while the frontend test
   remains the producer-authority regression neighbor.
 
-### Step 8 - Prove lossless completeness and transactional publication
+Accepted in `7c259b660`: the fresh focused 2/2 backend/producer proof showed
+ordered receipt of existing admitted rows and no publication after the final
+compare's malformed authority.
 
-Goal: close only after exhaustive matrix coverage and accepted full proof.
+### Step 7.2 - Receive the checked i32 integer Abs result
+
+Goal: receive only the authority-matrix Step-7.4 selected i32 `LirAbsOp` row;
+do not generalize absolute-value or call receipt.
+
+Primary targets:
+
+- typed Raw-BIR `Abs` payload, opcode/builder, and immutable view
+- reachable Raw-BIR verifier and LIR-to-Raw-BIR instruction dispatch
+- focused backend receiver coverage plus `frontend_lir_call_type_ref`
+
+Actions:
+
+- map only `LirAbsOp{result: valid current-function LirValueId, arg: exact
+  admitted selected-global i32 Load result ID, int_type: i32}` from the
+  `lir_scalar_abs_result_use_identity` subrow to one typed Raw-BIR i32 Abs
+  result, preserving its exact later admitted i32 Add use
+- verify exact integer type, source/result ownership and uniqueness,
+  instruction-result linkage, ordered argument identity, and full-module
+  rollback for missing, invalid, duplicate, cross-owner, unresolved-argument,
+  wrong-type, or malformed-linkage authority
+- prove one positive Abs receipt plus neighboring transactional failures. Keep
+  `labs`/`llabs`, immediate inputs, non-i32 types, noninteger/aggregate/vector
+  forms, all other builtin/call routes, and presentation-derived authority
+  fail-closed
 
 Completion check:
 
-- every source acceptance criterion is callable and evidenced without
-  unsupported rows being claimed as complete.
+- a fresh build and the focused
+  `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof pass
+  2/2. The backend coverage demonstrates typed i32 Abs receipt and rollback;
+  the frontend test remains the producer-authority regression neighbor.
+
+### Source completion gate (not an executor packet)
+
+Do not execute this as a placeholder. This source cannot close until its
+coverage matrix has an evidenced typed receiver disposition for every valid
+current-LIR fact and the source acceptance criteria, including broader
+supervisor-selected proof, are met. Each remaining receiver-ready row requires
+its own plan repair and bounded executor packet; any missing producer authority
+requires a separately scoped successor/blocker rather than presentation
+recovery.

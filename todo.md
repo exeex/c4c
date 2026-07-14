@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 7.1
-Current Step Title: Prove mixed accepted-row dispatcher transactionality
+Current Step ID: 7.2
+Current Step Title: Receive the checked i32 integer Abs result
 
 ## Just Finished
 
@@ -16,15 +16,19 @@ Current Step Title: Prove mixed accepted-row dispatcher transactionality
 
 ## Suggested Next
 
-- Supervisor: select the next packet; do not expand Step 7.1 beyond its
-  existing-dispatcher coverage.
+- Executor packet: receive only the authority-matrix Step-7.4 i32
+  `LirAbsOp` subrow whose selected-global i32 Load argument and later i32 Add
+  use already have admitted typed authority. Add its Raw-BIR container,
+  importer, reachable verifier, and focused positive/transactional-negative
+  coverage; do not generalize to `labs`, `llabs`, immediate inputs, other
+  builtins/calls, or noninteger/vector/aggregate forms.
 
 ## Watchouts
 
-- Step 7.1 added no instruction variant or broader receipt. The compare remains
-  limited to a current-function selected-global i32 Load lhs, native immediate
-  seven rhs, `Slt`, and i32 integer mode; the following monostate-result `ZExt`
-  and every other predicate/type/domain remain fail-closed.
+- Step 7.2 is one new, tagged Abs receipt family, not a general call or
+  intrinsic route. The existing comparison normalization `ZExt`, `labs`/
+  `llabs`, immediate-argument variants, all noninteger/aggregate/vector forms,
+  and every other unsupported instruction family remain fail-closed.
 
 ## Proof
 
