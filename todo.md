@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/760_lir_string_constructor_deprecation_migration.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory constructor uses and choose warning proof
+Current Step ID: 2
+Current Step Title: Add a narrow warning and explicit runtime-text boundary
 
 ## Just Finished
 
