@@ -1,6 +1,6 @@
 # LIR Typed Expression Result Carrier Decomposition
 
-Status: Open
+Status: Closed — intentionally concluded documentation decomposition
 Type: focused LIR expression-result authority decomposition
 Blocked Consumer: `ideas/open/775_lir_phi_producer_helper_result_identity.md`
 Downstream Consumer: `ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md`
@@ -104,6 +104,19 @@ This handoff expressly forbids PHI text recovery; PHI carrier/verifier work in
 this source; Raw-BIR/importer/backend work; generic expression migration;
 result-name maps, side tables, synthetic values, or display-text parsing; and
 any capability claim from these observations alone.
+
+## Closure Record
+
+Archived intentionally concluded: the independently evidenced decomposition
+and PHI-consumer handoff are complete, but no producer capability was
+implemented. The named remaining-intent route is open
+`ideas/open/775_lir_phi_producer_helper_result_identity.md`; it records that a
+distinct one-family native typed expression-result publication successor is
+required before its bounded producer work can resume. Keep
+`ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md` blocked:
+its exact return point is after that successor has accepted focused positive
+and malformed ownership proof, when 751 may resume at Step 1 for structured
+PHI incoming value/predecessor carriers and fail-closed verification.
 
 ## Reviewer Reject Signals
 
