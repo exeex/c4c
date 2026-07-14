@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 7.9
-Current Step Title: Receive the checked explicit scalar SIToFP result
+Current Step ID: 7.10
+Current Step Title: Receive the checked explicit scalar UIToFP result
 
 ## Just Finished
 
@@ -16,15 +16,19 @@ Current Step Title: Receive the checked explicit scalar SIToFP result
 
 ## Suggested Next
 
-- Return the exhausted Step-7 runbook to the plan owner for the explicit
-  source-completion-gate decision; do not infer source-idea completion.
+- Execute Step 7.10 only: receive the producer-authorized explicit scalar
+  unsigned i32-to-double `LirCastOp::UIToFP` from the admitted unsigned i32
+  Add result through its one exact later double `FMul` use. Require native
+  `UIToFP` kind authority because signless i32 type refs do not independently
+  distinguish a UIToFP/SIToFP kind swap; retain all other conversion families
+  and presentation-derived authority fail-closed.
 
 ## Watchouts
 
-- SIToFP remains a native-kind-authorized signed i32-to-double boundary only:
-  UIToFP and all other cast families, non-scalar forms, and presentation-derived
-  authority remain fail-closed. Native LIR signless i32 type refs cannot
-  distinguish signedness independently; the exact SIToFP kind does so.
+- UIToFP is a native-kind-authorized unsigned i32-to-double boundary only.
+  SIToFP is accepted historical work, while FPToSI, FPToUI, all other cast
+  families, non-scalar forms, and presentation-derived authority remain
+  fail-closed.
 
 ## Proof
 
