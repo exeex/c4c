@@ -3,35 +3,35 @@
 Status: Active
 Source Idea Path: ideas/open/769_lir_global_initializer_label_address_authority.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Implement structured publication and verifier validation
+Current Step ID: 3
+Current Step Title: Prove the contract and assess the Raw-BIR boundary
 
 ## Just Finished
 
-- Step 1 completed: mapped the one `LirGlobal` structured
-  initializer-element / global-lowering publisher / LIR-verifier seam in
-  `docs/lir_global_initializer_label_address_authority/step1_representation_map.md`.
-  Existing metadata retains only `LinkNameId`; a label-address element needs
-  the enclosing `LinkNameId` plus function-scoped `LirBlockId`. The first
-  downstream boundary is Raw-BIR/importer global lowering, which has no such
-  element and remains out of scope.
+- Step 2 completed: `LirGlobal::initializer_elements` now publishes each
+  static label-address initializer as `{LinkNameId enclosing_function,
+  LirBlockId target}` from the HIR constant/global-lowering walk. The LIR
+  verifier requires exactly one matching function owner and exactly one block
+  in that function. Direct frontend-LIR coverage proves structured positive
+  publication and malformed owner/target rejection.
 
 ## Suggested Next
 
-- Implement only the mapped generic `LirGlobal` initializer-element,
-  publication from constant/global lowering, and matching LIR verifier checks;
-  add direct frontend-LIR positive and malformed proof. Do not cross the
-  Raw-BIR/importer boundary or touch direct/local/carrier routes.
+- Run Step 3 acceptance and assess the named Raw-BIR/importer boundary only:
+  determine whether a separate downstream blocker is required before returning
+  the parked 768 work to its next route. Do not implement importer/backend,
+  direct/local, or carrier behavior in that assessment.
 
 ## Watchouts
 
-- `blockaddress(...)` rendered text and function-ID-only metadata remain
-  insufficient. `LirBlockId` needs its `LinkNameId` owner to avoid
-  cross-function ambiguity. Raw-BIR/importer consumption is a separately
-  scoped downstream blocker, not authorization to expand Step 2.
+- `init_text` remains display/compatibility spelling and is not used as
+  label-target authority. Raw-BIR/importer global lowering still has no field
+  for the structured element, so any integration consumption remains a
+  separately scoped downstream blocker.
 
 ## Proof
 
-- Step 1 evidence: targeted AST/source queries and `git diff --check`; no
-  build or CTest. Step 2 requires a fresh build plus selected focused
-  frontend-LIR positive/malformed proof, recorded in `test_after.log`.
+- `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_' > test_after.log` passed (5/5,
+  including `frontend_lir_global_label_address_initializer`); log:
+  `test_after.log`.

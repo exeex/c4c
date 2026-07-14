@@ -2324,6 +2324,50 @@ void verify_global_type_ref_shadows(const LirModule& mod) {
   }
 }
 
+void verify_global_initializer_elements(const LirModule& mod) {
+  for (const auto& global : mod.globals) {
+    for (const auto& element : global.initializer_elements) {
+      std::visit(
+          [&](const auto& initializer) {
+            using T = std::decay_t<decltype(initializer)>;
+            if constexpr (std::is_same_v<T, LirGlobalInitializerLabelAddress>) {
+              if (initializer.enclosing_function == kInvalidLinkName) {
+                fail_verify("LirGlobal.initializer_elements",
+                            "label address must carry a valid enclosing LinkNameId");
+              }
+              const std::size_t function_count = static_cast<std::size_t>(std::count_if(
+                  mod.functions.begin(), mod.functions.end(), [&](const LirFunction& function) {
+                    return function.link_name_id == initializer.enclosing_function;
+                  }));
+              if (function_count != 1) {
+                fail_verify("LirGlobal.initializer_elements",
+                            function_count == 0
+                                ? "label address enclosing LinkNameId has no LirFunction owner"
+                                : "label address enclosing LinkNameId has ambiguous LirFunction ownership");
+              }
+              if (!initializer.target.valid()) {
+                fail_verify("LirGlobal.initializer_elements",
+                            "label address must carry a valid target LirBlockId");
+              }
+              const auto function = std::find_if(
+                  mod.functions.begin(), mod.functions.end(), [&](const LirFunction& candidate) {
+                    return candidate.link_name_id == initializer.enclosing_function;
+                  });
+              const std::size_t block_count = static_cast<std::size_t>(std::count_if(
+                  function->blocks.begin(), function->blocks.end(), [&](const LirBlock& block) {
+                    return block.id == initializer.target;
+                  }));
+              if (block_count != 1) {
+                fail_verify("LirGlobal.initializer_elements",
+                            "label address target LirBlockId must identify exactly one enclosing-function block");
+              }
+            }
+          },
+          element);
+    }
+  }
+}
+
 std::string_view function_signature_line(const LirFunction& fn) {
   // Verifier compatibility parser for signature_text. This only confirms that
   // the final LLVM/output payload still contains a function header for legacy
@@ -2835,6 +2879,7 @@ void verify_module(const LirModule& mod) {
   verify_structured_layout_observations(mod);
   verify_extern_decl_shadows(mod);
   verify_global_type_ref_shadows(mod);
+  verify_global_initializer_elements(mod);
   verify_function_signature_type_ref_shadows(mod);
   for (const auto& function : mod.functions) {
     verify_function_value_ownership(mod, function);

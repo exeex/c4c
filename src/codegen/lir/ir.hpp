@@ -725,6 +725,16 @@ struct LirFunction {
 
 // ── Global variable ──────────────────────────────────────────────────────────
 
+// A global initializer element carries semantic authority independently of its
+// final LLVM spelling.  Label addresses are function-scoped because LirBlockId
+// values are only unique within their enclosing LirFunction.
+struct LirGlobalInitializerLabelAddress {
+  LinkNameId enclosing_function = kInvalidLinkName;
+  LirBlockId target = LirBlockId::invalid();
+};
+
+using LirGlobalInitializerElement = std::variant<LirGlobalInitializerLabelAddress>;
+
 struct LirGlobal {
   LirGlobalId id{};
   std::string name;        // Unquoted C name (printer quotes it)
@@ -743,6 +753,7 @@ struct LirGlobal {
   // scanning init_text is retained only as a compatibility fallback for legacy
   // initializer producers that still emit raw LLVM payloads.
   std::string init_text;
+  std::vector<LirGlobalInitializerElement> initializer_elements;
   std::vector<LinkNameId> initializer_function_link_name_ids;
   int align_bytes = 0;      // 0 = no align suffix
   bool is_extern_decl = false;  // extern: no init, type only

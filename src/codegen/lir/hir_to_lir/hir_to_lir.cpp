@@ -610,6 +610,94 @@ std::vector<LinkNameId> collect_global_init_function_link_name_ids(
   return refs;
 }
 
+std::vector<LirGlobalInitializerElement> collect_global_init_elements(
+    const c4c::hir::Module& mod,
+    const c4c::hir::GlobalInit& init) {
+  std::vector<LirGlobalInitializerElement> elements;
+
+  const auto add_label_address = [&](const c4c::hir::LabelAddrExpr& address) {
+    const c4c::hir::Function* function = mod.find_function(address.fn_link_name_id);
+    if (!function) return;
+    for (const auto& block : function->blocks) {
+      const bool contains_target = std::any_of(
+          block.stmts.begin(), block.stmts.end(), [&](const c4c::hir::Stmt& stmt) {
+            const auto* label = std::get_if<c4c::hir::LabelStmt>(&stmt.payload);
+            return label && label->name == address.label_name;
+          });
+      if (contains_target) {
+        elements.emplace_back(LirGlobalInitializerLabelAddress{
+            address.fn_link_name_id, LirBlockId{block.id.value}});
+        return;
+      }
+    }
+  };
+
+  std::function<void(c4c::hir::ExprId)> scan_expr = [&](c4c::hir::ExprId id) {
+    if (id.value >= mod.expr_pool.size()) return;
+    const c4c::hir::Expr& expr = mod.expr_pool[id.value];
+    std::visit(
+        [&](const auto& payload) {
+          using T = std::decay_t<decltype(payload)>;
+          if constexpr (std::is_same_v<T, c4c::hir::UnaryExpr>) {
+            scan_expr(payload.operand);
+          } else if constexpr (std::is_same_v<T, c4c::hir::BinaryExpr> ||
+                               std::is_same_v<T, c4c::hir::AssignExpr>) {
+            scan_expr(payload.lhs);
+            scan_expr(payload.rhs);
+          } else if constexpr (std::is_same_v<T, c4c::hir::CastExpr>) {
+            scan_expr(payload.expr);
+          } else if constexpr (std::is_same_v<T, c4c::hir::CallExpr>) {
+            scan_expr(payload.callee);
+            for (const auto arg : payload.args) scan_expr(arg);
+          } else if constexpr (std::is_same_v<T, c4c::hir::VaArgExpr>) {
+            scan_expr(payload.ap);
+          } else if constexpr (std::is_same_v<T, c4c::hir::IndexExpr>) {
+            scan_expr(payload.base);
+            scan_expr(payload.index);
+          } else if constexpr (std::is_same_v<T, c4c::hir::MemberExpr>) {
+            scan_expr(payload.base);
+          } else if constexpr (std::is_same_v<T, c4c::hir::TernaryExpr>) {
+            scan_expr(payload.cond);
+            scan_expr(payload.then_expr);
+            scan_expr(payload.else_expr);
+          } else if constexpr (std::is_same_v<T, c4c::hir::SizeofExpr>) {
+            scan_expr(payload.expr);
+          } else if constexpr (std::is_same_v<T, c4c::hir::LabelAddrExpr>) {
+            add_label_address(payload);
+          }
+        },
+        expr.payload);
+  };
+
+  std::function<void(const c4c::hir::GlobalInit&)> scan_init =
+      [&](const c4c::hir::GlobalInit& global_init) {
+        std::visit(
+            [&](const auto& payload) {
+              using T = std::decay_t<decltype(payload)>;
+              if constexpr (std::is_same_v<T, c4c::hir::InitScalar>) {
+                scan_expr(payload.expr);
+              } else if constexpr (std::is_same_v<T, c4c::hir::InitList>) {
+                for (const auto& item : payload.items) {
+                  std::visit(
+                      [&](const auto& item_value) {
+                        using U = std::decay_t<decltype(item_value)>;
+                        if constexpr (std::is_same_v<U, c4c::hir::InitScalar>) {
+                          scan_expr(item_value.expr);
+                        } else {
+                          scan_init(c4c::hir::GlobalInit(*item_value));
+                        }
+                      },
+                      item.value);
+                }
+              }
+            },
+            global_init);
+      };
+
+  scan_init(init);
+  return elements;
+}
+
 // ── Global variable lowering ─────────────────────────────────────────────────
 // Semantic decisions (linkage, alignment, qualifier, type, init) are computed
 // here in lowering.  The printer assembles LLVM text from the structured fields.
@@ -669,6 +757,7 @@ static void lower_global(const c4c::hir::GlobalVar& gv,
           lg.llvm_type = literal_ty;
           lg.llvm_type_ref = lir_global_type_ref(lg.llvm_type, &module, mod, ts);
           lg.init_text = literal_init;
+          lg.initializer_elements = collect_global_init_elements(mod, gv.init);
           lg.initializer_function_link_name_ids =
               collect_global_init_function_link_name_ids(mod, gv.init);
           lg.align_bytes = align;
@@ -700,6 +789,7 @@ static void lower_global(const c4c::hir::GlobalVar& gv,
                                       false, gv.linkage.visibility);
     lg.qualifier = (gv.is_const && ts.ptr_level == 0) ? "constant " : "global ";
     lg.init_text = const_init.emit_const_init(ts, gv.init);
+    lg.initializer_elements = collect_global_init_elements(mod, gv.init);
     lg.initializer_function_link_name_ids =
         collect_global_init_function_link_name_ids(mod, gv.init);
     lg.is_extern_decl = false;

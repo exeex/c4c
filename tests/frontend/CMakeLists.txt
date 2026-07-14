@@ -40,6 +40,7 @@ set(frontend_test_targets frontend_lexer_tests frontend_parser_tests
                           cpp_hir_template_recover_identity_metadata_test
                           cpp_hir_value_args_residual_metadata_test
                           frontend_lir_global_type_ref_test
+                          frontend_lir_global_label_address_initializer_test
                           frontend_lir_function_signature_type_ref_test
                           frontend_lir_extern_decl_type_ref_test
                           frontend_lir_call_type_ref_test)
@@ -54,6 +55,7 @@ foreach(target IN LISTS frontend_test_targets)
 endforeach()
 
 target_link_libraries(frontend_lir_global_type_ref_test PRIVATE c4c_codegen)
+target_link_libraries(frontend_lir_global_label_address_initializer_test PRIVATE c4c_codegen)
 target_link_libraries(frontend_lir_function_signature_type_ref_test PRIVATE c4c_codegen)
 target_link_libraries(frontend_lir_extern_decl_type_ref_test PRIVATE c4c_codegen)
 target_link_libraries(frontend_lir_call_type_ref_test PRIVATE c4c_codegen)
@@ -146,6 +148,8 @@ add_test(NAME cpp_hir_template_recover_identity_structured_metadata
 add_test(NAME cpp_hir_value_args_residual_structured_metadata
          COMMAND cpp_hir_value_args_residual_metadata_test)
 add_test(NAME frontend_lir_global_type_ref COMMAND frontend_lir_global_type_ref_test)
+add_test(NAME frontend_lir_global_label_address_initializer
+         COMMAND frontend_lir_global_label_address_initializer_test)
 add_test(NAME frontend_lir_function_signature_type_ref
          COMMAND frontend_lir_function_signature_type_ref_test)
 add_test(NAME frontend_lir_extern_decl_type_ref
