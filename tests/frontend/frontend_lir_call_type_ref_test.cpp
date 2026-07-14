@@ -1944,13 +1944,113 @@ void lir_direct_void_ssa_arg_identity(void) {
                   call.callee_signature->fixed_param_type_refs[0].kind() ==
                       lir::LirTypeKind::Integer &&
                   call.callee_signature->fixed_param_type_refs[0].integer_bit_width() == 32 &&
+                  !call.callee_signature->is_variadic &&
+                  !call.callee_signature->has_unspecified_params &&
+                  call.arg_type_refs.size() == 1 &&
+                  call.arg_type_refs[0].kind() == lir::LirTypeKind::Integer &&
+                  call.arg_type_refs[0].integer_bit_width() == 32 &&
                   call.structured_args.size() == 1 &&
-                  call.structured_args[0].type_ref.empty(),
-              "SSA call should retain native target/signature facts beside its scalar argument carrier");
+                  call.structured_args[0].type_ref == call.arg_type_refs[0] &&
+                  call.structured_args[0].type_ref ==
+                      call.callee_signature->fixed_param_type_refs[0],
+              "SSA call should retain one exact fixed native i32 argument contract");
   const lir::LirOperand& argument = call.structured_args[0].operand;
   expect_true(argument.kind() == lir::LirOperandKind::SsaValue &&
-                  !argument.has_authority() && !argument.value_id(),
-              "first bad fact: call carrier loses the selected-global load result ID");
+                  argument.value_id() &&
+                  *argument.value_id() == *loads[0]->result.value_id() &&
+                  call.structured_args[0].ext_attr == lir::LirExtAttr::None &&
+                  call.result.empty() && !call.result.has_authority(),
+              "fixed SSA call argument should reuse the exact selected-global load result ID");
+  lir::verify_module(lowered);
+
+  const auto require_focused_call = [](lir::LirModule& module) -> lir::LirCallOp& {
+    lir::LirFunction& function =
+        require_function(module, "lir_direct_void_ssa_arg_identity");
+    lir::LirCallOp* found = nullptr;
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirCallOp>(&inst)) {
+          expect_true(found == nullptr,
+                      "focused SSA fixture should contain only one call");
+          found = candidate;
+        }
+      }
+    }
+    expect_true(found != nullptr,
+                "focused SSA fixture should contain a structured call");
+    return *found;
+  };
+
+  lir::LirModule misleading = lowered;
+  lir::LirCallOp& misleading_call = require_focused_call(misleading);
+  misleading_call.args_str = "rendered arguments are not authority";
+  misleading_call.callee_type_suffix = "(rendered type is not authority)";
+  misleading_call.structured_args[0].type = "rendered-arg-type";
+  misleading_call.structured_args[0].operand.str() = "@rendered-not-ssa";
+  misleading_call.callee_signature->fixed_param_types[0] =
+      "rendered-param-type";
+  lir::verify_module(misleading);
+
+  lir::LirModule missing_authority = lowered;
+  require_focused_call(missing_authority).structured_args[0].operand =
+      lir::LirOperand("%missing");
+  expect_identity_verification_rejected(
+      missing_authority,
+      "verifier should reject fixed SSA argument without value authority");
+
+  lir::LirModule wrong_alternative = lowered;
+  require_focused_call(wrong_alternative).structured_args[0].operand =
+      lir::LirOperand::global("%wrong", *loads[0]->ptr.link_name_id());
+  expect_identity_verification_rejected(
+      wrong_alternative,
+      "verifier should reject fixed SSA argument with global authority");
+
+  lir::LirModule invalid_authority = lowered;
+  require_focused_call(invalid_authority).structured_args[0].operand =
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_authority,
+      "verifier should reject invalid fixed SSA argument value authority");
+
+  lir::LirModule unknown_authority = lowered;
+  require_focused_call(unknown_authority).structured_args[0].operand =
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_authority,
+      "verifier should reject unknown fixed SSA argument value authority");
+
+  lir::LirModule cross_function = lowered;
+  cross_function.functions.push_back(
+      make_identity_test_function("ssa_argument_owner", lir::LirValueId{99}));
+  require_focused_call(cross_function).structured_args[0].operand =
+      lir::LirOperand::ssa("%cross", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      cross_function,
+      "verifier should reject cross-function fixed SSA argument authority");
+
+  lir::LirModule type_conflict = lowered;
+  require_focused_call(type_conflict).structured_args[0].type_ref =
+      lir::LirTypeRef::integer(64);
+  expect_identity_verification_rejected(
+      type_conflict, "verifier should reject structured SSA argument type conflict");
+
+  lir::LirModule signature_conflict = lowered;
+  require_focused_call(signature_conflict)
+      .callee_signature->fixed_param_type_refs[0] = lir::LirTypeRef::integer(64);
+  expect_identity_verification_rejected(
+      signature_conflict, "verifier should reject fixed SSA signature type conflict");
+
+  lir::LirModule count_conflict = lowered;
+  lir::LirCallOp& count_call = require_focused_call(count_conflict);
+  count_call.structured_args.push_back(count_call.structured_args[0]);
+  expect_identity_verification_rejected(
+      count_conflict, "verifier should reject extra structured SSA argument");
+
+  lir::LirModule extension_conflict = lowered;
+  require_focused_call(extension_conflict).structured_args[0].ext_attr =
+      lir::LirExtAttr::SignExt;
+  expect_identity_verification_rejected(
+      extension_conflict, "verifier should reject extension on fixed SSA argument");
 }
 
 void test_scalar_ordinary_value_chain_identity_boundary() {

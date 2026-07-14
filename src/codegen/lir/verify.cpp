@@ -311,6 +311,15 @@ bool is_direct_void_fixed_integer_immediate_claim(const LirCallOp& call) {
          call.arg_type_refs[0].kind() == LirTypeKind::Integer;
 }
 
+bool is_direct_void_fixed_integer_ssa_claim(const LirCallOp& call) {
+  return is_direct_void_fixed_integer_signature_claim(call) &&
+         !call.structured_args.empty() &&
+         call.structured_args[0].operand.kind() == LirOperandKind::SsaValue &&
+         call.structured_args[0].type_ref.kind() == LirTypeKind::Integer &&
+         call.arg_type_refs.size() == 1 &&
+         call.arg_type_refs[0].kind() == LirTypeKind::Integer;
+}
+
 bool has_complete_direct_void_integer_immediate_authority(
     const LirCallOp& call) {
   if (!is_direct_void_fixed_integer_immediate_claim(call)) return false;
@@ -323,6 +332,21 @@ bool has_complete_direct_void_integer_immediate_authority(
              signature.fixed_param_type_refs[0] &&
          call.arg_type_refs[0] == signature.fixed_param_type_refs[0] &&
          call.structured_args[0].operand.integer_immediate() &&
+         call.structured_args[0].ext_attr == LirExtAttr::None &&
+         call.result.empty() && !call.result.has_authority();
+}
+
+bool has_complete_direct_void_integer_ssa_authority(const LirCallOp& call) {
+  if (!is_direct_void_fixed_integer_ssa_claim(call)) return false;
+  const LirCallSignature& signature = *call.callee_signature;
+  return signature.return_type_ref.has_value() &&
+         *signature.return_type_ref == call.return_type &&
+         signature.fixed_param_types.size() == 1 &&
+         call.structured_args.size() == 1 && call.arg_type_refs.size() == 1 &&
+         call.structured_args[0].type_ref ==
+             signature.fixed_param_type_refs[0] &&
+         call.arg_type_refs[0] == signature.fixed_param_type_refs[0] &&
+         call.structured_args[0].operand.value_id() &&
          call.structured_args[0].ext_attr == LirExtAttr::None &&
          call.result.empty() && !call.result.has_authority();
 }
@@ -472,6 +496,51 @@ void verify_direct_void_fixed_integer_immediate_call(const LirModule& mod,
   if (argument.ext_attr != LirExtAttr::None) {
     fail_verify("LirCallOp.structured_args.ext_attr",
                 "fixed nonvariadic immediate must not carry an extension attribute");
+  }
+}
+
+void verify_direct_void_fixed_integer_ssa_call(const LirModule& mod,
+                                               const LirCallOp& call) {
+  if (!is_direct_void_fixed_integer_ssa_claim(call)) return;
+
+  const LirCallSignature& signature = *call.callee_signature;
+  if (!signature.return_type_ref.has_value() ||
+      signature.return_type_ref->kind() != LirTypeKind::Void ||
+      *signature.return_type_ref != call.return_type) {
+    fail_verify("LirCallOp.callee_signature.return_type_ref",
+                "direct void SSA call requires exact void return type authority");
+  }
+  if (signature.fixed_param_types.size() != 1) {
+    fail_verify("LirCallOp.callee_signature.fixed_param_types",
+                "direct void SSA call requires one fixed parameter");
+  }
+  if (call.structured_args.size() != 1 || call.arg_type_refs.size() != 1) {
+    fail_verify("LirCallOp.structured_args",
+                "direct void SSA call requires one typed structured argument");
+  }
+
+  const LirTypeRef& parameter_type = signature.fixed_param_type_refs[0];
+  const LirCallArg& argument = call.structured_args[0];
+  require_module_type_ref(mod, parameter_type,
+                          "LirCallOp.callee_signature.fixed_param_type_refs");
+  require_module_type_ref(mod, argument.type_ref,
+                          "LirCallOp.structured_args.type_ref");
+  require_module_type_ref(mod, call.arg_type_refs[0],
+                          "LirCallOp.arg_type_refs");
+  if (argument.type_ref != parameter_type ||
+      call.arg_type_refs[0] != parameter_type) {
+    fail_verify("LirCallOp.structured_args.type_ref",
+                "structured SSA argument type must match fixed parameter type");
+  }
+  require_operand_kind(argument.operand, "LirCallOp.structured_args.operand",
+                       {LirOperandKind::SsaValue});
+  if (!argument.operand.value_id()) {
+    fail_verify("LirCallOp.structured_args.operand",
+                "fixed SSA argument requires native value authority");
+  }
+  if (argument.ext_attr != LirExtAttr::None) {
+    fail_verify("LirCallOp.structured_args.ext_attr",
+                "fixed nonvariadic SSA argument must not carry an extension attribute");
   }
 }
 
@@ -700,7 +769,8 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
   }
   if (const auto* op = std::get_if<LirCallOp>(&inst)) {
     const bool structured_authority_complete =
-        has_complete_direct_void_integer_immediate_authority(*op);
+        has_complete_direct_void_integer_immediate_authority(*op) ||
+        has_complete_direct_void_integer_ssa_authority(*op);
     require_operand_kind(op->result, "LirCallOp.result",
                          {LirOperandKind::SsaValue}, true);
     verify_call_return_type_ref_mirror(mod, op->return_type);
@@ -743,6 +813,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
       }
     }
     verify_direct_void_fixed_integer_immediate_call(mod, *op);
+    verify_direct_void_fixed_integer_ssa_call(mod, *op);
     if (op->result.empty() && op->return_type != "void") {
       fail_verify("LirCallOp.result",
                   "must hold an SSA result for non-void calls");

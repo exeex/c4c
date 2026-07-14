@@ -360,22 +360,29 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
   }
 
   const std::string out_llvm_ty = llvm_value_ty(mod_, out_arg_ts);
-  const bool authoritative_fixed_integer_immediate =
+  const bool authoritative_fixed_integer_path =
       call_target.ret_ty == "void" &&
       call_target.callee_link_name_id != kInvalidLinkName && target_fn &&
       !target_fn->attrs.variadic && target_fn->params.size() == 1 &&
       fixed_param_ts && !is_variadic_arg &&
       out_arg_ts.ptr_level == 0 && out_arg_ts.array_rank == 0 &&
-      is_any_int(out_arg_ts.base) && source_operand.integer_immediate() &&
+      is_any_int(out_arg_ts.base) &&
       llvm_value_ty(mod_, arg_ts) == out_llvm_ty;
-  LirOperand call_operand = authoritative_fixed_integer_immediate
+  const Expr& source_expr = get_expr(call.args[arg_index]);
+  const auto* source_ref = std::get_if<DeclRef>(&source_expr.payload);
+  const bool authoritative_selected_global_load =
+      source_operand.value_id() && source_ref && source_ref->global.has_value();
+  const bool authoritative_fixed_integer_argument =
+      authoritative_fixed_integer_path &&
+      (source_operand.integer_immediate() || authoritative_selected_global_load);
+  LirOperand call_operand = authoritative_fixed_integer_argument
                                 ? source_operand
                                 : LirOperand(arg);
   call_operand.str() = arg;
   PreparedCallArg out_arg{
       {{.type = out_llvm_ty,
         .operand = std::move(call_operand),
-        .type_ref = authoritative_fixed_integer_immediate
+        .type_ref = authoritative_fixed_integer_argument
                         ? LirTypeRef(out_llvm_ty)
                         : lir_call_type_ref(out_llvm_ty, module_, mod_, out_arg_ts),
         .ext_attr = is_variadic_arg ? rv64_integer_ext_attr_for_abi_type(mod_, out_arg_ts)

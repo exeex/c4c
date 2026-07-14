@@ -89,7 +89,7 @@ grouped only where they share one producer and disposition.
 | `LirMemsetOp`: `dst,byte_val,size`; `is_volatile` | Active, PL `emit_store_assignable_value` zero aggregate and PS `emit_non_control_flow_stmt(LocalDecl)` | Text-only/monostate operands; no result | Native bool; verifier kinds only | `lir_memset_native_use_identity.c`; **separate memory/object family** |
 | `LirCastOp`: `result,operand`; `kind,from_type,to_type` | Active in PX/PB/PL/PC/PI/PV/PO and PF fixed-vector parameter setup; representative scalar casts from PX `emit_rval_payload(CastExpr)` | Text-only/monostate operands; result `fresh_tmp` | Native cast enum and type refs; verifier checks kinds/types but not cast legality/ownership | Candidate representative non-call chain neighbor; `lir_scalar_cast_chain_identity.c`; **generic value** plus distinct cast legality |
 | `LirGepOp`: `result,ptr,indices`; `element_type,inbounds` | Active in PR/PL/PX/PC/PV and PF parameter setup; CC-GEP-1 exact producer is PR selected-global array branch | CC-GEP-1 uses `fresh_value`, global `LinkNameId`, typed native indices; other routes use `fresh_tmp`, raw base, often raw `LirGepIndex` presentation | Native type/bool; ownership-ready; **741 exact** only for selected-global typed path | Preserve CC-GEP-1 as **regression neighbor**. Other paths require object/base and typed-index work; `lir_local_gep_identity.c`; **separate pointer/object family** |
-| `LirCallOp`: `result`; `callee,direct_callee_link_name_id`; `structured_args[].operand`; typed signature/type/ext/ABI fields; text mirrors | Active, PC: `prepare_call_args`, `emit_void_call`, `emit_call_with_result`, `make_lir_call_op_with_return_type_ref` | Structured direct integer result uses `fresh_value`; the common `OwnedLirTypedCallArg` now stores `LirOperand`. The focused direct void fixed integer literal preserves its native immediate and exact type ref when coercion keeps the representation; other arguments remain monostate compatibility | Direct integer result has exact ID ownership. The focused direct void fixed immediate row now has exact structured type/payload/range/count/ext verification and bypasses presentation parsing only when complete | Steps 3-4 close scalar result and fixed immediate rows. SSA reuse remains Step 5 on the same carrier; indirect/variadic/ABI/aggregate rows and intrinsic results remain unclaimed; text mirrors are presentation-only |
+| `LirCallOp`: `result`; `callee,direct_callee_link_name_id`; `structured_args[].operand`; typed signature/type/ext/ABI fields; text mirrors | Active, PC: `prepare_call_args`, `emit_void_call`, `emit_call_with_result`, `make_lir_call_op_with_return_type_ref` | Structured direct integer result uses `fresh_value`; the common `OwnedLirTypedCallArg` stores `LirOperand`. Focused direct void fixed integer arguments preserve either the native immediate or the exact CC-LOAD-1 selected-global result ID, with exact type refs, when coercion keeps the representation; other arguments remain monostate compatibility | Direct integer result has exact ID ownership. The focused direct void fixed immediate and selected-global SSA rows have authority-first exact type/count/ext/result verification; SSA uses additionally resolve through current-function ownership | Steps 3-5 close scalar result, fixed immediate, and selected-global SSA rows on the common carrier; indirect/variadic/ABI/aggregate rows and intrinsic results remain unclaimed; text mirrors are presentation-only |
 | `LirBinOp`: `result,lhs,rhs`; `opcode,type_str` | Active, PB scalar/complex arithmetic and logical helpers; also PL compound assignment, PI builtins, PV, PS | All value operands text-only; result `fresh_tmp` | Native opcode ref/type ref; kind/type only and ownership-ready | Preferred Step-2 representative `lir_scalar_ordinary_value_chain_identity.c`; **generic scalar result/use** |
 | `LirCmpOp`: `result,lhs,rhs`; `is_float,predicate,type_str` | Active, PB comparisons/logical, PI FP/builtin checks, PV, PS loop/range lowering, `core.cpp` helpers | Text-only operands; result `fresh_tmp` | Native predicate/type/bool; kind/type only and ownership-ready | Depends on generic scalar seam; `lir_scalar_cmp_chain_identity.c`; **generic scalar value** plus predicate agreement |
 | `LirPhiOp`: `result`; `incoming[value,label]`; `type_str` | Active, PX `emit_rval_payload(TernaryExpr)`, PB `emit_logical`, PV AArch64/AMD64 joins | Result `fresh_tmp`; incoming value and predecessor are raw strings | Native result type only; result kind/nonempty incoming; incoming entries are not visited for value ownership | Result can share generic allocation, but incoming values need `LirOperand` and predecessors need `LirBlockId`; `lir_phi_identity.c`; **distinct value+CFG carrier** |
@@ -121,9 +121,9 @@ inline-asm outputs: allocate with `fresh_value(ctx)`, store the same
 `LirOperand`, and let `verify_function_value_ownership` enforce uniqueness and
 known current-function uses. It does not by itself solve:
 
-- call argument preparation beyond the Step-4 immediate row: the common
-  `LirOperand` carrier exists, but SSA propagation and ABI/aggregate transforms
-  retain phased monostate compatibility;
+- call argument preparation beyond the Step-4 immediate and Step-5
+  selected-global SSA rows: the common `LirOperand` carrier exists, but other
+  SSA sources and ABI/aggregate transforms retain phased monostate compatibility;
 - PHI predecessor identity and active indirect-branch targets (`LirBlockId`);
 - alloca/stack-slot/local-object ownership (`LirStackSlotId` plus value/address
   relation);
@@ -143,18 +143,18 @@ production; there is no contradictory larger prerequisite.
    obtains the native operand, retains its payload only for the fixed
    nonvariadic integer path with unchanged representation, and the common
    operand carrier survives formatting and structured-argument construction.
-3. **Void SSA argument**: the selected-global load already returns the CC-LOAD-1
-   `LirValueId`; `prepare_call_arg` still falls back to a monostate operand for
-   this unclaimed row. Step 5 must reuse the common carrier introduced for seam
-   2 rather than duplicate it.
+3. **Void SSA argument**: completed in Step 5. The selected-global load returns
+   the CC-LOAD-1 `LirValueId`, and `prepare_call_arg` preserves that exact
+   operand through the common carrier introduced for seam 2 when the fixed
+   integer representation is unchanged.
 4. **Non-call scalar chain**: PB emits `LirBinOp` results and later operands
    through `fresh_tmp`/strings with native opcode/type already present. A
    two-operation integer chain isolates generic result allocation/use
    propagation without calls, CFG, locals, parameters, or ABI work.
 
-Thus Step 2 may proceed. Seam 3 has an explicit implementation dependency on
-the common call-argument carrier established by seam 2, but its probe and first
-bad fact are independent; this is sequencing, not a hidden prerequisite.
+Thus Step 2 may proceed. Seam 3 reused the common call-argument carrier
+established by seam 2 without adding an SSA-only carrier; the dependency was
+sequencing, not a hidden prerequisite.
 
 ## Step-2 focused probe bindings
 
@@ -168,7 +168,7 @@ rendered LLVM output is not used as identity evidence.
 |---|---|---|---|
 | `lir_direct_scalar_result_call_identity.c`: Step-2 first bad fact closed; the sole structured direct i32 `LirCallOp.result` and its return use now carry the same valid `LirValueId` | PC `emit_call_with_result`: `fresh_value(ctx)` -> operand-taking `make_lir_call_op_with_return_type_ref(LirOperand)`; `emit_rval_call_operand` returns the identical operand to the existing return path. Direct target `LinkNameId`, native i32 return ref, and structured signature remain unchanged | Implemented: reject missing/invalid/duplicate result IDs, unknown/cross-function downstream IDs, and any void-result authority through exact call checks plus generic current-function ownership | `%tN`, call formatting, callee spelling, and instruction order remain presentation only; misleading producer/use displays with the same ID verify successfully |
 | `lir_direct_void_immediate_arg_identity.c`: Step-2 first bad fact closed; the sole fixed i32 structured argument carries `LirIntegerImmediate{7}`, exact i32 type refs, `None` extension, and no call result | PR `emit_rval_operand` -> PC representation-preserving fixed integer coercion -> `OwnedLirTypedCallArg::operand: LirOperand` -> authority-preserving `lir_call_structured_args`; formatting reads only `operand.str()` | Implemented authority-first rejection for missing payload, wrong/invalid alternatives, range, type/signature/count/ext conflicts; complete structured authority ignores misleading argument/type presentation | `operand`, `args_str`, raw argument/parameter type spellings, and suffix text are never reparsed to create or repair authority |
-| `lir_direct_void_ssa_arg_identity.c`: CC-LOAD-1 produces a valid selected-global load result ID, but the sole call argument is still classified `SsaValue` with no ID | PR selected-global `emit_rval_operand` returns authoritative `LirOperand`; PC now has the common operand carrier but deliberately falls back to monostate outside the Step-4 immediate claim | Step 5 must reuse this carrier; reject unknown/cross-function argument IDs and require the argument ID to equal an already registered current-function definition. Keep selected-global load verification unchanged | Never compare the load/result and argument displays, scan `%tN`, or add an SSA-only side carrier |
+| `lir_direct_void_ssa_arg_identity.c`: Step-2 first bad fact closed; CC-LOAD-1 and the sole fixed i32 structured argument carry the same valid current-function `LirValueId` | PR selected-global `emit_rval_operand` returns authoritative `LirOperand`; PC recognizes the structural global `DeclRef`, preserves the exact source operand through the common call-argument carrier, and supplies exact i32 refs only for the unchanged fixed integer representation | Implemented: reject monostate, wrong/invalid authority, unknown/cross-function IDs, and type/signature/count/ext conflicts; generic ownership requires the use ID to resolve to the existing current-function load definition while CC-LOAD-1 verification remains unchanged | Load/result and argument displays, `%tN`, `args_str`, suffix text, and raw type mirrors never select or repair identity; misleading mirrors with the same ID verify successfully |
 | `lir_scalar_ordinary_value_chain_identity.c`: both PB binary results are classified SSA text without IDs, so the second operation's SSA lhs cannot retain the first result authority | PB scalar `emit_rval_payload(BinaryExpr)`: native Add/Mul opcode refs and i32 type refs surround `fresh_tmp` result strings and string operands; the selected-global source load remains a CC-LOAD-1 neighbor | Register each authoritative binary result exactly once; reject invalid/duplicate result IDs and unknown/cross-function authoritative operands; require the second lhs ID to resolve to the first binary definition | Never infer producer/use equality from shared `%tN` spelling, opcode text, rendered LLVM, or adjacency |
 
 The SSA-argument probe is therefore distinct evidence but not a distinct
@@ -215,6 +215,26 @@ from any presentation. In particular, integer-looking character-literal
 compatibility text may classify as `Immediate`, but without the producer's
 exact structured argument type refs it does not enter the Step-4 claim.
 
+## Step-5 direct void fixed SSA contract
+
+The claimed row is a direct `LinkNameId`-resolved void call with one fixed,
+specified, nonvariadic integer parameter whose source expression is the
+authoritative selected-global scalar load from CC-LOAD-1. The producer uses the
+HIR global `DeclRef` as the structural route fact and preserves the exact
+source `LirOperand{LirValueId}` through the common call-argument carrier only
+when fixed-parameter coercion keeps the LLVM representation. No symbol or
+temporary spelling participates.
+
+Reachable verification requires exactly one structured SSA argument, exact
+and agreeing signature/argument type refs, extension `None`, and no void-call
+result. The generic ownership pass requires its valid ID to resolve to an
+existing definition in the current function, rejecting unknown and
+cross-function uses. Missing, wrong-alternative, invalid, type, signature,
+count, and extension conflicts reject. Once native authority is complete,
+`args_str`, suffix text, operand display, and raw type mirrors are ignored.
+The selected-global load contract is unchanged; other SSA sources, indirect,
+variadic, ABI-expanded, aggregate, and object routes remain compatibility.
+
 ## Mechanical coverage check
 
 Reproducible source-side extraction:
@@ -243,8 +263,10 @@ Current-source spot checks used for this baseline:
   the operand-taking call maker retains it, and `emit_rval_call_operand` keeps
   the same carrier through CallExpr lowering; focused immediate arguments now
   use `emit_rval_operand`, the `OwnedLirTypedCallArg` native operand carrier,
-  and authority-preserving structured construction. Other argument rows fall
-  back to monostate compatibility without parsing presentation;
+  and authority-preserving structured construction. The focused
+  selected-global SSA argument reuses that carrier and the exact CC-LOAD-1
+  result ID; other argument rows fall back to monostate compatibility without
+  parsing presentation;
 - representative scalar chain: `expr/binary.cpp` constructs `LirBinOp` from
   `fresh_tmp` results and string operands while carrying native
   `LirBinaryOpcodeRef`/`LirTypeRef`;
