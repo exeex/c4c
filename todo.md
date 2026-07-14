@@ -1,35 +1,31 @@
 # Current Packet
 
-Status: Complete
-Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
+Status: Active
+Source Idea Path: ideas/open/748_lir_memcpy_selected_pointer_object_authority_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.19
-Current Step Title: Receive the checked builtin-popcount call/narrow/final-use
+Current Step ID: 1
+Current Step Title: Define and populate the selected memcpy typed authority
 
 ## Just Finished
 
-- Step 7.19 complete: received only producer-verified builtin-popcount `Ctpop`
-  i32 results through one exact later i32 Add and i64 results through one exact
-  i64-to-i32 Trunc then i32 Add. Raw-BIR builder and verifier admit the typed
-  i32 Ctpop direct final use only when zero-count behavior is absent; importer
-  validation keeps result, direct LinkNameId, one-integer signature, cast, and
-  final-use linkage current-function structured authority.
+- Lifecycle switch from blocked idea 734 is complete. Its accepted Step 7.19
+  proof and Step 7.20 resumption record remain in the source idea.
 
 ## Suggested Next
 
-- Send the exhausted runbook to plan-owner for an explicit source-completion,
-  repair, replacement, or conclusion decision; do not infer source completion.
+- Execute Step 1 only: identify and populate typed current-function
+  destination/source/size and pointer-object/lifetime authority for the one
+  selected PL `emit_lval_dispatch` non-volatile `LirMemcpyOp` row. Do not edit
+  Raw-BIR/importer code or broaden to another memory/object producer.
 
 ## Watchouts
 
-- Ctpop accepts no `zero_count_behavior`; callee/result/argument displays remain
-  non-authoritative. The focused test covers i32/i64 success and transactional
-  malformed, missing, duplicate, cross-owner, kind/link/signature/count,
-  zero-count, cast, and final-use failures.
+- `LirOperand` display text is non-authoritative. Keep every other memcpy,
+  stack, va-list, parameter, aggregate/vector, and memory family fail-closed.
+- The exact selected producer source and focused fixture must be recorded in
+  the later handoff; a test-name matcher is not authority.
 
 ## Proof
 
-- Step 7.19 proof passed: fresh `cmake --build --preset default`; focused 2/2
-  `ctest --test-dir build -j --output-on-failure -R
-  '^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$'`. The supervisor
-  owns canonical regression logs and any broader checkpoint.
+- After implementation: fresh build plus focused selected producer/verifier
+  coverage. The supervisor owns matching regression logs and broader checks.

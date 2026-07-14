@@ -1,6 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (active at repaired Step 7.19 builtin-popcount call/narrow/final-use packet)
+Status: Open (blocked after accepted Step 7.19; awaiting a separately scoped
+pointer/object producer-authority successor)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -184,6 +185,32 @@ listed missing-authority families are not absorbed by this packet: each
 requires its own separately scoped successor/blocker before any receiver work.
 Return point after Step 7.19 acceptance is the next matrix receiver-ready row,
 with the same source completion gate reapplied.
+
+## Runbook Repair Decision: post-Step 7.19 producer blocker
+
+Close rejected. Accepted Step 7.19 builtin-popcount receipt (`565be6932`) has
+the supervisor-provided fresh build, focused 2/2 proof, non-decreasing matching
+regression guard, and fresh broader `^backend_` 4/4 proof. It nevertheless does
+not satisfy the source completion gate: every valid current-LIR fact still
+needs an evidenced typed receiver disposition, and no additional
+receiver-ready row remains after the accepted bounded rows.
+
+The earliest remaining valid matrix row is `LirMemcpyOp`. Its destination,
+source, and size are text-only/monostate, and its pointer/object and
+object-lifetime relationship lacks a current-function structured authority
+contract. Idea 734 must not invent that identity from display operands, so this
+is a `separate-blocker`, not a repair-current-route packet.
+
+Required switch: the supervisor must create and activate one narrowly scoped
+producer successor that publishes, verifies, and hands off a selected
+`LirMemcpyOp` pointer/object authority row, including its current-function
+operand IDs and object/lifetime ownership. Preserve this idea's accepted work
+through Step 7.19 and its cited proof. Return to idea 734 only after that
+handoff, at repaired Step 7.20: receive exactly the handed-off `LirMemcpyOp`
+row in typed Raw-BIR, importer dispatch, reachable verification, and
+transactional positive/negative coverage. All other memory/object, stack,
+va-list, CFG, aggregate/vector, parameter, opaque-inline-asm, and
+presentation-derived rows remain separately scoped and fail-closed.
 
 ## Why This Exists
 
