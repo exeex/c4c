@@ -8,16 +8,18 @@ Current Step Title: Repair the targeted warning-inventory route
 
 ## Just Finished
 
-- Step 6 targeted warning-inventory repair complete: the two fixed AMD64
-  `va_arg` GP/SSE offset-limit `sle` comparisons in
-  `src/codegen/lir/hir_to_lir/call/vaarg_amd64.cpp` now use
-  `LirCmpPredicate::Sle`, preserving `i32` type text, bounds, operands,
-  layout conditions, and emitted comparison semantics.
+- Step 6 targeted warning-inventory repair complete for the direct complex
+  equality family: the two floating `oeq` and two integer `eq` comparisons in
+  `src/codegen/lir/hir_to_lir/expr/binary.cpp` now use
+  `LirCmpPredicate::OEq` and `LirCmpPredicate::Eq`, preserving float/integer
+  selection, the dynamic `llvm_ty(elem_ts)` boundary, operands, control flow,
+  and emitted comparison semantics.
 
 ## Suggested Next
 
 - Step 6: select the next targeted warning-inventory family; the generic and
-  AMD64-specific fixed `va_arg` comparison predicate families are complete.
+  AMD64-specific fixed `va_arg` and direct complex-equality comparison
+  predicate families are complete.
 
 ## Watchouts
 
@@ -60,6 +62,9 @@ Current Step Title: Repair the targeted warning-inventory route
   intentionally outside this packet.
 - The generic and AMD64-specific fixed `va_arg` comparison predicates are now
   enum-backed; retain their architecture-specific lowering boundaries.
+- The direct complex-equality predicates are a fixed closed set; retain the
+  dynamic `llvm_ty(elem_ts)` type boundary and do not migrate table or dynamic
+  comparison predicates as part of this family.
 
 ## Proof
 

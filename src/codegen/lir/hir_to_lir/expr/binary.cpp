@@ -233,11 +233,15 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
     const std::string creal = fresh_tmp(ctx);
     const std::string cimag = fresh_tmp(ctx);
     if (is_float_base(elem_ts.base)) {
-      emit_lir_op(ctx, lir::LirCmpOp{creal, true, "oeq", llvm_ty(elem_ts), lreal, rreal});
-      emit_lir_op(ctx, lir::LirCmpOp{cimag, true, "oeq", llvm_ty(elem_ts), limag, rimag});
+      emit_lir_op(ctx, lir::LirCmpOp{creal, true, LirCmpPredicate::OEq,
+                                     llvm_ty(elem_ts), lreal, rreal});
+      emit_lir_op(ctx, lir::LirCmpOp{cimag, true, LirCmpPredicate::OEq,
+                                     llvm_ty(elem_ts), limag, rimag});
     } else {
-      emit_lir_op(ctx, lir::LirCmpOp{creal, false, "eq", llvm_ty(elem_ts), lreal, rreal});
-      emit_lir_op(ctx, lir::LirCmpOp{cimag, false, "eq", llvm_ty(elem_ts), limag, rimag});
+      emit_lir_op(ctx, lir::LirCmpOp{creal, false, LirCmpPredicate::Eq,
+                                     llvm_ty(elem_ts), lreal, rreal});
+      emit_lir_op(ctx, lir::LirCmpOp{cimag, false, LirCmpPredicate::Eq,
+                                     llvm_ty(elem_ts), limag, rimag});
     }
     const std::string both = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirBinOp{both, "and", "i1", creal, cimag});
