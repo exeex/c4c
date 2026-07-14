@@ -10,6 +10,16 @@ using namespace stmt_emitter_detail;
 
 namespace {
 
+// Call-target type text is rendered from resolved HIR TypeSpecs. It can
+// legitimately retain aggregate, vector, pointer, or function spellings, so
+// keep each fallback through this local, auditable runtime-text boundary.
+[[nodiscard, deprecated(
+                  "HIR-rendered call-target type text: audit this runtime-text "
+                  "compatibility boundary")]]
+LirTypeRef hir_rendered_call_target_type_text(std::string rendered_text) {
+  return LirTypeRef::runtime_text(std::move(rendered_text));
+}
+
 StructNameId call_target_aggregate_structured_name_id(const c4c::hir::Module& mod,
                                                       const lir::LirModule* module,
                                                       const std::string& rendered_text,
@@ -40,10 +50,10 @@ LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_mo
                              const c4c::hir::Module& mod, const TypeSpec& type) {
   if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
       type.array_rank > 0 || !lir_module) {
-    return LirTypeRef(rendered_text);
+    return hir_rendered_call_target_type_text(rendered_text);
   }
   if (typespec_aggregate_complete_owner_key_missed(type, mod)) {
-    return LirTypeRef(rendered_text);
+    return hir_rendered_call_target_type_text(rendered_text);
   }
 
   StructNameId name_id =
@@ -63,7 +73,9 @@ LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_mo
     name_id = normalize_lir_aggregate_struct_name_id(
         lir_module, rendered_text, lir_module->struct_names.find(rendered_text), true);
   }
-  if (name_id == kInvalidStructName) return LirTypeRef(rendered_text);
+  if (name_id == kInvalidStructName) {
+    return hir_rendered_call_target_type_text(rendered_text);
+  }
   return type.base == TB_UNION ? LirTypeRef::union_type(rendered_text, name_id)
                                : LirTypeRef::struct_type(rendered_text, name_id);
 }
@@ -111,7 +123,8 @@ void append_call_signature_param(LirCallSignature& out,
       hfa.has_value()) {
     for (int lane_index = 0; lane_index < hfa->elem_count; ++lane_index) {
       out.fixed_param_types.push_back(hfa->elem_ty);
-      out.fixed_param_type_refs.push_back(LirTypeRef(hfa->elem_ty));
+      out.fixed_param_type_refs.push_back(
+          hir_rendered_call_target_type_text(hfa->elem_ty));
     }
     return;
   }
@@ -295,7 +308,7 @@ void StmtEmitter::emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
                                  const std::vector<OwnedLirTypedCallArg>& args) {
   emit_lir_op(ctx,
               make_lir_call_op_with_return_type_ref("",
-                                                    LirTypeRef("void"),
+                                                    LirTypeRef(LirBuiltinType::Void),
                                                     call_target.callee_val,
                                                     call_target.callee_type_suffix,
                                                     args,

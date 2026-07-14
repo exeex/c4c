@@ -8,12 +8,13 @@ Current Step Title: Repair the targeted warning-inventory route
 
 ## Just Finished
 
-- Step 6 targeted warning-inventory repair complete: classified the lvalue
-  indexed-GEP element-type family. Its closed void-pointee `"i8"` fallback now
-  uses `LirBuiltinType::I8`; remaining HIR-rendered element text flows only
+- Step 6 targeted warning-inventory repair complete: classified call-target
+  type construction. HIR-rendered fallback and HFA lane text now flow only
   through the deprecated, searchable local
-  `hir_rendered_indexed_gep_element_type_text` runtime-text helper. Existing
-  structured `struct_type`/`union_type` paths remain unchanged.
+  `hir_rendered_call_target_type_text` runtime-text helper; aggregate
+  `struct_type`/`union_type` authority and call signatures remain unchanged.
+  `emit_void_call` now constructs its closed void type with
+  `LirBuiltinType::Void`.
 
 ## Suggested Next
 
@@ -42,6 +43,9 @@ Current Step Title: Repair the targeted warning-inventory route
 - Inline-assembly type text comes from HIR `TypeSpec` through `llvm_ty(...)`;
   retain its dedicated local boundary rather than extending it to ordinary
   return or switch lowering.
+- Call-target HIR-rendered fallback and HFA lane type text is dynamic; retain
+  it through `hir_rendered_call_target_type_text` while preserving aggregate
+  structured authority and call-signature behavior.
 - HIR aggregate, field, and signature fallback text may lack `StructNameId` or
   represent array-backed fields; preserve it through its dedicated boundary
   without changing structured aggregate paths or the AArch64 vector ABI cast.
