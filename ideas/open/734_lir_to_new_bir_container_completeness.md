@@ -1,7 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (paused after accepted Step 7.20; CFG successor-authority
-successor 750 is active before the next receiver repair)
+Status: Open (paused after accepted Step 7.20; closed CFG successor-authority
+successor 750 supplies the next inactive receiver route)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -241,6 +241,32 @@ runbook for the first handoff-authorized bounded Raw-BIR CFG receiver row;
 derive that row from the accepted handoff rather than label text. Do not repeat
 Step 7.20 or absorb PHI, local/object, memory/va, aggregate/vector,
 body-parameter, or other remaining families into successor 750.
+
+## Resumption Record: CFG successor-authority completion
+
+Closed idea 750 completed the active successor-authority prerequisite at
+lifecycle pointer `62be1f1`, with accepted commits `0f214dc` (conditional and
+switch) and `40673da` (computed-goto). The typed current-function successor
+fields are `LirBr.successor`, `LirCondBr.true_successor` and
+`false_successor`, `LirSwitch.default_successor` and ordered
+`case_successors`, and ordered `LirIndirectBrOp.successors`. Labels are checked
+display mirrors only. Missing, invalid, duplicate or ambiguous, and
+foreign-function authority fails closed before printing or downstream use; no
+receiver may recover it from text.
+
+The acceptance proof is the focused 1/1 pre/post `frontend_lir_call_type_ref`
+guard and a fresh full `ctest --test-dir build -j --output-on-failure` result
+of 3034/3034 passing.
+
+Exact return action: do not activate this idea as part of this record. When
+the supervisor next activates 734, plan-owner must repair the runbook for one
+bounded legacy `LirIndirectBr` receiver packet only: map its existing typed
+`addr` `LirValueId` and ordered current-function target IDs to Raw-BIR's typed
+indirect-jump destination, verify ownership and target order, and prove
+transactional rejection/no partial publication. `LirCondBr`, `LirSwitch`, and
+`LirIndirectBrOp` are not receiver-ready in that packet because their condition,
+selector, or address identity remains outside the 750 handoff and must stay
+fail-closed without presentation recovery.
 
 ## Why This Exists
 
