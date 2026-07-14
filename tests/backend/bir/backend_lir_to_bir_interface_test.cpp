@@ -3490,7 +3490,14 @@ void test_direct_label_address_constant_receipt_and_rejections() {
             lir::LirOperand::ssa("%label_address_slot", lir::LirValueId{61})});
     return candidate;
   };
+  const auto direct_gep_module = [&] {
+    auto candidate = direct_module();
+    auto& gep = std::get<lir::LirGepOp>(candidate.functions[0].blocks[0].insts[0]);
+    gep.ptr = lir::LirOperand::direct_constant(lir::LirValueId{63});
+    return candidate;
+  };
   lir::verify_module(store_module());
+  lir::verify_module(direct_gep_module());
   const std::string printed = lir::print_llvm(store_module());
   expect(printed.find("store ptr blockaddress(@direct_label_owner, %target), ptr %label_address_slot") !=
              std::string::npos,
@@ -3589,6 +3596,37 @@ void test_direct_label_address_constant_receipt_and_rejections() {
     auto& store = std::get<lir::LirStoreOp>(candidate.functions[0].blocks[0].insts[0]);
     store.val = lir::LirOperand::direct_constant(lir::LirValueId{61});
   }, "mismatched store direct use must reject in the verifier");
+
+  const auto rejected_direct_gep_by_verifier = [&](auto mutate,
+                                                    const std::string& message) {
+    auto candidate = direct_gep_module();
+    mutate(candidate);
+    try {
+      lir::verify_module(candidate);
+    } catch (const lir::LirVerifyError&) {
+      return;
+    }
+    fail(message);
+  };
+  rejected_direct_gep_by_verifier([](lir::LirModule& candidate) {
+    candidate.functions[0].direct_label_address_constants.clear();
+  }, "direct GEP use without its definition must reject in the verifier");
+  rejected_direct_gep_by_verifier([](lir::LirModule& candidate) {
+    auto& gep = std::get<lir::LirGepOp>(candidate.functions[0].blocks[0].insts[0]);
+    gep.ptr = lir::LirOperand::direct_constant(lir::LirValueId{61});
+  }, "arbitrary direct GEP identity must reject in the verifier");
+  rejected_direct_gep_by_verifier([](lir::LirModule& candidate) {
+    candidate.functions[0].direct_label_address_constants[0].type =
+        lir::LirTypeRef::integer(32);
+  }, "nonpointer direct GEP definition must reject in the verifier");
+  rejected_direct_gep_by_verifier([](lir::LirModule& candidate) {
+    auto& gep = std::get<lir::LirGepOp>(candidate.functions[0].blocks[0].insts[0]);
+    gep.ptr.str() = "%misleading-direct-gep-base";
+  }, "direct GEP display spelling must not override structured identity");
+  rejected_direct_gep_by_verifier([](lir::LirModule& candidate) {
+    auto& gep = std::get<lir::LirGepOp>(candidate.functions[0].blocks[0].insts[0]);
+    gep.ptr = lir::LirOperand::integer("0", 0);
+  }, "nonpointer direct GEP operand form must reject in the verifier");
 }
 
 void test_typed_computed_goto_receipt_and_rejections() {

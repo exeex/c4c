@@ -1148,9 +1148,13 @@ void verify_authoritative_gep(const LirModule& mod, const LirGepOp& op) {
   }
   if (op.ptr.kind() == LirOperandKind::Global && op.ptr.link_name_id()) {
     verify_global_pointer_owner(mod, op.ptr, "LirGepOp.ptr", "GEP");
+  } else if (op.ptr.kind() == LirOperandKind::DirectConstant &&
+             op.ptr.value_id()) {
+    // The enclosing-function check resolves this ID only through the
+    // direct-label-address table; its display spelling is not authority.
   } else if (op.ptr.kind() != LirOperandKind::SsaValue || !op.ptr.value_id()) {
     fail_verify("LirGepOp.ptr",
-                "authoritative GEP requires global LinkNameId or SSA LirValueId base authority");
+                "authoritative GEP requires global, direct-constant, or SSA base authority");
   }
   if (op.indices.empty()) {
     fail_verify("LirGepOp.indices",
@@ -1280,7 +1284,9 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
   if (const auto* op = std::get_if<LirGepOp>(&inst)) {
     verify_result_operand(op->result, "LirGepOp.result");
     require_module_type_ref(mod, op->element_type, "LirGepOp.element_type");
-    verify_pointer_operand(op->ptr, "LirGepOp.ptr");
+    if (op->ptr.kind() != LirOperandKind::DirectConstant) {
+      verify_pointer_operand(op->ptr, "LirGepOp.ptr");
+    }
     verify_authoritative_gep(mod, *op);
     return;
   }
@@ -2050,6 +2056,21 @@ void verify_function_value_ownership(const LirModule& mod,
             !modeled_pointer_result(*base_definition->second)) {
           fail_verify("LirGepOp.ptr",
                       "SSA GEP base must identify a current-function pointer value definition");
+        }
+      }
+      if (const auto* gep = std::get_if<LirGepOp>(&inst);
+          gep && gep->result.value_id() &&
+          gep->ptr.kind() == LirOperandKind::DirectConstant) {
+        const LirValueId* value_id = gep->ptr.value_id();
+        const auto direct = value_id ? std::find_if(
+            function.direct_label_address_constants.begin(),
+            function.direct_label_address_constants.end(), [&](const auto& item) {
+              return item.value == *value_id;
+            }) : function.direct_label_address_constants.end();
+        if (!value_id || direct == function.direct_label_address_constants.end() ||
+            direct->type.kind() != LirTypeKind::Pointer || !gep->ptr.str().empty()) {
+          fail_verify("LirGepOp.ptr",
+                      "direct constant GEP base must match a current-function pointer label address");
         }
       }
       if (const auto* store = std::get_if<LirStoreOp>(&inst)) {

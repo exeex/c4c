@@ -8,23 +8,27 @@ Current Step Title: Specify and verify the typed direct-label-address GEP base
 
 ## Just Finished
 
-- No blocker execution packet has completed. The outgoing 772 mapping and
-  return point are preserved in its source resumption record.
+- Step 1 completed: `LirGepOp.ptr` now admits only a typed
+  `DirectConstant(LirValueId)` at the GEP-specific gate and resolves it in
+  `verify_function_value_ownership` against the current function's
+  pointer-typed direct-label-address table. Nearby interface coverage proves
+  the positive verifier path and rejects missing, arbitrary, non-pointer,
+  display-inconsistent, and non-pointer-form bases.
 
 ## Suggested Next
 
-- Executor: implement only Step 1's exact verifier contract transition and
-  nearby positive/malformed verifier coverage; do not edit the 772
-  `emit_indexed_gep` forwarding seam.
+- Supervisor: select the next 773 packet; keep any printer/backend receipt
+  work separate from this verifier-only Step 1 slice.
 
 ## Watchouts
 
-- Admit only a verified current-function direct label-address
-  `DirectConstant(LirValueId)`. Do not accept arbitrary direct constants,
-  recover text, fabricate SSA, or widen generic GEP authority.
+- Generic pointer validation remains unchanged for all non-GEP operands and
+  non-direct GEP bases. Direct GEP identity is table-backed only; no label
+  spelling or printer text is authority.
 
 ## Proof
 
-- Before acceptance, run a fresh build and the narrow verifier/printer/lowering
-  proof selected by the supervisor. The parent `pr70460` mapping baseline is
-  retained separately and is not proof of this blocker.
+- Passed: `cmake --build --preset default && ctest --test-dir build
+  --output-on-failure -R '^backend_lir_to_bir_interface$' | tee test_after.log`.
+  The fresh build and focused interface subset passed; proof output is
+  `test_after.log`.
