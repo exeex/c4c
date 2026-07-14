@@ -1315,7 +1315,9 @@ Result<void, ImportError> validate_inline_asm_shape(
     const LirModule& module, const LirInlineAsmOp& inline_asm,
     const std::string& function,
     const std::string& block,
-    std::unordered_map<std::string, Type>& ordinary_values) {
+    std::unordered_map<std::string, Type>& ordinary_values,
+    std::unordered_map<std::uint32_t, Type>& source_values,
+    std::unordered_set<std::uint32_t>& inline_asm_results) {
   if (inline_asm.insn_r)
     return fail<void>(ImportErrorCode::UnsupportedInlineAsmMetadata, function,
                       block,
@@ -1326,128 +1328,90 @@ Result<void, ImportError> validate_inline_asm_shape(
   if (!has_structured_values &&
       (!inline_asm.args_str.empty() || !inline_asm.result.empty() ||
        inline_asm.ret_type.kind() != codegen::lir::LirTypeKind::Void ||
-       inline_asm.ret_type.str() != "void")) {
-    return fail<void>(
-        ImportErrorCode::UnsupportedInlineAsmShape, function, block,
-        "textual LLVM operands/results have no structured LIR value identities");
-  }
-  if (!inline_asm.result.empty() && inline_asm.ordinary_results.empty()) {
-    return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function,
-                      block,
+       inline_asm.ret_type.str() != "void"))
+    return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function, block,
+                      "textual LLVM operands/results have no structured LIR value identities");
+  if (!inline_asm.result.empty() && inline_asm.ordinary_results.empty())
+    return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function, block,
                       "LLVM compatibility result lacks a structured result identity");
-  }
-
   const std::size_t constraint_count =
       inline_asm_constraint_count(inline_asm.original_constraint_text);
-  if (has_structured_values && constraint_count == 0) {
-    return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function,
-                      block,
+  if (has_structured_values && constraint_count == 0)
+    return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function, block,
                       "structured values require original semantic constraints");
-  }
-
   std::optional<std::size_t> previous_input_constraint;
   for (const auto& input : inline_asm.ordinary_inputs) {
-    if (input.value.kind() != codegen::lir::LirOperandKind::SsaValue) {
-      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function,
-                        block,
-                        "structured input must be an ordinary SSA identity");
-    }
-    if (input.role != LirInlineAsmValueRole::Input &&
-        input.role != LirInlineAsmValueRole::ReadWrite) {
-      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function,
-                        block, "structured input carries an output-only role");
-    }
-    if (input.constraint_index >= constraint_count ||
-        (previous_input_constraint &&
-         input.constraint_index <= *previous_input_constraint)) {
-      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function,
-                        block,
-                        "structured inputs do not follow original constraint order");
-    }
+    if (input.value.kind() != codegen::lir::LirOperandKind::SsaValue ||
+        (input.role != LirInlineAsmValueRole::Input &&
+         input.role != LirInlineAsmValueRole::ReadWrite) ||
+        input.constraint_index >= constraint_count ||
+        (previous_input_constraint && input.constraint_index <= *previous_input_constraint))
+      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function, block,
+                        "structured input identity, role, or constraint order is invalid");
     previous_input_constraint = input.constraint_index;
     const auto type = lower_lir_type(module, input.type);
     const auto found = ordinary_values.find(input.value.str());
-    if (!type || found == ordinary_values.end()) {
-      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function,
-                        block,
-                        "structured input does not resolve in the function value map");
-    }
-    if (found->second != *type) {
-      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function,
-                        block,
-                        "structured input type disagrees with its defining value");
-    }
+    if (!type || found == ordinary_values.end() || found->second != *type)
+      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function, block,
+                        "structured input does not resolve with its defining type");
   }
-
   std::optional<std::size_t> previous_result_constraint;
   std::unordered_set<std::string> pending_results;
-  pending_results.reserve(inline_asm.ordinary_results.size());
   for (const auto& result : inline_asm.ordinary_results) {
     if (result.value.kind() != codegen::lir::LirOperandKind::SsaValue ||
         (result.role != LirInlineAsmValueRole::Output &&
-         result.role != LirInlineAsmValueRole::ReadWrite)) {
-      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function,
-                        block, "structured result identity or role is invalid");
-    }
-    if (result.constraint_index >= constraint_count ||
-        (previous_result_constraint &&
-         result.constraint_index <= *previous_result_constraint)) {
-      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function,
-                        block,
-                        "structured results do not follow original constraint order");
-    }
+         result.role != LirInlineAsmValueRole::ReadWrite) ||
+        result.constraint_index >= constraint_count ||
+        (previous_result_constraint && result.constraint_index <= *previous_result_constraint))
+      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function, block,
+                        "structured result identity, role, or constraint order is invalid");
     previous_result_constraint = result.constraint_index;
     const auto type = lower_lir_type(module, result.type);
-    if (!type || ordinary_values.find(result.value.str()) != ordinary_values.end() ||
-        !pending_results.insert(result.value.str()).second) {
-      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function,
-                        block,
+    if (!type || ordinary_values.count(result.value.str()) != 0 ||
+        !pending_results.insert(result.value.str()).second)
+      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function, block,
                         "structured result is duplicate or has unsupported type");
-    }
-
     const LirInlineAsmValueBinding* matching_input = nullptr;
     for (const auto& input : inline_asm.ordinary_inputs) {
-      if (input.value == result.value) {
-        return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function,
-                          block,
+      if (input.value == result.value)
+        return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function, block,
                           "structured result must be distinct from every input");
-      }
-      if (input.constraint_index == result.constraint_index)
-        matching_input = &input;
+      if (input.constraint_index == result.constraint_index) matching_input = &input;
     }
-    if (result.role == LirInlineAsmValueRole::ReadWrite) {
-      if (!matching_input ||
-          matching_input->role != LirInlineAsmValueRole::ReadWrite ||
-          lower_lir_type(module, matching_input->type) != type) {
-        return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function,
-                          block,
-                          "read/write result lacks a same-typed old-value input");
-      }
-    } else if (matching_input) {
-      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function,
-                        block,
-                        "only read/write values may share a constraint position");
-    }
+    if ((result.role == LirInlineAsmValueRole::ReadWrite &&
+         (!matching_input || matching_input->role != LirInlineAsmValueRole::ReadWrite ||
+          lower_lir_type(module, matching_input->type) != type)) ||
+        (result.role == LirInlineAsmValueRole::Output && matching_input))
+      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function, block,
+                        "structured result/input constraint pairing is invalid");
   }
   for (const auto& input : inline_asm.ordinary_inputs) {
-    if (input.role != LirInlineAsmValueRole::ReadWrite) continue;
-    const auto paired = std::find_if(
-        inline_asm.ordinary_results.begin(), inline_asm.ordinary_results.end(),
-        [&](const LirInlineAsmValueBinding& result) {
-          return result.role == LirInlineAsmValueRole::ReadWrite &&
-                 result.constraint_index == input.constraint_index;
-        });
-    if (paired == inline_asm.ordinary_results.end()) {
-      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function,
-                        block,
+    if (input.role == LirInlineAsmValueRole::ReadWrite &&
+        std::none_of(inline_asm.ordinary_results.begin(), inline_asm.ordinary_results.end(),
+                     [&](const LirInlineAsmValueBinding& result) {
+                       return result.role == LirInlineAsmValueRole::ReadWrite &&
+                              result.constraint_index == input.constraint_index;
+                     }))
+      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function, block,
                         "read/write input lacks a distinct produced result");
-    }
   }
-
-  for (const auto& result : inline_asm.ordinary_results) {
-    ordinary_values.emplace(result.value.str(),
-                            *lower_lir_type(module, result.type));
+  const Type i32{TypeKind::Integer, 32, "i32"};
+  const bool native_i32_output = inline_asm.ordinary_inputs.empty() &&
+      inline_asm.ordinary_results.size() == 1 &&
+      inline_asm.ordinary_results[0].role == LirInlineAsmValueRole::Output &&
+      inline_asm.ordinary_results[0].constraint_index == 0 &&
+      lower_lir_type(module, inline_asm.ordinary_results[0].type) == i32 &&
+      inline_asm.ordinary_results[0].value.value_id() &&
+      inline_asm.ordinary_results[0].value.value_id()->valid();
+  if (native_i32_output) {
+    const auto id = inline_asm.ordinary_results[0].value.value_id()->value;
+    if (source_values.count(id) != 0 || !inline_asm_results.insert(id).second)
+      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function, block,
+                        "native inline-asm result LirValueId is duplicate");
+    source_values.emplace(id, i32);
   }
+  for (const auto& result : inline_asm.ordinary_results)
+    ordinary_values.emplace(result.value.str(), *lower_lir_type(module, result.type));
   return Result<void, ImportError>::success();
 }
 
@@ -1758,6 +1722,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_set<std::uint32_t> block_ids;
   std::unordered_map<std::string, Type> ordinary_values;
   std::unordered_map<std::uint32_t, Type> source_values;
+  std::unordered_set<std::uint32_t> inline_asm_results;
+  std::unordered_map<std::uint32_t, std::size_t> inline_asm_store_uses;
   std::unordered_set<std::uint32_t> intrinsic_results;
   std::unordered_set<std::uint32_t> native_floating_call_results;
   labels.reserve(function.blocks.size());
@@ -1816,14 +1782,23 @@ Result<void, ImportError> validate_function(const LirModule& module,
         const auto type = lower_lir_type(module, store->type_str);
         const auto* immediate = store->val.integer_immediate();
         const auto* destination = store->ptr.link_name_id();
+        const auto* source = store->val.value_id();
+        const Type i32{TypeKind::Integer, 32, "i32"};
+        const bool immediate_store =
+            store->val.kind() == codegen::lir::LirOperandKind::Immediate &&
+            immediate && store->type_str.integer_bit_width() &&
+            integer_immediate_representable(
+                immediate->value, *store->type_str.integer_bit_width());
+        const bool inline_asm_store =
+            store->val.kind() == codegen::lir::LirOperandKind::SsaValue &&
+            source && source->valid() && type && *type == i32 &&
+            inline_asm_results.count(source->value) != 0 &&
+            source_values.find(source->value) != source_values.end() &&
+            source_values.at(source->value) == i32;
         if (!type || !is_integer_type(*type) ||
             store->type_str.kind() !=
                 codegen::lir::LirTypeKind::Integer ||
-            !store->type_str.integer_bit_width() ||
-            store->val.kind() != codegen::lir::LirOperandKind::Immediate ||
-            !immediate ||
-            !integer_immediate_representable(
-                immediate->value, *store->type_str.integer_bit_width()) ||
+            (!immediate_store && !inline_asm_store) ||
             store->ptr.kind() != codegen::lir::LirOperandKind::Global ||
             !destination || *destination == c4c::kInvalidLinkName) {
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
@@ -1846,6 +1821,10 @@ Result<void, ImportError> validate_function(const LirModule& module,
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
                             "store destination must resolve to one exactly typed global object");
+        if (inline_asm_store && ++inline_asm_store_uses[source->value] != 1)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "inline-asm result must have exactly one Store use");
         continue;
       }
       if (const auto* load = std::get_if<LirLoadOp>(&instruction)) {
@@ -2028,9 +2007,16 @@ Result<void, ImportError> validate_function(const LirModule& module,
                           block.label,
                           "instruction family is outside the bounded constant/value slice");
       auto checked = validate_inline_asm_shape(
-          module, *inline_asm, name, block.label, ordinary_values);
+          module, *inline_asm, name, block.label, ordinary_values, source_values,
+          inline_asm_results);
       if (!checked) return checked;
     }
+  }
+
+  for (const auto result : inline_asm_results) {
+    if (inline_asm_store_uses[result] != 1)
+      return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                        {}, "inline-asm result lacks its one exact Store use");
   }
 
   if (!function.entry.valid() ||
@@ -2426,22 +2412,34 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
               }
               if (const auto* store = std::get_if<LirStoreOp>(&instruction)) {
                 const Type type = *lower_lir_type(module, store->type_str);
-                auto reserved = function_builder.reserve_value(type);
-                if (!reserved) {
-                  edit_error = builder_failure(name, block.label,
-                                               "reserve store immediate",
-                                               reserved.error());
-                  return Result<void, BuildError>::failure(reserved.error());
-                }
-                auto defined = function_builder.define_int_constant(
-                    reserved.value(),
-                    static_cast<std::int64_t>(
-                        store->val.integer_immediate()->value));
-                if (!defined) {
-                  edit_error = builder_failure(name, block.label,
-                                               "define store immediate",
-                                               defined.error());
-                  return defined;
+                ValueId stored_value{};
+                if (const auto* immediate = store->val.integer_immediate()) {
+                  auto reserved = function_builder.reserve_value(type);
+                  if (!reserved) {
+                    edit_error = builder_failure(name, block.label,
+                                                 "reserve store immediate",
+                                                 reserved.error());
+                    return Result<void, BuildError>::failure(reserved.error());
+                  }
+                  auto defined = function_builder.define_int_constant(
+                      reserved.value(), static_cast<std::int64_t>(immediate->value));
+                  if (!defined) {
+                    edit_error = builder_failure(name, block.label,
+                                                 "define store immediate",
+                                                 defined.error());
+                    return defined;
+                  }
+                  stored_value = reserved.value();
+                } else {
+                  const auto found = source_values.find(
+                      store->val.value_id()->value);
+                  if (found == source_values.end()) {
+                    edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                                             name, block.label,
+                                             "validated inline-asm Store source disappeared from the current-function registry"};
+                    return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                  }
+                  stored_value = found->second;
                 }
                 const auto destination =
                     global_objects.find(*store->ptr.link_name_id());
@@ -2455,7 +2453,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 }
                 auto appended = function_builder.append(
                     blocks.at(block.label),
-                    StoreSpec{destination->second, type, reserved.value()});
+                    StoreSpec{destination->second, type, stored_value});
                 if (!appended) {
                   edit_error = builder_failure(name, block.label,
                                                "append store",
@@ -2835,12 +2833,10 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
               for (const auto& input : inline_asm.ordinary_inputs) {
                 const auto found = ordinary_values.find(input.value.str());
                 if (found == ordinary_values.end()) {
-                  edit_error = ImportError{
-                      ImportErrorCode::UnsupportedInlineAsmShape, name,
-                      block.label,
-                      "structured input disappeared from the importer value map"};
-                  return Result<void, BuildError>::failure(
-                      BuildError::InvalidValue);
+                  edit_error = ImportError{ImportErrorCode::UnsupportedInlineAsmShape,
+                                           name, block.label,
+                                           "structured input disappeared from the importer value map"};
+                  return Result<void, BuildError>::failure(BuildError::InvalidValue);
                 }
                 spec.inputs.push_back(found->second.first);
               }
@@ -2849,6 +2845,18 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 spec.result_types.push_back(
                     *lower_lir_type(module, result.type));
               }
+              const Type i32{TypeKind::Integer, 32, "i32"};
+              const bool native_i32_output = inline_asm.ordinary_inputs.empty() &&
+                  inline_asm.ordinary_results.size() == 1 &&
+                  inline_asm.ordinary_results[0].role == LirInlineAsmValueRole::Output &&
+                  inline_asm.ordinary_results[0].constraint_index == 0 &&
+                  *lower_lir_type(module, inline_asm.ordinary_results[0].type) == i32 &&
+                  inline_asm.ordinary_results[0].value.value_id() &&
+                  inline_asm.ordinary_results[0].value.value_id()->valid();
+              if (native_i32_output)
+                spec.source_result_id =
+                    inline_asm.ordinary_results.front().value.value_id()->value;
+              const auto source_result_id = spec.source_result_id;
               auto appended = function_builder.append(blocks.at(block.label),
                                                       std::move(spec));
               if (!appended) {
@@ -2865,13 +2873,20 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 return Result<void, BuildError>::failure(
                     BuildError::StorageExhausted);
               }
-              for (std::size_t index = 0;
-                   index < inline_asm.ordinary_results.size(); ++index) {
+              if (source_result_id &&
+                  !source_values.emplace(*source_result_id,
+                                         appended.value().results[0]).second) {
+                edit_error = ImportError{ImportErrorCode::UnsupportedInlineAsmShape,
+                                         name, block.label,
+                                         "inline-asm source result registration collided"};
+                return Result<void, BuildError>::failure(BuildError::DuplicateSourceValue);
+              }
+              for (std::size_t index = 0; index < inline_asm.ordinary_results.size(); ++index) {
+                if (source_result_id && index == 0) continue;
                 ordinary_values.emplace(
                     inline_asm.ordinary_results[index].value.str(),
                     std::pair{appended.value().results[index],
-                              *lower_lir_type(module,
-                                  inline_asm.ordinary_results[index].type)});
+                              *lower_lir_type(module, inline_asm.ordinary_results[index].type)});
               }
             }
             auto terminator = lower_terminator(

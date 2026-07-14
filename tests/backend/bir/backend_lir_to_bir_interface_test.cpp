@@ -8519,6 +8519,86 @@ void test_inline_asm_shape_rejection() {
          "textual-only inline asm must publish no partial CanonicalBir");
 }
 
+void test_i32_inline_asm_output_store_receipt_and_rejections() {
+  const auto make_module = [] {
+    auto module = direct_global_integer_store_module();
+    auto& block = module.functions[0].blocks[0];
+    block.insts.clear();
+    auto producer = void_inline_asm("opaque asm %0", "=r");
+    producer.asm_text = "presentation-only asm";
+    producer.constraints = "presentation-only constraints";
+    producer.args_str = "presentation-only arguments";
+    producer.ordinary_results = {{
+        lir::LirOperand::ssa("%presentation-output", lir::LirValueId{42}),
+        lir::LirTypeRef::integer(32), lir::LirInlineAsmValueRole::Output, 0}};
+    block.insts.push_back(std::move(producer));
+    block.insts.push_back(lir::LirStoreOp{
+        lir::LirTypeRef::integer(32),
+        lir::LirOperand::ssa("%different-display", lir::LirValueId{42}),
+        lir::LirOperand::global("@presentation-destination",
+                                module.globals[0].link_name_id)});
+    return module;
+  };
+  const auto inspect = [](const auto& graph, std::string_view layer) {
+    const auto view = graph.view();
+    const auto function_id = view.functions().front();
+    const auto function = view.function(function_id).value();
+    const auto instructions = function.instructions(function.blocks().front()).value();
+    expect(instructions.size() == 2, std::string(layer) + " must retain asm and Store");
+    const auto asm_instruction = function.instruction(instructions[0]).value();
+    const auto store_instruction = function.instruction(instructions[1]).value();
+    expect(std::holds_alternative<bir::InlineAsmNode>(asm_instruction.payload()) &&
+               asm_instruction.results().size() == 1 &&
+               store_instruction.operands() == asm_instruction.results(),
+           std::string(layer) + " must connect the source-backed asm result to Store");
+    const auto result = function.value(asm_instruction.results()[0]).value();
+    expect(result.type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+               result.source_id == bir::SourceValueId{function_id, 42} &&
+               function.source_value(bir::SourceValueId{function_id, 42}).value() ==
+                   asm_instruction.results()[0],
+           std::string(layer) + " must retain the native output LirValueId");
+  };
+  const auto module = make_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "the checked i32 inline-asm output/store route must publish verified Raw BIR");
+  inspect(raw.value(), "Raw BIR");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(), "the checked i32 inline-asm output/store route must canonicalize");
+  inspect(canonical.value(), "Canonical BIR");
+
+  const auto rejected = [&](auto mutate, std::string_view message) {
+    auto candidate = make_module();
+    mutate(candidate);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value(), std::string(message) + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value(), std::string(message) + " (Canonical rollback)");
+  };
+  rejected([](auto& m) { std::get<lir::LirInlineAsmOp>(m.functions[0].blocks[0].insts[0]).ordinary_results.clear(); },
+           "missing binding must reject");
+  rejected([](auto& m) { std::get<lir::LirInlineAsmOp>(m.functions[0].blocks[0].insts[0]).ordinary_results[0].value = lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid()); },
+           "invalid binding ID must reject");
+  rejected([](auto& m) { auto& op = std::get<lir::LirInlineAsmOp>(m.functions[0].blocks[0].insts[0]); op.ordinary_results.push_back(op.ordinary_results.front()); },
+           "duplicate binding must reject");
+  rejected([](auto& m) { std::get<lir::LirInlineAsmOp>(m.functions[0].blocks[0].insts[0]).ordinary_results[0].role = lir::LirInlineAsmValueRole::ReadWrite; },
+           "wrong binding role must reject");
+  rejected([](auto& m) { std::get<lir::LirInlineAsmOp>(m.functions[0].blocks[0].insts[0]).ordinary_results[0].constraint_index = 1; },
+           "wrong binding index must reject");
+  rejected([](auto& m) { std::get<lir::LirInlineAsmOp>(m.functions[0].blocks[0].insts[0]).ordinary_results[0].type = lir::LirTypeRef::integer(64); },
+           "wrong binding type must reject");
+  rejected([](auto& m) { std::get<lir::LirStoreOp>(m.functions[0].blocks[0].insts[1]).val = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); },
+           "unknown Store source must reject");
+  rejected([](auto& m) { std::get<lir::LirStoreOp>(m.functions[0].blocks[0].insts[1]).type_str = lir::LirTypeRef::integer(64); },
+           "Store type mismatch must reject");
+  rejected([](auto& m) { m.functions[0].blocks[0].insts.pop_back(); },
+           "missing Store use must reject");
+  rejected([](auto& m) { m.functions[0].blocks[0].insts.push_back(std::get<lir::LirStoreOp>(m.functions[0].blocks[0].insts[1])); },
+           "duplicate Store use must reject");
+  rejected([](auto& m) { auto other = m.functions[0]; other.name = "foreign"; other.blocks[0].insts.erase(other.blocks[0].insts.begin()); m.functions.push_back(std::move(other)); },
+           "cross-function Store use must reject");
+}
+
 lir::LirCallOp direct_void_call(c4c::LinkNameId target) {
   lir::LirCallOp call;
   call.return_type = lir::LirTypeRef("void");
@@ -9419,6 +9499,7 @@ int main() {
   test_structured_lir_import_rejections();
   test_lir_inline_asm_structured_value_contract();
   test_closed_typed_lir_type_receipt();
+  test_i32_inline_asm_output_store_receipt_and_rejections();
   test_structured_type_spec_signature_receipt();
   test_direct_scalar_signature_receipt();
   test_direct_scalar_signature_rejections_and_transactionality();

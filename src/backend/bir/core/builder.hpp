@@ -147,6 +147,8 @@ struct InlineAsmSpec {
   bool side_effects = false;
   std::vector<ValueId> inputs;
   std::vector<Type> result_types;
+  // Present only for the bounded source-backed inline-asm result receipt.
+  std::optional<std::uint32_t> source_result_id;
 };
 
 struct StoreSpec {

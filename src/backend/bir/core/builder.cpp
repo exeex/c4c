@@ -741,6 +741,13 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       static_cast<std::size_t>(std::numeric_limits<std::uint16_t>::max()))
     return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
   auto& function_data = function.value().get();
+  if (spec.source_result_id &&
+      (spec.result_types.size() != 1 ||
+       *spec.source_result_id == std::numeric_limits<std::uint32_t>::max() ||
+       function_data.values_by_source_id_.count(*spec.source_result_id) != 0))
+    return Result<BuildResult, BuildError>::failure(
+        spec.result_types.size() != 1 ? BuildError::InvalidValue
+                                      : BuildError::DuplicateSourceValue);
   for (const auto input : spec.inputs) {
     if (!same_owner(function_, input))
       return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
@@ -773,6 +780,8 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
     value.type = spec.result_types[index];
     value.definition =
         InstResultDef{instruction_id, static_cast<std::uint16_t>(index)};
+    if (spec.source_result_id)
+      value.source_id = SourceValueId{function_, *spec.source_result_id};
     auto inserted_value =
         function_data.values_.emplace(function_, std::move(value));
     if (!inserted_value) {
@@ -784,9 +793,14 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
     }
     results.push_back(inserted_value.value());
   }
+  if (spec.source_result_id)
+    function_data.values_by_source_id_.emplace(*spec.source_result_id,
+                                               results.front());
   auto stored_instruction =
       function_data.insts_.get_mut(function_, instruction_id);
   if (!stored_instruction) {
+    if (spec.source_result_id)
+      function_data.values_by_source_id_.erase(*spec.source_result_id);
     for (const auto result : results)
       function_data.values_.erase(function_, result);
     function_data.insts_.erase(function_, instruction_id);
@@ -800,6 +814,8 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
         function_data.value_order_.erase(rollback);
       for (const auto rollback : results)
         function_data.values_.erase(function_, rollback);
+      if (spec.source_result_id)
+        function_data.values_by_source_id_.erase(*spec.source_result_id);
       function_data.insts_.erase(function_, instruction_id);
       return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
     }
@@ -812,6 +828,8 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       function_data.value_order_.erase(result);
     for (const auto result : results)
       function_data.values_.erase(function_, result);
+    if (spec.source_result_id)
+      function_data.values_by_source_id_.erase(*spec.source_result_id);
     function_data.insts_.erase(function_, instruction_id);
     return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
   }
