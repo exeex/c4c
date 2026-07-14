@@ -1,111 +1,106 @@
-# Computed-Goto Label-Address Table Initialization Authority Decomposition Runbook
+# Automatic Local Label-Address Table Initializer Authority Runbook
 
 Status: Active
-Source Idea: ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md
-Resumed from: 770 after accepted native direct-constant contract and ordinary
-pointer-store consumer repair; continue at preserved Step 5
+Source Idea: ideas/open/771_lir_automatic_local_label_address_table_initializer_authority.md
+Activated from: 768 Step 5 automatic local initializer blocker
 
 ## Purpose
 
-Replace the repeatedly moving carrier route with focused frontend-LIR producer
-probes for label-address table initialization, representation, and rvalue
-consumption seams.
+Repair the distinct automatic local initializer emission route that loses an
+already-structured native label-address direct constant before 768 retries its
+direct-rvalue producer packet.
 
 ## Goal
 
-Identify the narrowest generic upstream producer/result authority seam before
-any implementation packet, without consuming 764's downstream carrier work.
+Retain native direct-constant identity through nested automatic label-address
+table initialization without widening into table decay, carrier, or backend
+work.
 
 ## Core Rule
 
-The `IndirBrStmt` carrier already copies `emit_rval_operand(target).value_id()`
-exactly. Focused probes must find authority before that consumer; external
-cases remain integration evidence, never implementation selectors.
+Follow the structured operand from `LabelAddrExpr` through the generic
+initializer-list/coordinator consumer. Do not manufacture identity or recover
+it from text.
 
 ## Read First
 
+- `ideas/open/771_lir_automatic_local_label_address_table_initializer_authority.md`
 - `ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md`
 - `ideas/closed/770_lir_to_bir_native_label_address_constant_contract.md`
-- direct frontend-LIR producers for label-address table initialization,
-  representation, and rvalue consumption
+- existing frontend-LIR label-address probes and automatic initializer
+  coordinator/emission surfaces
 
 ## Non-Goals
 
-- no `IndirBrStmt`/`LirIndirectBrOp.addr_value` publication or verifier change
-- no Raw-BIR/importer, 734, backend/case ownership absent new evidence, or
-  rework of accepted 765/766/767
-- no text recovery, testcase-specific logic, synthetic bridge, or automatic
-  local-table `DeclRef` decay implementation
+- no automatic-table `DeclRef` decay-to-GEP, broad rvalue/table redesign, or
+  local-object authority work
+- no carrier, verifier relaxation, Raw-BIR/importer, backend, 764, 767, or 769
+  work
+- no synthetic bridge, raw-text recovery, testcase routing, or weaker contract
 
 ## Execution Rules
 
-1. Use the preserved five-case command for baseline/integration evidence only.
-2. Use direct frontend-LIR production probes for ownership until evidence moves
-   the fault downstream; do not make reduced external-test copies.
-3. Record a positive and nearby malformed contract for every separated form.
-4. Do not choose an implementation seam until producer maps show a shared
-   generic owner or a precise separately scoped blocker.
+1. Keep the current uncommitted 768 Step 5 packet unaccepted; use its broader
+   regression only as boundary evidence.
+2. Bind every edit to the generic automatic initializer consumer, not to
+   `frontend_lir_call_type_ref` or a named external case.
+3. Add positive and nearby malformed structured-authority coverage before
+   accepting a route.
+4. For code, require `cmake --build --preset default`, the dedicated focused
+   test, and `ctest --test-dir build -j --output-on-failure -R
+   '^frontend_lir_'`.
 
 ## Ordered Steps
 
-### Step 1 - Establish the blocked label-address table failure-family baseline
+### Step 1 - Map the automatic local initializer authority handoff
 
-Completed: `b04832c62` accepted the 1/5 versus 4/5 baseline and preserved the
-carrier evidence.
-
-### Step 2 - Enumerate separated label-address table producer forms
-
-Completed: `05386c45c` records the producer map.
-
-### Step 3 - Extract direct frontend-LIR producer probes
-
-Completed: the static structured-initializer contract is accepted in 769;
-direct automatic-rvalue and table-decay probe work is retained in
-`707062aeb` and `85ac8d42c`. The accepted 767 static-table decay control
-remains untouched.
-
-### Step 4 - Bind probes and select the narrowest generic producer seam
-
-Completed: `34df925db` selects direct frontend-LIR `LabelAddrExpr` rvalue
-production as the shared unresolved producer for automatic scalar
-initializer/direct-rvalue consumption and automatic table element
-initialization. Its result must retain valid current-function, target-label,
-and produced-value identity. Automatic local-table `DeclRef` decay remains a
-separate later authority contract, not Step 5 scope.
-
-### Step 5 - Repair and prove native direct LabelAddrExpr rvalue production
-
-Goal: implement only direct frontend-LIR `LabelAddrExpr` rvalue production as
-a typed structured result and activate its focused proof.
+Goal: establish the exact generic coordinator/initializer-list consumer where
+the nested direct constant loses identity.
 
 Actions:
 
-- make only selected producer/result and direct frontend-LIR test changes,
-  yielding valid current-function, target-label, and produced-value identity
-- use 770's function-owned native direct constant, including the accepted
-  ordinary pointer-store consumer, without `select`, `gep`, `bitcast`, or any
-  other synthetic materialization used only to manufacture an SSA identity
-- add focused frontend-LIR positive coverage and nearby malformed verifier
-  coverage for raw, invalid/foreign function or target, non-pointer, and
-  missing/invalid/foreign value identity
-- run a fresh build and the selected focused proof; retain external cases and
-  automatic local-table `DeclRef` decay as later integration/dependency probes
-- report accepted capability, proof, and exact return to 764 Step 1
+- inspect the automatic `void *table[] = { &&first, &&second };` frontend-LIR
+  lowering path and compare its direct structured operand input/output;
+- identify the smallest owned consumer boundary and write focused positive and
+  malformed test expectations before implementation;
+- keep direct `LabelAddrExpr` production, table `DeclRef` decay, and 768's
+  uncommitted Step 5 acceptance outside this packet.
 
 Completion check:
 
-- the selected producer capability and focused proof pass without carrier or
-  verifier mutation, text recovery, testcase branching, reopening 767/769, or
-  automatic-table decay implementation, and without `select`, `gep`,
-  `bitcast`, or another synthetic label-address value bridge.
+- the planned seam is a generic automatic initializer consumer with a concrete
+  structured-authority contract and direct focused proof target.
 
-### Step 6 - Hand off the resolved producer capability to 764
+### Step 2 - Preserve structured direct-constant authority through emission
 
-Goal: preserve the accepted upstream authority seam so 764 can resume only its
-downstream carrier/integration responsibility.
+Goal: implement only the selected automatic initializer consumer passage.
+
+Actions:
+
+- retain the native direct constant's function, target-label, pointer-type,
+  and produced-value identity through nested local table element emission;
+- change a generic direct consumer only if it is required by the same route;
+- add focused positive and nearby malformed frontend-LIR coverage.
 
 Completion check:
 
-- lifecycle handoff names the accepted capability and exact return: 764 reruns
-  all five consumers and publishes carrier authority only if necessary, then
-  returns to 734 for plan-owner disposition.
+- the table initializer emits a valid structured operand without a synthetic
+  bridge, raw-text recovery, carrier change, or decay implementation.
+
+### Step 3 - Prove the bounded initializer route and hand back to 768
+
+Goal: accept only evidence that the local initializer authority route is
+stable, then preserve 768's return point.
+
+Actions:
+
+- run a fresh build, the dedicated focused proof, and the exact
+  `^frontend_lir_` guard;
+- reject scope drift or regressions; record the accepted seam and proof;
+- hand 768 back to Step 5, with no claim that its uncommitted direct-rvalue
+  packet is accepted.
+
+Completion check:
+
+- all selected proof passes and the lifecycle handoff names 768 Step 5 as the
+  sole return point.

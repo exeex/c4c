@@ -236,3 +236,43 @@ consumption decomposition, not a monolithic integration or carrier route.
   frontend-LIR positive/malformed proof. Do not claim producer recovery,
   carrier publication, external integration, automatic-table decay, or any
   change to 767/769 before that packet earns its own acceptance.
+
+## Resumption Record — 2026-07-14 Automatic Local Table Initializer Blocker
+
+- Last accepted progress: Steps 1--4 remain accepted: `b04832c62` records the
+  baseline, `05386c45c` maps producers, `707062aeb` and `85ac8d42c` retain the
+  direct automatic-rvalue/table-decay probes, and `34df925db` records the
+  Step 4 seam. 770's native direct-constant contract and ordinary pointer-store
+  repair are closed and accepted at `023a6660b` (implementation `e8a0f70b4`
+  and `0a2778f0d`; proof state `6803f8c25`). Accepted 767 (`403e86afd`) and
+  769 (`56d86556a`) remain closed prerequisites.
+- Interrupted step: **Step 5 — Repair and prove native direct `LabelAddrExpr`
+  rvalue production.** Its local code and focused probe are deliberately
+  uncommitted and are not accepted.
+- First bad fact: that direct-rvalue packet passes a fresh build plus
+  `^frontend_lir_label_address_rvalue_probe$`, but the mandatory fresh broader
+  `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_'` guard
+  regresses `frontend_lir_call_type_ref` (6/7) with
+  `LirStoreOp.val: must not be empty`. Reverting the local-declaration
+  `stmt.cpp` authority change leaves the same failure. Nested automatic
+  `void *table[] = { &&first, &&second };` initializer-list/coordinator
+  lowering loses operand identity after direct `LabelAddrExpr` creates its
+  function-owned native direct constant.
+- Blocker and scope boundary: preserving that structured native direct-constant
+  authority through automatic local table initializer emission is a separate
+  initializer route, not Step 5 direct-rvalue producer repair and not
+  carrier/verifier/backend/Raw-BIR work. It also does not reopen 767 or 769.
+  `ideas/open/771_lir_automatic_local_label_address_table_initializer_authority.md`
+  owns only this route, its focused positive/malformed proof, and any generic
+  direct consumer indispensably shared by that route.
+- Exact return point: after 771 accepts automatic local initializer emission
+  that retains the structured direct-constant operand identity, resume this
+  idea at **Step 5 — Repair and prove native direct `LabelAddrExpr` rvalue
+  production**. Re-run the direct-rvalue producer packet and focused
+  positive/malformed proof without redoing Steps 1--4, then assess Step 5 and
+  continue to Step 6's 764 handoff.
+- Remaining action and guardrails: do not accept or commit the current Step 5
+  code; do not implement automatic-table `DeclRef` decay-to-GEP, carrier
+  publication, external integrations, 764 work, or broad rvalue/table redesign
+  here. Reject synthetic bridges, raw-text recovery, testcase routing, and
+  expectation downgrades.
