@@ -440,6 +440,33 @@ void verify_cast_op_authority(const LirCastOp& op) {
   }
 
   if (!op.result.value_id()) return;
+  if (op.kind == LirCastKind::FPTrunc) {
+    if (op.from_type.kind() != LirTypeKind::Floating ||
+        op.to_type.kind() != LirTypeKind::Floating) {
+      fail_verify("LirCastOp.from_type",
+                  "authoritative FPTrunc requires floating endpoint type refs");
+    }
+    const auto floating_width = [](const LirTypeRef& type)
+        -> std::optional<unsigned> {
+      if (type.str() == "half") return 16;
+      if (type.str() == "float") return 32;
+      if (type.str() == "double") return 64;
+      if (type.str() == "x86_fp80") return 80;
+      if (type.str() == "fp128") return 128;
+      return std::nullopt;
+    };
+    const std::optional<unsigned> from_width = floating_width(op.from_type);
+    const std::optional<unsigned> to_width = floating_width(op.to_type);
+    if (!from_width || !to_width) {
+      fail_verify("LirCastOp.from_type",
+                  "authoritative FPTrunc requires exact floating endpoints");
+    }
+    if (*to_width >= *from_width) {
+      fail_verify("LirCastOp.to_type",
+                  "FPTrunc requires a narrower floating destination type");
+    }
+    return;
+  }
   if (op.from_type.kind() != LirTypeKind::Integer ||
       op.to_type.kind() != LirTypeKind::Integer) {
     fail_verify("LirCastOp.from_type",

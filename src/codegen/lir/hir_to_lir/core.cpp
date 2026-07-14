@@ -1753,12 +1753,34 @@ LirOperand StmtEmitter::coerce_operand(FnCtx& ctx, const LirOperand& val,
       to_ts.ptr_level == 0 && to_ts.array_rank == 0 &&
       !is_vector_value(from_ts) && !is_vector_value(to_ts) &&
       is_any_int(from_ts.base) && is_any_int(to_ts.base);
-  if (!scalar_integer_cast) {
+  const std::string from_type = llvm_value_ty(mod_, from_ts);
+  const std::string to_type = llvm_value_ty(mod_, to_ts);
+  const auto floating_width = [](std::string_view type) {
+    if (type == "half") return 16;
+    if (type == "float") return 32;
+    if (type == "double") return 64;
+    if (type == "x86_fp80") return 80;
+    if (type == "fp128") return 128;
+    return 0;
+  };
+  const bool authoritative_scalar_floating_trunc =
+      val.value_id() && from_ts.ptr_level == 0 && from_ts.array_rank == 0 &&
+      to_ts.ptr_level == 0 && to_ts.array_rank == 0 &&
+      !is_vector_value(from_ts) && !is_vector_value(to_ts) &&
+      is_float_base(from_ts.base) && is_float_base(to_ts.base) &&
+      floating_width(to_type) < floating_width(from_type);
+  if (!scalar_integer_cast && !authoritative_scalar_floating_trunc) {
     return LirOperand::raw(coerce(ctx, val.str(), from_ts, to_ts));
   }
 
-  const std::string from_type = llvm_value_ty(mod_, from_ts);
-  const std::string to_type = llvm_value_ty(mod_, to_ts);
+  if (authoritative_scalar_floating_trunc) {
+    const LirOperand result = fresh_value(ctx);
+    emit_lir_op(ctx, LirCastOp{result, LirCastKind::FPTrunc,
+                               LirTypeRef(from_type), val,
+                               LirTypeRef(to_type)});
+    return result;
+  }
+
   const int from_bits = int_bits(llvm_storage_base(from_ts));
   const int to_bits = int_bits(llvm_storage_base(to_ts));
   if (from_bits == to_bits) return val;

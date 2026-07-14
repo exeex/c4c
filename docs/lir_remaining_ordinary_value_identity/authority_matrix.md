@@ -21,9 +21,9 @@ cover CC-LOAD-1 and CC-GEP-1 in `StmtEmitter::emit_rval_operand`, plus the
 Step-3 structured direct integer-call result in `emit_call_with_result` and the
 Step-6 ordinary scalar integer and Step-7.5 ordinary scalar floating arithmetic
 branches in `emit_binary_rval_operand`, plus the Step-7.1 explicit scalar
-integer cast in `emit_cast_rval_operand` and the Step-7.2 integer / Step-7.6
-floating ordinary scalar compare branches in `emit_binary_rval_operand`, plus
-the Step-7.3 scalar builtin-ffs select in
+integer and Step-7.7 explicit scalar FPTrunc casts in
+`emit_cast_rval_operand`, and the Step-7.2 integer / Step-7.6 floating ordinary
+scalar compare branches in `emit_binary_rval_operand`, plus the Step-7.3 scalar builtin-ffs select in
 `emit_builtin_ffs_call` and the Step-7.4 integer builtin-abs result in
 `emit_post_builtin_call_operand`. Other active modern result constructions
 identified below still use `fresh_tmp`, an equivalent direct `%t` increment,
@@ -93,7 +93,7 @@ grouped only where they share one producer and disposition.
 | `LirLoadOp`: `result,ptr`; `type_str` | Active broadly in PR/PL/PX/PC/PV/PO; CC-LOAD-1 exact producer is PR selected-global branch | CC-LOAD-1 uses `fresh_value` result + global `LinkNameId`; all local/SSA/object routes use text-only operands and `fresh_tmp` | Native `LirTypeRef`; kind/type + ownership-ready; **741 exact** only for selected global | Preserve CC-LOAD-1 as **regression neighbor**. Other routes depend on local/object pointer ownership; probes per route, starting `lir_local_load_identity.c`; **separate pointer/object family** |
 | `LirStoreOp`: `val,ptr`; `type_str` | Active in PL/PX/PC/PI/PV/PS/PO and PF parameter/local setup; CC-STORE-1 exact producer is PL `emit_set_assign_value` via `integer_store_operand_after_coercion` | CC-STORE-1 has native immediate + global `LinkNameId`; other routes text-only/monostate; no result | Native `LirTypeRef`; kind/type + ownership-ready; **741 exact** only for selected global integer | Preserve CC-STORE-1 as **regression neighbor**. SSA value use can share generic propagation, pointer needs object authority; `lir_local_store_identity.c`; **mixed generic/separate** |
 | `LirMemsetOp`: `dst,byte_val,size`; `is_volatile` | Active, PL `emit_store_assignable_value` zero aggregate and PS `emit_non_control_flow_stmt(LocalDecl)` | Text-only/monostate operands; no result | Native bool; verifier kinds only | `lir_memset_native_use_identity.c`; **separate memory/object family** |
-| `LirCastOp`: `result,operand`; `kind,from_type,to_type` | Active in PX/PB/PL/PC/PI/PV/PO and PF fixed-vector parameter setup; Step-7.1 representative is PX explicit scalar integer `CastExpr` | Step-7.1 explicit width-changing scalar integer cast uses `fresh_value`, exact input `LirOperand`, and an operand-returning wrapper; other cast producers remain text-only with `fresh_tmp` | Native cast enum and exact from/to refs; authoritative integer results require coherent Trunc or ZExt/SExt widths; generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | `lir_scalar_cast_result_use_identity.c` closes only the representative explicit integer cast/use row. Float, pointer, bitcast, vector, aggregate, and other implicit/coercion producers remain separately unclaimed |
+| `LirCastOp`: `result,operand`; `kind,from_type,to_type` | Active in PX/PB/PL/PC/PI/PV/PO and PF fixed-vector parameter setup; Steps 7.1 and 7.7 own PX explicit scalar integer and authoritative-source FPTrunc `CastExpr` routes | Both focused explicit routes use `fresh_value`, exact input `LirOperand`, and the operand-returning coercion wrapper. Step-7.7 is gated on an authoritative Step-7.5 floating source and actual narrowing; other cast producers remain text-only with `fresh_tmp` | Native kind and exact endpoints; authoritative integer casts require coherent Trunc/ZExt/SExt widths and authoritative FPTrunc requires exact floating endpoints with narrowing direction. Generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | `lir_scalar_cast_result_use_identity.c` and `lir_scalar_fptrunc_result_use_identity.c` close only the representative explicit integer and FPTrunc chains. FPExt, int/float conversion, pointer, bitcast, vector, aggregate, implicit coercion, and other producers remain unclaimed |
 | `LirGepOp`: `result,ptr,indices`; `element_type,inbounds` | Active in PR/PL/PX/PC/PV and PF parameter setup; CC-GEP-1 exact producer is PR selected-global array branch | CC-GEP-1 uses `fresh_value`, global `LinkNameId`, typed native indices; other routes use `fresh_tmp`, raw base, often raw `LirGepIndex` presentation | Native type/bool; ownership-ready; **741 exact** only for selected-global typed path | Preserve CC-GEP-1 as **regression neighbor**. Other paths require object/base and typed-index work; `lir_local_gep_identity.c`; **separate pointer/object family** |
 | `LirCallOp`: `result`; `callee,direct_callee_link_name_id`; `structured_args[].operand`; typed signature/type/ext/ABI fields; text mirrors | Active, PC: `prepare_call_args`, `emit_void_call`, `emit_call_with_result`, `make_lir_call_op_with_return_type_ref` | Structured direct integer result uses `fresh_value`; the common `OwnedLirTypedCallArg` stores `LirOperand`. Focused direct void fixed integer arguments preserve either the native immediate or the exact CC-LOAD-1 selected-global result ID, with exact type refs, when coercion keeps the representation; other arguments remain monostate compatibility | Direct integer result has exact ID ownership. The focused direct void fixed immediate and selected-global SSA rows have authority-first exact type/count/ext/result verification; SSA uses additionally resolve through current-function ownership | Steps 3-5 close scalar result, fixed immediate, and selected-global SSA rows on the common carrier; indirect/variadic/ABI/aggregate rows and intrinsic results remain unclaimed; text mirrors are presentation-only |
 | `LirBinOp`: `result,lhs,rhs`; `opcode,type_str` | Active, PB scalar/complex arithmetic and logical helpers; also PL compound assignment, PI builtins, PV, PS | Step-6 normalized ordinary scalar integer and Step-7.5 ordinary scalar floating arithmetic use `fresh_value`; unchanged authoritative operands retain the common carrier, while floating literals and unavailable producers remain monostate. Complex/vector/pointer/logical and other producers remain text-only with `fresh_tmp` | Native opcode/type refs plus exact result/use ownership for the two scalar rows; authoritative floating opcode/type alternatives must agree, and generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | `lir_scalar_ordinary_value_chain_identity.c` and `lir_scalar_floating_binary_result_use_identity.c` close only the representative integer and floating scalar seams. Complex/vector, pointer/object, logical-helper, and other producer rows remain distinct |
@@ -289,11 +289,12 @@ without widening, and authoritative non-integer cast alternatives. Misleading
 cast-result/use displays with unchanged IDs pass.
 
 This packet does not claim same-width no-op coercions because they emit no
-`LirCastOp`. Float, pointer, bitcast, vector, aggregate, implicit-coercion, and
-other explicit cast shapes remain compatibility rows. Steps 7.2 through 7.4
-separately own the representative scalar integer compare, current select, and
-integer abs route; CFG/parameters, object identity, other calls, inline
-assembly, and BIR are unchanged.
+`LirCastOp`. Step 7.7 separately owns one authoritative-source explicit
+FPTrunc. FPExt, other floating, pointer, bitcast, vector, aggregate,
+implicit-coercion, and other explicit cast shapes remain compatibility rows.
+Steps 7.2 through 7.4 separately own the representative scalar integer compare,
+current select, and integer abs route; CFG/parameters, object identity, other
+calls, inline assembly, and BIR are unchanged.
 
 ## Step-7.2 ordinary scalar integer compare contract
 
@@ -419,6 +420,28 @@ vector, complex, logical-helper, builtin, vaarg, statement, aggregate/object,
 CFG/parameter, call, inline-assembly, or BIR routes. All other Step-7 rows and
 previously closed producer families remain unchanged.
 
+## Step-7.7 explicit scalar FPTrunc contract
+
+The claimed row is one explicit, nonpointer, nonvector scalar floating
+`CastExpr` that narrows an authoritative Step-7.5 result. The focused double
+FAdd first allocates a native result ID; `emit_cast_rval_operand` passes that
+same operand to `coerce_operand`, which enters the native floating branch only
+when the source has a `LirValueId` and the destination representation is
+narrower. It allocates the `LirCastOp.result` through `fresh_value`, stores
+native FPTrunc with exact double-to-float endpoints, and returns the same result
+operand to a later float FMul.
+
+Generic ownership resolves both the FAdd-to-FPTrunc source edge and the
+FPTrunc-to-FMul result edge, rejecting invalid/duplicate results and unknown or
+cross-function uses. Reachable cast verification requires FPTrunc, exact
+floating endpoints, and strict narrowing direction; wrong kind, missing or
+nonfloating endpoints, and equal/widening direction reject. Misleading
+source/result/use displays with unchanged IDs pass.
+
+FPExt, integer/floating conversions, pointer/bitcast/vector/complex/aggregate
+casts, implicit coercions, monostate-source floating casts, and all other
+producer families remain compatibility or outside this packet.
+
 ## Mechanical coverage check
 
 Reproducible source-side extraction:
@@ -463,6 +486,10 @@ Current-source spot checks used for this baseline:
   through `coerce_operand`; width-changing scalar integer casts allocate one
   authoritative result and preserve exact native kind/from/to authority, while
   other `coerce` producers remain compatibility;
+- representative scalar FPTrunc: the explicit cast seam accepts only an
+  authoritative Step-7.5 floating source with narrowing representation,
+  preserves that exact source ID, allocates exact double-to-float FPTrunc
+  authority, and passes the cast result ID to a later float FMul;
 - representative scalar compare: `expr/binary.cpp` allocates the ordinary
   integer comparison through `fresh_value`, retains native integer predicate
   and compared type authority, and passes the exact result ID to its existing
