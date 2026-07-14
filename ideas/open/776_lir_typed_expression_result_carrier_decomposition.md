@@ -65,6 +65,46 @@ the primary decomposition probe.
   frontend-LIR positive and malformed proof. No generic migration or PHI/Raw-
   BIR scope is claimed by this decomposition itself.
 
+## Completed Decomposition Handoff
+
+Disposition: documentation/decomposition complete; close accepted pending
+supervisor lifecycle review as intentionally concluded. This source makes no
+producer capability claim and does not authorize a PHI repair.
+
+The typed boundary is `fresh_value(FnCtx&)`, which publishes an owning
+current-function `LirValueId` through `LirOperand::ssa`. `fresh_tmp` publishes
+only display text. `emit_rval_operand` is the typed expression-result boundary;
+`emit_rval_id`, string `emit_rval_payload` overloads, and string `coerce` lose
+that authority.
+
+| Family | Native typed fields proven | Focused proof | First loss | Required successor direction |
+| --- | --- | --- | --- | --- |
+| ternary/coerce | cast source/destination types; `i32` PHI type; later `i64` Add type | `test_ternary_coerce_result_authority_loss_boundary` (`a1064821a`) | `emit_rval_id` plus string `coerce`, then `fresh_tmp` PHI result | carry arm/coercion results as typed operands through the expression consumer |
+| logical | boolean conversion/branch successor IDs; RHS `zext` types; `i32` PHI and later `i32` Add types | `test_logical_short_circuit_result_authority_loss_boundary` (`ed1b2dab5`) | `fresh_tmp` RHS conversion result, then `fresh_tmp` PHI result | carry the RHS result as a typed operand through the expression consumer |
+| vaarg | `LirVaArgOp` `i32` type; SSA va-list pointer kind; later `i32` Add type | `test_vaarg_helper_result_authority_loss_boundary` (`0b4cdc019`) | `fresh_tmp` result passed to `emit_lir_op`, returned through string payload and wrapped raw | carry the vaarg helper result as a typed operand through helper and expression boundaries |
+
+Every probe used the focused frontend-LIR build/test command
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure
+-R '^frontend_lir_call_type_ref$'`; the supervisor accepted the committed
+sequence's regression guard.
+
+Exact 751 return point: keep 751 blocked. A distinct producer-successor must
+first select one documented family and publish an owning current-function
+`LirValueId` as a native `LirOperand` result at its first-loss seam, including
+focused positive and malformed ownership proof. Only after that accepted
+handoff may 751 resume at Step 1 to introduce structured PHI incoming values
+and predecessors with fail-closed verification.
+
+Existing `ideas/open/775_lir_phi_producer_helper_result_identity.md` remains
+the open durable producer intent but is not reactivated by this handoff: its
+resumption record requires a new one-family typed expression-result publication
+successor when no bounded helper-only contract is executable.
+
+This handoff expressly forbids PHI text recovery; PHI carrier/verifier work in
+this source; Raw-BIR/importer/backend work; generic expression migration;
+result-name maps, side tables, synthetic values, or display-text parsing; and
+any capability claim from these observations alone.
+
 ## Reviewer Reject Signals
 
 - Reject a single broad `emit_rval_*` / `coerce` rewrite claimed as progress

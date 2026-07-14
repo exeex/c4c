@@ -1,6 +1,6 @@
 # LIR Typed Expression Result Carrier Decomposition Runbook
 
-Status: Active
+Status: Exhausted — close accepted pending supervisor lifecycle review
 Source Idea: ideas/open/776_lir_typed_expression_result_carrier_decomposition.md
 Activated from: 775's repeated first-loss boundary without failure-family reduction.
 
@@ -108,3 +108,55 @@ Completion check:
 
 - the handoff names each family, typed field, proof, and 751 return point;
   it does not authorize PHI text recovery or Raw-BIR work.
+
+Completed handoff:
+
+- Shared boundary: `fresh_value(FnCtx&)` is the only evidenced pre-render
+  allocation that returns an owning current-function `LirValueId` through
+  `LirOperand::ssa`; `fresh_tmp` is display text only. `emit_rval_operand` is
+  the typed expression-result boundary, while `emit_rval_id`, every string
+  `emit_rval_payload` overload, and string `coerce` discard that authority.
+- Ternary/coerce (`a1064821a`): the independent
+  `test_ternary_coerce_result_authority_loss_boundary` probe proves native
+  `LirCastOp` source/destination types, typed `i32` PHI, and later typed `i64`
+  Add. The arm-coercion result, PHI result, and later Add input are raw at the
+  first loss: `emit_rval_id` and string `coerce`, followed by `fresh_tmp` PHI
+  construction. A successor would have to carry typed arm results through
+  coercion and the expression consumer; this is not PHI text recovery.
+- Logical (`ed1b2dab5`): the independent
+  `test_logical_short_circuit_result_authority_loss_boundary` probe proves
+  boolean conversion result/branch successor IDs, typed non-`i1` RHS `zext`,
+  typed `i32` PHI, and later typed `i32` Add. The RHS conversion result first
+  loses authority at `fresh_tmp`; the logical PHI and consumer remain raw.
+  A successor would have to carry the RHS conversion result through the
+  expression consumer without creating PHI authority from text.
+- Vaarg (`0b4cdc019`): the independent
+  `test_vaarg_helper_result_authority_loss_boundary` probe proves typed `i32`
+  `LirVaArgOp`, its SSA va-list pointer operand, and a later typed `i32` Add.
+  The vaarg result is first raw when `emit_rval_payload(VaArgExpr)` allocates a
+  `fresh_tmp`, sends it to `emit_lir_op`, returns a string, and
+  `emit_rval_expr` wraps it raw. A successor would have to carry the vaarg
+  result through that helper/expression boundary.
+- Focused proof: Step 1's existing scalar carrier contract and each Step 2–4
+  probe passed `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_call_type_ref$'`; the supervisor also
+  accepted the regression guard for the committed decomposition sequence.
+- Exact 751 return point: do not reactivate 751 yet. A distinct producer
+  successor must first publish owning current-function `LirValueId` authority
+  as native `LirOperand` results for the selected family at its first-loss
+  boundary, with focused positive and malformed ownership proof. Only after
+  that accepted handoff may 751 resume at Step 1 to add its PHI incoming
+  value/predecessor carriers and fail-closed verification.
+- Disposition: this documentation/decomposition runbook is complete and may
+  close as intentionally concluded. It makes no producer capability claim;
+  it requires a distinct successor before 751 can resume because the required
+  typed expression-result propagation is outside this idea and cannot be
+  recovered from raw PHI text. Existing 775 remains the open durable producer
+  intent but is not reactivated by this handoff: its resumption record requires
+  a new one-family typed expression-result publication successor if no bounded
+  helper-only contract is executable.
+
+Forbidden in any use of this handoff: PHI text recovery, PHI carrier or
+verifier implementation in this idea, Raw-BIR/importer/backend scope, generic
+expression migration, result-name maps, side tables, synthetic values, and
+capability claims from these observations alone.
