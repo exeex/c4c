@@ -3,32 +3,38 @@
 Status: Active
 Source Idea Path: ideas/open/767_lir_computed_goto_table_element_pointer_authority_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Extract and record direct frontend-LIR probe harnesses
+Current Step ID: 4
+Current Step Title: Bind probes and select the narrowest generic seam
 
 ## Just Finished
 
-- Completed 767 Step 2 source-form inventory:
-  - Static-local pointer table: HIR promotes the table to a global with a
-    `LinkNameId`; `emit_lval_dispatch` returns its base as a string,
-    `emit_indexed_gep(string, string)` emits a raw-result `LirGepOp`, and
-    `emit_rval_from_access_ptr` emits the element `LirLoadOp` with a raw result.
-    The global input authority first disappears at the string lvalue/GEP seam.
-  - Local pointer table: the table starts as a local-slot string;
-    `emit_lval_dispatch` and `emit_indexed_gep(string, string)` retain only
-    presentation, then `emit_rval_from_access_ptr` emits a raw-result element
-    load. The local address has no structured pointer-result carrier before
-    the same string GEP/load boundary.
-- Both forms have specific producer/result contracts; neither involves
-  `IndirBrStmt` or `addr_value` publication.
+- Completed 767 Step 3 no-code probe-harness record in
+  `tests/frontend/frontend_lir_call_type_ref_test.cpp`:
+  - Static-local table harness: extend `test_global_array_gep_identity_contract`
+    with `int f(int i) { static const void *t[] = {&&a, &&b}; goto *t[i];
+    a: return 1; b: return 2; }`. Future positive: the global-table element
+    GEP retains its `LinkNameId`, typed i64 index authority, and pointer result
+    ID; the following pointer load consumes that exact GEP ID and returns its
+    own valid pointer ID. Future malformed checks: missing/invalid GEP result,
+    missing global base ID, raw/invalid index, and load pointer that is
+    foreign or does not identify the GEP result.
+  - Local table harness: add alongside
+    `test_local_and_parameter_rvalue_identity_route` a minimal
+    `int f(int i) { void *t[] = {&&a, &&b}; goto *t[i]; a: return 1;
+    b: return 2; }`. Future positive: the local table-address/result path
+    supplies a current-function pointer ID to the typed table-element GEP;
+    its pointer load consumes that exact ID and returns a valid pointer ID.
+    Future malformed checks: raw/invalid/foreign/non-pointer local GEP base,
+    raw index, missing GEP result, and a load pointer not selected by that GEP.
+- These are future contracts, not current positives: both existing paths lose
+  structured result authority at the string GEP/load boundary. They do not
+  relax or accept raw behavior, and neither asserts indirect-branch publication.
 
 ## Suggested Next
 
-- Extract or record one direct frontend-LIR harness for each static-local and
-  local table-element producer/result contract. Record the exact future
-  positive structured-result and malformed-authority assertions, but do not
-  mark current raw behavior as a passing capability or repair/change
-  publication in this packet.
+- Bind the two future probe contracts to their producer/result maps and select
+  the narrowest generic implementation owner, or return a precise blocker.
+  Do not repair or change publication in this decomposition packet.
 
 ## Watchouts
 
