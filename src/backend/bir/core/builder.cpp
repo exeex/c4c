@@ -1306,6 +1306,11 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
     return cast && cast->kind == CastKind::FPToUI && cast->from_type == f64 &&
         cast->to_type == i32;
   }();
+  const bool exact_wide_ffs_trunc_add = exact_add && lhs_producer && [&] {
+    const auto* cast = std::get_if<CastNode>(&lhs_producer.value().get().payload);
+    return cast && cast->kind == CastKind::Trunc &&
+        cast->from_type == i64 && cast->to_type == i32;
+  }();
   if ((!exact_fadd && !exact_fmul && !exact_float_fmul && !exact_add && !exact_sext_add && !exact_mul) ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
@@ -1332,7 +1337,7 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       }()) ||
       (exact_add && !std::holds_alternative<LoadNode>(lhs_producer.value().get().payload) &&
        !std::holds_alternative<AbsNode>(lhs_producer.value().get().payload) &&
-       !exact_cttz_add && !exact_fptosi_add && !exact_fptoui_add) ||
+       !exact_cttz_add && !exact_fptosi_add && !exact_fptoui_add && !exact_wide_ffs_trunc_add) ||
       (exact_sext_add && [&] {
         const auto* cast = std::get_if<CastNode>(&lhs_producer.value().get().payload);
         return !cast || cast->kind != CastKind::SExt || cast->from_type != i32 ||
@@ -1564,6 +1569,69 @@ Result<BuildResult, BuildError> FunctionBuilder::append(
   return Result<BuildResult, BuildError>::success(BuildResult{instruction_id, {result_id}});
 }
 
+Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, SelectSpec spec) {
+  auto function = mutable_function();
+  if (!function) return Result<BuildResult, BuildError>::failure(function.error());
+  if (!same_owner(function_, block))
+    return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
+  auto& function_data = function.value().get();
+  const Type i64{TypeKind::Integer, 64, "i64"};
+  if (!function_data.blocks_.contains(function_, block))
+    return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
+  if (spec.type != i64 || function_data.values_by_source_id_.count(spec.source_result_id) != 0)
+    return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  detail::InstData instruction;
+  instruction.opcode = Opcode::Select;
+  instruction.payload = SelectNode{spec.type};
+  auto inserted = function_data.insts_.emplace(function_, std::move(instruction));
+  if (!inserted) return Result<BuildResult, BuildError>::failure(storage_error(inserted.error()));
+  const auto instruction_id = inserted.value();
+  ValueDef result{ValueKind::Ordinary, spec.type,
+                  SourceValueId{function_, spec.source_result_id},
+                  InstResultDef{instruction_id, 0}};
+  auto inserted_result = function_data.values_.emplace(function_, std::move(result));
+  if (!inserted_result) {
+    function_data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(storage_error(inserted_result.error()));
+  }
+  const auto result_id = inserted_result.value();
+  auto stored = function_data.insts_.get_mut(function_, instruction_id);
+  if (!stored) {
+    function_data.values_.erase(function_, result_id);
+    function_data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  stored.value().get().results = {result_id};
+  try {
+    const auto indexed = function_data.values_by_source_id_.emplace(spec.source_result_id, result_id);
+    if (!indexed.second) {
+      function_data.values_.erase(function_, result_id);
+      function_data.insts_.erase(function_, instruction_id);
+      return Result<BuildResult, BuildError>::failure(BuildError::DuplicateSourceValue);
+    }
+    if (!function_data.value_order_.append(result_id)) {
+      function_data.values_by_source_id_.erase(spec.source_result_id);
+      function_data.values_.erase(function_, result_id);
+      function_data.insts_.erase(function_, instruction_id);
+      return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+    }
+  } catch (...) {
+    function_data.values_by_source_id_.erase(spec.source_result_id);
+    function_data.values_.erase(function_, result_id);
+    function_data.insts_.erase(function_, instruction_id);
+    throw;
+  }
+  auto block_data = function_data.blocks_.get_mut(function_, block);
+  if (!block_data || !block_data.value().get().instruction_order_.append(instruction_id)) {
+    function_data.values_by_source_id_.erase(spec.source_result_id);
+    function_data.value_order_.erase(result_id);
+    function_data.values_.erase(function_, result_id);
+    function_data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  return Result<BuildResult, BuildError>::success(BuildResult{instruction_id, {result_id}});
+}
+
 Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, CastSpec spec) {
   auto function = mutable_function();
   if (!function) return Result<BuildResult, BuildError>::failure(function.error());
@@ -1602,7 +1670,8 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, CastSpec 
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   if (intrinsic_trunc) {
     const auto producer = function_data.insts_.get(function_, operand_def->instruction);
-    if (!producer || !std::holds_alternative<IntrinsicCallNode>(producer.value().get().payload))
+    if (!producer || (!std::holds_alternative<IntrinsicCallNode>(producer.value().get().payload) &&
+                      !std::holds_alternative<SelectNode>(producer.value().get().payload)))
       return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   }
   if (scalar_fptrunc) {

@@ -37,6 +37,9 @@ class InstView {
   const CompareNode* compare() const noexcept {
     return std::get_if<CompareNode>(&data_->payload);
   }
+  const SelectNode* select() const noexcept {
+    return std::get_if<SelectNode>(&data_->payload);
+  }
   const IntrinsicCallNode* intrinsic_call() const noexcept {
     return std::get_if<IntrinsicCallNode>(&data_->payload);
   }

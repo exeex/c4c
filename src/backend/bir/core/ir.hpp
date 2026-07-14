@@ -143,6 +143,7 @@ enum class Opcode : std::uint8_t {
   Call,
   Binary,
   Compare,
+  Select,
   Cast,
 };
 
@@ -191,6 +192,13 @@ struct CompareNode {
   Type type{};
 };
 
+// This is intentionally a receipt of the producer-verified wide ffs select
+// result, not a general select lowering.  Its condition and arms remain LIR
+// producer authority and are not materialized in Raw BIR.
+struct SelectNode {
+  Type type{};
+};
+
 enum class IntrinsicKind : std::uint8_t { Cttz, Ctlz, Ctpop };
 
 struct IntrinsicCallNode {
@@ -210,7 +218,7 @@ struct CastNode {
 
 using InstPayload =
     std::variant<InlineAsmNode, StoreNode, LoadNode, GetElementPtrNode,
-    AbsNode, CallNode, BinaryNode, CompareNode, IntrinsicCallNode, CastNode>;
+    AbsNode, CallNode, BinaryNode, CompareNode, SelectNode, IntrinsicCallNode, CastNode>;
 
 class BlockView;
 class FunctionView;

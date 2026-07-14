@@ -80,6 +80,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
       return std::holds_alternative<BinaryNode>(instruction.payload);
     case Opcode::Compare:
       return std::holds_alternative<CompareNode>(instruction.payload);
+    case Opcode::Select:
+      return std::holds_alternative<SelectNode>(instruction.payload);
     case Opcode::Cast:
       return std::holds_alternative<CastNode>(instruction.payload);
   }
@@ -829,8 +831,11 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                            const auto* producer_cast = std::get_if<CastNode>(
                                &producer.value().get().payload);
                            return producer_cast && (producer_cast->kind == CastKind::FPToSI ||
-                               producer_cast->kind == CastKind::FPToUI) &&
-                               producer_cast->from_type == f64 && producer_cast->to_type == i32;
+                               producer_cast->kind == CastKind::FPToUI ||
+                               producer_cast->kind == CastKind::Trunc) &&
+                               ((producer_cast->from_type == f64 && producer_cast->to_type == i32) ||
+                                (producer_cast->from_type == Type{TypeKind::Integer, 64, "i64"} &&
+                                 producer_cast->to_type == i32));
                          }())
                       : sext_add ? [&] {
                           const auto* cast = std::get_if<CastNode>(
@@ -966,7 +971,8 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           if (!def) exact = false;
           if (exact && intrinsic_trunc) {
             const auto producer = function.insts_.get(function_id, def->instruction);
-            exact = producer && std::holds_alternative<IntrinsicCallNode>(producer.value().get().payload);
+            exact = producer && (std::holds_alternative<IntrinsicCallNode>(producer.value().get().payload) ||
+                std::holds_alternative<SelectNode>(producer.value().get().payload));
           }
           if (exact && scalar_fptrunc) {
             const auto producer = function.insts_.get(function_id, def->instruction);
@@ -998,6 +1004,19 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         if (exact) { const auto result_value = function.values_.get(function_id, instruction.results[0]); exact = result_value && result_value.value().get().type == cast->to_type && result_value.value().get().source_id.has_value() && result_value.value().get().source_id->owner == function_id; }
         if (!exact) report(result, VerificationRule::ValueDefinition, function_id, inst_id,
                            "cast must retain an admitted typed current-function scalar receipt");
+      }
+      if (const auto* select = std::get_if<SelectNode>(&instruction.payload)) {
+        const Type i64{TypeKind::Integer, 64, "i64"};
+        bool exact = select->type == i64 && instruction.operands.empty() &&
+            instruction.results.size() == 1;
+        if (exact) {
+          const auto value = function.values_.get(function_id, instruction.results[0]);
+          exact = value && value.value().get().type == i64 &&
+              value.value().get().source_id.has_value() &&
+              value.value().get().source_id->owner == function_id;
+        }
+        if (!exact) report(result, VerificationRule::ValueDefinition, function_id, inst_id,
+                           "select must retain the admitted typed wide ffs result receipt");
       }
       for (std::size_t result_index = 0;
            result_index < instruction.results.size(); ++result_index) {

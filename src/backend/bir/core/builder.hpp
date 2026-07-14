@@ -199,6 +199,11 @@ struct CompareSpec {
   std::uint32_t source_result_id = 0;
 };
 
+struct SelectSpec {
+  Type type{};
+  std::uint32_t source_result_id = 0;
+};
+
 struct IntrinsicCallSpec {
   IntrinsicKind kind = IntrinsicKind::Ctpop;
   LinkNameId callee_link_name{};
@@ -311,6 +316,7 @@ class FunctionBuilder {
   Result<BuildResult, BuildError> append(BlockId block, CallSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, BinarySpec spec);
   Result<BuildResult, BuildError> append(BlockId block, CompareSpec spec);
+  Result<BuildResult, BuildError> append(BlockId block, SelectSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, IntrinsicCallSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, CastSpec spec);
   Result<void, BuildError> set_terminator(BlockId block,

@@ -39,6 +39,7 @@ using codegen::lir::LirIntrinsicKind;
 using codegen::lir::LirModule;
 using codegen::lir::LirLoadOp;
 using codegen::lir::LirRet;
+using codegen::lir::LirSelectOp;
 using codegen::lir::LirStoreOp;
 using codegen::lir::LirSwitch;
 using codegen::lir::LirUnreachable;
@@ -768,6 +769,34 @@ bool exact_downstream_i32_fptoui_add(
     const LirBinOp& bin, const std::unordered_map<std::uint32_t, Type>& source_values,
     const std::unordered_set<std::uint32_t>& scalar_fptoui_results) {
   return exact_downstream_i32_fptosi_add(bin, source_values, scalar_fptoui_results);
+}
+
+bool exact_wide_ffs_select(const LirSelectOp& select) {
+  using codegen::lir::LirOperandKind;
+  const auto* result = select.result.value_id();
+  return select.result.kind() == LirOperandKind::SsaValue && result && result->valid() &&
+      select.type_str.kind() == codegen::lir::LirTypeKind::Integer &&
+      select.type_str.integer_bit_width() == 64;
+}
+
+bool exact_wide_ffs_trunc(const LirModule& module, const LirCastOp& cast,
+                           const std::unordered_map<std::uint32_t, Type>& source_values,
+                           const std::unordered_set<std::uint32_t>& select_results) {
+  using codegen::lir::LirOperandKind;
+  const auto* result = cast.result.value_id();
+  const auto* operand = cast.operand.value_id();
+  const auto from = lower_lir_type(module, cast.from_type);
+  const auto to = lower_lir_type(module, cast.to_type);
+  const auto found = operand ? source_values.find(operand->value) : source_values.end();
+  return cast.kind == codegen::lir::LirCastKind::Trunc &&
+      cast.result.kind() == LirOperandKind::SsaValue && result && result->valid() &&
+      cast.operand.kind() == LirOperandKind::SsaValue && operand && operand->valid() &&
+      cast.from_type.kind() == codegen::lir::LirTypeKind::Integer &&
+      cast.to_type.kind() == codegen::lir::LirTypeKind::Integer && from && to &&
+      *from == Type{TypeKind::Integer, 64, "i64"} &&
+      *to == Type{TypeKind::Integer, 32, "i32"} &&
+      select_results.count(operand->value) == 1 && found != source_values.end() &&
+      found->second == *from;
 }
 
 bool exact_downstream_double_fpext_fmul(
@@ -2155,6 +2184,9 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_map<std::uint32_t, std::size_t> scalar_fptosi_add_uses;
   std::unordered_set<std::uint32_t> scalar_fptoui_results;
   std::unordered_map<std::uint32_t, std::size_t> scalar_fptoui_add_uses;
+  std::unordered_set<std::uint32_t> wide_ffs_select_results;
+  std::unordered_set<std::uint32_t> wide_ffs_trunc_results;
+  std::unordered_map<std::uint32_t, std::size_t> wide_ffs_trunc_add_uses;
   std::unordered_set<std::uint32_t> downstream_double_olt_compare_results;
   std::unordered_map<std::uint32_t, std::size_t> downstream_double_olt_zext_uses;
   std::unordered_set<std::uint32_t> selected_global_i32_load_results;
@@ -2440,6 +2472,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
             *bin, source_values, scalar_fptosi_results);
         const bool fptoui_add = exact_downstream_i32_fptoui_add(
             *bin, source_values, scalar_fptoui_results);
+        const bool wide_ffs_trunc_add = exact_downstream_i32_fptosi_add(
+            *bin, source_values, wide_ffs_trunc_results);
         const bool add = exact_normalized_i32_add(
             *bin, source_values, selected_global_i32_load_results) ||
             exact_native_i32_cttz_add(
@@ -2458,7 +2492,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
             : float_fmul ? Type{TypeKind::F32, 32, "float"}
             : sext_add ? Type{TypeKind::Integer, 64, "i64"}
                        : Type{TypeKind::Integer, 32, "i32"};
-        if ((!fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !float_fmul && !add && !mul && !sext_add) ||
+        if ((!fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !wide_ffs_trunc_add && !float_fmul && !add && !mul && !sext_add) ||
             !source_values.emplace(bin->result.value_id()->value, result_type).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
@@ -2474,6 +2508,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
         if (uitofp_fmul) ++scalar_uitofp_fmul_uses[bin->lhs.value_id()->value];
         if (fptosi_add) ++scalar_fptosi_add_uses[bin->lhs.value_id()->value];
         if (fptoui_add) ++scalar_fptoui_add_uses[bin->lhs.value_id()->value];
+        if (wide_ffs_trunc_add) ++wide_ffs_trunc_add_uses[bin->lhs.value_id()->value];
         continue;
       }
       if (const auto* abs = std::get_if<LirAbsOp>(&instruction)) {
@@ -2501,6 +2536,15 @@ Result<void, ImportError> validate_function(const LirModule& module,
         if (olt) downstream_double_olt_compare_results.insert(compare->result.value_id()->value);
         continue;
       }
+      if (const auto* select = std::get_if<LirSelectOp>(&instruction)) {
+        if (!exact_wide_ffs_select(*select) ||
+            !source_values.emplace(select->result.value_id()->value,
+                                   Type{TypeKind::Integer, 64, "i64"}).second)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                            "select requires the one admitted typed wide ffs result receipt");
+        wide_ffs_select_results.insert(select->result.value_id()->value);
+        continue;
+      }
       if (const auto* cast = std::get_if<LirCastOp>(&instruction)) {
         if (exact_double_olt_zext_use(*cast, downstream_double_olt_compare_results)) {
           ++downstream_double_olt_zext_uses[cast->operand.value_id()->value];
@@ -2519,7 +2563,9 @@ Result<void, ImportError> validate_function(const LirModule& module,
             module, *cast, source_values, downstream_double_fadd_results);
         const bool scalar_fptoui = exact_double_to_unsigned_i32_fptoui(
             module, *cast, source_values, downstream_double_fadd_results);
-        if ((!intrinsic_trunc && !scalar_sext && !scalar_fptrunc && !scalar_fpext && !scalar_sitofp && !scalar_uitofp && !scalar_fptosi && !scalar_fptoui) ||
+        const bool wide_ffs_trunc = exact_wide_ffs_trunc(
+            module, *cast, source_values, wide_ffs_select_results);
+        if ((!intrinsic_trunc && !scalar_sext && !scalar_fptrunc && !scalar_fpext && !scalar_sitofp && !scalar_uitofp && !scalar_fptosi && !scalar_fptoui && !wide_ffs_trunc) ||
             !source_values.emplace(cast->result.value_id()->value,
                                    scalar_sext ? Type{TypeKind::Integer, 64, "i64"}
                                    : scalar_fptrunc ? Type{TypeKind::F32, 32, "float"}
@@ -2528,6 +2574,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
                                    : scalar_uitofp ? Type{TypeKind::F64, 64, "double"}
                                    : scalar_fptosi ? Type{TypeKind::Integer, 32, "i32"}
                                    : scalar_fptoui ? Type{TypeKind::Integer, 32, "i32"}
+                                   : wide_ffs_trunc ? Type{TypeKind::Integer, 32, "i32"}
                                                     : Type{TypeKind::Integer, 32, "i32"}).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
@@ -2539,6 +2586,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
         if (scalar_uitofp) scalar_uitofp_results.insert(cast->result.value_id()->value);
         if (scalar_fptosi) scalar_fptosi_results.insert(cast->result.value_id()->value);
         if (scalar_fptoui) scalar_fptoui_results.insert(cast->result.value_id()->value);
+        if (wide_ffs_trunc) wide_ffs_trunc_results.insert(cast->result.value_id()->value);
         continue;
       }
       const auto* inline_asm = std::get_if<LirInlineAsmOp>(&instruction);
@@ -2588,6 +2636,11 @@ Result<void, ImportError> validate_function(const LirModule& module,
     if (scalar_fptoui_add_uses[result] != 1)
       return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
                         "scalar FPToUI result lacks its one exact i32 Add use");
+  }
+  for (const auto result : wide_ffs_trunc_results) {
+    if (wide_ffs_trunc_add_uses[result] != 1)
+      return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
+                        "wide ffs trunc result lacks its one exact i32 Add use");
   }
 
   for (const auto result : inline_asm_results) {
@@ -2940,6 +2993,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
           std::unordered_set<std::uint32_t> scalar_uitofp_results;
           std::unordered_set<std::uint32_t> scalar_fptosi_results;
           std::unordered_set<std::uint32_t> scalar_fptoui_results;
+          std::unordered_set<std::uint32_t> wide_ffs_select_results;
+          std::unordered_set<std::uint32_t> wide_ffs_trunc_results;
           std::unordered_set<std::uint32_t> downstream_double_olt_compare_results;
           std::unordered_set<std::uint32_t> native_i32_cttz_results;
           std::unordered_set<std::uint32_t> selected_global_i32_abs_results;
@@ -3395,6 +3450,11 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                     bin->type_str.kind() == codegen::lir::LirTypeKind::Integer &&
                     bin->type_str.integer_bit_width() == 32 &&
                     scalar_fptoui_results.count(bin->lhs.value_id()->value) == 1;
+                const bool wide_ffs_trunc_add = bin->opcode.typed() ==
+                    std::optional{codegen::lir::LirBinaryOpcode::Add} &&
+                    bin->type_str.kind() == codegen::lir::LirTypeKind::Integer &&
+                    bin->type_str.integer_bit_width() == 32 &&
+                    wide_ffs_trunc_results.count(bin->lhs.value_id()->value) == 1;
                 const bool add = bin->opcode.typed() ==
                     std::optional{codegen::lir::LirBinaryOpcode::Add};
                 const bool abs_add = add &&
@@ -3407,7 +3467,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 if (lhs == source_values.end() ||
                     (fadd && native_floating_call_results.count(
                         bin->lhs.value_id()->value) == 0) ||
-                    (!fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !float_fmul && !sext_add && !abs_add && !cttz_add && !add && normalized_i32_add_results.count(
+                    (!fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !wide_ffs_trunc_add && !float_fmul && !sext_add && !abs_add && !cttz_add && !add && normalized_i32_add_results.count(
                         bin->lhs.value_id()->value) == 0)) {
                   edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
                                            name, block.label,
@@ -3578,6 +3638,24 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                     compare->result.value_id()->value);
                 continue;
               }
+              if (const auto* select = std::get_if<LirSelectOp>(&instruction)) {
+                auto appended = function_builder.append(
+                    blocks.at(block.id.value),
+                    SelectSpec{Type{TypeKind::Integer, 64, "i64"},
+                               select->result.value_id()->value});
+                if (!appended || appended.value().results.size() != 1 ||
+                    !source_values.emplace(select->result.value_id()->value,
+                                           appended.value().results[0]).second) {
+                  edit_error = appended
+                      ? ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                                    block.label, "wide ffs select result registration failed"}
+                      : builder_failure(name, block.label, "append wide ffs select", appended.error());
+                  return Result<void, BuildError>::failure(
+                      appended ? BuildError::DuplicateSourceValue : appended.error());
+                }
+                wide_ffs_select_results.insert(select->result.value_id()->value);
+                continue;
+              }
               if (const auto* cast = std::get_if<LirCastOp>(&instruction)) {
                 if (exact_double_olt_zext_use(*cast, downstream_double_olt_compare_results))
                   continue;
@@ -3649,6 +3727,10 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   scalar_fptosi_results.insert(cast->result.value_id()->value);
                 if (cast->kind == codegen::lir::LirCastKind::FPToUI)
                   scalar_fptoui_results.insert(cast->result.value_id()->value);
+                if (cast->kind == codegen::lir::LirCastKind::Trunc &&
+                    cast->operand.value_id() &&
+                    wide_ffs_select_results.count(cast->operand.value_id()->value) == 1)
+                  wide_ffs_trunc_results.insert(cast->result.value_id()->value);
                 continue;
               }
               const auto& inline_asm = std::get<LirInlineAsmOp>(instruction);

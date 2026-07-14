@@ -9894,6 +9894,83 @@ void test_scalar_double_to_unsigned_i32_fptoui_receipt_and_rejections() {
   rejected([](auto& candidate, auto&, auto&) { candidate.functions[0].blocks[0].insts.pop_back(); }, "missing downstream i32 Add use must reject atomically");
 }
 
+lir::LirModule normalized_i32_add_module();
+
+lir::LirModule wide_ffs_select_trunc_module() {
+  auto module = normalized_i32_add_module();
+  auto& block = module.functions[0].blocks[0];
+  block.insts.clear();
+  block.insts.push_back(lir::LirSelectOp{
+      lir::LirOperand::ssa("%wide-ffs-select", lir::LirValueId{40}),
+      lir::LirTypeRef::integer(64),
+      lir::LirOperand::ssa("%producer-verified-condition", lir::LirValueId{70}),
+      lir::LirOperand::integer("zero", 0),
+      lir::LirOperand::ssa("%producer-verified-plus-one", lir::LirValueId{71})});
+  block.insts.push_back(lir::LirCastOp{
+      lir::LirOperand::ssa("%wide-ffs-trunc", lir::LirValueId{41}),
+      lir::LirCastKind::Trunc, lir::LirTypeRef::integer(64),
+      lir::LirOperand::ssa("%wide-ffs-select-use", lir::LirValueId{40}),
+      lir::LirTypeRef::integer(32)});
+  block.insts.push_back(lir::LirBinOp{
+      lir::LirOperand::ssa("%wide-ffs-add", lir::LirValueId{42}),
+      lir::LirBinaryOpcode::Add, lir::LirTypeRef::integer(32),
+      lir::LirOperand::ssa("%wide-ffs-trunc-use", lir::LirValueId{41}),
+      lir::LirOperand::integer("one", 1)});
+  block.terminator = lir::LirRet{lir::LirOperand::ssa("%wide-ffs-return", lir::LirValueId{42}),
+                                 lir::LirTypeRef::integer(32)};
+  return module;
+}
+
+void test_wide_ffs_select_trunc_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto function_id = view.functions()[0];
+    const auto function = view.function(function_id).value();
+    const auto insts = function.instructions(function.blocks()[0]).value();
+    const auto select = function.instruction(insts[0]).value();
+    const auto trunc = function.instruction(insts[1]).value();
+    const auto add = function.instruction(insts[2]).value();
+    expect(insts.size() == 3 && select.select() &&
+               select.select()->type == bir::Type{bir::TypeKind::Integer, 64, "i64"} &&
+               select.operands().empty() && select.results().size() == 1 &&
+               function.value(select.results()[0]).value().source_id ==
+                   bir::SourceValueId{function_id, 40} &&
+               trunc.cast() && trunc.cast()->kind == bir::CastKind::Trunc &&
+               trunc.cast()->from_type == bir::Type{bir::TypeKind::Integer, 64, "i64"} &&
+               trunc.cast()->to_type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+               trunc.operands() == std::vector<bir::ValueId>{select.results()[0]} &&
+               add.binary() && add.binary()->opcode == bir::BinaryOpcode::Add &&
+               add.operands()[0] == trunc.results()[0],
+           layer + " must preserve only the typed wide ffs select result through Trunc to Add");
+  };
+  const auto module = wide_ffs_select_trunc_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "wide ffs select trunc must publish verified Raw BIR");
+  inspect(raw.value(), "Raw BIR");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(), "wide ffs select trunc must canonicalize");
+  inspect(canonical.value(), "Canonical BIR");
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto candidate = wide_ffs_select_trunc_module();
+    auto& select = std::get<lir::LirSelectOp>(candidate.functions[0].blocks[0].insts[0]);
+    auto& cast = std::get<lir::LirCastOp>(candidate.functions[0].blocks[0].insts[1]);
+    auto& use = std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[2]);
+    mutate(candidate, select, cast, use);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value(), message + " (Raw rollback)");
+    expect(!bir::lower_lir_to_canonical_bir(candidate).has_value(), message + " (Canonical rollback)");
+  };
+  rejected([](auto&, auto& select, auto&, auto&) { select.result = lir::LirOperand::raw("%missing"); }, "missing select result authority must reject atomically");
+  rejected([](auto&, auto& select, auto&, auto&) { select.type_str = lir::LirTypeRef::integer(32); }, "wrong select result type must reject atomically");
+  rejected([](auto&, auto& select, auto&, auto&) { select.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{41}); }, "duplicate select result must reject atomically");
+  rejected([](auto&, auto&, auto& cast, auto&) { cast.operand = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); }, "unresolved trunc source must reject atomically");
+  rejected([](auto&, auto&, auto& cast, auto&) { cast.kind = lir::LirCastKind::SExt; }, "wrong cast kind or direction must reject atomically");
+  rejected([](auto&, auto&, auto& cast, auto&) { cast.to_type = lir::LirTypeRef::integer(64); }, "non-narrowing trunc must reject atomically");
+  rejected([](auto&, auto&, auto&, auto& use) { use.lhs = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); }, "unresolved Add use must reject atomically");
+  rejected([](auto&, auto&, auto&, auto& use) { use.opcode = lir::LirBinaryOpcode::Mul; }, "wrong downstream use kind must reject atomically");
+  rejected([](auto& candidate, auto&, auto&, auto&) { candidate.functions[0].blocks[0].insts.pop_back(); }, "missing downstream Add use must reject atomically");
+}
+
 lir::LirModule normalized_i32_add_module() {
   auto module = direct_global_integer_load_module();
   auto& function = module.functions[0];
@@ -10906,6 +10983,7 @@ int main() {
   test_scalar_unsigned_i32_to_double_uitofp_receipt_and_rejections();
   test_scalar_double_to_signed_i32_fptosi_receipt_and_rejections();
   test_scalar_double_to_unsigned_i32_fptoui_receipt_and_rejections();
+  test_wide_ffs_select_trunc_receipt_and_rejections();
   test_normalized_i32_add_receipt_and_rejections();
   test_normalized_i32_mul_receipt_and_rejections();
   test_native_intrinsic_receipt_and_rejections();
