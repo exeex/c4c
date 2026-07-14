@@ -544,6 +544,14 @@ LirOperand StmtEmitter::emit_rval_expr(FnCtx& ctx, const Expr& e) {
   if (const auto* member = std::get_if<MemberExpr>(&e.payload)) {
     return emit_member_rval_operand(ctx, *member, e);
   }
+  if (const auto* index = std::get_if<IndexExpr>(&e.payload);
+      index && !is_vector_value(resolve_expr_type(ctx, index->base))) {
+    TypeSpec pointee_ts{};
+    const LirOperand access_ptr = emit_indexed_lval_operand(ctx, *index, pointee_ts);
+    TypeSpec load_ts = resolve_expr_type(ctx, e);
+    if (!has_concrete_type(load_ts)) load_ts = pointee_ts;
+    return emit_rval_from_access_ptr(ctx, access_ptr, pointee_ts, load_ts, false);
+  }
   return LirOperand::raw(
       std::visit([&](const auto& p) -> std::string { return emit_rval_payload(ctx, p, e); },
                  e.payload));

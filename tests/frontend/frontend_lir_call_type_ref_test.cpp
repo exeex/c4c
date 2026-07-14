@@ -1091,6 +1091,38 @@ void test_indirect_branch_successor_identity_contract() {
                     lowered_indirect->targets[i] == destination->label,
                 "computed-goto lowering should publish ordered IDs parallel to label mirrors");
   }
+
+  lir::LirModule indexed = lower_lir_module_for_target(
+      "int computed_index(int index) { void *targets[] = { &&first, &&second }; "
+      "goto *targets[index]; first: return 1; second: return 2; }",
+      "x86_64-unknown-linux-gnu");
+  const lir::LirFunction& computed_index = require_function(indexed, "computed_index");
+  const lir::LirIndirectBrOp* indexed_indirect = nullptr;
+  for (const auto& block : computed_index.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* op = std::get_if<lir::LirIndirectBrOp>(&inst)) {
+        indexed_indirect = op;
+        break;
+      }
+    }
+    if (indexed_indirect) break;
+  }
+  expect_true(indexed_indirect != nullptr && indexed_indirect->addr_value.has_value() &&
+                  indexed_indirect->addr.value_id() &&
+                  *indexed_indirect->addr.value_id() == *indexed_indirect->addr_value,
+              "indexed computed-goto lowering should preserve the loaded pointer value ID");
+
+  lir::LirModule malformed_indexed = indexed;
+  for (auto& block : malformed_indexed.functions.front().blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* op = std::get_if<lir::LirIndirectBrOp>(&inst)) {
+        op->addr_value.reset();
+      }
+    }
+  }
+  expect_identity_verification_rejected(
+      malformed_indexed,
+      "verifier should reject an indexed computed-goto with a missing loaded pointer value ID");
 }
 
 void test_structured_operand_identity_foundation() {
