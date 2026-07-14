@@ -8,16 +8,16 @@ Current Step Title: Add focused proof for typed authority
 
 ## Just Finished
 
-- Plan Step 3 complete without a header change: `LirBinaryOpcodeRef` and
-  `LirCmpPredicateRef` already each provide direct enum construction, retain
-  text constructors that parse once into their optional enum state, and return
-  that cached state through `typed()` without reparsing rendered text.
+- Plan Step 4 complete: `frontend_lir_call_type_ref_test` now proves enum-built
+  i32, ptr, and void refs retain builtin id, kind, width where applicable, and
+  rendered text. It mutates the i32 rendered text and proves id/width remain
+  enum-authoritative; a dynamic array remains text-compatible with no builtin
+  id.
 
 ## Suggested Next
 
-- Step 4 implementation: add focused coverage for enum-constructed
-  `LirTypeRef` builtin queries and a supported dynamic text form; cover the
-  related closed-set wrappers only if their constructor/query behavior changes.
+- Step 5 validation and handoff: inspect the final diff, run the required
+  focused LIR/frontend/backend validation, and preserve 760 as successor.
 
 ## Watchouts
 
@@ -28,8 +28,11 @@ Current Step Title: Add focused proof for typed authority
   enum foundation pass.
 - Dynamic vector, array, struct, function, opaque, VRM, and arbitrary integer
   spellings remain supported text-backed inputs in this foundation slice.
+- The mutable `str()` compatibility surface intentionally does not rewrite an
+  enum-built ref's cached typed authority.
 
 ## Proof
 
-- No build or test run: this packet made no code change because both wrappers
-  already met the criterion. `test_after.log` was not modified.
+- Passed: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log`.
+- `test_after.log` contains the passing `frontend_lir_call_type_ref` subset.

@@ -253,6 +253,49 @@ void expect_type_ref_structured_equality_uses_name_id(
               "call legacy no-id type refs should still compare by rendered text");
 }
 
+void test_lir_type_ref_builtin_enum_authority() {
+  using c4c::codegen::lir::LirBuiltinType;
+  using c4c::codegen::lir::LirTypeKind;
+  using c4c::codegen::lir::LirTypeRef;
+
+  LirTypeRef integer(LirBuiltinType::I32);
+  expect_eq(integer.str(), "i32", "enum-built integer should render as i32");
+  expect_true(integer.builtin_type() == LirBuiltinType::I32,
+              "enum-built integer should retain its builtin id");
+  expect_true(integer.kind() == LirTypeKind::Integer,
+              "enum-built integer should retain integer kind");
+  expect_true(integer.integer_bit_width() == 32,
+              "enum-built integer should retain integer width");
+
+  integer.str() = "i8";
+  expect_true(integer.builtin_type() == LirBuiltinType::I32,
+              "enum-built integer id should not be reparsed from mutable text");
+  expect_true(integer.integer_bit_width() == 32,
+              "enum-built integer width should not be reparsed from mutable text");
+
+  const LirTypeRef pointer(LirBuiltinType::Pointer);
+  expect_eq(pointer.str(), "ptr", "enum-built pointer should render as ptr");
+  expect_true(pointer.builtin_type() == LirBuiltinType::Pointer,
+              "enum-built pointer should retain its builtin id");
+  expect_true(pointer.kind() == LirTypeKind::Pointer,
+              "enum-built pointer should retain pointer kind");
+
+  const LirTypeRef void_type(LirBuiltinType::Void);
+  expect_eq(void_type.str(), "void", "enum-built void should render as void");
+  expect_true(void_type.builtin_type() == LirBuiltinType::Void,
+              "enum-built void should retain its builtin id");
+  expect_true(void_type.kind() == LirTypeKind::Void,
+              "enum-built void should retain void kind");
+
+  const LirTypeRef dynamic_array("[4 x i32]");
+  expect_eq(dynamic_array.str(), "[4 x i32]",
+            "dynamic array type should retain rendered text compatibility");
+  expect_true(dynamic_array.kind() == LirTypeKind::Array,
+              "dynamic array type should retain array kind");
+  expect_true(!dynamic_array.builtin_type().has_value(),
+              "dynamic array type should not claim a builtin id");
+}
+
 c4c::Node make_record_owner(std::string_view name, c4c::TextId text_id,
                             int namespace_context_id) {
   c4c::Node owner{};
@@ -6177,6 +6220,7 @@ long long lir_scalar_llabs_immediate_authority(void) {
 }  // namespace
 
 int main() {
+  test_lir_type_ref_builtin_enum_authority();
   c4c::hir::Module hir_module = lower_hir_module(R"c(
 struct Pair {
   int left;
