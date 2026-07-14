@@ -1,10 +1,10 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md
+Source Idea Path: ideas/open/775_lir_phi_producer_helper_result_identity.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Publish and verify typed PHI incoming authority
+Current Step Title: Establish typed helper-result authority for PHI producers
 
 ## Just Finished
 

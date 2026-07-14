@@ -46,3 +46,28 @@ still silently depend on presentation text.
 - Full baseline acceptance requires 100% passing tests. If a baseline run is
   below 100%, reject closure and trace `log/*` by time/commit to identify the
   first bad commit before continuing.
+
+## Resumption Record: ordinary helper-result authority blocker
+
+No 751 implementation packet or after-proof occurred. The first-loss audit
+established that `LirPhiOp` still stores raw incoming pairs, but its three
+required producer families cannot supply native incoming value authority:
+
+- ternary production loses it through `emit_rval_id` / `coerce`;
+- logical short-circuit production allocates only a `fresh_tmp` display result;
+- vaarg helper chains and `emit_lir_op` append raw-string-result operations.
+
+Constructing `LirOperand` authority at the PHI seam would require parsing
+display text, which is forbidden by this source. The required generic helper
+result/value-identity publication is outside this bounded PHI-carrier scope.
+
+Classification: `separate-blocker`. Open
+`ideas/open/775_lir_phi_producer_helper_result_identity.md` owns only native
+current-function result identity for those ternary, logical, and vaarg helper
+chains. It must not alter `LirPhiOp` carrier/verification, Raw-BIR receipt, or
+recover identity from text.
+
+Exact return point: after 775 accepts a typed helper-result handoff, reactivate
+751 at Step 1. Retain closed 750's predecessor-block contract, add the PHI
+value/predecessor carrier and fail-closed verification, and prove only the
+ternary, logical, and vaarg PHI producer families.
