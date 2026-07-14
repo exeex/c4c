@@ -96,14 +96,14 @@ std::string StmtEmitter::emit_amd64_va_arg(FnCtx& ctx, const TypeSpec& res_ts,
   if (layout.gp_chunks > 0) {
     const int gp_limit = 48 - layout.gp_chunks * 8;
     gp_ok = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirCmpOp{gp_ok, false, "sle", "i32", gp_offset, std::to_string(gp_limit)});
+    emit_lir_op(ctx, lir::LirCmpOp{gp_ok, false, LirCmpPredicate::Sle, "i32", gp_offset, std::to_string(gp_limit)});
   }
 
   std::string fp_ok = "true";
   if (layout.sse_slots > 0) {
     const int fp_limit = 176 - layout.sse_slots * 16;
     fp_ok = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirCmpOp{fp_ok, false, "sle", "i32", fp_offset, std::to_string(fp_limit)});
+    emit_lir_op(ctx, lir::LirCmpOp{fp_ok, false, LirCmpPredicate::Sle, "i32", fp_offset, std::to_string(fp_limit)});
   }
 
   std::string regs_ok;

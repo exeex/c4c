@@ -8,16 +8,16 @@ Current Step Title: Repair the targeted warning-inventory route
 
 ## Just Finished
 
-- Step 6 targeted warning-inventory repair complete: all six fixed generic
-  `va_arg` comparison predicates in `src/codegen/lir/hir_to_lir/call/vaarg.cpp`
-  now use `LirCmpPredicate::Sge` / `LirCmpPredicate::Sle`, preserving `i32`
-  type text, offsets, limits, operands, and emitted comparison semantics.
+- Step 6 targeted warning-inventory repair complete: the two fixed AMD64
+  `va_arg` GP/SSE offset-limit `sle` comparisons in
+  `src/codegen/lir/hir_to_lir/call/vaarg_amd64.cpp` now use
+  `LirCmpPredicate::Sle`, preserving `i32` type text, bounds, operands,
+  layout conditions, and emitted comparison semantics.
 
 ## Suggested Next
 
-- Step 6: select the next targeted warning-inventory family; AMD64-specific
-  `va_arg` predicates remain a separate candidate and are outside this
-  completed generic-family packet.
+- Step 6: select the next targeted warning-inventory family; the generic and
+  AMD64-specific fixed `va_arg` comparison predicate families are complete.
 
 ## Watchouts
 
@@ -58,8 +58,8 @@ Current Step Title: Repair the targeted warning-inventory route
 - Boolean-coercion `ne`/`une` predicates in `to_bool` and `to_bool_operand`
   are a closed known set and now enum-backed; dynamic `ty` paths remain
   intentionally outside this packet.
-- The generic `va_arg` fixed `sge`/`sle` predicates are now enum-backed; do
-  not fold AMD64-specific `va_arg` lowering into this completed family.
+- The generic and AMD64-specific fixed `va_arg` comparison predicates are now
+  enum-backed; retain their architecture-specific lowering boundaries.
 
 ## Proof
 
