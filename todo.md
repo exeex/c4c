@@ -1,52 +1,64 @@
 # Current Packet
 
-Status: Packet Complete - Supervisor Proof Pending
+Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.19
-Current Step Title: Publish builtin-popcount call-result/use authority
+Current Step ID: 7.20
+Current Step Title: Publish builtin-parity result/use authority
 
 ## Just Finished
 
-- Completed Plan Step 7.19 for only PI's i32/i64 builtin-popcount `llvm.ctpop`
+- Accepted Plan Step 7.19 for only PI's i32/i64 builtin-popcount `llvm.ctpop`
   call, optional i64-to-i32 Trunc, and one later ordinary i32 use.
-- Added native Ctpop, a module-owned callee ID, and an exact fixed
-  one-integer-parameter signature while requiring zero-count behavior to be
-  absent and preserving the existing Cttz/Ctlz contracts.
-- Allocated the call result through `fresh_value`; returned it directly for
-  i32 and preserved it through a fresh authoritative exact i64-to-i32 Trunc
-  for i64, carrying the final exact ID into the later Add.
-- Added source/literal width coverage, misleading-display positives, and
-  malformed intrinsic kind, forbidden zero behavior, signature/count, result,
-  trunc-source/kind/endpoint, final-use, and literal-payload authority
-  rejections. The matrix records the boundary.
+- The matched focused and full regression proofs passed, and commit `8929002bd`
+  records the coherent Step-7.19 slice.
+- Step 7 is not complete: the checked matrix still names parity and other
+  production ordinary rows as unclaimed rather than exact separately owned
+  blockers.
 
 ## Suggested Next
 
-- Supervisor: run broader proof, review the packet diff, and choose the next
-  bounded Step-7 row through plan-owner.
+- Executor: complete Plan Step 7.20 for only PI's i32/i64
+  `emit_builtin_parity_call` route. Publish the native Ctpop call result into
+  the scalar integer And-with-one result, preserve any required exact
+  i64-to-i32 Trunc, and carry the final authoritative i32 ID into one later
+  ordinary use.
 
 ## Watchouts
 
-- Own only PI's i32/i64 `emit_builtin_popcount_call` route. Native Ctpop uses
-  the common intrinsic kind field but must not carry `zero_count_behavior`.
+- Reuse the accepted Ctpop contract: native `LirIntrinsicKind::Ctpop`, one
+  module-owned callee `LinkNameId`, an exact fixed nonvariadic
+  one-integer-parameter signature, and no `zero_count_behavior`. Do not infer
+  semantics or identity from intrinsic, result, operand, or temporary text.
 - Preserve arg0's honest compatibility boundary: available native authority
   must be a valid current-function SSA ID, while monostate SSA or Immediate
-  presentation does not acquire payload authority from spelling.
-- Keep the exact call-result-to-Trunc-to-final-use edges and exact i64-to-i32
-  narrowing. Preserve Cttz/Ctlz contracts; exclude parity and all other
-  intrinsic/builtin/direct/indirect calls, ABI/variadic work, pointer/vector/
-  aggregate/object families,
-  CFG/parameters, inline assembly, and BIR.
+  presentation must not acquire payload authority from spelling.
+- Allocate the parity And result through `fresh_value`, require native integer
+  And opcode/type authority, preserve the exact Ctpop result as its lhs and an
+  exactly representable integer immediate one as its rhs, then preserve the
+  exact result through only the route-required i64-to-i32 Trunc and final i32
+  use.
+- Reachable verification must reject invalid/duplicate/unknown/cross-function
+  result or use IDs; wrong intrinsic kind, callee, signature, counts, opcode,
+  type, immediate payload, cast kind/endpoints, or chain endpoints; any
+  zero-count behavior; and invented authority for compatible literal input.
+  Misleading displays with unchanged native facts must pass.
+- Exclude popcount's already-accepted direct result route, all other
+  intrinsic/builtin calls and binary/cast producers, direct/indirect/variadic/
+  ABI call expansion, pointer/vector/complex/aggregate/object families,
+  CFG/parameters, inline assembly, BIR receipt, and all idea-741 contracts.
+- This packet is carrier-ready only on the existing Ctpop, scalar integer
+  BinOp, optional Trunc, and generic ownership seams. If exact parity
+  publication requires a new semantic carrier or a text-derived bridge, stop
+  and return that exact blocker; do not widen Step 7.20.
 
 ## Proof
 
-- Fresh `cmake --build --preset default` passed for the Step-7.19 production
-  changes.
-- `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
-  passed 1/1 after focused identity/display/malformed coverage was added.
-- Matched focused `test_before.log` / `test_after.log` passed 1/1 before and
-  after with delta 0 passed / 0 failed and no new failures.
-- The supervisor's matched full regression guard passed 3033/3033 before and
-  after, with delta 0 passed / 0 failed and no new failures.
-- `git diff --check` passed. The final commit remains supervisor-owned.
+- Fresh `cmake --build --preset default`.
+- Focused `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
+  covering i32/i64 parity identity, misleading-display positives, and every
+  malformed native fact and chain edge owned above.
+- Preserve nearby accepted Cttz/Ctlz/Ctpop and scalar integer BinOp/Trunc
+  coverage unchanged; the supervisor owns matched regression logs and any
+  broader/full proof.
+- Run `git diff --check` before handoff.
