@@ -31,6 +31,24 @@ enum class LirTypeKind : unsigned char {
   RawText,
 };
 
+// Closed scalar spellings that can carry semantic identity independently of
+// their rendered LLVM text. Other LIR type forms remain runtime text-backed.
+enum class LirBuiltinType : unsigned char {
+  Void,
+  Pointer,
+  I1,
+  I8,
+  I16,
+  I32,
+  I64,
+  I128,
+  Half,
+  Float,
+  Double,
+  Fp128,
+  X86Fp80,
+};
+
 class LirTypeRef {
  public:
   LirTypeRef() = default;
@@ -39,16 +57,24 @@ class LirTypeRef {
       : text_(std::move(text)),
         kind_(kind.value_or(classify(text_))),
         integer_bit_width_(derive_integer_bit_width(text_, kind_)),
-        vrm_width_(derive_vrm_width(text_, kind_)) {}
+        vrm_width_(derive_vrm_width(text_, kind_)),
+        builtin_type_(builtin_type_for(text_, kind_)) {}
   LirTypeRef(std::string text, LirTypeKind kind)
       : text_(std::move(text)),
         kind_(kind),
         integer_bit_width_(derive_integer_bit_width(text_, kind_)),
-        vrm_width_(derive_vrm_width(text_, kind_)) {}
+        vrm_width_(derive_vrm_width(text_, kind_)),
+        builtin_type_(builtin_type_for(text_, kind_)) {}
   LirTypeRef(std::string text, LirTypeKind kind, unsigned integer_bit_width)
       : text_(std::move(text)),
         kind_(kind),
-        integer_bit_width_(integer_bit_width) {}
+        integer_bit_width_(integer_bit_width),
+        builtin_type_(builtin_type_for(text_, kind_)) {}
+  LirTypeRef(LirBuiltinType builtin_type)
+      : text_(builtin_text(builtin_type)),
+        kind_(builtin_kind(builtin_type)),
+        integer_bit_width_(builtin_integer_bit_width(builtin_type)),
+        builtin_type_(builtin_type) {}
 
   [[nodiscard]] static LirTypeRef integer(unsigned bit_width) {
     return LirTypeRef("i" + std::to_string(bit_width), LirTypeKind::Integer, bit_width);
@@ -75,6 +101,9 @@ class LirTypeRef {
   [[nodiscard]] const std::string& str() const { return text_; }
   [[nodiscard]] std::string& str() { return text_; }
   [[nodiscard]] LirTypeKind kind() const { return kind_; }
+  [[nodiscard]] std::optional<LirBuiltinType> builtin_type() const {
+    return builtin_type_;
+  }
   [[nodiscard]] std::optional<unsigned> integer_bit_width() const {
     return integer_bit_width_;
   }
@@ -167,6 +196,84 @@ class LirTypeRef {
   }
 
  private:
+  [[nodiscard]] static std::string builtin_text(LirBuiltinType builtin_type) {
+    switch (builtin_type) {
+      case LirBuiltinType::Void: return "void";
+      case LirBuiltinType::Pointer: return "ptr";
+      case LirBuiltinType::I1: return "i1";
+      case LirBuiltinType::I8: return "i8";
+      case LirBuiltinType::I16: return "i16";
+      case LirBuiltinType::I32: return "i32";
+      case LirBuiltinType::I64: return "i64";
+      case LirBuiltinType::I128: return "i128";
+      case LirBuiltinType::Half: return "half";
+      case LirBuiltinType::Float: return "float";
+      case LirBuiltinType::Double: return "double";
+      case LirBuiltinType::Fp128: return "fp128";
+      case LirBuiltinType::X86Fp80: return "x86_fp80";
+    }
+    return {};
+  }
+
+  [[nodiscard]] static LirTypeKind builtin_kind(LirBuiltinType builtin_type) {
+    switch (builtin_type) {
+      case LirBuiltinType::Void: return LirTypeKind::Void;
+      case LirBuiltinType::Pointer: return LirTypeKind::Pointer;
+      case LirBuiltinType::I1:
+      case LirBuiltinType::I8:
+      case LirBuiltinType::I16:
+      case LirBuiltinType::I32:
+      case LirBuiltinType::I64:
+      case LirBuiltinType::I128: return LirTypeKind::Integer;
+      case LirBuiltinType::Half:
+      case LirBuiltinType::Float:
+      case LirBuiltinType::Double:
+      case LirBuiltinType::Fp128:
+      case LirBuiltinType::X86Fp80: return LirTypeKind::Floating;
+    }
+    return LirTypeKind::RawText;
+  }
+
+  [[nodiscard]] static std::optional<unsigned> builtin_integer_bit_width(
+      LirBuiltinType builtin_type) {
+    switch (builtin_type) {
+      case LirBuiltinType::I1: return 1;
+      case LirBuiltinType::I8: return 8;
+      case LirBuiltinType::I16: return 16;
+      case LirBuiltinType::I32: return 32;
+      case LirBuiltinType::I64: return 64;
+      case LirBuiltinType::I128: return 128;
+      default: return std::nullopt;
+    }
+  }
+
+  [[nodiscard]] static std::optional<LirBuiltinType> builtin_from_text(
+      std::string_view text) {
+    if (text == "void") return LirBuiltinType::Void;
+    if (text == "ptr") return LirBuiltinType::Pointer;
+    if (text == "i1") return LirBuiltinType::I1;
+    if (text == "i8") return LirBuiltinType::I8;
+    if (text == "i16") return LirBuiltinType::I16;
+    if (text == "i32") return LirBuiltinType::I32;
+    if (text == "i64") return LirBuiltinType::I64;
+    if (text == "i128") return LirBuiltinType::I128;
+    if (text == "half") return LirBuiltinType::Half;
+    if (text == "float") return LirBuiltinType::Float;
+    if (text == "double") return LirBuiltinType::Double;
+    if (text == "fp128") return LirBuiltinType::Fp128;
+    if (text == "x86_fp80") return LirBuiltinType::X86Fp80;
+    return std::nullopt;
+  }
+
+  [[nodiscard]] static std::optional<LirBuiltinType> builtin_type_for(
+      std::string_view text, LirTypeKind kind) {
+    const auto builtin_type = builtin_from_text(text);
+    if (builtin_type.has_value() && builtin_kind(*builtin_type) == kind) {
+      return builtin_type;
+    }
+    return std::nullopt;
+  }
+
   [[nodiscard]] static std::optional<unsigned> parse_integer_bit_width(
       std::string_view text) {
     if (text.size() <= 1 || text.front() != 'i') {
@@ -253,6 +360,7 @@ class LirTypeRef {
   LirTypeKind kind_ = LirTypeKind::RawText;
   std::optional<unsigned> integer_bit_width_;
   std::optional<unsigned> vrm_width_;
+  std::optional<LirBuiltinType> builtin_type_;
   StructNameId struct_name_id_ = kInvalidStructName;
 };
 

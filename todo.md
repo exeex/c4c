@@ -3,22 +3,22 @@
 Status: Active
 Source Idea Path: ideas/open/759_lir_typed_ref_enum_foundation.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect existing ref wrapper authority
+Current Step ID: 2
+Current Step Title: Add enum/id construction for LirTypeRef
 
 ## Just Finished
 
-- Plan Step 1 complete: audited `src/codegen/lir/types.hpp` authority for the
-  closed-set `LirBinaryOpcodeRef` and `LirCmpPredicateRef` wrappers. Each owns
-  a closed enum plus a cached optional typed value; text construction parses
-  once and `typed()` returns that cache without reparsing. Enum construction
-  renders through `to_string`. `LirTypeRef` remains intentionally open-ended
-  (`LirTypeKind::RawText`) and separately derives integer/VRM detail from text.
+- Plan Step 2 complete: added `LirBuiltinType` for void, pointer, i1/i8/i16/
+  i32/i64/i128, and half/float/double/fp128/x86_fp80. `LirTypeRef` now
+  constructs directly from that enum and exposes `builtin_type()`; enum
+  construction derives rendered text, kind, and integer width from enum state
+  without reparsing text. Existing text constructors and dynamic spellings are
+  retained; recognized compatible text also records the builtin id.
 
 ## Suggested Next
 
-- Step 2 implementation: make the closed-set wrapper enum path the explicit
-  authority while retaining existing runtime string construction.
+- Step 3 implementation: normalize the existing enum-first construction and
+  typed query pattern for `LirBinaryOpcodeRef` and `LirCmpPredicateRef`.
 
 ## Watchouts
 
@@ -27,10 +27,11 @@ Current Step Title: Inspect existing ref wrapper authority
   accepted and closed.
 - Do not relax verifier rules or change HIR/BIR/backend semantics to make the
   enum foundation pass.
-- `typed()` presently exposes cached parse state, so Step 2 should avoid any
-  typed query path that reparses `text_`.
+- Dynamic vector, array, struct, function, opaque, VRM, and arbitrary integer
+  spellings remain supported text-backed inputs in this foundation slice.
 
 ## Proof
 
-- No build or test proof run: this read-only audit packet explicitly required
-  none. No root-level test log was created or modified.
+- Passed: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log`.
+- `test_after.log` contains the passing `frontend_lir_call_type_ref` subset.
