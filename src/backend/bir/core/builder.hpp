@@ -175,6 +175,15 @@ struct CallSpec {
   std::optional<std::uint32_t> source_result_id;
 };
 
+struct IntrinsicCallSpec {
+  IntrinsicKind kind = IntrinsicKind::Ctpop;
+  LinkNameId callee_link_name{};
+  Type type{};
+  std::vector<ValueId> arguments;
+  std::optional<bool> zero_count_is_undef;
+  std::uint32_t source_result_id = 0;
+};
+
 using TerminatorSpec = Terminator;
 
 class FunctionBuilder;
@@ -267,6 +276,7 @@ class FunctionBuilder {
   Result<BuildResult, BuildError> append(BlockId block,
                                          GetElementPtrSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, CallSpec spec);
+  Result<BuildResult, BuildError> append(BlockId block, IntrinsicCallSpec spec);
   Result<void, BuildError> set_terminator(BlockId block,
                                           TerminatorSpec terminator);
 

@@ -163,9 +163,18 @@ struct CallNode {
   FunctionId callee{};
 };
 
+enum class IntrinsicKind : std::uint8_t { Cttz, Ctlz, Ctpop };
+
+struct IntrinsicCallNode {
+  IntrinsicKind kind = IntrinsicKind::Ctpop;
+  LinkNameId callee_link_name{};
+  Type type{};
+  std::optional<bool> zero_count_is_undef;
+};
+
 using InstPayload =
     std::variant<InlineAsmNode, StoreNode, LoadNode, GetElementPtrNode,
-                 CallNode>;
+                 CallNode, IntrinsicCallNode>;
 
 class BlockView;
 class FunctionView;

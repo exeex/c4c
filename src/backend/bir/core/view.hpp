@@ -28,6 +28,9 @@ class InstView {
   const CallNode* call() const noexcept {
     return std::get_if<CallNode>(&data_->payload);
   }
+  const IntrinsicCallNode* intrinsic_call() const noexcept {
+    return std::get_if<IntrinsicCallNode>(&data_->payload);
+  }
   const std::vector<ValueId>& operands() const noexcept { return data_->operands; }
   const std::vector<ValueId>& results() const noexcept { return data_->results; }
 

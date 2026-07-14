@@ -8900,6 +8900,105 @@ void test_direct_integer_call_receipt_and_rejections() {
            "floating calls must remain fail-closed");
 }
 
+// Native intrinsics deliberately use a link-name payload rather than CallNode.
+lir::LirCallOp native_intrinsic(c4c::LinkNameId link, lir::LirIntrinsicKind kind,
+                                lir::LirValueId result, lir::LirOperand operand) {
+  lir::LirCallOp call;
+  call.result = lir::LirOperand::ssa("%intrinsic", result);
+  call.return_type = lir::LirTypeRef::integer(32);
+  call.callee = lir::LirOperand::global("@display", link);
+  call.direct_callee_link_name_id = link;
+  call.intrinsic_kind = kind;
+  lir::LirCallSignature signature;
+  signature.return_type_ref = lir::LirTypeRef::integer(32);
+  signature.fixed_param_types = {"i32"};
+  signature.fixed_param_type_refs = {lir::LirTypeRef::integer(32)};
+  call.arg_type_refs = {lir::LirTypeRef::integer(32)};
+  call.structured_args = {{"i32", std::move(operand), lir::LirTypeRef::integer(32)}};
+  if (kind != lir::LirIntrinsicKind::Ctpop) {
+    call.zero_count_behavior = lir::LirZeroCountBehavior::Defined;
+    signature.fixed_param_types.push_back("i1");
+    signature.fixed_param_type_refs.push_back(lir::LirTypeRef::integer(1));
+    call.arg_type_refs.push_back(lir::LirTypeRef::integer(1));
+    call.structured_args.push_back({"i1", lir::LirOperand::integer("flag", 0),
+                                    lir::LirTypeRef::integer(1)});
+  }
+  call.callee_signature = std::move(signature);
+  return call;
+}
+
+lir::LirModule native_intrinsic_module() {
+  lir::LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const auto caller_link = module.link_names.intern("native_intrinsic_caller");
+  const auto cttz_link = module.link_names.intern("llvm.cttz.i32");
+  const auto ctpop_link = module.link_names.intern("llvm.ctpop.i32");
+  auto caller = direct_integer_function("intrinsic_caller", false);
+  caller.link_name_id = caller_link;
+  caller.blocks[0].insts.push_back({lir::LirConstInt{lir::LirValueId{3}, scalar_type(c4c::TB_INT), 41}});
+  caller.blocks[0].insts.push_back(native_intrinsic(cttz_link, lir::LirIntrinsicKind::Cttz,
+      lir::LirValueId{9}, lir::LirOperand::ssa("%value", lir::LirValueId{3})));
+  caller.blocks[0].insts.push_back(native_intrinsic(ctpop_link, lir::LirIntrinsicKind::Ctpop,
+      lir::LirValueId{10}, lir::LirOperand::ssa("%value", lir::LirValueId{9})));
+  caller.blocks[0].terminator = lir::LirRet{lir::LirOperand::ssa("%return", lir::LirValueId{10}), lir::LirTypeRef::integer(32)};
+  module.functions.push_back(std::move(caller));
+  return module;
+}
+
+void test_native_intrinsic_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto caller_id = view.functions()[0];
+    const auto caller = view.function(caller_id).value();
+    const auto insts = caller.instructions(caller.blocks()[0]).value();
+    expect(insts.size() == 2, layer + " must retain both native intrinsic instructions");
+    const auto cttz = caller.instruction(insts[0]).value();
+    const auto ctpop = caller.instruction(insts[1]).value();
+    expect(cttz.opcode() == bir::Opcode::Call && !cttz.call() && cttz.intrinsic_call() &&
+               cttz.intrinsic_call()->kind == bir::IntrinsicKind::Cttz &&
+               cttz.intrinsic_call()->zero_count_is_undef == std::optional<bool>{false} &&
+               cttz.operands().size() == 2 && cttz.results().size() == 1,
+           layer + " must retain separately tagged cttz and native flag");
+    expect(ctpop.opcode() == bir::Opcode::Call && !ctpop.call() && ctpop.intrinsic_call() &&
+               ctpop.intrinsic_call()->kind == bir::IntrinsicKind::Ctpop &&
+               !ctpop.intrinsic_call()->zero_count_is_undef && ctpop.operands().size() == 1,
+           layer + " must retain separately tagged ctpop without behavior");
+    expect(view.source_id(cttz.intrinsic_call()->callee_link_name).value() == 2 &&
+               view.source_id(ctpop.intrinsic_call()->callee_link_name).value() == 3 &&
+               caller.value(cttz.results()[0]).value().source_id == bir::SourceValueId{caller_id, 9} &&
+               caller.value(ctpop.results()[0]).value().source_id == bir::SourceValueId{caller_id, 10},
+           layer + " must retain LinkNameId and source-backed owning results");
+  };
+  const auto module = native_intrinsic_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  if (!raw.has_value())
+    fail("native integer intrinsics must publish Raw BIR: " + raw.error().detail +
+         (raw.error().verification_errors.empty() ? "" :
+          ": " + raw.error().verification_errors.front().message));
+  expect(bir::FoundationVerifier::verify(raw.value()).ok(),
+         "native integer intrinsics must publish verified Raw BIR");
+  inspect(raw.value(), "Raw BIR");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(), "native integer intrinsics must canonicalize");
+  inspect(canonical.value(), "Canonical BIR");
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto candidate = native_intrinsic_module();
+    auto& call = std::get<lir::LirCallOp>(candidate.functions[0].blocks[0].insts[1]);
+    mutate(candidate, call);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() && raw_rejected.error().code == bir::ImportErrorCode::UnsupportedOrdinaryInstruction, message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value() && canonical_rejected.error().code == bir::ImportErrorCode::UnsupportedOrdinaryInstruction, message + " (Canonical rollback)");
+  };
+  rejected([](auto&, auto& call) { call.direct_callee_link_name_id = 999; }, "unknown intrinsic link must reject atomically");
+  rejected([](auto&, auto& call) { call.structured_args[1].operand = lir::LirOperand::integer("bad", 1); }, "behavior flag mismatch must reject atomically");
+  rejected([](auto&, auto& call) { call.structured_args[0].operand = lir::LirOperand::global("@bad", 1); }, "unsupported intrinsic operands must reject atomically");
+  rejected([](auto&, auto& call) { call.structured_args.pop_back(); }, "wrong intrinsic operand count must reject atomically");
+  rejected([](auto&, auto& call) { call.intrinsic_kind = static_cast<lir::LirIntrinsicKind>(99); }, "other intrinsic kinds must remain fail-closed");
+}
+
 }  // namespace
 
 int main() {
@@ -8966,5 +9065,6 @@ int main() {
   test_direct_zero_argument_void_call_builder_contract();
   test_direct_zero_argument_void_call_rejections();
   test_direct_integer_call_receipt_and_rejections();
+  test_native_intrinsic_receipt_and_rejections();
   return 0;
 }

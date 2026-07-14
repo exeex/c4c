@@ -72,7 +72,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
     case Opcode::GetElementPtr:
       return std::holds_alternative<GetElementPtrNode>(instruction.payload);
     case Opcode::Call:
-      return std::holds_alternative<CallNode>(instruction.payload);
+      return std::holds_alternative<CallNode>(instruction.payload) ||
+             std::holds_alternative<IntrinsicCallNode>(instruction.payload);
   }
   return false;
 }
@@ -724,6 +725,28 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           report(result, VerificationRule::ValueDefinition, function_id,
                  inst_id,
                  "call must target one module-owned nonvariadic function with exact ordered operands and result arity");
+      }
+      if (const auto* call = std::get_if<IntrinsicCallNode>(&instruction.payload)) {
+        const bool count_flag = call->kind == IntrinsicKind::Cttz ||
+                                call->kind == IntrinsicKind::Ctlz;
+        bool exact = call->callee_link_name.epoch == module.epoch_ &&
+            call->callee_link_name.slot < module.link_names_.size() &&
+            integer_type(call->type) && instruction.operands.size() == (count_flag ? 2U : 1U) &&
+            call->zero_count_is_undef.has_value() == count_flag &&
+            instruction.results.size() == 1;
+        for (std::size_t index = 0; exact && index < instruction.operands.size(); ++index) {
+          const auto value = function.values_.get(function_id, instruction.operands[index]);
+          exact = value && value.value().get().type ==
+              (index == 0 ? call->type : Type{TypeKind::Integer, 1, "i1"});
+        }
+        if (exact) {
+          const auto value = function.values_.get(function_id, instruction.results[0]);
+          exact = value && value.value().get().type == call->type &&
+              value.value().get().source_id.has_value() &&
+              value.value().get().source_id->owner == function_id;
+        }
+        if (!exact) report(result, VerificationRule::ValueDefinition, function_id,
+                           inst_id, "intrinsic call must retain an exact native integer signature, LinkNameId, operands, and source-backed result");
       }
       for (std::size_t result_index = 0;
            result_index < instruction.results.size(); ++result_index) {
