@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.6
-Current Step Title: Publish ordinary scalar floating comparison result/use authority (complete)
+Current Step ID: 7.7
+Current Step Title: Publish explicit scalar floating cast result/use authority
 
 ## Just Finished
 
@@ -21,20 +21,29 @@ Current Step Title: Publish ordinary scalar floating comparison result/use autho
 
 ## Suggested Next
 
-- Select the next bounded Step-7 scalar row from the updated matrix; a
-  representation-changing scalar floating cast is the nearest candidate.
+- Execute Step 7.7: publish one explicit representation-changing scalar
+  floating `LirCastOp` result/use chain.
 
 ## Watchouts
 
-- The Step-7.6 claim is only PB's ordinary scalar floating comparison after all
-  excluded route exits; do not infer coverage for other `LirCmpOp` producers.
-- Floating literals and the normalization cast result remain compatibility;
-  do not reconstruct authority from their rendered spellings.
-- Authority-scoped comparison verification now accepts coherent integer and
-  floating claims but rejects mode/predicate/type family disagreement.
-- Preserve Steps 3 through 7.6 and idea-741 neighbors. Keep pointer/vector/
-  complex/logical/builtin/vaarg/statement comparisons, aggregate/object,
-  CFG/parameters, calls, inline assembly, and BIR outside the next packet.
+- Own only PX's explicit nonpointer, nonvector scalar floating-to-floating cast
+  whose source and destination representations differ; use one FPTrunc chain
+  from an authoritative Step-7.5 floating result into a later ordinary
+  floating operation.
+- Extend the operand-returning `coerce_operand` seam so the cast allocates
+  through `fresh_value`, consumes the exact source result ID, retains native
+  `FPTrunc` plus exact floating from/to type refs, and returns the same cast
+  result ID to the later use.
+- Require authoritative floating cast kind, type family, and width direction
+  to agree; reject invalid/duplicate results, unknown or cross-function uses,
+  missing/conflicting types, nonfloating endpoints, and nonnarrowing FPTrunc.
+- Accept misleading display only after native authority is proven. Keep
+  same-representation no-op casts and structurally unavailable floating
+  literals as honest compatibility; never reconstruct IDs from spelling.
+- Exclude FPExt and integer/floating conversion expansion beyond the focused
+  FPTrunc row, plus pointer, bitcast, vector, complex, aggregate, implicit
+  coercion, other cast producers, CFG/parameters, calls, inline assembly, and
+  BIR.
 
 ## Proof
 
