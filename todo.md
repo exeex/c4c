@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.3
-Current Step Title: Publish representative scalar select result/use authority (complete)
+Current Step ID: 7.4
+Current Step Title: Publish representative scalar abs result/use authority
 
 ## Just Finished
 
@@ -22,20 +22,21 @@ Current Step Title: Publish representative scalar select result/use authority (c
 
 ## Suggested Next
 
-- Select the next bounded Plan Step 7 ordinary producer row from the updated
-  matrix; abs remains the immediate unclaimed scalar candidate.
+- Execute Step 7.4: publish representative scalar `LirAbsOp` result/use
+  authority.
 
 ## Watchouts
 
-- Do not infer identity for the select's internal cttz call, plus-one binary, or
-  zero comparison; their producers remain compatibility.
-- Keep wider ffs narrowing and unavailable condition/false-arm authority
-  unclaimed; do not reconstruct IDs from their displays.
-- Abs may reuse the common allocator/operand mechanism but still requires its
-  own producer/type contract and focused proof.
-- Preserve closed Step-3 through Step-7.3 rows and idea-741 regression
-  neighbors; keep pointer/object, aggregate/vector, CFG/parameters, calls,
-  inline assembly, ABI, and BIR outside the next packet.
+- Own only the current integer `LirAbsOp` producer with exact integer type,
+  structurally available argument authority, and a `fresh_value` result.
+- Preserve that exact result ID into a later ordinary use in the same function;
+  do not reconstruct either operand from display spelling.
+- Accept misleading display after native authority is proven; reject invalid
+  or duplicate results, unknown or cross-function uses, and missing or
+  conflicting type or argument alternatives.
+- Keep every other Step-7 row and all pointer/object, aggregate/vector,
+  CFG/terminator, parameter, call, inline-assembly, ABI, and new-BIR families
+  outside Step 7.4.
 
 ## Proof
 
