@@ -1,8 +1,22 @@
 # LIR I686 Long-Width Policy Convergence
 
-Status: Open (active)
+Status: Closed
 Type: target-width semantic policy convergence
 Blocked Consumer: ideas/open/734_lir_to_new_bir_container_completeness.md
+
+## Completion Record
+
+Closed after the active runbook's accepted fresh build, focused cross-target
+CTests, relevant backend receipt proof, and regression comparison confirmed the
+single structured policy: I686 `long`/`unsigned long` mirrors are i32 and
+supported LP64 mirrors are i64 across LIR production and verification plus
+new-BIR parameter, return, and global receipt. Malformed I686 i64 mirrors
+reject transactionally, while neighboring type behavior remains covered.
+
+The completed bounded handoff permits only idea 734's default-shape
+`long`/`unsigned long` parameter rows to be re-evaluated in that separate
+lifecycle decision. It neither activates nor concludes ideas 734, 744, or 746;
+their remaining blockers are independent of this completed source intent.
 
 ## Goal
 
