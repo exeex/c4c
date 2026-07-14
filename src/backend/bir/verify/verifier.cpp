@@ -733,10 +733,12 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
       if (const auto* binary = std::get_if<BinaryNode>(&instruction.payload)) {
         const Type f64{TypeKind::F64, 64, "double"};
         const Type i32{TypeKind::Integer, 32, "i32"};
+        const Type i64{TypeKind::Integer, 64, "i64"};
         const bool fadd = binary->opcode == BinaryOpcode::FAdd && binary->type == f64;
         const bool add = binary->opcode == BinaryOpcode::Add && binary->type == i32;
+        const bool sext_add = binary->opcode == BinaryOpcode::Add && binary->type == i64;
         const bool mul = binary->opcode == BinaryOpcode::Mul && binary->type == i32;
-        bool exact = (fadd || add || mul) && instruction.operands.size() == 2 &&
+        bool exact = (fadd || add || sext_add || mul) && instruction.operands.size() == 2 &&
             instruction.results.size() == 1;
         if (exact) {
           for (const auto operand_id : instruction.operands) {
@@ -758,6 +760,12 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
             exact = producer && (fadd
                 ? std::holds_alternative<CallNode>(producer.value().get().payload)
                 : add ? std::holds_alternative<LoadNode>(producer.value().get().payload)
+                      : sext_add ? [&] {
+                          const auto* cast = std::get_if<CastNode>(
+                              &producer.value().get().payload);
+                          return cast && cast->kind == CastKind::SExt &&
+                              cast->from_type == i32 && cast->to_type == i64;
+                        }()
                       : [&] {
                           const auto* producer_binary = std::get_if<BinaryNode>(
                               &producer.value().get().payload);
@@ -766,7 +774,7 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                               producer_binary->type == i32;
                         }());
         }
-        if (exact && (add || mul)) {
+        if (exact && (add || sext_add || mul)) {
           const auto rhs = function.values_.get(function_id, instruction.operands[1]);
           const auto* rhs_constant = rhs
               ? std::get_if<ConstantDef>(&rhs.value().get().definition)
@@ -777,7 +785,7 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
               ? std::get_if<IntegerConstant>(
                     &module.constants_[rhs_constant->constant.slot].payload)
               : nullptr;
-          exact = integer && integer->value == (add ? 1 : 2);
+          exact = integer && integer->value == ((add || sext_add) ? 1 : 2);
           }
         }
         if (exact) {
@@ -816,22 +824,25 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
       if (const auto* cast = std::get_if<CastNode>(&instruction.payload)) {
         const Type i64{TypeKind::Integer, 64, "i64"};
         const Type i32{TypeKind::Integer, 32, "i32"};
-        bool exact = cast->kind == CastKind::Trunc && cast->from_type == i64 &&
-            cast->to_type == i32 && instruction.operands.size() == 1 &&
-            instruction.results.size() == 1;
+        const bool intrinsic_trunc = cast->kind == CastKind::Trunc &&
+            cast->from_type == i64 && cast->to_type == i32;
+        const bool scalar_sext = cast->kind == CastKind::SExt &&
+            cast->from_type == i32 && cast->to_type == i64;
+        bool exact = (intrinsic_trunc || scalar_sext) &&
+            instruction.operands.size() == 1 && instruction.results.size() == 1;
         if (exact) {
           const auto operand = function.values_.get(function_id, instruction.operands[0]);
-          exact = operand && operand.value().get().type == i64;
+          exact = operand && operand.value().get().type == cast->from_type;
           const auto* def = exact ? std::get_if<InstResultDef>(&operand.value().get().definition) : nullptr;
           if (!def) exact = false;
-          if (exact) {
+          if (exact && intrinsic_trunc) {
             const auto producer = function.insts_.get(function_id, def->instruction);
             exact = producer && std::holds_alternative<IntrinsicCallNode>(producer.value().get().payload);
           }
         }
-        if (exact) { const auto result_value = function.values_.get(function_id, instruction.results[0]); exact = result_value && result_value.value().get().type == i32 && result_value.value().get().source_id.has_value() && result_value.value().get().source_id->owner == function_id; }
+        if (exact) { const auto result_value = function.values_.get(function_id, instruction.results[0]); exact = result_value && result_value.value().get().type == cast->to_type && result_value.value().get().source_id.has_value() && result_value.value().get().source_id->owner == function_id; }
         if (!exact) report(result, VerificationRule::ValueDefinition, function_id, inst_id,
-                           "cast must retain the exact i64 intrinsic-result to i32 Trunc receipt");
+                           "cast must retain an admitted typed current-function scalar receipt");
       }
       for (std::size_t result_index = 0;
            result_index < instruction.results.size(); ++result_index) {

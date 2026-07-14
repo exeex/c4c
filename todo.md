@@ -8,32 +8,27 @@ Current Step Title: Receive the checked explicit i32-to-i64 SExt result
 
 ## Just Finished
 
-- Step 6.3 complete in `97efe9c38`: imported only direct unconditional
-  `LirBr.successor` as the typed Raw-BIR `JumpTerm` target, preserving native
-  `LirBlockId` through current-function mapping and rejecting missing, invalid,
-  duplicate, cross-owner, and incoherent display-shadow authority
-  transactionally.
+- Step 6.4 complete: imported only explicit scalar
+  `LirCastOp{SExt, i32, i64}` with current-function source/result `LirValueId`s
+  as a typed Raw-BIR cast result, and preserved its exact downstream i64 `Add`
+  use. Builder, verifier, and importer reject malformed ownership, linkage,
+  endpoint, kind, duplicate, and unresolved-use authority transactionally.
 
 ## Suggested Next
 
-- Execute Step 6.4 only: receive the producer-verified explicit scalar
-  `LirCastOp{result: current-function LirValueId, operand: current-function
-  LirValueId, kind: SExt, from_type: i32, to_type: i64}` and its exact
-  downstream i64 Add use. Do not broaden Cast receipt.
+- Supervisor selects the next bounded active-plan packet; do not broaden the
+  accepted Cast receipt beyond the exact i32-to-i64 `SExt` row.
 
 ## Watchouts
 
-- The direct-branch contract remains closed: `target_label` is display shadow
-  only. For Step 6.4, do not infer cast kind, endpoints, result/use identity,
-  or the downstream Add from rendering. Other integer widths/kinds, no-op,
-  pointer, bitcast, floating, vector, aggregate, implicit, and text-only cast
-  forms remain fail-closed; CFG receipt does not widen.
+- Other integer widths/kinds, no-op, truncation beyond the previously accepted
+  intrinsic row, pointer, bitcast, floating, vector, aggregate, implicit, and
+  presentation-derived casts remain fail-closed. The direct-branch display
+  shadow contract remains unchanged.
 
 ## Proof
 
-- Step 6.3 passed: `cmake --build --preset default && ctest --test-dir build
+- Step 6.4 passed: `cmake --build --preset default && ctest --test-dir build
   -j --output-on-failure -R
   '^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$' >
   test_after.log` (2/2); proof log: `test_after.log`.
-- Step 6.4 proof: fresh build plus the supervisor-selected focused receiver
-  proof, retaining `frontend_lir_call_type_ref` as the producer neighbor.

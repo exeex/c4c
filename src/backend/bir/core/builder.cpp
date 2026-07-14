@@ -1207,15 +1207,18 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
     return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
   const Type f64{TypeKind::F64, 64, "double"};
   const Type i32{TypeKind::Integer, 32, "i32"};
+  const Type i64{TypeKind::Integer, 64, "i64"};
   const auto lhs = function_data.values_.get(function_, spec.lhs);
   const auto rhs = function_data.values_.get(function_, spec.rhs);
   const bool exact_fadd = spec.opcode == BinaryOpcode::FAdd && spec.type == f64 &&
       lhs && rhs && lhs.value().get().type == f64 && rhs.value().get().type == f64;
   const bool exact_add = spec.opcode == BinaryOpcode::Add && spec.type == i32 &&
       lhs && rhs && lhs.value().get().type == i32 && rhs.value().get().type == i32;
+  const bool exact_sext_add = spec.opcode == BinaryOpcode::Add && spec.type == i64 &&
+      lhs && rhs && lhs.value().get().type == i64 && rhs.value().get().type == i64;
   const bool exact_mul = spec.opcode == BinaryOpcode::Mul && spec.type == i32 &&
       lhs && rhs && lhs.value().get().type == i32 && rhs.value().get().type == i32;
-  if ((!exact_fadd && !exact_add && !exact_mul) ||
+  if ((!exact_fadd && !exact_add && !exact_sext_add && !exact_mul) ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   const auto* lhs_def = std::get_if<InstResultDef>(&lhs.value().get().definition);
@@ -1226,12 +1229,17 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
   if (!lhs_producer ||
       (exact_fadd && !std::holds_alternative<CallNode>(lhs_producer.value().get().payload)) ||
       (exact_add && !std::holds_alternative<LoadNode>(lhs_producer.value().get().payload)) ||
+      (exact_sext_add && [&] {
+        const auto* cast = std::get_if<CastNode>(&lhs_producer.value().get().payload);
+        return !cast || cast->kind != CastKind::SExt || cast->from_type != i32 ||
+            cast->to_type != i64;
+      }()) ||
       (exact_mul && [&] {
         const auto* binary = std::get_if<BinaryNode>(&lhs_producer.value().get().payload);
         return !binary || binary->opcode != BinaryOpcode::Add || binary->type != i32;
       }()))
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
-  if (exact_add || exact_mul) {
+  if (exact_add || exact_sext_add || exact_mul) {
     const auto* rhs_constant = std::get_if<ConstantDef>(&rhs.value().get().definition);
     if (!rhs_constant) return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
     const auto* integer = rhs_constant->constant.valid() &&
@@ -1240,7 +1248,7 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
         ? std::get_if<IntegerConstant>(
               &parent_->data_->constants_[rhs_constant->constant.slot].payload)
         : nullptr;
-    if (!integer || integer->value != (exact_add ? 1 : 2))
+    if (!integer || integer->value != ((exact_add || exact_sext_add) ? 1 : 2))
       return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   }
 
@@ -1384,16 +1392,22 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, CastSpec 
   const Type i64{TypeKind::Integer, 64, "i64"};
   const Type i32{TypeKind::Integer, 32, "i32"};
   auto operand = function_data.values_.get(function_, spec.operand);
-  if (spec.kind != CastKind::Trunc || spec.from_type != i64 || spec.to_type != i32 ||
-      !operand || operand.value().get().type != i64 ||
+  const bool intrinsic_trunc =
+      spec.kind == CastKind::Trunc && spec.from_type == i64 && spec.to_type == i32;
+  const bool scalar_sext =
+      spec.kind == CastKind::SExt && spec.from_type == i32 && spec.to_type == i64;
+  if ((!intrinsic_trunc && !scalar_sext) || !operand ||
+      operand.value().get().type != spec.from_type ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   const auto* operand_def = std::get_if<InstResultDef>(&operand.value().get().definition);
   if (!operand_def)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
-  const auto producer = function_data.insts_.get(function_, operand_def->instruction);
-  if (!producer || !std::holds_alternative<IntrinsicCallNode>(producer.value().get().payload))
-    return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  if (intrinsic_trunc) {
+    const auto producer = function_data.insts_.get(function_, operand_def->instruction);
+    if (!producer || !std::holds_alternative<IntrinsicCallNode>(producer.value().get().payload))
+      return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  }
   detail::InstData instruction;
   instruction.opcode = Opcode::Cast;
   instruction.payload = CastNode{spec.kind, spec.from_type, spec.to_type};

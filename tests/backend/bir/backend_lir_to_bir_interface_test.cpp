@@ -9796,6 +9796,83 @@ void test_native_intrinsic_i64_trunc_receipt_and_rejections() {
   rejected([](auto&, auto& cast) { cast.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{9}); }, "duplicate cast result ids must reject atomically");
 }
 
+lir::LirModule scalar_i32_to_i64_sext_module() {
+  auto module = direct_integer_call_module();
+  auto& caller = module.functions[0];
+  caller.return_type = scalar_type(c4c::TB_LONGLONG);
+  caller.return_type.inner_rank = -1;
+  caller.signature_return_type_ref = lir::LirTypeRef::integer(64);
+  auto& block = caller.blocks[0];
+  block.insts.push_back(lir::LirCastOp{
+      .result = lir::LirOperand::ssa("%presentation-only-sext-result", lir::LirValueId{10}),
+      .kind = lir::LirCastKind::SExt,
+      .from_type = lir::LirTypeRef::integer(32),
+      .operand = lir::LirOperand::ssa("%presentation-only-sext-source", lir::LirValueId{9}),
+      .to_type = lir::LirTypeRef::integer(64),
+  });
+  block.insts.push_back(lir::LirBinOp{
+      lir::LirOperand::ssa("%presentation-only-i64-add", lir::LirValueId{11}),
+      lir::LirBinaryOpcode::Add, lir::LirTypeRef::integer(64),
+      lir::LirOperand::ssa("%presentation-only-sext-use", lir::LirValueId{10}),
+      lir::LirOperand::integer("presentation-only-one", 1)});
+  block.terminator = lir::LirRet{
+      lir::LirOperand::ssa("%presentation-only-i64-return", lir::LirValueId{11}),
+      lir::LirTypeRef::integer(64)};
+  return module;
+}
+
+void test_scalar_i32_to_i64_sext_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto caller_id = view.functions()[0];
+    const auto caller = view.function(caller_id).value();
+    const auto insts = caller.instructions(caller.blocks()[0]).value();
+    expect(insts.size() == 3, layer + " must retain Call, SExt, and downstream Add");
+    const auto call = caller.instruction(insts[0]).value();
+    const auto sext = caller.instruction(insts[1]).value();
+    const auto add = caller.instruction(insts[2]).value();
+    expect(call.results().size() == 1 && sext.cast() &&
+               sext.cast()->kind == bir::CastKind::SExt &&
+               sext.cast()->from_type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+               sext.cast()->to_type == bir::Type{bir::TypeKind::Integer, 64, "i64"} &&
+               sext.operands() == std::vector<bir::ValueId>{call.results()[0]} &&
+               sext.results().size() == 1 &&
+               caller.value(sext.results()[0]).value().source_id == bir::SourceValueId{caller_id, 10} &&
+               add.binary() && add.binary()->opcode == bir::BinaryOpcode::Add &&
+               add.binary()->type == bir::Type{bir::TypeKind::Integer, 64, "i64"} &&
+               add.operands().size() == 2 && add.operands()[0] == sext.results()[0] &&
+               caller.value(add.results()[0]).value().source_id == bir::SourceValueId{caller_id, 11},
+           layer + " must preserve the exact typed current-function SExt-to-i64-Add chain");
+  };
+  const auto module = scalar_i32_to_i64_sext_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "explicit i32-to-i64 SExt must publish verified Raw BIR" +
+             (raw.has_value() ? std::string{} : ": " + raw.error().detail));
+  inspect(raw.value(), "Raw BIR");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(), "explicit i32-to-i64 SExt must canonicalize");
+  inspect(canonical.value(), "Canonical BIR");
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto candidate = scalar_i32_to_i64_sext_module();
+    auto& cast = std::get<lir::LirCastOp>(candidate.functions[0].blocks[0].insts[2]);
+    auto& add = std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[3]);
+    mutate(candidate, cast, add);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() && raw_rejected.error().code == bir::ImportErrorCode::UnsupportedOrdinaryInstruction, message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value() && canonical_rejected.error().code == bir::ImportErrorCode::UnsupportedOrdinaryInstruction, message + " (Canonical rollback)");
+  };
+  rejected([](auto&, auto& cast, auto&) { cast.result = lir::LirOperand::raw("%missing"); }, "missing cast result authority must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.operand = lir::LirOperand::integer("not-ssa", 1); }, "wrong cast operand alternative must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.operand = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); }, "unresolved or cross-owner cast source must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{9}); }, "duplicate cast result must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.kind = lir::LirCastKind::ZExt; }, "wrong cast kind must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.from_type = lir::LirTypeRef::integer(64); }, "wrong cast source endpoint must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.to_type = lir::LirTypeRef::integer(32); }, "wrong cast destination endpoint must reject atomically");
+  rejected([](auto&, auto&, auto& add) { add.lhs = lir::LirOperand::ssa("%unresolved-use", lir::LirValueId{77}); }, "unresolved downstream i64 Add use must reject atomically");
+}
+
 }  // namespace
 
 int main() {
@@ -9872,5 +9949,6 @@ int main() {
   test_normalized_i32_mul_receipt_and_rejections();
   test_native_intrinsic_receipt_and_rejections();
   test_native_intrinsic_i64_trunc_receipt_and_rejections();
+  test_scalar_i32_to_i64_sext_receipt_and_rejections();
   return 0;
 }

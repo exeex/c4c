@@ -187,7 +187,7 @@ struct IntrinsicCallNode {
   std::optional<bool> zero_count_is_undef;
 };
 
-enum class CastKind : std::uint8_t { Trunc };
+enum class CastKind : std::uint8_t { Trunc, SExt };
 
 struct CastNode {
   CastKind kind = CastKind::Trunc;

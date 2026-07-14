@@ -552,6 +552,46 @@ bool exact_normalized_i32_mul(
   return lhs_value != source_values.end() && lhs_value->second == i32;
 }
 
+bool exact_scalar_i32_to_i64_sext(
+    const LirModule& module, const LirCastOp& cast,
+    const std::unordered_map<std::uint32_t, Type>& source_values) {
+  using codegen::lir::LirOperandKind;
+  const Type i32{TypeKind::Integer, 32, "i32"};
+  const Type i64{TypeKind::Integer, 64, "i64"};
+  const auto* result = cast.result.value_id();
+  const auto* operand = cast.operand.value_id();
+  const auto from = lower_lir_type(module, cast.from_type);
+  const auto to = lower_lir_type(module, cast.to_type);
+  const auto found = operand ? source_values.find(operand->value) : source_values.end();
+  return cast.kind == codegen::lir::LirCastKind::SExt &&
+      cast.result.kind() == LirOperandKind::SsaValue && result && result->valid() &&
+      cast.operand.kind() == LirOperandKind::SsaValue && operand && operand->valid() &&
+      cast.from_type.kind() == codegen::lir::LirTypeKind::Integer &&
+      cast.to_type.kind() == codegen::lir::LirTypeKind::Integer &&
+      from && to && *from == i32 && *to == i64 && found != source_values.end() &&
+      found->second == i32;
+}
+
+bool exact_downstream_i64_sext_add(
+    const LirBinOp& bin,
+    const std::unordered_map<std::uint32_t, Type>& source_values,
+    const std::unordered_set<std::uint32_t>& scalar_sext_results) {
+  const Type i64{TypeKind::Integer, 64, "i64"};
+  const auto* result = bin.result.value_id();
+  const auto* lhs = bin.lhs.value_id();
+  const auto* rhs = bin.rhs.integer_immediate();
+  if (bin.result.kind() != codegen::lir::LirOperandKind::SsaValue || !result ||
+      !result->valid() || !bin.opcode.typed() ||
+      *bin.opcode.typed() != codegen::lir::LirBinaryOpcode::Add ||
+      bin.type_str != codegen::lir::LirTypeRef::integer(64) ||
+      bin.lhs.kind() != codegen::lir::LirOperandKind::SsaValue || !lhs ||
+      !lhs->valid() || bin.rhs.kind() != codegen::lir::LirOperandKind::Immediate ||
+      !rhs || rhs->value != 1 || scalar_sext_results.count(lhs->value) != 1)
+    return false;
+  const auto lhs_value = source_values.find(lhs->value);
+  return lhs_value != source_values.end() && lhs_value->second == i64;
+}
+
 bool exact_integer_intrinsic_call(
     const LirModule& module, const LirCallOp& call,
     const std::unordered_map<std::uint32_t, Type>& source_values) {
@@ -1779,6 +1819,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_set<std::uint32_t> native_floating_call_results;
   std::unordered_set<std::uint32_t> selected_global_i32_load_results;
   std::unordered_set<std::uint32_t> normalized_i32_add_results;
+  std::unordered_set<std::uint32_t> scalar_sext_results;
   labels.reserve(function.blocks.size());
   block_ids.reserve(function.blocks.size());
   block_labels_by_id.reserve(function.blocks.size());
@@ -2045,9 +2086,12 @@ Result<void, ImportError> validate_function(const LirModule& module,
             *bin, source_values, selected_global_i32_load_results);
         const bool mul = exact_normalized_i32_mul(
             *bin, source_values, normalized_i32_add_results);
+        const bool sext_add = exact_downstream_i64_sext_add(
+            *bin, source_values, scalar_sext_results);
         const Type result_type = fadd ? Type{TypeKind::F64, 64, "double"}
-                                      : Type{TypeKind::Integer, 32, "i32"};
-        if ((!fadd && !add && !mul) ||
+            : sext_add ? Type{TypeKind::Integer, 64, "i64"}
+                       : Type{TypeKind::Integer, 32, "i32"};
+        if ((!fadd && !add && !mul && !sext_add) ||
             !source_values.emplace(bin->result.value_id()->value, result_type).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
@@ -2056,13 +2100,18 @@ Result<void, ImportError> validate_function(const LirModule& module,
         continue;
       }
       if (const auto* cast = std::get_if<LirCastOp>(&instruction)) {
-        if (!exact_i64_intrinsic_trunc_cast(module, *cast, source_values,
-                                            intrinsic_results) ||
+        const bool intrinsic_trunc = exact_i64_intrinsic_trunc_cast(
+            module, *cast, source_values, intrinsic_results);
+        const bool scalar_sext = exact_scalar_i32_to_i64_sext(
+            module, *cast, source_values);
+        if ((!intrinsic_trunc && !scalar_sext) ||
             !source_values.emplace(cast->result.value_id()->value,
-                                   Type{TypeKind::Integer, 32, "i32"}).second)
+                                   scalar_sext ? Type{TypeKind::Integer, 64, "i64"}
+                                               : Type{TypeKind::Integer, 32, "i32"}).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
-                            "cast requires one current-function i64 intrinsic result and exact i64-to-i32 Trunc receipt");
+                            "cast requires an exact admitted current-function typed receipt");
+        if (scalar_sext) scalar_sext_results.insert(cast->result.value_id()->value);
         continue;
       }
       const auto* inline_asm = std::get_if<LirInlineAsmOp>(&instruction);
@@ -2420,6 +2469,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
           std::unordered_map<std::uint32_t, ValueId> source_values;
           std::unordered_set<std::uint32_t> native_floating_call_results;
           std::unordered_set<std::uint32_t> normalized_i32_add_results;
+          std::unordered_set<std::uint32_t> scalar_sext_results;
           blocks.reserve(function.blocks.size());
           for (const LirBlock& block : function.blocks) {
             auto created_block = function_builder.create_block(block.label);
@@ -2841,11 +2891,13 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                     std::optional{codegen::lir::LirBinaryOpcode::FAdd};
                 const bool add = bin->opcode.typed() ==
                     std::optional{codegen::lir::LirBinaryOpcode::Add};
+                const bool sext_add = add &&
+                    scalar_sext_results.count(bin->lhs.value_id()->value) == 1;
                 const auto lhs = source_values.find(bin->lhs.value_id()->value);
                 if (lhs == source_values.end() ||
                     (fadd && native_floating_call_results.count(
                         bin->lhs.value_id()->value) == 0) ||
-                    (!fadd && !add && normalized_i32_add_results.count(
+                    (!fadd && !sext_add && !add && normalized_i32_add_results.count(
                         bin->lhs.value_id()->value) == 0)) {
                   edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
                                            name, block.label,
@@ -2864,11 +2916,13 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   rhs_value = rhs->second;
                 } else {
                   auto reserved = function_builder.reserve_value(
-                      Type{TypeKind::Integer, 32, "i32"});
+                      sext_add ? Type{TypeKind::Integer, 64, "i64"}
+                               : Type{TypeKind::Integer, 32, "i32"});
                   if (!reserved) {
                     edit_error = builder_failure(name, block.label,
                                                  add ? "reserve normalized Add immediate"
-                                                     : "reserve normalized Mul immediate",
+                                                     : sext_add ? "reserve SExt Add immediate"
+                                                                : "reserve normalized Mul immediate",
                                                  reserved.error());
                     return Result<void, BuildError>::failure(reserved.error());
                   }
@@ -2877,7 +2931,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   if (!defined) {
                     edit_error = builder_failure(name, block.label,
                                                  add ? "define normalized Add immediate"
-                                                     : "define normalized Mul immediate",
+                                                     : sext_add ? "define SExt Add immediate"
+                                                                : "define normalized Mul immediate",
                                                  defined.error());
                     return Result<void, BuildError>::failure(defined.error());
                   }
@@ -2888,13 +2943,15 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                     BinarySpec{fadd ? BinaryOpcode::FAdd
                                     : add ? BinaryOpcode::Add : BinaryOpcode::Mul,
                                fadd ? Type{TypeKind::F64, 64, "double"}
-                                    : Type{TypeKind::Integer, 32, "i32"},
+                                    : sext_add ? Type{TypeKind::Integer, 64, "i64"}
+                                               : Type{TypeKind::Integer, 32, "i32"},
                                lhs->second, rhs_value,
                                bin->result.value_id()->value});
                 if (!appended) {
                   edit_error = builder_failure(name, block.label,
                                                fadd ? "append double FAdd"
-                                                    : add ? "append normalized i32 Add"
+                                                    : add ? sext_add ? "append SExt i64 Add"
+                                                                     : "append normalized i32 Add"
                                                           : "append normalized i32 Mul",
                                                appended.error());
                   return Result<void, BuildError>::failure(appended.error());
@@ -2908,7 +2965,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   return Result<void, BuildError>::failure(
                       BuildError::DuplicateSourceValue);
                 }
-                if (add)
+                if (add && !sext_add)
                   normalized_i32_add_results.insert(bin->result.value_id()->value);
                 continue;
               }
@@ -2922,11 +2979,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 }
                 auto appended = function_builder.append(
                     blocks.at(block.id.value),
-                    CastSpec{CastKind::Trunc, *lower_lir_type(module, cast->from_type),
+                    CastSpec{cast->kind == codegen::lir::LirCastKind::SExt
+                                 ? CastKind::SExt : CastKind::Trunc,
+                             *lower_lir_type(module, cast->from_type),
                              *lower_lir_type(module, cast->to_type), operand->second,
                              cast->result.value_id()->value});
                 if (!appended) {
-                  edit_error = builder_failure(name, block.label, "append intrinsic trunc cast", appended.error());
+                  edit_error = builder_failure(name, block.label,
+                                               cast->kind == codegen::lir::LirCastKind::SExt
+                                                   ? "append scalar SExt cast"
+                                                   : "append intrinsic trunc cast",
+                                               appended.error());
                   return Result<void, BuildError>::failure(appended.error());
                 }
                 if (appended.value().results.size() != 1 ||
@@ -2937,6 +3000,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                            "intrinsic trunc cast result registration failed"};
                   return Result<void, BuildError>::failure(BuildError::DuplicateSourceValue);
                 }
+                if (cast->kind == codegen::lir::LirCastKind::SExt)
+                  scalar_sext_results.insert(cast->result.value_id()->value);
                 continue;
               }
               const auto& inline_asm = std::get<LirInlineAsmOp>(instruction);
