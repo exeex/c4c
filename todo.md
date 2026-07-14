@@ -8,17 +8,15 @@ Current Step Title: Extend the enum-first pattern to related closed-set refs
 
 ## Just Finished
 
-- Plan Step 2 complete: added `LirBuiltinType` for void, pointer, i1/i8/i16/
-  i32/i64/i128, and half/float/double/fp128/x86_fp80. `LirTypeRef` now
-  constructs directly from that enum and exposes `builtin_type()`; enum
-  construction derives rendered text, kind, and integer width from enum state
-  without reparsing text. Existing text constructors and dynamic spellings are
-  retained; recognized compatible text also records the builtin id.
+- Plan Step 3 complete without a header change: `LirBinaryOpcodeRef` and
+  `LirCmpPredicateRef` already each provide direct enum construction, retain
+  text constructors that parse once into their optional enum state, and return
+  that cached state through `typed()` without reparsing rendered text.
 
 ## Suggested Next
 
-- Step 3 implementation: normalize the existing enum-first construction and
-  typed query pattern for `LirBinaryOpcodeRef` and `LirCmpPredicateRef`.
+- Step 4 proof: add focused coverage that distinguishes enum-authoritative
+  builtin queries from dynamic runtime text compatibility.
 
 ## Watchouts
 
@@ -29,9 +27,10 @@ Current Step Title: Extend the enum-first pattern to related closed-set refs
   enum foundation pass.
 - Dynamic vector, array, struct, function, opaque, VRM, and arbitrary integer
   spellings remain supported text-backed inputs in this foundation slice.
+- Step 3 needs no API churn: both related wrappers already satisfy the
+  enum-first pattern.
 
 ## Proof
 
-- Passed: `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log`.
-- `test_after.log` contains the passing `frontend_lir_call_type_ref` subset.
+- No build or test run: this packet made no code change because both wrappers
+  already met the criterion. `test_after.log` was not modified.
