@@ -1,6 +1,6 @@
 # LIR Switch Selector Value Identity Publication
 
-Status: Open (active blocker for idea 734's next bounded CFG receiver)
+Status: Closed (capability complete; Raw-BIR switch receipt remains idea 734)
 Type: bounded LIR switch-selector producer authority repair
 Predecessor: `ideas/open/734_lir_to_new_bir_container_completeness.md`
 
@@ -63,3 +63,32 @@ boundary.
   bounded producer source.
 - Reject a carrier that leaves missing, foreign, or non-integer selector
   failure reachable behind a renamed field or permits downstream fallback.
+
+## Closure Record
+
+Disposition: capability complete.
+
+Accepted implementation `cafc757ec` publishes `LirSwitch.selector` as a
+current-function `LirValueId`. Structured producers thread the selector
+authority; legacy raw operands use typed materialization rather than text
+recovery. Verification rejects missing, foreign, non-integer, and
+display-mismatched authority before printing or downstream use. The existing
+`default_successor` and ordered `case_successors` authority established by
+closed idea 750 is unchanged. No Raw-BIR container, importer, or receiver was
+changed.
+
+Supervisor acceptance proof: fresh
+`cmake --build --preset default`; focused
+`ctest --test-dir build -j --output-on-failure -R '^frontend_lir_'` 4/4 with a
+matching non-decreasing before/after guard; and broader
+`ctest --test-dir build -j --output-on-failure -R '^(frontend_cxx_|positive_sema_)'`
+35/35. Direct supervisor review found no scope drift.
+
+Handoff: active idea 734 owns the next separately bounded Raw-BIR `LirSwitch`
+receiver. It must consume only `LirSwitch.selector`, `default_successor`, and
+ordered `case_successors`, preserving typed integer selector semantics, case
+order, and transactional rejection. `selector_name`, `selector_type`, labels,
+printer output, and rendered text remain display-only; no receiver may recover
+semantics from them. `LirIndirectBrOp`, PHI, local/object, memory/va,
+aggregate/vector, body-parameter, and all other families remain out of this
+handoff and fail closed.

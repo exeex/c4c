@@ -1,7 +1,8 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (paused after accepted Step 7.22; switch-selector value-authority
-successor 756 is active before the next receiver repair)
+Status: Open (resumed after accepted Step 7.22 and closed switch-selector
+authority successor 756; the next packet is the bounded typed `LirSwitch`
+Raw-BIR receiver)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -315,17 +316,36 @@ selector from text. `LirIndirectBrOp` address authority, PHI, local/object,
 memory/va, aggregate/vector, body-parameter, and all other unreceived families
 remain separately scoped and fail closed.
 
-Classification: `separate-blocker`. Open idea
-`ideas/open/756_lir_switch_selector_value_identity_publication.md` owns only
+Classification: `separate-blocker`. Closed idea
+`ideas/closed/756_lir_switch_selector_value_identity_publication.md` owned
 publication, verification, focused malformed-authority coverage, and a typed
-handoff for the active switch selector. This source is paused after completed
-Steps 1 through 7.22. After 756 closes with the exact structured handoff,
-reactivate 734 and repair its runbook for one bounded `LirSwitch` Raw-BIR
-receiver packet: consume only the typed selector with already typed default and
-ordered case successors, preserve case order and transactional rejection, and
-do not inspect selector or label text for semantic recovery. Do not repeat
-Step 7.22 or absorb computed-goto, PHI, local/object, memory/va,
-aggregate/vector, body-parameter, or other remaining families.
+handoff for the active switch selector. Its accepted handoff resumes 734 for
+one bounded `LirSwitch` Raw-BIR receiver packet: consume only the typed
+selector with already typed default and ordered case successors, preserve case
+order and transactional rejection, and do not inspect selector or label text
+for semantic recovery. Do not repeat Step 7.22 or absorb computed-goto, PHI,
+local/object, memory/va, aggregate/vector, body-parameter, or other remaining
+families.
+
+## Resumption Record: switch-selector authority completion
+
+Closed idea 756 completed the switch-selector prerequisite with accepted
+implementation `cafc757ec`. Active `LirSwitch.selector` is a verifier-checked
+current-function `LirValueId`; missing, foreign, non-integer, and
+display-mismatched authority fails closed before printing or downstream use.
+The pre-existing typed `default_successor` and ordered `case_successors` from
+closed idea 750 remain the sole CFG target authority. The handoff is accepted
+with a fresh build, focused `^frontend_lir_` proof 4/4 and matching
+non-decreasing guard, and broader `^(frontend_cxx_|positive_sema_)` proof
+35/35. No Raw-BIR work landed in 756.
+
+Exact return action: repair and execute one bounded Step 7.23 `LirSwitch`
+Raw-BIR receiver. Consume only `selector`, `default_successor`, and ordered
+`case_successors`; preserve integer selector facts and case order; verify the
+typed authority and reject malformed input transactionally before publication.
+Do not derive semantics from selector/label display text, repeat Step 7.22, or
+absorb `LirIndirectBrOp`, PHI, local/object, memory/va, aggregate/vector,
+body-parameter, or any other family.
 
 ## Why This Exists
 
