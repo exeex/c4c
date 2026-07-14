@@ -1,7 +1,7 @@
 # Production LIR Computed-Goto Address Value Publication
 
-Status: Open (active carrier/integration repair route; predecessor of the
-paused `ideas/open/734_lir_to_new_bir_container_completeness.md` return)
+Status: Closed (capability complete; predecessor of the paused
+`ideas/open/734_lir_to_new_bir_container_completeness.md` return)
 Type: bounded production LIR computed-goto authority repair
 Predecessor: `ideas/open/734_lir_to_new_bir_container_completeness.md`, after accepted Step 7.24
 
@@ -303,3 +303,33 @@ necessary, then return to 734 for plan-owner disposition.
   full-suite candidate can be accepted. Do not absorb it into this carrier
   repair, weaken a verifier, recover authority from text, or treat the rejected
   candidate as baseline debt.
+
+## Closure Record — 2026-07-14 capability complete
+
+Disposition: capability complete. 764 Step 1 is accepted in commit
+`9680b15b9` (`lir: preserve indexed computed-goto pointer authority`). The
+first production authority-loss seam was the non-vector `IndexExpr`
+coordinator conversion: it converted a typed loaded `LirOperand` through
+`emit_rval_payload` text and a raw operand. The accepted repair returns the
+typed loaded operand directly, preserving its current-function pointer
+`LirValueId` for `LirIndirectBrOp.addr_value`; it does not derive authority
+from text or change the Raw-BIR receiver.
+
+Accepted supervisor proof is a fresh `cmake --build --preset default`, focused
+`^frontend_lir_call_type_ref$` passing, and the preserved computed-goto
+consumer guard passing 5/5:
+
+`ctest --test-dir build -j --output-on-failure -R '^(llvm_gcc_c_torture_src_comp_goto_1_c|llvm_gcc_c_torture_src_20040302_1_c|llvm_gcc_c_torture_src_20041214_1_c|llvm_gcc_c_torture_src_920501_4_c|llvm_gcc_c_torture_src_920501_5_c)$'`
+
+This satisfies the bounded carrier acceptance criteria, including the actual
+production route and retained fail-closed focused coverage. It does **not**
+accept a full-suite baseline: `pr70460` still fails at
+`LirGepOp.ptr: must not be empty`. Its separately scoped successor is
+`ideas/open/772_lir_gep_pointer_authority_pr70460.md`; no future full-suite
+candidate may be accepted until that route has accepted proof and the baseline
+is re-evaluated.
+
+Relation to 734: Step 7.24 remains accepted and paused; do not re-execute its
+receiver. After the 772 blocker is accepted and the rejected baseline has a
+new disposition, reactivate 734 after Step 7.24 for plan-owner close/repair
+disposition, preserving its accepted receiver proof.
