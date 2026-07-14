@@ -106,10 +106,31 @@ Actions:
 - document why frontend-LIR owns the probe or record evidence that moves it to
   backend/case before creating a backend probe
 
+Current Step 3 completion gap after `707062aeb` and `85ac8d42c`:
+
+- 769's structured initializer positive/malformed verification completes the
+  static-storage initializer row, and 767 remains the accepted static-table
+  decay control. Do not reopen either contract.
+- The `&&label` automatic-local fixture legitimately covers the automatic
+  scalar-initializer and direct-rvalue rows because both share the immediate
+  direct-rvalue-to-`LirStoreOp` route. Its remaining contract record must name
+  a typed pointer producer with valid enclosing-function, target-label, and
+  produced-value identity, and malformed raw, invalid/foreign owner or target,
+  non-pointer, and missing/invalid/foreign-value rejection.
+- The automatic-table decay fixture remains a separate representation row. Its
+  remaining contract record must name a current-function local-slot base, two
+  typed zero indices, and a valid GEP result identity, with malformed
+  raw/non-pointer/invalid/foreign bases, raw or wrongly typed indices, and
+  missing/invalid/foreign result rejection.
+- These are future producer-contract requirements, not acceptance of the
+  current raw/no-ID behavior and not a selection of an implementation seam.
+
 Completion check:
 
 - every form has a focused non-monolithic probe and explicit positive/malformed
-  contract, without expectation downgrade or carrier assertion.
+  contract, including the two remaining automatic-form records above, without
+  expectation downgrade or carrier assertion. Until those records are extracted,
+  remain at Step 3 rather than selecting a Step 4 seam.
 
 ### Step 4 - Bind probes and select the narrowest generic producer seam
 
