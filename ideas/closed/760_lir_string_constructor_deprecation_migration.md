@@ -93,3 +93,43 @@ A previous compile experiment found representative runtime string users:
   migration slice.
 - The accepted result still leaves closed-set literal call sites using string
   construction with no documented reason.
+
+## Completion Record
+
+Disposition: capability complete.
+
+The targeted local deprecation-warning inventory route was used instead of the
+rejected global `const char*` constructor annotation. It classified and made
+searchable each retained dynamic-text boundary while migrating the discovered
+closed-set families to enum construction. The final direct construction
+inventory has no raw direct type, opcode, or predicate literals and no raw
+known predicate spellings. `src/codegen/lir/types.hpp:80` is intentionally
+retained dynamic integer-width text (`"i" + std::to_string(bit_width)`).
+
+Retained, explicit runtime-text boundaries include parsed typed calls and
+their legacy string mirror, stored extern-declaration return payloads, inline
+assembly `TypeSpec` text, HIR aggregate/field/signature and call-target
+fallback text, indexed-GEP elements, generated aggregate padding, AArch64
+vector ABI sources, and no-module va_list tag compatibility. These are
+local named factories/helpers; they are not suppressed generic constructor
+uses.
+
+Accepted migration/proof history:
+
+- `a1d6fd79a`: explicit va_list runtime-text boundary and builtin literals;
+  fresh build plus `^frontend_lir_call_type_ref$`.
+- `c4c021559`: static no-expression return literals; fresh build plus
+  `^frontend_hir_tests$`.
+- `896779447`: selected-byval pointer-authority literals; fresh build plus
+  `^backend_lir_selected_pointer_authority$`.
+- The resulting focused `^(frontend_lir_|backend_lir_)` run passed 6/6 and
+  the accepted full baseline passed 3034/3034.
+- `46c0fdb8b`, `e027962e7`, and `083bfed6d`: generic vaarg, AMD64 vaarg, and
+  direct complex-equality predicate families; each had a fresh
+  `cmake --build --preset default`, matching `^backend_` CTest proof (5/5),
+  and a non-decreasing regression guard.
+
+No durable migration intent remains for this bounded source. Richer typed
+carriers for dynamic aggregate, vector, struct, or function spellings remain
+outside this idea's declared scope and require a separately scoped initiative
+if desired.
