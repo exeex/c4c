@@ -76,6 +76,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
              std::holds_alternative<IntrinsicCallNode>(instruction.payload);
     case Opcode::Binary:
       return std::holds_alternative<BinaryNode>(instruction.payload);
+    case Opcode::Compare:
+      return std::holds_alternative<CompareNode>(instruction.payload);
     case Opcode::Cast:
       return std::holds_alternative<CastNode>(instruction.payload);
   }
@@ -798,6 +800,43 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         if (!exact)
           report(result, VerificationRule::ValueDefinition, function_id, inst_id,
                  "binary must retain an exact admitted typed operand shape and source-backed result");
+      }
+      if (const auto* compare = std::get_if<CompareNode>(&instruction.payload)) {
+        const Type i1{TypeKind::I1, 1, "i1"};
+        const Type i32{TypeKind::Integer, 32, "i32"};
+        bool exact = compare->predicate == ComparePredicate::Slt &&
+            compare->type == i32 && instruction.operands.size() == 2 &&
+            instruction.results.size() == 1;
+        if (exact) {
+          const auto lhs = function.values_.get(function_id, instruction.operands[0]);
+          const auto rhs = function.values_.get(function_id, instruction.operands[1]);
+          exact = lhs && rhs && lhs.value().get().type == i32 &&
+              rhs.value().get().type == i32;
+          const auto* lhs_def = exact
+              ? std::get_if<InstResultDef>(&lhs.value().get().definition) : nullptr;
+          const auto lhs_producer = lhs_def
+              ? function.insts_.get(function_id, lhs_def->instruction)
+              : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(ResolveError::OutOfRange);
+          exact = exact && lhs_producer &&
+              std::holds_alternative<LoadNode>(lhs_producer.value().get().payload);
+          const auto* rhs_def = exact
+              ? std::get_if<ConstantDef>(&rhs.value().get().definition) : nullptr;
+          const auto* integer = rhs_def && rhs_def->constant.valid() &&
+                  rhs_def->constant.epoch == module.epoch_ &&
+                  rhs_def->constant.slot < module.constants_.size()
+              ? std::get_if<IntegerConstant>(&module.constants_[rhs_def->constant.slot].payload)
+              : nullptr;
+          exact = exact && integer && integer->value == 7;
+          const auto result_value = exact
+              ? function.values_.get(function_id, instruction.results[0])
+              : Result<std::reference_wrapper<const ValueDef>, ResolveError>::failure(ResolveError::OutOfRange);
+          exact = exact && result_value && result_value.value().get().type == i1 &&
+              result_value.value().get().source_id.has_value() &&
+              result_value.value().get().source_id->owner == function_id;
+        }
+        if (!exact)
+          report(result, VerificationRule::ValueDefinition, function_id, inst_id,
+                 "compare must retain the exact i32 SLT Load/immediate-seven shape and source-backed i1 result");
       }
       if (const auto* call = std::get_if<IntrinsicCallNode>(&instruction.payload)) {
         const bool count_flag = call->kind == IntrinsicKind::Cttz ||

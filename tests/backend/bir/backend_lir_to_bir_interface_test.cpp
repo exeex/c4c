@@ -9873,6 +9873,106 @@ void test_scalar_i32_to_i64_sext_receipt_and_rejections() {
   rejected([](auto&, auto&, auto& add) { add.lhs = lir::LirOperand::ssa("%unresolved-use", lir::LirValueId{77}); }, "unresolved downstream i64 Add use must reject atomically");
 }
 
+lir::LirModule selected_global_i32_slt_compare_module() {
+  auto module = direct_global_integer_load_module();
+  auto& block = module.functions[0].blocks[0];
+  block.insts.erase(block.insts.begin() + 1);
+  block.insts.push_back(lir::LirCmpOp{
+      lir::LirOperand::ssa("%presentation-only-slt-result", lir::LirValueId{33}),
+      false, lir::LirCmpPredicate::Slt, lir::LirTypeRef::integer(32),
+      lir::LirOperand::ssa("%presentation-only-load", lir::LirValueId{31}),
+      lir::LirOperand::integer("presentation-only-seven", 7)});
+  return module;
+}
+
+void test_selected_global_i32_slt_compare_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto function_id = view.functions()[0];
+    const auto function = view.function(function_id).value();
+    const auto instructions = function.instructions(function.blocks()[0]).value();
+    const auto load = function.instruction(instructions[0]).value();
+    const auto compare = function.instruction(instructions[1]).value();
+    const auto result = function.value(compare.results()[0]).value();
+    const auto* definition = std::get_if<bir::InstResultDef>(&result.definition);
+    expect(instructions.size() == 2 && load.load() && compare.opcode() == bir::Opcode::Compare &&
+               compare.compare() && compare.compare()->predicate == bir::ComparePredicate::Slt &&
+               compare.compare()->type == bir::Type{bir::TypeKind::I32} &&
+               compare.operands().size() == 2 && compare.operands()[0] == load.results()[0] &&
+               function.value(compare.operands()[1]).value().type == bir::Type{bir::TypeKind::I32} &&
+               compare.results().size() == 1 && result.type == bir::Type{bir::TypeKind::I1} &&
+               result.source_id == bir::SourceValueId{function_id, 33} && definition &&
+               definition->instruction == instructions[1] && definition->result_index == 0 &&
+               function.source_value(bir::SourceValueId{function_id, 33}).value() ==
+                   compare.results()[0],
+           layer + " must retain the exact typed i32 SLT selected-load/immediate-seven receipt");
+  };
+
+  const auto module = selected_global_i32_slt_compare_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "explicit selected-global i32 SLT must publish verified Raw BIR" +
+             (raw.has_value() ? std::string{} : ": " + raw.error().detail));
+  inspect(raw.value(), "Raw BIR");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(), "explicit selected-global i32 SLT must canonicalize");
+  inspect(canonical.value(), "Canonical BIR");
+
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto candidate = selected_global_i32_slt_compare_module();
+    auto& compare = std::get<lir::LirCmpOp>(candidate.functions[0].blocks[0].insts[1]);
+    mutate(candidate, compare);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() && raw_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value() && canonical_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Canonical rollback)");
+  };
+  rejected([](auto&, auto& compare) { compare.result = lir::LirOperand::raw("%missing"); },
+           "missing compare result authority must reject atomically");
+  rejected([](auto&, auto& compare) {
+             compare.result = lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+           }, "invalid compare result identity must reject atomically");
+  rejected([](auto&, auto& compare) {
+             compare.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{31});
+           }, "duplicate compare result identity must reject atomically");
+  rejected([](auto&, auto& compare) { compare.is_float = true; },
+           "floating compare mode must remain fail-closed");
+  rejected([](auto&, auto& compare) { compare.predicate = lir::LirCmpPredicate::Eq; },
+           "non-SLT compare predicates must remain fail-closed");
+  rejected([](auto&, auto& compare) { compare.type_str = lir::LirTypeRef::integer(64); },
+           "non-i32 compare types must remain fail-closed");
+  rejected([](auto&, auto& compare) {
+             compare.lhs = lir::LirOperand::integer("not-a-load", 7);
+           }, "non-SSA compare lhs must reject atomically");
+  rejected([](auto&, auto& compare) {
+             compare.lhs = lir::LirOperand::ssa("%foreign-or-missing", lir::LirValueId{32});
+           }, "unresolved current-function compare lhs must reject atomically");
+  rejected([](auto&, auto& compare) {
+             compare.rhs = lir::LirOperand::ssa("%not-immediate", lir::LirValueId{31});
+           }, "non-immediate compare rhs must reject atomically");
+  rejected([](auto&, auto& compare) {
+             compare.rhs = lir::LirOperand::integer("not-seven", 6);
+           }, "non-seven compare rhs must reject atomically");
+  rejected([](auto&, auto& compare) { compare.rhs = lir::LirOperand::raw("7"); },
+           "display-only compare rhs must reject atomically");
+
+  auto following_zext = selected_global_i32_slt_compare_module();
+  following_zext.functions[0].blocks[0].insts.push_back(
+      lir::LirCastOp{.kind = lir::LirCastKind::ZExt});
+  const auto zext_raw = bir::lower_lir_to_raw_bir(following_zext);
+  expect(!zext_raw.has_value() && zext_raw.error().code ==
+             bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+         "the following monostate ZExt must remain unsupported transactionally (Raw rollback)");
+  const auto zext_canonical = bir::lower_lir_to_canonical_bir(following_zext);
+  expect(!zext_canonical.has_value() && zext_canonical.error().code ==
+             bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+         "the following monostate ZExt must remain unsupported transactionally (Canonical rollback)");
+}
+
 }  // namespace
 
 int main() {
@@ -9950,5 +10050,6 @@ int main() {
   test_native_intrinsic_receipt_and_rejections();
   test_native_intrinsic_i64_trunc_receipt_and_rejections();
   test_scalar_i32_to_i64_sext_receipt_and_rejections();
+  test_selected_global_i32_slt_compare_receipt_and_rejections();
   return 0;
 }

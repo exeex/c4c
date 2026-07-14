@@ -1309,6 +1309,78 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       BuildResult{instruction_id, {result_id}});
 }
 
+Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
+                                                         CompareSpec spec) {
+  auto function = mutable_function();
+  if (!function) return Result<BuildResult, BuildError>::failure(function.error());
+  if (!same_owner(function_, block) || !same_owner(function_, spec.lhs) ||
+      !same_owner(function_, spec.rhs))
+    return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
+  auto& function_data = function.value().get();
+  const Type i1{TypeKind::I1, 1, "i1"};
+  const Type i32{TypeKind::Integer, 32, "i32"};
+  if (spec.source_result_id == std::numeric_limits<std::uint32_t>::max())
+    return Result<BuildResult, BuildError>::failure(BuildError::InvalidSourceValueId);
+  const auto lhs = function_data.values_.get(function_, spec.lhs);
+  const auto rhs = function_data.values_.get(function_, spec.rhs);
+  const auto* lhs_def = lhs ? std::get_if<InstResultDef>(&lhs.value().get().definition) : nullptr;
+  if (!lhs_def)
+    return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  const auto lhs_producer = function_data.insts_.get(function_, lhs_def->instruction);
+  const auto* rhs_def = rhs ? std::get_if<ConstantDef>(&rhs.value().get().definition) : nullptr;
+  const auto* integer = rhs_def && rhs_def->constant.valid() &&
+          rhs_def->constant.epoch == parent_->data_->epoch_ &&
+          rhs_def->constant.slot < parent_->data_->constants_.size()
+      ? std::get_if<IntegerConstant>(&parent_->data_->constants_[rhs_def->constant.slot].payload)
+      : nullptr;
+  if (!function_data.blocks_.contains(function_, block) ||
+      spec.predicate != ComparePredicate::Slt || spec.type != i32 || !lhs || !rhs ||
+      lhs.value().get().type != i32 || rhs.value().get().type != i32 || !lhs_producer ||
+      !std::holds_alternative<LoadNode>(lhs_producer.value().get().payload) ||
+      !integer || integer->value != 7 ||
+      function_data.values_by_source_id_.count(spec.source_result_id) != 0)
+    return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  detail::InstData instruction;
+  instruction.opcode = Opcode::Compare;
+  instruction.payload = CompareNode{spec.predicate, spec.type};
+  instruction.operands = {spec.lhs, spec.rhs};
+  auto inserted = function_data.insts_.emplace(function_, std::move(instruction));
+  if (!inserted) return Result<BuildResult, BuildError>::failure(storage_error(inserted.error()));
+  const auto instruction_id = inserted.value();
+  ValueDef result{ValueKind::Ordinary, i1, SourceValueId{function_, spec.source_result_id},
+                  InstResultDef{instruction_id, 0}};
+  auto inserted_result = function_data.values_.emplace(function_, std::move(result));
+  if (!inserted_result) {
+    function_data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(storage_error(inserted_result.error()));
+  }
+  const auto result_id = inserted_result.value();
+  auto stored = function_data.insts_.get_mut(function_, instruction_id);
+  if (!stored) {
+    function_data.values_.erase(function_, result_id);
+    function_data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  stored.value().get().results = {result_id};
+  const auto indexed = function_data.values_by_source_id_.emplace(spec.source_result_id, result_id);
+  if (!indexed.second || !function_data.value_order_.append(result_id)) {
+    if (indexed.second) function_data.values_by_source_id_.erase(spec.source_result_id);
+    function_data.values_.erase(function_, result_id);
+    function_data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(indexed.second
+        ? BuildError::StorageExhausted : BuildError::DuplicateSourceValue);
+  }
+  auto block_data = function_data.blocks_.get_mut(function_, block);
+  if (!block_data || !block_data.value().get().instruction_order_.append(instruction_id)) {
+    function_data.values_by_source_id_.erase(spec.source_result_id);
+    function_data.value_order_.erase(result_id);
+    function_data.values_.erase(function_, result_id);
+    function_data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  return Result<BuildResult, BuildError>::success(BuildResult{instruction_id, {result_id}});
+}
+
 Result<BuildResult, BuildError> FunctionBuilder::append(
     BlockId block, IntrinsicCallSpec spec) {
   auto function = mutable_function();

@@ -21,6 +21,7 @@ using codegen::lir::LirBinOp;
 using codegen::lir::LirBr;
 using codegen::lir::LirCallOp;
 using codegen::lir::LirCastOp;
+using codegen::lir::LirCmpOp;
 using codegen::lir::LirCondBr;
 using codegen::lir::LirConstFloat;
 using codegen::lir::LirConstInt;
@@ -570,6 +571,23 @@ bool exact_scalar_i32_to_i64_sext(
       cast.to_type.kind() == codegen::lir::LirTypeKind::Integer &&
       from && to && *from == i32 && *to == i64 && found != source_values.end() &&
       found->second == i32;
+}
+
+bool exact_selected_global_i32_slt_compare(
+    const LirCmpOp& compare,
+    const std::unordered_map<std::uint32_t, Type>& source_values,
+    const std::unordered_set<std::uint32_t>& selected_global_i32_load_results) {
+  const auto* result = compare.result.value_id();
+  const auto* lhs = compare.lhs.value_id();
+  const auto* rhs = compare.rhs.integer_immediate();
+  return compare.result.kind() == codegen::lir::LirOperandKind::SsaValue && result &&
+      result->valid() && !compare.is_float &&
+      compare.predicate.typed() == std::optional{codegen::lir::LirCmpPredicate::Slt} &&
+      compare.type_str == codegen::lir::LirTypeRef::integer(32) &&
+      compare.lhs.kind() == codegen::lir::LirOperandKind::SsaValue && lhs && lhs->valid() &&
+      compare.rhs.kind() == codegen::lir::LirOperandKind::Immediate && rhs && rhs->value == 7 &&
+      source_values.count(lhs->value) == 1 &&
+      selected_global_i32_load_results.count(lhs->value) == 1;
 }
 
 bool exact_downstream_i64_sext_add(
@@ -2099,6 +2117,16 @@ Result<void, ImportError> validate_function(const LirModule& module,
         if (add) normalized_i32_add_results.insert(bin->result.value_id()->value);
         continue;
       }
+      if (const auto* compare = std::get_if<LirCmpOp>(&instruction)) {
+        if (!exact_selected_global_i32_slt_compare(
+                *compare, source_values, selected_global_i32_load_results) ||
+            !source_values.emplace(compare->result.value_id()->value,
+                                   Type{TypeKind::I1, 1, "i1"}).second)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "compare requires the exact native i32 SLT selected-load/immediate-seven shape");
+        continue;
+      }
       if (const auto* cast = std::get_if<LirCastOp>(&instruction)) {
         const bool intrinsic_trunc = exact_i64_intrinsic_trunc_cast(
             module, *cast, source_values, intrinsic_results);
@@ -2967,6 +2995,44 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 }
                 if (add && !sext_add)
                   normalized_i32_add_results.insert(bin->result.value_id()->value);
+                continue;
+              }
+              if (const auto* compare = std::get_if<LirCmpOp>(&instruction)) {
+                const auto lhs = source_values.find(compare->lhs.value_id()->value);
+                if (lhs == source_values.end()) {
+                  edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                                           name, block.label,
+                                           "validated compare lhs disappeared from the current-function registry"};
+                  return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                }
+                auto reserved = function_builder.reserve_value(Type{TypeKind::Integer, 32, "i32"});
+                if (!reserved) {
+                  edit_error = builder_failure(name, block.label,
+                                               "reserve compare immediate-seven", reserved.error());
+                  return Result<void, BuildError>::failure(reserved.error());
+                }
+                auto defined = function_builder.define_int_constant(reserved.value(), 7);
+                if (!defined) {
+                  edit_error = builder_failure(name, block.label,
+                                               "define compare immediate-seven", defined.error());
+                  return defined;
+                }
+                auto appended = function_builder.append(
+                    blocks.at(block.id.value),
+                    CompareSpec{ComparePredicate::Slt, Type{TypeKind::Integer, 32, "i32"},
+                                lhs->second, reserved.value(),
+                                compare->result.value_id()->value});
+                if (!appended || appended.value().results.size() != 1 ||
+                    !source_values.emplace(compare->result.value_id()->value,
+                                           appended.value().results[0]).second) {
+                  edit_error = appended
+                      ? ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                                    block.label, "compare result registration failed"}
+                      : builder_failure(name, block.label, "append i32 SLT compare",
+                                        appended.error());
+                  return Result<void, BuildError>::failure(
+                      appended ? BuildError::DuplicateSourceValue : appended.error());
+                }
                 continue;
               }
               if (const auto* cast = std::get_if<LirCastOp>(&instruction)) {

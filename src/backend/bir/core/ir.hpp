@@ -141,6 +141,7 @@ enum class Opcode : std::uint8_t {
   GetElementPtr,
   Call,
   Binary,
+  Compare,
   Cast,
 };
 
@@ -178,6 +179,13 @@ struct BinaryNode {
   Type type{};
 };
 
+enum class ComparePredicate : std::uint8_t { Slt };
+
+struct CompareNode {
+  ComparePredicate predicate = ComparePredicate::Slt;
+  Type type{};
+};
+
 enum class IntrinsicKind : std::uint8_t { Cttz, Ctlz, Ctpop };
 
 struct IntrinsicCallNode {
@@ -197,7 +205,7 @@ struct CastNode {
 
 using InstPayload =
     std::variant<InlineAsmNode, StoreNode, LoadNode, GetElementPtrNode,
-                 CallNode, BinaryNode, IntrinsicCallNode, CastNode>;
+                 CallNode, BinaryNode, CompareNode, IntrinsicCallNode, CastNode>;
 
 class BlockView;
 class FunctionView;
