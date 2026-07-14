@@ -1305,7 +1305,11 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       (exact_fadd && !std::holds_alternative<CallNode>(lhs_producer.value().get().payload)) ||
       (exact_fmul && [&] {
         const auto* binary = std::get_if<BinaryNode>(&lhs_producer.value().get().payload);
-        return !binary || binary->opcode != BinaryOpcode::FAdd || binary->type != f64;
+        if (const auto* binary = std::get_if<BinaryNode>(&lhs_producer.value().get().payload))
+          return binary->opcode != BinaryOpcode::FAdd || binary->type != f64;
+        const auto* cast = std::get_if<CastNode>(&lhs_producer.value().get().payload);
+        return !cast || cast->kind != CastKind::FPExt || cast->from_type != f32 ||
+            cast->to_type != f64;
       }()) ||
       (exact_float_fmul && [&] {
         const auto* cast = std::get_if<CastNode>(&lhs_producer.value().get().payload);
@@ -1565,7 +1569,9 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, CastSpec 
       spec.kind == CastKind::SExt && spec.from_type == i32 && spec.to_type == i64;
   const bool scalar_fptrunc =
       spec.kind == CastKind::FPTrunc && spec.from_type == f64 && spec.to_type == f32;
-  if ((!intrinsic_trunc && !scalar_sext && !scalar_fptrunc) || !operand ||
+  const bool scalar_fpext =
+      spec.kind == CastKind::FPExt && spec.from_type == f32 && spec.to_type == f64;
+  if ((!intrinsic_trunc && !scalar_sext && !scalar_fptrunc && !scalar_fpext) || !operand ||
       operand.value().get().type != spec.from_type ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
@@ -1583,6 +1589,12 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, CastSpec 
         ? std::get_if<BinaryNode>(&producer.value().get().payload)
         : nullptr;
     if (!binary || binary->opcode != BinaryOpcode::FMul || binary->type != f64)
+      return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  }
+  if (scalar_fpext) {
+    const auto producer = function_data.insts_.get(function_, operand_def->instruction);
+    const auto* cast = producer ? std::get_if<CastNode>(&producer.value().get().payload) : nullptr;
+    if (!cast || cast->kind != CastKind::FPTrunc || cast->from_type != f64 || cast->to_type != f32)
       return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   }
   detail::InstData instruction;

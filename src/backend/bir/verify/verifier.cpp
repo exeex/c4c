@@ -803,9 +803,14 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                 : fmul ? [&] {
                     const auto* producer_binary = std::get_if<BinaryNode>(
                         &producer.value().get().payload);
-                    return producer_binary &&
-                        producer_binary->opcode == BinaryOpcode::FAdd &&
-                        producer_binary->type == f64;
+                    if (producer_binary)
+                      return producer_binary->opcode == BinaryOpcode::FAdd &&
+                          producer_binary->type == f64;
+                    const auto* producer_cast = std::get_if<CastNode>(
+                        &producer.value().get().payload);
+                    return producer_cast && producer_cast->kind == CastKind::FPExt &&
+                        producer_cast->from_type == Type{TypeKind::F32, 32, "float"} &&
+                        producer_cast->to_type == f64;
                   }()
                 : float_fmul ? [&] {
                     const auto* cast = std::get_if<CastNode>(&producer.value().get().payload);
@@ -931,7 +936,9 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
             cast->from_type == i32 && cast->to_type == i64;
         const bool scalar_fptrunc = cast->kind == CastKind::FPTrunc &&
             cast->from_type == f64 && cast->to_type == f32;
-        bool exact = (intrinsic_trunc || scalar_sext || scalar_fptrunc) &&
+        const bool scalar_fpext = cast->kind == CastKind::FPExt &&
+            cast->from_type == f32 && cast->to_type == f64;
+        bool exact = (intrinsic_trunc || scalar_sext || scalar_fptrunc || scalar_fpext) &&
             instruction.operands.size() == 1 && instruction.results.size() == 1;
         if (exact) {
           const auto operand = function.values_.get(function_id, instruction.operands[0]);
@@ -948,6 +955,13 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                 ? std::get_if<BinaryNode>(&producer.value().get().payload)
                 : nullptr;
             exact = binary && binary->opcode == BinaryOpcode::FMul && binary->type == f64;
+          }
+          if (exact && scalar_fpext) {
+            const auto producer = function.insts_.get(function_id, def->instruction);
+            const auto* producer_cast = producer
+                ? std::get_if<CastNode>(&producer.value().get().payload) : nullptr;
+            exact = producer_cast && producer_cast->kind == CastKind::FPTrunc &&
+                producer_cast->from_type == f64 && producer_cast->to_type == f32;
           }
         }
         if (exact) { const auto result_value = function.values_.get(function_id, instruction.results[0]); exact = result_value && result_value.value().get().type == cast->to_type && result_value.value().get().source_id.has_value() && result_value.value().get().source_id->owner == function_id; }

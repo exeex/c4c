@@ -9513,6 +9513,80 @@ void test_scalar_double_to_float_fptrunc_receipt_and_rejections() {
   rejected([](auto& candidate, auto&, auto&) { candidate.functions[0].blocks[0].insts.pop_back(); }, "missing downstream float FMul use must reject atomically");
 }
 
+lir::LirModule scalar_float_to_double_fpext_module() {
+  auto module = scalar_double_to_float_fptrunc_module();
+  auto& block = module.functions[0].blocks[0];
+  block.insts.push_back(lir::LirCastOp{
+      .result = lir::LirOperand::ssa("%presentation-only-fpext-result", lir::LirValueId{16}),
+      .kind = lir::LirCastKind::FPExt,
+      .from_type = lir::LirTypeRef("float"),
+      .operand = lir::LirOperand::ssa("%presentation-only-fptrunc-source", lir::LirValueId{14}),
+      .to_type = lir::LirTypeRef("double"),
+  });
+  block.insts.push_back(lir::LirBinOp{
+      lir::LirOperand::ssa("%presentation-only-double-fmul", lir::LirValueId{17}),
+      lir::LirBinaryOpcode::FMul, lir::LirTypeRef("double"),
+      lir::LirOperand::ssa("%presentation-only-fpext-use", lir::LirValueId{16}),
+      lir::LirOperand::ssa("%presentation-only-double-rhs", lir::LirValueId{12})});
+  return module;
+}
+
+void test_scalar_float_to_double_fpext_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto caller_id = view.functions()[0];
+    const auto caller = view.function(caller_id).value();
+    const auto insts = caller.instructions(caller.blocks()[0]).value();
+    expect(insts.size() == 7, layer + " must retain the scalar FPExt and double FMul");
+    const auto fpext = caller.instruction(insts[5]).value();
+    const auto fmul = caller.instruction(insts[6]).value();
+    expect(fpext.opcode() == bir::Opcode::Cast && fpext.cast() &&
+               fpext.cast()->kind == bir::CastKind::FPExt &&
+               fpext.cast()->from_type == bir::Type{bir::TypeKind::F32, 32, "float"} &&
+               fpext.cast()->to_type == bir::Type{bir::TypeKind::F64, 64, "double"} &&
+               fpext.operands() == std::vector<bir::ValueId>{caller.instruction(insts[3]).value().results()[0]} &&
+               fpext.results().size() == 1 &&
+               caller.value(fpext.results()[0]).value().source_id == bir::SourceValueId{caller_id, 16} &&
+               fmul.binary() && fmul.binary()->opcode == bir::BinaryOpcode::FMul &&
+               fmul.binary()->type == bir::Type{bir::TypeKind::F64, 64, "double"} &&
+               fmul.operands().size() == 2 && fmul.operands()[0] == fpext.results()[0] &&
+               fmul.results().size() == 1 &&
+               caller.value(fmul.results()[0]).value().source_id == bir::SourceValueId{caller_id, 17},
+           layer + " must preserve the native float-to-double FPExt and exact double FMul use");
+  };
+  const auto module = scalar_float_to_double_fpext_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  if (!raw.has_value())
+    fail("scalar FPExt must publish Raw BIR: " + raw.error().detail +
+         (raw.error().verification_errors.empty() ? "" :
+          ": " + raw.error().verification_errors.front().message));
+  expect(bir::FoundationVerifier::verify(raw.value()).ok(),
+         "scalar FPExt must publish verified Raw BIR");
+  inspect(raw.value(), "Raw BIR");
+
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto candidate = scalar_float_to_double_fpext_module();
+    auto& cast = std::get<lir::LirCastOp>(candidate.functions[0].blocks[0].insts[7]);
+    auto& use = std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[8]);
+    mutate(candidate, cast, use);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() && raw_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Raw rollback)");
+  };
+  rejected([](auto&, auto& cast, auto&) { cast.result = lir::LirOperand::raw("%missing"); }, "missing cast result authority must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.operand = lir::LirOperand::integer("bad", 0); }, "non-SSA cast source must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.operand = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); }, "unresolved or cross-owner cast source must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{14}); }, "duplicate cast result must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.kind = lir::LirCastKind::FPTrunc; }, "other floating casts must remain fail-closed");
+  rejected([](auto&, auto& cast, auto&) { cast.from_type = lir::LirTypeRef("double"); }, "wrong cast source endpoint must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.to_type = lir::LirTypeRef("float"); }, "wrong cast destination endpoint must reject atomically");
+  rejected([](auto&, auto&, auto& use) { use.lhs = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); }, "unresolved downstream double FMul use must reject atomically");
+  rejected([](auto&, auto&, auto& use) { use.opcode = lir::LirBinaryOpcode::FAdd; }, "non-FMul downstream use must reject atomically");
+  rejected([](auto&, auto&, auto& use) { use.type_str = lir::LirTypeRef("float"); }, "wrong downstream double FMul type must reject atomically");
+  rejected([](auto& candidate, auto&, auto&) { candidate.functions[0].blocks[0].insts.pop_back(); }, "missing downstream double FMul use must reject atomically");
+}
+
 lir::LirModule normalized_i32_add_module() {
   auto module = direct_global_integer_load_module();
   auto& function = module.functions[0];
@@ -10520,6 +10594,7 @@ int main() {
   test_downstream_double_fadd_receipt_and_rejections();
   test_downstream_double_olt_compare_receipt_and_rejections();
   test_scalar_double_to_float_fptrunc_receipt_and_rejections();
+  test_scalar_float_to_double_fpext_receipt_and_rejections();
   test_normalized_i32_add_receipt_and_rejections();
   test_normalized_i32_mul_receipt_and_rejections();
   test_native_intrinsic_receipt_and_rejections();

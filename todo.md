@@ -8,9 +8,9 @@ Current Step Title: Receive the checked explicit scalar FPExt result
 
 ## Just Finished
 
-- Step 7.7 complete: received only the producer-verified explicit scalar
-  `double`-to-`float` `LirCastOp::FPTrunc` from the admitted double `FMul`
-  result and its one exact later float `FMul` use, preserving native cast,
+- Step 7.8 complete: received only the producer-verified explicit scalar
+  `float`-to-`double` `LirCastOp::FPExt` from the admitted scalar FPTrunc
+  result and its one exact later double `FMul` use, preserving native cast,
   endpoint types, source IDs, and current-function SSA edges. Other floating
   casts, malformed/implicit/non-SSA/duplicate/unresolved/cross-owner/wrong
   endpoint inputs, and missing or malformed downstream uses reject
@@ -18,22 +18,18 @@ Current Step Title: Receive the checked explicit scalar FPExt result
 
 ## Suggested Next
 
-- Execute Step 7.8 as one bounded receiver packet: import only the
-  producer-verified explicit scalar float-to-double `LirCastOp::FPExt` from an
-  admitted floating source and its exact later double FMul use. Do not widen
-  floating casts or receive implicit, no-op, pointer/bitcast/vector/complex/
-  aggregate, monostate-source, or text-derived forms.
+- Send the exhausted Step-7 runbook to plan-owner for an explicit close,
+  repair, replacement, or conclude decision; do not infer source completion.
 
 ## Watchouts
 
-- This is an in-scope runbook repair, not source completion. Step 7.8 admits
-  only the checked scalar float-to-double FPExt boundary; all other casts,
-  non-scalar forms, and presentation-derived authority remain fail-closed.
+- Step 7.8 admits only the checked scalar float-to-double FPExt boundary;
+  all other casts, non-scalar forms, and presentation-derived authority remain
+  fail-closed. Runbook exhaustion is not source completion.
 
 ## Proof
 
-- Step 7.7 passed the supervisor-selected proof: `cmake --build --preset
+- Step 7.8 passed the supervisor-selected proof: `cmake --build --preset
   default && ctest --test-dir build -j --output-on-failure -R
   '^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$'` (2/2);
-  proof log: `test_after.log`. The matching regression guard passed 2/2
-  before/after, and fresh broader `^backend_` proof passed 4/4.
+  proof log: `test_after.log`.
