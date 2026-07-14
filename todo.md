@@ -1,44 +1,38 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/766_lir_ssa_indexed_gep_pointer_result_authority.md
+Source Idea Path: ideas/open/764_lir_production_computed_goto_addr_value_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Prove the contract and hand off to 764
+Current Step ID: 1
+Current Step Title: Publish and prove production computed-goto address carrier authority
 
 ## Just Finished
 
-- 766 Step 1 is implemented and pending supervisor acceptance: the
-  operand-preserving indexed-GEP route publishes a fresh result `LirValueId`
-  only for an SSA pointer base and typed native index. The verifier retains
-  the global-`LinkNameId` route and validates the SSA base as a
-  current-function pointer definition; raw, invalid, foreign, non-pointer,
-  and partial-index cases remain fail-closed.
+- 766 completed and was accepted in `74379f4a2`: the direct
+  `emit_indexed_gep` operand overload now retains the verified SSA-based GEP
+  pointer `LirValueId` in `LirGepOp.result`. Its focused proof and supervisor
+  backend proof passed; it did not publish the downstream carrier field.
 
 ## Suggested Next
 
-- Complete 766 Step 2 by reviewable direct focused-proof confirmation of the
-  SSA indexed-GEP contract, then hand the accepted result back to 764 for its
-  separate downstream carrier-publication packet. Do not change the contract
-  or perform 764 work in this packet.
+- Resume 764 Step 1: carry the accepted GEP pointer `LirValueId` through the
+  direct `IndirBrStmt` seam into `LirIndirectBrOp.addr_value`, preserve all
+  carrier verifier checks, then prove the shared five-consumer family.
 
 ## Watchouts
 
-- Do not publish `LirIndirectBrOp.addr_value` or change `IndirBrStmt`; that is
-  764 Step 1 after this blocker completes. Do not touch Raw-BIR/importer or
-  734 Step 7.24.
-- Do not weaken the verifier, accept raw/partial/text-derived authority, or
-  introduce a synthetic cast, alloca/load, phi, or select bridge.
-- The authoritative route is deliberately narrow: only an SSA pointer base
-  plus a fully typed native index produces an indexed-GEP result ID. Legacy
-  string-only indexed GEPs remain compatibility paths without a result ID.
+- Do not redo 766's GEP contract work, weaken a verifier, derive authority
+  from text, or introduce a synthetic cast, alloca/load, phi, or select.
+- Do not change Raw-BIR/importer or re-execute 734 Step 7.24. Treat
+  `comp-goto-1`, `20040302-1`, `20041214-1`, `920501-4`, and `920501-5` as one
+  family; none may be excluded, downgraded, or accepted as baseline debt.
 
 ## Proof
 
-- Fresh `cmake --build --preset default` passed.
-- `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
-  passed; output is preserved in `test_after.log`. The direct fixture covers a
-  production local-pointer-plus-local-index GEP with valid base/index/result
-  IDs, then rejects raw, invalid, foreign, non-pointer, and partial-index
-  authority mutations. Existing nearby tests retain the global GEP path and
-  its malformed cases.
+- Accepted prerequisite: `74379f4a2`; fresh `cmake --build --preset default`,
+  focused `^frontend_lir_call_type_ref$`, a non-regressive matching guard, and
+  supervisor backend proof 5/5 passed. The focused output is in
+  `test_after.log`.
+- Before handoff to 734, run a fresh build, focused positive/malformed carrier
+  proof, and the preserved five-consumer command:
+  `ctest --test-dir build -j --output-on-failure -R '^(llvm_gcc_c_torture_src_comp_goto_1_c|llvm_gcc_c_torture_src_20040302_1_c|llvm_gcc_c_torture_src_20041214_1_c|llvm_gcc_c_torture_src_920501_4_c|llvm_gcc_c_torture_src_920501_5_c)$'`.

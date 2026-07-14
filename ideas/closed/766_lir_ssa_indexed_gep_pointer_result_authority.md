@@ -1,7 +1,6 @@
 # LIR SSA-Based Indexed-GEP Pointer-Result Authority
 
-Status: Open (active blocker for
-`ideas/open/764_lir_production_computed_goto_addr_value_publication.md`)
+Status: Closed (capability complete; 764 resumed at Step 1)
 Type: bounded LIR GEP contract and production-authority repair
 Predecessor: 764 Step 1, interrupted before downstream carrier publication
 
@@ -76,3 +75,28 @@ identity, upstream of 764's carrier publication.
 - Reject any `LirIndirectBrOp`, Raw-BIR/importer, 734 Step 7.24, or broad
   adjacent authority-family work claimed as progress for this bounded GEP
   result contract.
+
+## Closure Record
+
+Close accepted: this bounded contract and direct producer route is capability
+complete. Accepted commit `74379f4a2` adds the direct `emit_indexed_gep`
+operand overload that returns a typed `LirOperand` carrying the pointer
+`LirValueId` stored in `LirGepOp.result` for the structured SSA-base route.
+It deliberately does not publish `LirIndirectBrOp.addr_value`.
+
+Accepted evidence: a fresh `cmake --build --preset default` passed;
+`ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
+passed with output in `test_after.log`; the matching regression guard was
+non-regressive; and supervisor backend proof passed 5/5. Direct nearby
+coverage proves the positive production local-pointer/local-index route and
+fail-closed rejection of raw, invalid, foreign, non-pointer, and
+partial-index authority. Existing nearby coverage retains the global GEP path
+and its malformed cases.
+
+Exact successor action: resume
+`ideas/open/764_lir_production_computed_goto_addr_value_publication.md` at its
+preserved Step 1. Publish this verified GEP pointer `LirValueId` into
+`LirIndirectBrOp.addr_value`, rerun `comp-goto-1`, `20040302-1`, `20041214-1`,
+`920501-4`, and `920501-5`, then return to 734 for plan-owner disposition.
+Do not redo 766 and do not interpret this closure as completing the downstream
+carrier repair.

@@ -161,3 +161,25 @@ resume 764 at Step 1: publish the verified GEP pointer `LirValueId` into
 `LirIndirectBrOp.addr_value`, rerun all five consumers above, then return to
 734 for plan-owner disposition. Do not substitute a synthetic alloca/load,
 phi, select, or text-derived ID at the statement seam.
+
+## Resumption Record: accepted 766 SSA indexed-GEP handoff
+
+766 is capability-complete and archived at
+`ideas/closed/766_lir_ssa_indexed_gep_pointer_result_authority.md`. Accepted
+commit `74379f4a2` added the direct `emit_indexed_gep` operand overload that
+returns the typed `LirOperand` with its pointer `LirValueId` retained in
+`LirGepOp.result` for the structured SSA-base route. It proves the missing
+address GEP result is now a valid current-function authority source; it does
+not publish `LirIndirectBrOp.addr_value`.
+
+Accepted proof is a fresh `cmake --build --preset default`, passing focused
+`^frontend_lir_call_type_ref$` output in `test_after.log`, a non-regressive
+matching guard, and supervisor backend proof 5/5. Direct nearby coverage
+proves the local-pointer/local-index production path and fail-closed raw,
+invalid, foreign, non-pointer, and partial-index rejection.
+
+Resume now at `Step 1 - Publish and prove production computed-goto address
+carrier authority`: pass the verified GEP pointer `LirValueId` into
+`LirIndirectBrOp.addr_value`, retain the carrier verifier checks, rerun all
+five preserved consumers, and only then return to 734 for plan-owner
+disposition. Do not redo 766 or re-execute 734 Step 7.24.
