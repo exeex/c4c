@@ -1,0 +1,98 @@
+# LIR-to-BIR Native Label-Address Constant Contract
+
+Status: Open (active blocker for
+`ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md`
+Step 5)
+Type: focused LIR-to-BIR/native label-address constant representation and lowering contract
+Predecessor: 768 Step 5 direct `LabelAddrExpr` rvalue production
+
+## Goal
+
+Define and prove the smallest native LIR-to-BIR representation and lowering
+contract for a direct label-address pointer constant that retains its produced
+`LirValueId` identity and can be consumed by an indirect jump without a
+synthetic instruction bridge.
+
+## Why This Exists
+
+768 selected direct frontend-LIR `LabelAddrExpr` rvalue production and rejected
+its `select i1 true, blockaddress(...), blockaddress(...)` implementation as a
+synthetic identity bridge. LLVM 19 accepts `blockaddress(@f, %target)` as a
+pointer constant in direct contexts, but rejects `%x = blockaddress(@f,
+%target)` because `blockaddress` is not an instruction opcode. The present LIR
+operand authority exposes only value, global, and integer alternatives. The
+LIR-to-BIR scalar route accepts only SSA, null, and global pointer lowering,
+and indirect-jump lowering requires `LirIndirectBrOp.addr_value` to resolve to
+a source SSA pointer while `IndirectJumpTerm` carries only `ValueId`.
+
+A native direct identity therefore requires a bounded representation/lowering
+contract below the producer; it cannot be supplied by `select`, `gep`,
+`bitcast`, rendered-text recovery, or another fabricated SSA value. Raw-BIR,
+importer, and broader backend ownership are outside 768 and are not authorized
+here.
+
+## In Scope
+
+- Define one native direct label-address constant representation that carries
+  the enclosing-function and target-label identity plus the produced
+  `LirValueId` needed by the direct `LabelAddrExpr` producer.
+- Define the exact LIR-to-BIR lowering/consumption contract that preserves that
+  identity as a pointer value suitable for `LirIndirectBrOp.addr_value` and
+  `IndirectJumpTerm` consumption, without requiring an instruction-shaped SSA
+  bridge.
+- Implement only the representation and lowering surfaces demonstrably needed
+  for that contract, including the minimal Raw-BIR/importer passage only where
+  it is indispensable to carry this one native constant, and matching
+  validation at the owned boundary.
+- Add direct focused positive proof for the native constant route and nearby
+  malformed proof for invalid/missing/foreign function, target, or produced
+  identity and invalid pointer use, as the final representation requires.
+- Record the exact post-acceptance return to 768 Step 5: restore its direct
+  frontend-LIR producer packet using this native contract, then run its
+  already-selected focused producer proof.
+
+## Out Of Scope
+
+- 768 producer recovery, frontend carrier publication, or its focused
+  `LabelAddrExpr` test/proof changes except for the minimal consumer fixture
+  needed to prove this contract.
+- `IndirBrStmt` or `LirIndirectBrOp.addr_value` publication policy changes,
+  external integration cases, automatic-table `DeclRef` decay, table decay,
+  and any 764 downstream carrier work.
+- Reopening 767 or 769, or changing their accepted table-element or global
+  initializer contracts.
+- 734 work, broad Raw-BIR/importer expansion, broad backend/MIR/codegen
+  redesign, or backend/case work beyond the direct LIR-to-BIR lowering
+  boundary.
+- Text recovery, testcase-shaped behavior, expectation downgrade, and every
+  synthetic `select`, `gep`, `bitcast`, or comparable fabricated value route.
+
+## Acceptance Criteria
+
+- The representation distinguishes a direct label-address pointer constant
+  from an instruction result while preserving its function, target label, and
+  produced `LirValueId` authority.
+- LIR-to-BIR lowering preserves that native constant as an identity-bearing
+  pointer value that an indirect jump can consume; it does not require LLVM to
+  parse `blockaddress` as an opcode or manufacture an SSA bridge.
+- Direct focused positive and malformed proofs cover the owned contract; a
+  malformed authority or pointer-use form is rejected at the selected boundary.
+- The result names whether any Raw-BIR/importer/backend work remains beyond
+  the minimal native-constant passage. Such work must become a separately
+  scoped blocker rather than enter this initiative.
+- 768 resumes exactly at Step 5 with its Steps 1--4 preserved and only its
+  native direct producer recovery remaining.
+
+## Reviewer Reject Signals
+
+- Reject `select`, `gep`, `bitcast`, dummy instruction results, or any other
+  fabricated SSA identity presented as a native label-address value.
+- Reject printed `blockaddress(...)` parsing, text recovery, testcase-name
+  routing, expectation downgrades, verifier relaxation, or a test-only facade
+  that retains the old no-native-constant failure.
+- Reject a Raw-BIR/importer change broader than the selected native-constant
+  passage, or any 734, broad backend, carrier, external-case, table-decay,
+  767, or 769 change folded into this initiative.
+- Reject a representation that loses the current function, target label, or
+  produced-value identity, or a lowering route that cannot directly feed the
+  specified indirect-jump consumption contract.

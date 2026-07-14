@@ -1,39 +1,34 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md
+Source Idea Path: ideas/open/770_lir_to_bir_native_label_address_constant_contract.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Repair and prove native direct LabelAddrExpr rvalue production
+Current Step ID: 1
+Current Step Title: Specify the native direct-constant authority boundary
 
 ## Just Finished
 
-- Step 5's uncommitted `LirLabelAddrOp` slice is rejected and must not be
-  accepted or handed off. Its printer represents the new result as
-  `select i1 true, blockaddress(...), blockaddress(...)`, a synthetic identity
-  bridge prohibited by 768. The accepted Step 4 seam selection remains direct
-  frontend-LIR `LabelAddrExpr` rvalue production.
+- Switched from 768 Step 5 after its direct `LabelAddrExpr` synthetic
+  `select` bridge was rejected. 768 preserves completed Steps 1--4 and the
+  exact return point; this blocker owns only the missing native constant
+  representation/lowering contract.
 
 ## Suggested Next
 
-- Return to Step 5: replace the synthetic bridge with a native direct
-  label-address value representation/lowering while preserving typed current
-  function, target-label, and produced-value authority and its focused
-  positive/malformed contract. Do not touch the carrier, 767, 769, or
-  automatic-table `DeclRef` decay.
+- Map the smallest LIR operand/value and LIR-to-BIR representation boundary
+  that can carry direct `blockaddress` function/target/pointer/value identity
+  through indirect-jump consumption without an instruction-shaped SSA bridge.
 
 ## Watchouts
 
-- No `select`, `gep`, `bitcast`, or other synthetic materialization is an
-  acceptable label-address identity bridge. Do not add a carrier change,
-  raw-text recovery, testcase-shaped routing, or reopen accepted 767/769
-  contracts. The automatic local-table `DeclRef` decay-to-`LirGepOp`
-  local-slot/two-index authority contract is not in this packet.
+- LLVM 19 does not accept `%x = blockaddress(...)` as an instruction. Do not
+  use `select`, `gep`, `bitcast`, text recovery, or dummy results. Do not touch
+  768 producer recovery, 764 carrier publication, external cases, table decay,
+  767/769, Raw-BIR/importer, or broad backend work.
 
 ## Proof
 
-- Accepted evidence retained for the rejected slice: fresh targeted build and
-  focused `frontend_lir_label_address_rvalue_probe` proof passed; the matching
-  regression guard passed with `allow-non-decreasing`; and
-  `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_'` was 7/7
-  green. None overrides the no-synthetic-bridge scope gate.
+- Lifecycle evidence: `a89f5f4c6` rejects the synthetic bridge; prior 768
+  progress and accepted prerequisite references are preserved in its resumption
+  record. Step 1 must select direct focused positive/malformed proof before
+  implementation; no regression logs are changed by this switch.

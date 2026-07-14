@@ -130,3 +130,45 @@ consumption decomposition, not a monolithic integration or carrier route.
   and direct-rvalue forms before Step 4 selects any generic producer seam.
   Do not alter `IndirBrStmt`, `LirIndirectBrOp.addr_value`, Raw-BIR/importer,
   765/766/767, or derive authority from rendered text.
+
+## Resumption Record — 2026-07-14 Native Label-Address Constant Blocker
+
+- Last accepted progress: Steps 1--4 remain complete. Step 1 baseline is
+  `b04832c62`; Step 2 producer map is `05386c45c`; the direct automatic
+  rvalue and table-decay probe work is retained in `707062aeb` and
+  `85ac8d42c`; `34df925db` records the Step 4 seam selection. The most recent
+  lifecycle record is `a89f5f4c6`, which rejects—not accepts—the synthetic
+  bridge. These references and the accepted 769 (`56d86556a`) / 767
+  (`403e86afd`) prerequisites remain evidence; none authorizes reopening
+  those boundaries.
+- Completed steps: Step 1 — Establish the blocked label-address table
+  failure-family baseline; Step 2 — Enumerate separated label-address table
+  producer forms; Step 3 — Extract direct frontend-LIR producer probes; Step
+  4 — Bind probes and select the narrowest generic producer seam.
+- Interrupted step: Step 5 — Repair and prove native direct `LabelAddrExpr`
+  rvalue production.
+- Blocker and scope boundary: LLVM 19 permits `blockaddress(@f, %target)` as
+  a direct pointer constant but rejects `%x = blockaddress(@f, %target)` as
+  an instruction. Current LIR operand authority has only value/global/integer
+  alternatives; scalar LIR-to-BIR pointer lowering accepts SSA/null/global;
+  indirect-jump lowering requires source SSA for `addr_value`; and
+  `IndirectJumpTerm` carries only `ValueId`. A direct identity-bearing native
+  constant needs Raw-BIR/importer/backend-facing representation/lowering work,
+  which is outside 768. The rejected `select` bridge cannot be repaired in
+  this source because it violates the explicit no-synthetic-bridge gate.
+- Successor: `ideas/open/770_lir_to_bir_native_label_address_constant_contract.md`
+  owns only the native LIR-to-BIR label-address constant representation and
+  lowering/indirect-jump consumption contract, with direct focused
+  positive/malformed proof. It explicitly excludes this source's producer
+  recovery, carrier publication, external integrations, table decay, 767/769,
+  and broad backend work.
+- Exact return point: after 770 accepts a native direct constant contract that
+  retains produced pointer identity through the required indirect-jump
+  consumption boundary, resume this idea at **Step 5 — Repair and prove native
+  direct `LabelAddrExpr` rvalue production** (the interrupted current title).
+  Replace the rejected synthetic bridge only in direct frontend-LIR
+  `LabelAddrExpr` rvalue production, retain typed
+  current-function/target-label/produced-value authority, run its selected
+  focused positive/malformed proof, then perform Step 6 handoff to 764. Do not
+  redo Steps 1--4, change carrier behavior, implement automatic-table decay,
+  or reopen 767/769.
