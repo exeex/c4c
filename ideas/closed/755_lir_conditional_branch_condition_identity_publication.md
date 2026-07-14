@@ -1,6 +1,6 @@
 # LIR Conditional Branch Condition Identity Publication
 
-Status: Open
+Status: Closed (capability complete; Raw-BIR conditional receipt remains idea 734)
 Type: bounded LIR conditional-branch producer authority repair
 Predecessor: `ideas/open/734_lir_to_new_bir_container_completeness.md`
 
@@ -59,3 +59,27 @@ producer boundary.
   unrelated LIR families under this bounded producer source.
 - Reject a carrier that leaves the same missing/foreign/non-boolean condition
   failure reachable behind a renamed field or permits downstream fallback.
+
+## Closure Record
+
+Disposition: capability complete.
+
+Accepted implementation `ae006a0f1` publishes `LirCondBr.condition` as the
+current-function `LirValueId` for the active boolean condition. Direct
+producers thread the typed boolean operand, and verification rejects missing,
+invalid, foreign, or non-boolean authority while checking `cond_name` only as
+a display mirror. No Raw-BIR container, importer, or receiver was changed.
+
+Supervisor acceptance proof: fresh `cmake --build --preset default`; direct
+`build/tests/frontend/frontend_lir_call_type_ref_test`; matching backend guard
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` 5/5 before and
+after (non-regressive); and broader
+`ctest --test-dir build -j --output-on-failure -R '^(frontend_cxx_|positive_sema_)'`
+35/35.
+
+Handoff: open idea
+`ideas/open/734_lir_to_new_bir_container_completeness.md` owns the next,
+separately bounded Raw-BIR conditional-branch receiver packet. It must consume
+`LirCondBr.condition` together with `LirCondBr.true_successor` and
+`LirCondBr.false_successor`, preserve the fail-closed verifier boundary, and
+never recover semantics from `cond_name` or other presentation text.
