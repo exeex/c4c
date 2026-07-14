@@ -80,6 +80,10 @@ class LirTypeRef {
     return LirTypeRef("i" + std::to_string(bit_width), LirTypeKind::Integer, bit_width);
   }
 
+  [[nodiscard]] static LirTypeRef runtime_text(std::string text) {
+    return LirTypeRef(std::move(text));
+  }
+
   [[nodiscard]] static LirTypeRef vrm_register(unsigned width) {
     LirTypeRef type("c4c.vrm" + std::to_string(width), LirTypeKind::VrmRegister);
     type.vrm_width_ = width;

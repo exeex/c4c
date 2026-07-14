@@ -48,13 +48,15 @@ boundary, then change one coherent group at a time.
 ## Working Model
 
 Closed literal spellings migrate to enum construction. Dynamic text remains
-supported but must use an explicit runtime-text factory or helper. Warnings
-are an inventory signal and must not become undifferentiated noise.
+supported but must use an explicit runtime-text factory or helper. A global
+constructor deprecation is deferred because its trial warned at unrelated
+callers; use local proof and explicit construction boundaries instead.
 
 ## Execution Rules
 
-1. Start with an inventory and a warning/proof strategy before adding an
-   annotation or migrating callers.
+1. Start with an inventory and a local proof strategy before adding an
+   annotation or migrating callers; do not retry global constructor
+   deprecation while it produces unrelated warning noise.
 2. Keep each implementation packet to one coherent call-site category.
 3. Preserve dynamic runtime text behavior and document every deferred boundary.
 4. Run a fresh build and focused proof for every accepted code-changing packet.
@@ -88,32 +90,40 @@ Completion check:
   boundary list, and a warning/proof strategy that does not require a broad
   migration.
 
-### Step 2 - Add a narrow warning and explicit runtime-text boundary
+### Step 2 - Make the va_list runtime-text boundary explicit
 
-Goal: make one constructor family’s legacy text path visible without breaking
-legitimate dynamic construction.
+Goal: migrate the first closed va_list literals while making its generated
+array/padding text explicit, without a global deprecation annotation.
+
+Primary targets:
+
+- `src/codegen/lir/hir_to_lir/stmt.cpp`
+- the narrow `LirTypeRef` construction surface needed for an explicit
+  runtime-text boundary
 
 Actions:
 
-- introduce the selected deprecation annotation or explicit runtime-text
-  factory name in the narrowest appropriate LIR ref surface
-- route only the classified dynamic boundary needed by this packet through the
-  explicit path
-- keep the change source-compatible outside the selected packet
+- introduce an explicit runtime-text factory or helper without deprecating the
+  generic constructor globally
+- route only `build_type_decls`' generated array/padding text through that
+  explicit boundary
+- migrate only `build_type_decls`' `"i32"` and `"ptr"` va_list literals to
+  the existing enum construction path
+- build and run the focused LIR call-type proof for this one source function
 
 Completion check:
 
-- warnings identify real selected migration sites and the retained dynamic path
-  is explicit and still compiles.
+- the selected literals are enum-constructed, generated runtime text is
+  explicit, and local proof passes without unrelated warning inventory noise.
 
-### Step 3 - Migrate one closed-set call-site group
+### Step 3 - Migrate a subsequent closed-set call-site group
 
 Goal: replace a small coherent set of literal closed-set uses with enum
 construction.
 
 Actions:
 
-- migrate only the group named by the Step 1 inventory
+- choose and migrate only the next inventory group after Step 2 proof
 - retain or add focused coverage of construction, printing, and lowering for
   that group
 - document any deferred runtime-text use at the nearest appropriate boundary

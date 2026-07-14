@@ -715,16 +715,16 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
       LirStructDecl decl;
       decl.name_id = lir_module->struct_names.intern("%struct.__va_list_tag_");
       if (llvm_target_is_amd64_sysv(mod.target_profile)) {
-        decl.fields.push_back({LirTypeRef("i32")});
-        decl.fields.push_back({LirTypeRef("i32")});
-        decl.fields.push_back({LirTypeRef("ptr")});
-        decl.fields.push_back({LirTypeRef("ptr")});
+        decl.fields.push_back({LirTypeRef(LirBuiltinType::I32)});
+        decl.fields.push_back({LirTypeRef(LirBuiltinType::I32)});
+        decl.fields.push_back({LirTypeRef(LirBuiltinType::Pointer)});
+        decl.fields.push_back({LirTypeRef(LirBuiltinType::Pointer)});
       } else {
-        decl.fields.push_back({LirTypeRef("ptr")});
-        decl.fields.push_back({LirTypeRef("ptr")});
-        decl.fields.push_back({LirTypeRef("ptr")});
-        decl.fields.push_back({LirTypeRef("i32")});
-        decl.fields.push_back({LirTypeRef("i32")});
+        decl.fields.push_back({LirTypeRef(LirBuiltinType::Pointer)});
+        decl.fields.push_back({LirTypeRef(LirBuiltinType::Pointer)});
+        decl.fields.push_back({LirTypeRef(LirBuiltinType::Pointer)});
+        decl.fields.push_back({LirTypeRef(LirBuiltinType::I32)});
+        decl.fields.push_back({LirTypeRef(LirBuiltinType::I32)});
       }
       lir_module->record_struct_decl(std::move(decl));
     }
@@ -758,7 +758,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
       decls.push_back(sty + " = type <{ [" + std::to_string(sd.size_bytes) +
                       " x i8] }>");
       structured_decl.fields.push_back(
-          {LirTypeRef("[" + std::to_string(sd.size_bytes) + " x i8]")});
+          {LirTypeRef::runtime_text("[" + std::to_string(sd.size_bytes) + " x i8]")});
       record_structured_decl();
       continue;
     }
@@ -773,7 +773,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
                          "[" + std::to_string(sd.size_bytes) + " x i8]" +
                          std::string(structured_decl.is_packed ? " }>" : " }"));
         structured_decl.fields.push_back(
-            {LirTypeRef("[" + std::to_string(sd.size_bytes) + " x i8]")});
+            {LirTypeRef::runtime_text("[" + std::to_string(sd.size_bytes) + " x i8]")});
       }
       record_structured_decl();
       continue;
@@ -784,7 +784,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
                        "[" + std::to_string(sd.size_bytes) + " x i8]" +
                        std::string(structured_decl.is_packed ? " }>" : " }"));
       structured_decl.fields.push_back(
-          {LirTypeRef("[" + std::to_string(sd.size_bytes) + " x i8]")});
+          {LirTypeRef::runtime_text("[" + std::to_string(sd.size_bytes) + " x i8]")});
       record_structured_decl();
     } else {
       std::ostringstream line;
@@ -803,7 +803,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
           const std::string pad_ty =
               "[" + std::to_string(base_offset - cur_offset) + " x i8]";
           line << pad_ty;
-          structured_decl.fields.push_back({LirTypeRef(pad_ty)});
+          structured_decl.fields.push_back({LirTypeRef::runtime_text(pad_ty)});
           cur_offset = base_offset;
         }
         if (!first) line << ", ";
@@ -826,7 +826,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
           const std::string pad_ty =
               "[" + std::to_string(f.offset_bytes - cur_offset) + " x i8]";
           line << pad_ty;
-          structured_decl.fields.push_back({LirTypeRef(pad_ty)});
+          structured_decl.fields.push_back({LirTypeRef::runtime_text(pad_ty)});
           cur_offset = f.offset_bytes;
         }
         if (!first) line << ", ";
@@ -841,7 +841,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
         const std::string pad_ty =
             "[" + std::to_string(sd.size_bytes - cur_offset) + " x i8]";
         line << pad_ty;
-        structured_decl.fields.push_back({LirTypeRef(pad_ty)});
+        structured_decl.fields.push_back({LirTypeRef::runtime_text(pad_ty)});
       }
       line << (structured_decl.is_packed ? " }>" : " }");
       decls.push_back(line.str());
