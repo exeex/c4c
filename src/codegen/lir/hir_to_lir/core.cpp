@@ -1772,22 +1772,24 @@ LirOperand StmtEmitter::coerce_operand(FnCtx& ctx, const LirOperand& val,
       is_float_base(from_ts.base) && is_float_base(to_ts.base) &&
       from_floating_width > 0 && to_floating_width > 0 &&
       from_floating_width != to_floating_width;
-  const bool authoritative_scalar_signed_integer_to_floating =
+  const bool authoritative_scalar_integer_to_floating =
       val.value_id() && from_ts.ptr_level == 0 && from_ts.array_rank == 0 &&
       to_ts.ptr_level == 0 && to_ts.array_rank == 0 &&
       !is_vector_value(from_ts) && !is_vector_value(to_ts) &&
       is_any_int(from_ts.base) &&
-      is_signed_int(llvm_storage_base(from_ts)) &&
       int_bits(llvm_storage_base(from_ts)) > 0 &&
       is_float_base(to_ts.base) && to_floating_width > 0;
   if (!scalar_integer_cast && !authoritative_scalar_floating_cast &&
-      !authoritative_scalar_signed_integer_to_floating) {
+      !authoritative_scalar_integer_to_floating) {
     return LirOperand::raw(coerce(ctx, val.str(), from_ts, to_ts));
   }
 
-  if (authoritative_scalar_signed_integer_to_floating) {
+  if (authoritative_scalar_integer_to_floating) {
     const LirOperand result = fresh_value(ctx);
-    emit_lir_op(ctx, LirCastOp{result, LirCastKind::SIToFP,
+    const LirCastKind kind = is_signed_int(llvm_storage_base(from_ts))
+                                 ? LirCastKind::SIToFP
+                                 : LirCastKind::UIToFP;
+    emit_lir_op(ctx, LirCastOp{result, kind,
                                LirTypeRef(from_type), val,
                                LirTypeRef(to_type)});
     return result;
