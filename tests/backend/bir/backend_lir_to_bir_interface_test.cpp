@@ -10363,24 +10363,36 @@ void test_native_intrinsic_receipt_and_rejections() {
   rejected([](auto&, auto& call) { call.intrinsic_kind = static_cast<lir::LirIntrinsicKind>(99); }, "other intrinsic kinds must remain fail-closed");
 }
 
-lir::LirModule native_i32_cttz_add_one_module() {
+lir::LirModule builtin_ffs_cttz_add_one_module(unsigned width) {
   auto module = native_intrinsic_module();
   auto& caller = module.functions[0];
   auto& block = caller.blocks[0];
+  auto& cttz = std::get<lir::LirCallOp>(block.insts[1]);
+  const auto type = lir::LirTypeRef::integer(width);
+  cttz.return_type = type;
+  cttz.callee_signature->return_type_ref = type;
+  cttz.callee_signature->fixed_param_types[0] = width == 64 ? "i64" : "i32";
+  cttz.callee_signature->fixed_param_type_refs[0] = type;
+  cttz.arg_type_refs[0] = type;
+  cttz.structured_args[0] = {width == 64 ? "i64" : "i32",
+                              lir::LirOperand::integer("value", 41), type};
   block.insts.erase(block.insts.begin() + 2, block.insts.end());
   block.insts.push_back(lir::LirBinOp{
       lir::LirOperand::ssa("%cttz-plus-one", lir::LirValueId{10}),
-      lir::LirBinaryOpcode::Add, lir::LirTypeRef::integer(32),
+      lir::LirBinaryOpcode::Add, type,
       lir::LirOperand::ssa("%cttz-result", lir::LirValueId{9}),
       lir::LirOperand::integer("one", 1)});
+  caller.return_type = width == 64 ? scalar_type(c4c::TB_LONGLONG) : scalar_type(c4c::TB_INT);
+  caller.return_type.inner_rank = -1;
+  caller.signature_return_type_ref = type;
   block.terminator = lir::LirRet{
       lir::LirOperand::ssa("%cttz-plus-one-return", lir::LirValueId{10}),
-      lir::LirTypeRef::integer(32)};
+      type};
   return module;
 }
 
-void test_native_i32_cttz_add_one_receipt_and_rejections() {
-  const auto inspect = [](const auto& graph, const std::string& layer) {
+void test_builtin_ffs_cttz_add_one_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer, unsigned width) {
     const auto view = graph.view();
     const auto caller_id = view.functions()[0];
     const auto caller = view.function(caller_id).value();
@@ -10388,80 +10400,86 @@ void test_native_i32_cttz_add_one_receipt_and_rejections() {
     const auto cttz = caller.instruction(instructions[0]).value();
     const auto add = caller.instruction(instructions[1]).value();
     const auto result = caller.value(add.results()[0]).value();
+    const auto type = bir::Type{bir::TypeKind::Integer, width, width == 64 ? "i64" : "i32"};
     expect(instructions.size() == 2 && cttz.intrinsic_call() &&
                cttz.intrinsic_call()->kind == bir::IntrinsicKind::Cttz &&
+               cttz.intrinsic_call()->type == type &&
+               cttz.intrinsic_call()->zero_count_is_undef == std::optional<bool>{false} &&
                cttz.results().size() == 1 && add.binary() &&
                add.binary()->opcode == bir::BinaryOpcode::Add &&
-               add.binary()->type == bir::Type{bir::TypeKind::I32} &&
+               add.binary()->type == type &&
                add.operands().size() == 2 && add.operands()[0] == cttz.results()[0] &&
-               result.type == bir::Type{bir::TypeKind::I32} &&
+               result.type == type &&
                result.source_id == bir::SourceValueId{caller_id, 10} &&
                caller.source_value(*result.source_id).value() == add.results()[0],
-           layer + " must retain only the native i32 Cttz result followed by its i32 Add-one");
+           layer + " must retain only the exact same-width builtin-ffs Cttz result as Add-one lhs");
     const auto rhs = caller.value(add.operands()[1]).value();
     const auto* constant = std::get_if<bir::ConstantDef>(&rhs.definition);
     const auto definition = constant ? view.constant(constant->constant).value()
                                      : bir::ConstantDefinition{};
     const auto* integer = constant ? std::get_if<bir::IntegerConstant>(&definition.payload)
                                    : nullptr;
-    expect(rhs.type == bir::Type{bir::TypeKind::I32} && integer && integer->value == 1,
-           layer + " must materialize the Cttz Add immediate one as i32");
+    expect(rhs.type == type && integer && integer->value == 1,
+           layer + " must materialize the same-width Cttz Add immediate one");
   };
 
-  const auto module = native_i32_cttz_add_one_module();
-  const auto raw = bir::lower_lir_to_raw_bir(module);
-  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
-         "native i32 Cttz Add-one must publish verified Raw BIR" +
-             (raw.has_value() ? std::string{} : ": " + raw.error().detail));
-  inspect(raw.value(), "Raw BIR");
-  const auto canonical = bir::lower_lir_to_canonical_bir(module);
-  expect(canonical.has_value(), "native i32 Cttz Add-one must canonicalize");
-  inspect(canonical.value(), "Canonical BIR");
+  for (const auto width : {32U, 64U}) {
+    const auto module = builtin_ffs_cttz_add_one_module(width);
+    const auto raw = bir::lower_lir_to_raw_bir(module);
+    expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+           "builtin ffs Cttz Add-one must publish verified Raw BIR" +
+               (raw.has_value() ? std::string{} : ": " + raw.error().detail));
+    inspect(raw.value(), "Raw BIR", width);
+    const auto canonical = bir::lower_lir_to_canonical_bir(module);
+    expect(canonical.has_value(), "builtin ffs Cttz Add-one must canonicalize");
+    inspect(canonical.value(), "Canonical BIR", width);
 
-  const auto rejected = [](auto mutate, const std::string& message) {
-    auto candidate = native_i32_cttz_add_one_module();
-    auto& cttz = std::get<lir::LirCallOp>(candidate.functions[0].blocks[0].insts[1]);
-    auto& add = std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[2]);
-    mutate(candidate, cttz, add);
-    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
-    expect(!raw_rejected.has_value() && raw_rejected.error().code ==
-               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
-           message + " (Raw rollback)");
-    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
-    expect(!canonical_rejected.has_value() && canonical_rejected.error().code ==
-               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
-           message + " (Canonical rollback)");
-  };
-  rejected([](auto&, auto&, auto& add) { add.result = lir::LirOperand::raw("%missing"); },
-           "missing Add result authority must reject atomically");
-  rejected([](auto&, auto&, auto& add) {
-             add.result = lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
-           }, "invalid Add result identity must reject atomically");
-  rejected([](auto&, auto&, auto& add) {
-             add.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{9});
-           }, "duplicate Add result identity must reject atomically");
-  rejected([](auto&, auto&, auto& add) {
-             add.lhs = lir::LirOperand::ssa("%unknown", lir::LirValueId{77});
-           }, "unknown Cttz result use must reject atomically");
-  rejected([](auto&, auto&, auto& add) {
-             add.lhs = lir::LirOperand::integer("not-cttz", 1);
-           }, "non-SSA Cttz result use must reject atomically");
-  rejected([](auto&, auto&, auto& add) { add.rhs = lir::LirOperand::integer("two", 2); },
-           "non-one Cttz Add immediate must reject atomically");
-  rejected([](auto&, auto&, auto& add) {
-             add.rhs = lir::LirOperand::ssa("%not-immediate", lir::LirValueId{9});
-           }, "non-immediate Cttz Add rhs must reject atomically");
-  rejected([](auto&, auto&, auto& add) { add.opcode = lir::LirBinaryOpcode::Sub; },
-           "non-Add Cttz consumer must reject atomically");
-  rejected([](auto&, auto&, auto& add) { add.type_str = lir::LirTypeRef::integer(64); },
-           "non-i32 Cttz Add must reject atomically");
-  rejected([](auto&, auto& cttz, auto&) { cttz.intrinsic_kind = lir::LirIntrinsicKind::Ctpop; },
-           "non-Cttz intrinsic provenance must reject atomically");
-  rejected([](auto&, auto& cttz, auto&) { cttz.return_type = lir::LirTypeRef::integer(64); },
-           "non-i32 Cttz provenance must reject atomically");
-  rejected([](auto&, auto& cttz, auto&) { cttz.direct_callee_link_name_id = 999; },
-           "missing Cttz linkage must reject atomically");
-  rejected([](auto& candidate, auto&, auto& add) {
+    const auto rejected = [width](auto mutate, const std::string& message) {
+      auto candidate = builtin_ffs_cttz_add_one_module(width);
+      auto& cttz = std::get<lir::LirCallOp>(candidate.functions[0].blocks[0].insts[1]);
+      auto& add = std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[2]);
+      mutate(candidate, cttz, add);
+      const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+      expect(!raw_rejected.has_value() && raw_rejected.error().code ==
+                 bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+             message + " (Raw rollback)");
+      const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+      expect(!canonical_rejected.has_value() && canonical_rejected.error().code ==
+                 bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+             message + " (Canonical rollback)");
+    };
+    rejected([](auto&, auto& cttz, auto&) { cttz.result = lir::LirOperand::raw("%missing"); },
+             "missing Cttz result authority must reject atomically");
+    rejected([](auto&, auto& cttz, auto&) {
+               cttz.result = lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+             }, "invalid Cttz result identity must reject atomically");
+    rejected([](auto&, auto& cttz, auto&) {
+               cttz.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{3});
+             }, "duplicate Cttz result identity must reject atomically");
+    rejected([](auto&, auto& cttz, auto&) { cttz.intrinsic_kind = lir::LirIntrinsicKind::Ctpop; },
+             "non-Cttz intrinsic provenance must reject atomically");
+    rejected([](auto& candidate, auto& cttz, auto&) {
+               cttz.direct_callee_link_name_id = candidate.functions[0].link_name_id;
+             }, "mismatched direct Cttz LinkNameId must reject atomically");
+    rejected([](auto&, auto& cttz, auto&) { cttz.callee_signature->is_variadic = true; },
+             "variadic Cttz signature must reject atomically");
+    rejected([](auto&, auto& cttz, auto&) { cttz.callee_signature->fixed_param_types[1] = "i32"; },
+             "wrong Cttz flag signature must reject atomically");
+    rejected([](auto&, auto& cttz, auto&) {
+               cttz.zero_count_behavior = lir::LirZeroCountBehavior::Undefined;
+             }, "wrong defined-zero Cttz behavior must reject atomically");
+    rejected([](auto&, auto&, auto& add) {
+               add.lhs = lir::LirOperand::ssa("%unknown", lir::LirValueId{77});
+             }, "unresolved Cttz result-to-Add lhs must reject atomically");
+    rejected([](auto&, auto&, auto& add) {
+               add.lhs = lir::LirOperand::ssa("%wrong", lir::LirValueId{3});
+             }, "wrong Cttz result-to-Add lhs must reject atomically");
+    rejected([](auto&, auto&, auto& add) { add.rhs = lir::LirOperand::integer("two", 2); },
+             "non-one Cttz Add immediate must reject atomically");
+    rejected([width](auto&, auto&, auto& add) {
+               add.type_str = lir::LirTypeRef::integer(width == 32 ? 64 : 32);
+             }, "wrong-width Cttz Add must reject atomically");
+    rejected([](auto& candidate, auto&, auto& add) {
              auto foreign = candidate.functions[0];
              foreign.name = "foreign_cttz_owner";
              foreign.link_name_id = candidate.link_names.intern("foreign_cttz_owner");
@@ -10472,30 +10490,11 @@ void test_native_i32_cttz_add_one_receipt_and_rejections() {
              foreign_add.result = lir::LirOperand::ssa("%foreign-add", lir::LirValueId{78});
              foreign.blocks[0].terminator = lir::LirRet{
                  lir::LirOperand::ssa("%foreign-return", lir::LirValueId{78}),
-                 lir::LirTypeRef::integer(32)};
+                 foreign_add.type_str};
              candidate.functions.push_back(std::move(foreign));
              add.lhs = lir::LirOperand::ssa("%foreign-cttz", lir::LirValueId{77});
            }, "cross-owner Cttz result use must reject atomically");
-
-  auto following_zero_compare = native_i32_cttz_add_one_module();
-  following_zero_compare.functions[0].blocks[0].insts.push_back(lir::LirCmpOp{
-      lir::LirOperand::ssa("%cttz-is-zero", lir::LirValueId{11}), false,
-      lir::LirCmpPredicate::Eq, lir::LirTypeRef::integer(32),
-      lir::LirOperand::ssa("%cttz", lir::LirValueId{9}),
-      lir::LirOperand::integer("zero", 0)});
-  expect(!bir::lower_lir_to_raw_bir(following_zero_compare).has_value() &&
-             !bir::lower_lir_to_canonical_bir(following_zero_compare).has_value(),
-         "the following Cttz zero comparison must remain unsupported transactionally");
-
-  auto following_select = native_i32_cttz_add_one_module();
-  following_select.functions[0].blocks[0].insts.push_back(lir::LirSelectOp{
-      lir::LirOperand::ssa("%cttz-select", lir::LirValueId{11}),
-      lir::LirTypeRef::integer(32), lir::LirOperand::ssa("%missing-cond", lir::LirValueId{77}),
-      lir::LirOperand::ssa("%cttz-add", lir::LirValueId{10}),
-      lir::LirOperand::integer("zero", 0)});
-  expect(!bir::lower_lir_to_raw_bir(following_select).has_value() &&
-             !bir::lower_lir_to_canonical_bir(following_select).has_value(),
-         "the following Cttz Select must remain unsupported transactionally");
+  }
 }
 
 lir::LirModule builtin_ffs_add_select_false_arm_module(unsigned width) {
@@ -11064,7 +11063,7 @@ int main() {
   test_normalized_i32_add_receipt_and_rejections();
   test_normalized_i32_mul_receipt_and_rejections();
   test_native_intrinsic_receipt_and_rejections();
-  test_native_i32_cttz_add_one_receipt_and_rejections();
+  test_builtin_ffs_cttz_add_one_receipt_and_rejections();
   test_builtin_ffs_add_select_false_arm_receipt_and_rejections();
   test_native_intrinsic_i64_trunc_receipt_and_rejections();
   test_scalar_i32_to_i64_sext_receipt_and_rejections();
