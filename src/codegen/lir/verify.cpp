@@ -20,6 +20,7 @@ namespace {
 std::string operand_kind_name(LirOperandKind kind) {
   switch (kind) {
     case LirOperandKind::SsaValue: return "ssa";
+    case LirOperandKind::DirectConstant: return "direct-constant";
     case LirOperandKind::Global: return "global";
     case LirOperandKind::Label: return "label";
     case LirOperandKind::Immediate: return "immediate";
@@ -36,7 +37,9 @@ void verify_operand_authority_kind(const LirOperand& operand,
   LirOperandKind expected = LirOperandKind::RawText;
   if (const auto* id = operand.value_id()) {
     if (!id->valid()) fail_verify(field, "invalid LirValueId authority");
-    expected = LirOperandKind::SsaValue;
+    expected = operand.kind() == LirOperandKind::DirectConstant
+                   ? LirOperandKind::DirectConstant
+                   : LirOperandKind::SsaValue;
   } else if (operand.link_name_id()) {
     expected = LirOperandKind::Global;
   } else if (operand.integer_immediate()) {
@@ -488,6 +491,16 @@ void verify_result_operand(const LirOperand& operand, std::string_view field) {
 void verify_value_operand(const LirOperand& operand, std::string_view field) {
   require_operand_kind(operand, field,
                        {LirOperandKind::SsaValue,
+                        LirOperandKind::Global,
+                        LirOperandKind::Immediate,
+                        LirOperandKind::SpecialToken});
+}
+
+void verify_store_value_operand(const LirOperand& operand,
+                                std::string_view field) {
+  require_operand_kind(operand, field,
+                       {LirOperandKind::SsaValue,
+                        LirOperandKind::DirectConstant,
                         LirOperandKind::Global,
                         LirOperandKind::Immediate,
                         LirOperandKind::SpecialToken});
@@ -1219,7 +1232,10 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     return;
   }
   if (const auto* op = std::get_if<LirIndirectBrOp>(&inst)) {
-    verify_pointer_operand(op->addr, "LirIndirectBrOp.addr");
+    require_operand_kind(op->addr, "LirIndirectBrOp.addr",
+                         {LirOperandKind::SsaValue,
+                          LirOperandKind::DirectConstant,
+                          LirOperandKind::Global});
     if (op->targets.empty()) {
       fail_verify("LirIndirectBrOp.targets", "must not be empty");
     }
@@ -1248,7 +1264,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
   }
   if (const auto* op = std::get_if<LirStoreOp>(&inst)) {
     require_module_type_ref(mod, op->type_str, "LirStoreOp.type_str", true);
-    verify_value_operand(op->val, "LirStoreOp.val");
+    verify_store_value_operand(op->val, "LirStoreOp.val");
     verify_pointer_operand(op->ptr, "LirStoreOp.ptr");
     verify_global_store_authority(mod, *op);
     return;
@@ -1847,6 +1863,27 @@ void verify_function_value_ownership(const LirModule& mod,
                                            definition_insts);
   verify_selected_memcpy_authority(function);
 
+  // Direct label addresses are function-owned pointer constants, not
+  // instruction results.  Register them in the same current-function value
+  // identity set while deliberately leaving definition_insts instruction-only.
+  for (const auto& constant : function.direct_label_address_constants) {
+    const std::size_t target_count = std::count_if(
+        function.blocks.begin(), function.blocks.end(), [&](const LirBlock& block) {
+          return block.id == constant.target;
+        });
+    if (!constant.value.valid() || constant.owner != function.link_name_id ||
+        constant.owner == c4c::kInvalidLinkName ||
+        constant.type.kind() != LirTypeKind::Pointer || target_count != 1) {
+      fail_verify("LirFunction.direct_label_address_constants",
+                  "must define a unique current-function pointer value and target");
+    }
+    if (!definitions.insert(constant.value.value).second) {
+      fail_verify("LirFunction.value_definitions",
+                  "duplicate LirValueId direct-constant authority " +
+                      std::to_string(constant.value.value));
+    }
+  }
+
   const auto collect_operand_definition =
       [&](const LirInst& inst, const LirOperand* result) {
     if (!result) return;
@@ -1939,21 +1976,6 @@ void verify_function_value_ownership(const LirModule& mod,
       fail_verify("LirIndirectBrOp.addr_value",
                   "must carry a valid current-function pointer LirValueId");
     }
-    const auto definition = definition_insts.find(op.addr_value->value);
-    if (definition == definition_insts.end() || definition->second == nullptr) {
-      fail_verify("LirIndirectBrOp.addr_value",
-                  "must identify a current-function pointer value definition");
-    }
-    const LirOperand* result = modeled_result_operand(*definition->second);
-    if (!result || !result->value_id() || *result->value_id() != *op.addr_value ||
-        !modeled_pointer_result(*definition->second)) {
-      fail_verify("LirIndirectBrOp.addr_value",
-                  "must identify a current-function pointer value definition");
-    }
-    if (op.addr.str() != result->str()) {
-      fail_verify("LirIndirectBrOp.addr",
-                  "display mirror must match the address-selected value definition");
-    }
     if (op.addr.kind() == LirOperandKind::DirectConstant) {
       if (!op.addr.value_id() || *op.addr.value_id() != *op.addr_value) {
         fail_verify("LirIndirectBrOp.addr",
@@ -1968,6 +1990,22 @@ void verify_function_value_ownership(const LirModule& mod,
         fail_verify("LirIndirectBrOp.addr",
                     "direct constant use must resolve in the enclosing function");
       }
+      return;
+    }
+    const auto definition = definition_insts.find(op.addr_value->value);
+    if (definition == definition_insts.end() || definition->second == nullptr) {
+      fail_verify("LirIndirectBrOp.addr_value",
+                  "must identify a current-function pointer value definition");
+    }
+    const LirOperand* result = modeled_result_operand(*definition->second);
+    if (!result || !result->value_id() || *result->value_id() != *op.addr_value ||
+        !modeled_pointer_result(*definition->second)) {
+      fail_verify("LirIndirectBrOp.addr_value",
+                  "must identify a current-function pointer value definition");
+    }
+    if (op.addr.str() != result->str()) {
+      fail_verify("LirIndirectBrOp.addr",
+                  "display mirror must match the address-selected value definition");
     }
   };
   for (const auto& block : function.blocks) {
@@ -2016,6 +2054,19 @@ void verify_function_value_ownership(const LirModule& mod,
       }
       if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
         const LirValueId* value_id = store->val.value_id();
+        if (store->val.kind() == LirOperandKind::DirectConstant) {
+          const auto direct = value_id ? std::find_if(
+              function.direct_label_address_constants.begin(),
+              function.direct_label_address_constants.end(), [&](const auto& item) {
+                return item.value == *value_id;
+              }) : function.direct_label_address_constants.end();
+          if (!value_id || direct == function.direct_label_address_constants.end() ||
+              store->type_str.kind() != LirTypeKind::Pointer ||
+              direct->type != store->type_str) {
+            fail_verify("LirStoreOp.val",
+                        "direct constant store value must match a current-function pointer definition");
+          }
+        }
         if (value_id) {
           const auto definition = definition_insts.find(value_id->value);
           if (definition != definition_insts.end()) {
@@ -2842,10 +2893,16 @@ const std::string& require_operand_kind(
     const LirOperand& operand,
     std::string_view field,
     std::initializer_list<LirOperandKind> allowed_kinds,
-    bool allow_empty) {
+  bool allow_empty) {
   if (operand.empty()) {
+    if (operand.kind() == LirOperandKind::DirectConstant &&
+        operand.value_id()) {
+      // Function-owned direct constants intentionally have no display spelling;
+      // their legal consumers resolve the value ID structurally.
+    } else {
     if (allow_empty && !operand.has_authority()) return operand.str();
     fail_verify(field, "must not be empty");
+    }
   }
   verify_operand_authority_kind(operand, field);
   if (!operand_kind_allowed(operand.kind(), allowed_kinds)) {

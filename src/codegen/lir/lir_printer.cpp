@@ -264,13 +264,16 @@ void render_inst(std::ostringstream& os, const LirFunction& function,
                                {LirOperandKind::SsaValue, LirOperandKind::Global})
        << "\n";
   } else if (const auto* op = std::get_if<LirStoreOp>(&inst)) {
+    const std::string direct = resolve_direct_label_address(function, op->val,
+                                                            link_names);
     os << "  store " << require_type_ref(op->type_str, "LirStoreOp.type_str", true)
        << " "
-       << require_operand_kind(op->val, "LirStoreOp.val",
+       << (direct.empty() ? require_operand_kind(op->val, "LirStoreOp.val",
                                {LirOperandKind::SsaValue,
                                 LirOperandKind::Global,
                                 LirOperandKind::Immediate,
                                 LirOperandKind::SpecialToken})
+                          : direct)
        << ", ptr "
        << require_operand_kind(op->ptr, "LirStoreOp.ptr",
                                {LirOperandKind::SsaValue, LirOperandKind::Global})

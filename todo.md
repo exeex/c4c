@@ -8,27 +8,32 @@ Current Step Title: Implement direct-constant ordinary pointer-store consumption
 
 ## Just Finished
 
-- Lifecycle repair reopened 770 after 768 Step 5 found that its native direct
-  constant cannot yet feed the ordinary `LirStoreOp` pointer initializer. 768
-  made no code or test edits; its Steps 1--4 remain accepted and it will return
-  to Step 5 after this bounded repair.
+- Step 2 completed: `LirStoreOp.val` now admits only the structured,
+  function-owned direct label-address pointer constant and renders it as
+  `blockaddress(...)`; function value ownership registers that constant as a
+  non-instruction definition and rejects malformed store authority. Focused
+  positive rendering plus missing, duplicate, invalid/foreign owner or target,
+  non-pointer/wrong-type, and mismatched-use checks passed without changing
+  the accepted indirect-jump route.
 
 ## Suggested Next
 
-- Implement only legal `LirOperandKind::DirectConstant` pointer-store value
-  rendering and matching function-owned direct-definition verification. Add
-  focused positive/malformed store-consumer coverage, then build freshly and
-  run the selected native-contract proof.
+- Supervisor: complete Step 3 acceptance handling and return 768 exactly to
+  its interrupted Step 5; do not claim producer, table-decay, external, or
+  broader backend integration proof.
 
 ## Watchouts
 
-- Preserve accepted `e8a0f70b4`/`6803f8c25` indirect-jump behavior. No
-  `LabelAddrExpr` producer, carrier, table-decay, 767/769, broad backend, or
-  synthetic `select`/`gep`/`bitcast` bridge work belongs here.
+- The positive store fixture is deliberately LIR verifier/printer coverage;
+  Raw-BIR import remains out of scope and the existing direct indirect-jump
+  fixture continues to prove `e8a0f70b4`. No `LabelAddrExpr` producer,
+  carrier, table-decay, 767/769, broad backend, or synthetic
+  `select`/`gep`/`bitcast` bridge work belongs here.
 
 ## Proof
 
-- Required before return: fresh build plus focused native direct-constant
-  positive/malformed proof covering ordinary pointer-store consumption and
-  malformed owner/target/value/type/direct-use boundaries. Retain the accepted
-  indirect-jump proof; do not claim 768 producer or external integration proof.
+- Passed: `cmake --build --preset default` followed by
+  `ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$'`
+  with output retained in `test_after.log`. This is sufficient for the bounded
+  LIR store consumer and retained indirect-jump fixture, not 768 producer or
+  external integration proof.

@@ -3470,6 +3470,7 @@ void test_direct_label_address_constant_receipt_and_rejections() {
     auto module = selected_global_array_gep_module();
     auto& function = module.functions.front();
     function.link_name_id = module.link_names.intern("direct_label_owner");
+    function.signature_text = "define void @direct_label_owner()";
     function.direct_label_address_constants.push_back(
         {function.link_name_id, lir::LirBlockId{1}, lir::LirTypeRef("ptr"),
          lir::LirValueId{63}});
@@ -3481,6 +3482,19 @@ void test_direct_label_address_constant_receipt_and_rejections() {
     return module;
   };
   const auto module = direct_module();
+  const auto store_module = [&] {
+    auto candidate = direct_module();
+    candidate.functions[0].blocks[0].insts.insert(
+        candidate.functions[0].blocks[0].insts.begin(), lir::LirStoreOp{
+            lir::LirTypeRef("ptr"), lir::LirOperand::direct_constant(lir::LirValueId{63}),
+            lir::LirOperand::ssa("%label_address_slot", lir::LirValueId{61})});
+    return candidate;
+  };
+  lir::verify_module(store_module());
+  const std::string printed = lir::print_llvm(store_module());
+  expect(printed.find("store ptr blockaddress(@direct_label_owner, %target), ptr %label_address_slot") !=
+             std::string::npos,
+         "pointer store must render the structured direct label-address constant");
   const auto raw = bir::lower_lir_to_raw_bir(module);
   expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
          "direct label-address constant must publish verified Raw BIR");
@@ -3525,6 +3539,56 @@ void test_direct_label_address_constant_receipt_and_rejections() {
     auto& op = std::get<lir::LirIndirectBrOp>(candidate.functions[0].blocks[0].insts.back());
     op.addr = lir::LirOperand::direct_constant(lir::LirValueId{61});
   }, "mismatched direct use and address identity must reject");
+
+  const auto rejected_by_verifier = [&](auto mutate, const std::string& message) {
+    auto candidate = store_module();
+    mutate(candidate);
+    try {
+      lir::verify_module(candidate);
+    } catch (const lir::LirVerifyError&) {
+      return;
+    }
+    fail(message);
+  };
+  rejected_by_verifier([](lir::LirModule& candidate) {
+    candidate.functions[0].direct_label_address_constants.clear();
+  }, "store direct use without its definition must reject in the verifier");
+  rejected_by_verifier([](lir::LirModule& candidate) {
+    candidate.functions[0].direct_label_address_constants.push_back(
+        candidate.functions[0].direct_label_address_constants[0]);
+  }, "duplicate store direct definition must reject in the verifier");
+  rejected_by_verifier([](lir::LirModule& candidate) {
+    candidate.functions[0].direct_label_address_constants[0].owner =
+        c4c::kInvalidLinkName;
+  }, "invalid store direct owner must reject in the verifier");
+  rejected_by_verifier([](lir::LirModule& candidate) {
+    candidate.functions[0].direct_label_address_constants[0].owner =
+        candidate.link_names.intern("foreign_store_direct_owner");
+  }, "foreign store direct owner must reject in the verifier");
+  rejected_by_verifier([](lir::LirModule& candidate) {
+    candidate.functions[0].direct_label_address_constants[0].target =
+        lir::LirBlockId{999};
+  }, "invalid store direct target must reject in the verifier");
+  rejected_by_verifier([](lir::LirModule& candidate) {
+    auto foreign = void_definition("foreign_store_target",
+                                   {return_block(999, "foreign_target")});
+    foreign.signature_text = "define void @foreign_store_target()";
+    candidate.functions.push_back(std::move(foreign));
+    candidate.functions[0].direct_label_address_constants[0].target =
+        lir::LirBlockId{999};
+  }, "foreign store direct target must reject in the verifier");
+  rejected_by_verifier([](lir::LirModule& candidate) {
+    candidate.functions[0].direct_label_address_constants[0].type =
+        lir::LirTypeRef::integer(32);
+  }, "nonpointer store direct definition must reject in the verifier");
+  rejected_by_verifier([](lir::LirModule& candidate) {
+    auto& store = std::get<lir::LirStoreOp>(candidate.functions[0].blocks[0].insts[0]);
+    store.type_str = lir::LirTypeRef::integer(32);
+  }, "wrong store direct value type must reject in the verifier");
+  rejected_by_verifier([](lir::LirModule& candidate) {
+    auto& store = std::get<lir::LirStoreOp>(candidate.functions[0].blocks[0].insts[0]);
+    store.val = lir::LirOperand::direct_constant(lir::LirValueId{61});
+  }, "mismatched store direct use must reject in the verifier");
 }
 
 void test_typed_computed_goto_receipt_and_rejections() {
