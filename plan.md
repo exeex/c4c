@@ -1,6 +1,6 @@
 # LIR Vaarg Result Authority Publication Runbook
 
-Status: Active
+Status: Exhausted — close accepted pending supervisor lifecycle review
 Source Idea: ideas/open/777_lir_vaarg_result_authority_publication.md
 Activated from: closed 776's independently evidenced vaarg first-loss handoff.
 
@@ -96,6 +96,27 @@ Completion check:
 
 - 775 can consume a vaarg-only native result-authority handoff while ternary,
   logical, PHI, and generic expression work remain separate.
+
+Completed handoff:
+
+- Selected field and route: scalar AMD64 semantic `LirVaArgOp.result` is
+  allocated with `fresh_value` as an owning current-function `LirValueId`,
+  enters `emit_lir_op` as `LirOperand::ssa`, then travels through the
+  VaArgExpr-specific `LirOperand` route to the immediate typed Add with the
+  exact same native value ID.
+- Focused proof: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_call_type_ref$'` passed. The focused
+  native verifier cases reject missing, invalid, duplicate, and foreign vaarg
+  result authority. The supervisor accepted the regression guard and full
+  baseline review for commit `55c499775`.
+- Exact 775 return point: 775 may consume this vaarg-only typed-result
+  handoff. Ternary/coerce and logical remain unresolved; do not reactivate 751
+  or claim PHI incoming-carrier work from this result.
+- Disposition: this vaarg-only producer runbook is capability-complete within
+  its source scope and may close. It does not authorize generic expression
+  migration, nonsemantic vaarg target-lowering work, text recovery, result-name
+  maps, side tables, PHI work, Raw-BIR/importer/backend work, or a broader
+  helper-family capability claim.
 
 ## Proof
 

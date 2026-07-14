@@ -62,6 +62,30 @@ migrating all `emit_rval_payload`, `emit_rval_id`, or `coerce` callers.
 - The handoff identifies only the vaarg typed field, proof, and 775 return
   point. It makes no PHI, other-family, generic-migration, or backend claim.
 
+## Completed Vaarg-Only Handoff
+
+Disposition: capability-complete for this one-family vaarg source; close
+accepted pending supervisor lifecycle review. No ternary, logical, PHI, or
+broader producer capability is claimed.
+
+Scalar AMD64 semantic `LirVaArgOp.result` is allocated by `fresh_value` as an
+owning current-function `LirValueId`, passed to `emit_lir_op` as
+`LirOperand::ssa`, carried by the VaArgExpr-specific `LirOperand` route, and
+consumed by the immediate typed Add with the exact same native value ID.
+
+Focused proof
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure
+-R '^frontend_lir_call_type_ref$'` passed. The native verifier rejects missing,
+invalid, duplicate, and foreign vaarg result authority cases. The supervisor
+accepted the regression guard and full baseline review for `55c499775`.
+
+Exact 775 return point: 775 may consume only this vaarg typed-result handoff.
+Ternary/coerce and logical producer authority remain unresolved, and PHI/751
+remain blocked and out of scope. This handoff does not authorize generic
+expression migration, nonsemantic vaarg target-lowering work, text recovery,
+result-name maps, side tables, PHI carrier/verifier work, or
+Raw-BIR/importer/backend work.
+
 ## Reviewer Reject Signals
 
 - Reject any broad `emit_rval_payload`, `emit_rval_id`, or `coerce` migration

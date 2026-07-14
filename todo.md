@@ -1,36 +1,37 @@
 # Current Packet
 
-Status: Active
+Status: Exhausted — close accepted pending supervisor lifecycle review
 Source Idea Path: ideas/open/777_lir_vaarg_result_authority_publication.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Publish the bounded 775 handoff
-你該做code review了
-
+Current Step ID: none
+Current Step Title: none — Step 3 vaarg-only handoff complete
 
 ## Just Finished
 
-- Plan Steps 1–2 complete: scalar AMD64 semantic-vaarg lowering publishes
-  `LirVaArgOp.result` through a VaArgExpr-specific `LirOperand` path, and the
-  focused probe now requires that valid native result ID to equal its immediate
-  typed Add consumer ID. The probe also verifies that missing result authority,
-  invalid result authority, duplicate result authority, and a foreign vaarg
-  result authority use all fail closed through the existing verifier contract.
+- Plan Step 3 complete: published the vaarg-only 775 handoff. Scalar AMD64
+  semantic `LirVaArgOp.result` is allocated with `fresh_value`, enters
+  `emit_lir_op` as `LirOperand::ssa`, travels through the VaArgExpr-specific
+  operand route, and reaches the immediate typed Add with the exact same native
+  value ID. Missing, invalid, duplicate, and foreign vaarg authority cases fail
+  closed through the existing native verifier.
+- Lifecycle disposition: 777 is capability-complete only for this vaarg
+  family and close accepted pending supervisor review. Ternary/coerce and
+  logical remain unresolved for 775; PHI/751 remain blocked and out of scope.
 
 ## Suggested Next
 
-- Publish Plan Step 3's vaarg-only handoff to 775; do not reactivate 775/751
-  or claim ternary, logical, PHI, generic expression, or backend coverage.
+- Supervisor review and close exhausted 777. Keep 775/751 open; 775 may
+  consume only the vaarg handoff and must not infer ternary/logical or PHI work.
 
 ## Watchouts
 
-- The malformed missing-result case is rejected because the immediate native
-  consumer retains a now-undefined ID; the foreign case is rejected because
-  value definitions are current-function scoped. No verifier, PHI, generic
-  expression, or nonsemantic target route changed.
+- No generic expression migration, nonsemantic vaarg target-lowering work,
+  text recovery, maps, side tables, PHI, Raw-BIR/importer, or backend work is
+  authorized by this one-family handoff.
 
 ## Proof
 
 - `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^frontend_lir_call_type_ref$'` passed. No root log
-  was written because this packet forbids supervisor-owned root log changes.
+  --output-on-failure -R '^frontend_lir_call_type_ref$'` passed. The supervisor
+  accepted the regression guard and full baseline review for `55c499775`. This
+  lifecycle packet ran no code proof and wrote no root logs.
