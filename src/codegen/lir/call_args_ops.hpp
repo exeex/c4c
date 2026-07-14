@@ -92,9 +92,15 @@ inline LirCallOp make_lir_call_op_with_return_type_ref(
   result.str() = std::string(trim_lir_arg_text(result.str()));
   const LirExtAttr return_ext_attr =
       callee_signature ? callee_signature->return_ext_attr : LirExtAttr::None;
+  const std::string callee_text =
+      std::string(trim_lir_arg_text(callee));
+  LirOperand callee_operand =
+      direct_callee_link_name_id != kInvalidLinkName
+          ? LirOperand::global(callee_text, direct_callee_link_name_id)
+          : LirOperand(callee_text);
   return LirCallOp{std::move(result),
                    std::move(return_type),
-                   std::string(trim_lir_arg_text(callee)),
+                   std::move(callee_operand),
                    direct_callee_link_name_id,
                    formatted.callee_type_suffix,
                    formatted.args_str,

@@ -1876,6 +1876,86 @@ double lir_direct_scalar_floating_result_call_identity(void) {
       operand_type_conflict, "verifier should reject non-double direct call FAdd use type");
 }
 
+void test_block_scope_extern_void_prototype_uses_direct_function_entity() {
+  namespace hir = c4c::hir;
+  namespace lir = c4c::codegen::lir;
+
+  constexpr std::string_view source = R"c(
+double lir_block_scope_extern_void_caller(void) {
+  extern double lir_block_scope_extern_void_target(void);
+  return lir_block_scope_extern_void_target() + 1.0;
+}
+)c";
+
+  hir::Module hir_module = lower_hir_module(source);
+  hir::Function& hir_target = require_hir_function(
+      hir_module, "lir_block_scope_extern_void_target", true);
+  expect_true(hir_target.linkage.is_extern && hir_target.blocks.empty(),
+              "block-scope extern prototype should create a bodyless extern HIR Function");
+  expect_true(hir_target.return_type.spec.base == c4c::TB_DOUBLE &&
+                  hir_target.return_type.spec.ptr_level == 0,
+              "block-scope extern HIR Function should retain its scalar return type");
+  expect_true(hir_target.params.size() == 1 &&
+                  hir_target.params[0].type.spec.base == c4c::TB_VOID &&
+                  hir_target.params[0].type.spec.ptr_level == 0 &&
+                  !hir_target.attrs.unspecified_params &&
+                  !hir_target.attrs.variadic,
+              "block-scope extern HIR Function should retain the fixed-void signature");
+
+  hir_module.target_profile =
+      c4c::target_profile_from_triple("x86_64-linux-gnu");
+  lir::LirModule lowered = lir::lower(hir_module);
+  lir::verify_module(lowered);
+
+  const auto declaration = std::find_if(
+      lowered.functions.begin(), lowered.functions.end(),
+      [](const lir::LirFunction& fn) {
+        return fn.name == "lir_block_scope_extern_void_target" &&
+               fn.is_declaration;
+      });
+  expect_true(declaration != lowered.functions.end() &&
+                  declaration->link_name_id != c4c::kInvalidLinkName &&
+                  declaration->return_type.base == c4c::TB_DOUBLE &&
+                  declaration->return_type.ptr_level == 0 &&
+                  declaration->signature_has_void_param_list &&
+                  declaration->signature_params.empty(),
+              "block-scope extern Function should lower as a fixed-void LIR declaration");
+
+  lir::LirFunction& caller =
+      require_function(lowered, "lir_block_scope_extern_void_caller");
+  lir::LirCallOp* call = nullptr;
+  lir::LirBinOp* add = nullptr;
+  for (auto& block : caller.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* candidate = std::get_if<lir::LirCallOp>(&inst)) call = candidate;
+      if (auto* candidate = std::get_if<lir::LirBinOp>(&inst)) add = candidate;
+    }
+  }
+  expect_true(call && add,
+              "block-scope extern caller should contain one direct call and downstream add");
+  expect_true(call->callee.kind() == lir::LirOperandKind::Global &&
+                  call->callee.link_name_id() &&
+                  *call->callee.link_name_id() == declaration->link_name_id &&
+                  call->direct_callee_link_name_id == declaration->link_name_id,
+              "block-scope extern call should use the normal direct Function link identity");
+  expect_true(call->callee.kind() != lir::LirOperandKind::SsaValue,
+              "block-scope extern call must not lower as an indirect function-pointer call");
+  expect_true(call->callee_signature &&
+                  call->callee_signature->return_type_ref &&
+                  call->callee_signature->return_type_ref->str() == "double" &&
+                  call->callee_signature->has_void_param_list &&
+                  !call->callee_signature->has_unspecified_params &&
+                  !call->callee_signature->is_variadic &&
+                  call->callee_signature->fixed_param_type_refs.empty(),
+              "block-scope extern direct call should consume the Function fixed-void signature");
+  expect_true(call->result.kind() == lir::LirOperandKind::SsaValue &&
+                  call->result.value_id() && call->result.value_id()->valid() &&
+                  add->opcode.typed() == lir::LirBinaryOpcode::FAdd &&
+                  add->type_str == call->return_type && add->lhs.value_id() &&
+                  *add->lhs.value_id() == *call->result.value_id(),
+              "block-scope extern scalar call result should retain its exact ID into the downstream use");
+}
+
 void test_direct_scalar_float_result_call_identity_boundary() {
   namespace lir = c4c::codegen::lir;
   lir::LirModule lowered = lower_lir_module_for_target(R"c(
@@ -6020,6 +6100,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_global_array_gep_identity_contract();
   test_direct_scalar_result_call_identity_boundary();
   test_direct_scalar_floating_result_call_identity_boundary();
+  test_block_scope_extern_void_prototype_uses_direct_function_entity();
   test_direct_scalar_float_result_call_identity_boundary();
   test_direct_long_double_result_call_identity_boundary();
   test_aarch64_direct_long_double_result_call_identity_boundary();

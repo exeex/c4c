@@ -77,12 +77,13 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     }
   };
 
-  // Local function prototype (e.g. `int f1(char *);` inside a function body):
-  // if the name is already registered as a known function, skip creating a
-  // local alloca; later references will resolve directly to the global function.
-  // Require n_params > 0 to distinguish from a plain variable declaration
-  // whose name coincidentally matches a function name.
-  if (n->name && !n->init && n->n_params > 0) {
+  // Local function prototype (e.g. `extern int f1(char *);` inside a function
+  // body).  The declaration parser represents a bare function declarator as a
+  // function-pointer-shaped TypeSpec with ptr_level == 0 and keeps its
+  // signature in fn_ptr_params.  Preserve the older n_params shape used by
+  // synthetic AST fixtures as well.
+  const bool is_bare_function_decl = n->type.is_fn_ptr && n->type.ptr_level == 0;
+  if (n->name && !n->init && (is_bare_function_decl || n->n_params > 0)) {
     DeclRef fn_ref{};
     fn_ref.name = n->name;
     fn_ref.name_text_id = make_unqualified_text_id(
@@ -92,6 +93,19 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     fn_ref.link_name_id =
         module_ ? module_->link_names.find(fn_ref.name) : kInvalidLinkName;
     if (module_->resolve_function_decl(fn_ref)) return;
+    if (n->is_extern) {
+      if (is_bare_function_decl) {
+        Node extern_fn = *n;
+        extern_fn.type.is_fn_ptr = false;
+        extern_fn.params = n->fn_ptr_params;
+        extern_fn.n_params = n->n_fn_ptr_params;
+        extern_fn.variadic = n->fn_ptr_variadic;
+        lower_function(&extern_fn);
+      } else {
+        lower_function(n);
+      }
+      return;
+    }
   }
 
   // Local extern declaration: `extern T v;` inside a function refers to

@@ -1436,9 +1436,12 @@ Node* parse_local_decl(Parser& parser) {
                          &vname_text_id);
         // C++ constructor invocation: `Type var(args)` where Type is a struct.
         // In C mode this is a K&R function-type suffix that we skip.
-        bool is_kr_fn_decl = false;
+        bool is_local_fn_decl = false;
         bool is_ctor_init = false;
         std::vector<Node*> ctor_args;
+        std::vector<Node*> local_fn_params;
+        std::vector<const char*> local_knr_param_names;
+        bool local_fn_variadic = false;
         if (parser.check(TokenKind::LParen)) {
             bool parsed_as_function_decl = false;
             if (parser.is_cpp_mode() && vname) {
@@ -1661,9 +1664,20 @@ Node* parse_local_decl(Parser& parser) {
                 parser.expect(TokenKind::RParen);
                 is_ctor_init = true;
             } else {
-                // K&R-style function-type suffix: `float fx ()` in local decls.
-                parser.skip_paren_group();
-                is_kr_fn_decl = true;
+                if (is_extern) {
+                    // An explicit block-scope extern function declaration retains
+                    // the same structured parameter metadata as a file-scope
+                    // declaration.  HIR registers this bare function type as a
+                    // bodyless Function rather than an object.
+                    parse_top_level_parameter_list(
+                        parser, &local_fn_params, &local_knr_param_names,
+                        &local_fn_variadic);
+                } else {
+                    // Preserve the existing ambiguity handling for ordinary
+                    // function-shaped declarations and C++ ctor-init probes.
+                    parser.skip_paren_group();
+                }
+                is_local_fn_decl = true;
             }
         }
         parser.skip_attributes();
@@ -1676,9 +1690,13 @@ Node* parse_local_decl(Parser& parser) {
             return parser.make_node(NK_EMPTY, ln);
         }
 
-        if (is_kr_fn_decl) continue;  // K&R fn decl: no local variable
+        // Preserve this newly structured path only for explicit block-scope
+        // extern declarations.  Other function-shaped local declarations still
+        // use the existing ambiguity handling, especially for C++ ctor-init
+        // probes with unresolved type heads.
+        if (is_local_fn_decl && !is_extern) continue;
 
-        if (is_incomplete_object_type(ts)) {
+        if (is_incomplete_object_type(ts) && !is_local_fn_decl) {
             throw std::runtime_error(
                 std::string("object has incomplete type: ") +
                 typespec_display_name_local(parser, ts, "<anonymous>"));
@@ -1694,6 +1712,10 @@ Node* parse_local_decl(Parser& parser) {
 
         Node* d = parser.make_node(NK_DECL, ln);
         d->type      = ts;
+        if (is_local_fn_decl) {
+            d->type.is_fn_ptr = true;
+            d->type.ptr_level = 0;
+        }
         if (is_constexpr) d->type.is_const = true;
         d->name      = vname;
         d->unqualified_name = vname;
@@ -1713,6 +1735,17 @@ Node* parse_local_decl(Parser& parser) {
         d->fn_ptr_params = fn_ptr_params;
         d->n_fn_ptr_params = n_fn_ptr_params;
         d->fn_ptr_variadic = fn_ptr_variadic;
+        if (is_local_fn_decl) {
+            d->n_fn_ptr_params = static_cast<int>(local_fn_params.size());
+            if (!local_fn_params.empty()) {
+                d->fn_ptr_params =
+                    parser.arena_.alloc_array<Node*>(d->n_fn_ptr_params);
+                for (int i = 0; i < d->n_fn_ptr_params; ++i) {
+                    d->fn_ptr_params[i] = local_fn_params[i];
+                }
+            }
+            d->fn_ptr_variadic = local_fn_variadic;
+        }
         d->ret_fn_ptr_params = ret_fn_ptr_params;
         d->n_ret_fn_ptr_params = n_ret_fn_ptr_params;
         d->ret_fn_ptr_variadic = ret_fn_ptr_variadic;
