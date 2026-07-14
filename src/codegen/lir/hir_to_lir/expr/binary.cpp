@@ -174,13 +174,13 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
       llvm_ty(rts) != "ptr") {
     TypeSpec i64_ts{};
     i64_ts.base = TB_LONGLONG;
-    std::string idx = coerce(ctx, rv, rts, i64_ts);
+    LirOperand idx = coerce_operand(ctx, source_rv, rts, i64_ts);
     if (b.op == BinaryOp::Sub) {
       const std::string neg = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirBinOp{neg, "sub", "i64", "0", idx});
-      idx = neg;
+      emit_lir_op(ctx, lir::LirBinOp{neg, "sub", "i64", "0", idx.str()});
+      idx = LirOperand::raw(neg);
     }
-    return emit_indexed_gep(ctx, lv, lts, idx);
+    return emit_indexed_gep(ctx, source_lv, lts, idx);
   }
 
   if ((b.op == BinaryOp::Eq || b.op == BinaryOp::Ne) &&
@@ -404,16 +404,16 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
   const bool arith_ls = ls;
 
   if (b.op == BinaryOp::Add || b.op == BinaryOp::Sub) {
-    auto emit_ptr_gep = [&](const std::string& base_ptr, const TypeSpec& base_ts,
-                            const std::string& idx_val, const TypeSpec& idx_ts,
-                            bool negate_idx) -> std::string {
+    auto emit_ptr_gep = [&](const LirOperand& base_ptr, const TypeSpec& base_ts,
+                            const LirOperand& idx_val, const TypeSpec& idx_ts,
+                            bool negate_idx) -> LirOperand {
       TypeSpec i64_ts{};
       i64_ts.base = TB_LONGLONG;
-      std::string idx = coerce(ctx, idx_val, idx_ts, i64_ts);
+      LirOperand idx = coerce_operand(ctx, idx_val, idx_ts, i64_ts);
       if (negate_idx) {
         const std::string neg = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirBinOp{neg, "sub", "i64", "0", idx});
-        idx = neg;
+        emit_lir_op(ctx, lir::LirBinOp{neg, "sub", "i64", "0", idx.str()});
+        idx = LirOperand::raw(neg);
       }
       return emit_indexed_gep(ctx, base_ptr, base_ts, idx);
     };
@@ -423,10 +423,10 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
     const bool lhs_is_nonptr_scalar =
         llvm_ty(lts) != "ptr" && !is_float_base(lts.base) && lts.array_rank == 0;
     if (op_ty == "ptr" && rhs_is_nonptr_scalar) {
-      return emit_ptr_gep(lv, lts, rv, rts, b.op == BinaryOp::Sub);
+      return emit_ptr_gep(source_lv, lts, source_rv, rts, b.op == BinaryOp::Sub);
     }
     if (llvm_ty(rts) == "ptr" && lhs_is_nonptr_scalar && b.op == BinaryOp::Add) {
-      return emit_ptr_gep(rv, rts, lv, lts, false);
+      return emit_ptr_gep(source_rv, rts, source_lv, lts, false);
     }
     if (b.op == BinaryOp::Sub && op_ty == "ptr" && llvm_ty(rts) == "ptr") {
       const std::string lhs_i = fresh_tmp(ctx);
@@ -474,20 +474,21 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
   for (const auto& row : arith) {
     if (row.op == b.op) {
       if ((row.op == BinaryOp::Add || row.op == BinaryOp::Sub) && op_ty == "ptr") {
-        auto emit_ptr_fallback = [&](const std::string& base_ptr, const TypeSpec& base_ts,
-                                     const std::string& idx_val, const TypeSpec& idx_ts,
-                                     bool negate_idx) -> std::string {
+        auto emit_ptr_fallback = [&](const LirOperand& base_ptr, const TypeSpec& base_ts,
+                                     const LirOperand& idx_val, const TypeSpec& idx_ts,
+                                     bool negate_idx) -> LirOperand {
           TypeSpec i64_ts{};
           i64_ts.base = TB_LONGLONG;
-          std::string idx = coerce(ctx, idx_val, idx_ts, i64_ts);
+          LirOperand idx = coerce_operand(ctx, idx_val, idx_ts, i64_ts);
           if (negate_idx) {
             const std::string neg = fresh_tmp(ctx);
-            emit_lir_op(ctx, lir::LirBinOp{neg, "sub", "i64", "0", idx});
-            idx = neg;
+            emit_lir_op(ctx, lir::LirBinOp{neg, "sub", "i64", "0", idx.str()});
+            idx = LirOperand::raw(neg);
           }
           return emit_indexed_gep(ctx, base_ptr, base_ts, idx);
         };
-        return emit_ptr_fallback(lv, lts, rv, rts, row.op == BinaryOp::Sub);
+        return emit_ptr_fallback(source_lv, lts, source_rv, rts,
+                                 row.op == BinaryOp::Sub);
       }
       const char* instr = nullptr;
       if (lf) {

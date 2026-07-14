@@ -1133,11 +1133,12 @@ void verify_authoritative_gep(const LirModule& mod, const LirGepOp& op) {
     fail_verify("LirGepOp.result",
                 "authoritative GEP requires LirValueId result authority");
   }
-  if (op.ptr.kind() != LirOperandKind::Global || !op.ptr.link_name_id()) {
+  if (op.ptr.kind() == LirOperandKind::Global && op.ptr.link_name_id()) {
+    verify_global_pointer_owner(mod, op.ptr, "LirGepOp.ptr", "GEP");
+  } else if (op.ptr.kind() != LirOperandKind::SsaValue || !op.ptr.value_id()) {
     fail_verify("LirGepOp.ptr",
-                "authoritative GEP requires global LinkNameId base authority");
+                "authoritative GEP requires global LinkNameId or SSA LirValueId base authority");
   }
-  verify_global_pointer_owner(mod, op.ptr, "LirGepOp.ptr", "GEP");
   if (op.indices.empty()) {
     fail_verify("LirGepOp.indices",
                 "authoritative GEP requires at least one index");
@@ -1987,6 +1988,17 @@ void verify_function_value_ownership(const LirModule& mod,
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
       visit_modeled_value_uses(inst, verify_use);
+      if (const auto* gep = std::get_if<LirGepOp>(&inst);
+          gep && gep->result.value_id() &&
+          gep->ptr.kind() == LirOperandKind::SsaValue && gep->ptr.value_id()) {
+        const auto base_definition = definition_insts.find(gep->ptr.value_id()->value);
+        if (base_definition == definition_insts.end() ||
+            base_definition->second == nullptr ||
+            !modeled_pointer_result(*base_definition->second)) {
+          fail_verify("LirGepOp.ptr",
+                      "SSA GEP base must identify a current-function pointer value definition");
+        }
+      }
       if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
         const LirValueId* value_id = store->val.value_id();
         if (value_id) {

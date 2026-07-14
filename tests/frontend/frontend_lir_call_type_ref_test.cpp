@@ -1867,6 +1867,59 @@ int *neighbor_address(void) { return lir_identity_array_neighbor; }
               "nearby array extent should retain independent structured GEP facts");
   lir::verify_module(lowered);
 
+  lir::LirModule ssa_production = lower_lir_module_for_target(R"c(
+void *ssa_indexed_gep_route(void *base, long index) {
+  char *local = base;
+  long local_index = index;
+  return local + local_index;
+}
+)c", "x86_64-linux-gnu");
+  const auto require_ssa_gep = [](lir::LirModule& module) -> lir::LirGepOp& {
+    lir::LirFunction& function = require_function(module, "ssa_indexed_gep_route");
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* gep = std::get_if<lir::LirGepOp>(&inst);
+            gep && gep->ptr.kind() == lir::LirOperandKind::SsaValue) {
+          return *gep;
+        }
+      }
+    }
+    fail("SSA indexed-GEP fixture should contain an SSA-base GEP");
+  };
+  lir::LirGepOp& production_gep = require_ssa_gep(ssa_production);
+  expect_true(production_gep.result.value_id() && production_gep.result.value_id()->valid() &&
+                  production_gep.ptr.value_id() && production_gep.ptr.value_id()->valid() &&
+                  production_gep.indices.size() == 1 &&
+                  production_gep.indices[0].is_authoritative() &&
+                  production_gep.indices[0].type_ref() == lir::LirTypeRef::integer(64) &&
+                  production_gep.indices[0].value().value_id() &&
+                  production_gep.indices[0].value().value_id()->valid(),
+              "production SSA indexed GEP should retain structured pointer, index, and result IDs");
+  lir::verify_module(ssa_production);
+
+  const auto reject_ssa_gep = [&](auto mutate, const std::string& message) {
+    lir::LirModule malformed = ssa_production;
+    mutate(require_ssa_gep(malformed), malformed);
+    expect_identity_verification_rejected(malformed, message);
+  };
+  reject_ssa_gep([](lir::LirGepOp& gep, lir::LirModule&) {
+    gep.ptr = lir::LirOperand("%raw-base");
+  }, "verifier should reject raw SSA indexed-GEP base authority");
+  reject_ssa_gep([](lir::LirGepOp& gep, lir::LirModule&) {
+    gep.ptr = lir::LirOperand::ssa("%invalid-base", lir::LirValueId::invalid());
+  }, "verifier should reject invalid SSA indexed-GEP base authority");
+  reject_ssa_gep([](lir::LirGepOp& gep, lir::LirModule& module) {
+    module.functions.push_back(
+        make_identity_test_function("foreign_ssa_gep_base", lir::LirValueId{99}));
+    gep.ptr = lir::LirOperand::ssa("%foreign-base", lir::LirValueId{99});
+  }, "verifier should reject foreign SSA indexed-GEP base authority");
+  reject_ssa_gep([](lir::LirGepOp& gep, lir::LirModule&) {
+    gep.ptr = gep.indices[0].value();
+  }, "verifier should reject non-pointer SSA indexed-GEP base authority");
+  reject_ssa_gep([](lir::LirGepOp& gep, lir::LirModule&) {
+    gep.indices[0] = lir::LirGepIndex::raw("i64 0");
+  }, "verifier should reject partial SSA indexed-GEP index authority");
+
   lir::LirModule ssa_index;
   const c4c::LinkNameId ssa_base_id =
       add_identity_test_global(ssa_index, "ssa_index_base");

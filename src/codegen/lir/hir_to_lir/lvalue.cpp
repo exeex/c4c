@@ -922,6 +922,24 @@ std::string StmtEmitter::emit_indexed_gep(FnCtx& ctx, const std::string& base_pt
   return tmp;
 }
 
+LirOperand StmtEmitter::emit_indexed_gep(FnCtx& ctx, const LirOperand& base_ptr,
+                                         const TypeSpec& base_ts, const LirOperand& idx,
+                                         StructNameId elem_structured_name_id) {
+  const bool ssa_base = base_ptr.kind() == LirOperandKind::SsaValue &&
+                        base_ptr.value_id() && base_ptr.value_id()->valid();
+  const bool typed_index = idx.value_id() || idx.integer_immediate();
+  if (!ssa_base || !typed_index) {
+    return LirOperand::raw(
+        emit_indexed_gep(ctx, base_ptr.str(), base_ts, idx.str(), elem_structured_name_id));
+  }
+
+  const LirOperand result = fresh_value(ctx);
+  emit_lir_op(ctx, lir::LirGepOp{
+                       result, indexed_gep_elem_ty(base_ts, elem_structured_name_id), base_ptr,
+                       false, {lir::LirGepIndex::typed(lir::LirTypeRef::integer(64), idx)}});
+  return result;
+}
+
 std::string StmtEmitter::emit_rval_from_access_ptr(FnCtx& ctx, const std::string& ptr,
                                                    const TypeSpec& access_ts,
                                                    const TypeSpec& load_ts,

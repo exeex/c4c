@@ -529,6 +529,10 @@ class StmtEmitter {
                                const TypeSpec& base_ts, const std::string& idx,
                                StructNameId elem_structured_name_id =
                                    kInvalidStructName);
+  LirOperand emit_indexed_gep(FnCtx& ctx, const LirOperand& base_ptr,
+                              const TypeSpec& base_ts, const LirOperand& idx,
+                              StructNameId elem_structured_name_id =
+                                  kInvalidStructName);
   std::string emit_rval_from_access_expr(FnCtx& ctx, const Expr& e,
                                          const std::string& ptr,
                                          const TypeSpec& access_ts,
