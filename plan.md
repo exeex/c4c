@@ -1,75 +1,110 @@
-# LIR PHI Producer Helper Result Identity Runbook
+# LIR Typed Expression Result Carrier Decomposition Runbook
 
 Status: Active
-Source Idea: ideas/open/775_lir_phi_producer_helper_result_identity.md
-Activated from: blocked 751 Step 1 ordinary helper-result first-loss audit.
+Source Idea: ideas/open/776_lir_typed_expression_result_carrier_decomposition.md
+Activated from: 775's repeated first-loss boundary without failure-family reduction.
 
 ## Purpose
 
-Supply the native helper-result authority that 751 needs before it can publish
-structured PHI incoming values.
+Replace the stalled helper-result route with independently observable
+frontend-LIR expression-result seams.
 
 ## Goal
 
-Make ternary, logical short-circuit, and vaarg helper results retain typed
-current-function value identity before any display spelling is rendered.
+Identify the smallest typed expression-result carrier contract that can later
+support a bounded producer repair for one family at a time.
 
 ## Core Rule
 
-Helper result IDs are semantic authority. `%t` names, labels, printed LLVM,
-instruction order, and testcase names are display or incidental data, never
-recovery inputs.
+Expression-result IDs are semantic authority. `%t` names, labels, printed
+LLVM, instruction order, and testcase names are display or incidental data,
+never recovery inputs.
 
 ## Read First
 
+- `ideas/open/776_lir_typed_expression_result_carrier_decomposition.md`
 - `ideas/open/775_lir_phi_producer_helper_result_identity.md`
 - `ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md`
-- `ideas/closed/744_lir_remaining_ordinary_value_identity_publication.md`
-- active ternary, logical, vaarg, and `emit_lir_op` producer paths
+- active `emit_rval_payload`, `emit_rval_id`, `coerce`, ternary, logical, and
+  vaarg frontend-LIR producer paths
 
 ## Non-Goals
 
-- no `LirPhiOp` carrier/verifier work; 751 owns that later consumer packet
-- no Raw-BIR/importer work, CFG predecessor work, unrelated ordinary `LirInst`
-  rework, local/object, memory/va, aggregate/vector, target-lowering, MIR, or
-  emission expansion
+- no generic all-expression migration or implementation claim from this
+  decomposition alone
+- no `LirPhiOp` carrier/verifier, Raw-BIR/importer, backend-case, side-table,
+  CFG, target-lowering, MIR, or emission work
 - no parsing of value names, labels, printer text, or rendered LLVM
 
 ## Execution Rules
 
-1. Start at the first shared helper-result seam evidenced by the ternary,
-   logical, and vaarg chains; do not patch their PHI consumer.
-2. Allocate or forward a valid current-function result ID before display text
-   is rendered, then pass it structurally to the relevant `emit_lir_op` path.
-3. Preserve fail-closed handling for missing, invalid, duplicate, and foreign
-   result authority.
-4. Prove a fresh build and focused positive/malformed producer coverage before the
-   supervisor selects broader or full baseline acceptance.
+1. Establish the carrier boundary before proposing any production migration.
+2. Use focused frontend-LIR probes, not backend case files, to isolate the
+   ternary, logical, and vaarg first-loss seams independently.
+3. End by publishing only a precise typed PHI-consumer handoff; no PHI repair
+   occurs here.
 
 ## Ordered Steps
 
-### Step 1 - Establish typed helper-result authority for PHI producers
+### Step 1 - Establish the typed expression-result carrier boundary
 
-Goal: establish the shared result-carrier seam that supplies native value IDs
-to the three helper producer families before they reach the raw PHI seam.
+Goal: identify the smallest allocation/ownership boundary across
+`emit_rval_payload`, `emit_rval_id`, and `coerce` that can be probed without
+committing to a broad migration.
 
 Primary targets:
 
-- ternary `emit_rval_id` / `coerce` result path
-- logical short-circuit `fresh_tmp` result path
-- vaarg helper chain and the corresponding `emit_lir_op` result publication
-- nearby focused positive and malformed result-authority coverage
+- typed expression-result carrier API and result allocation ownership
+- focused frontend-LIR probe harnesses for later one-family observations
 
 Actions:
 
-- bind focused probes to the first shared helper-result carrier seam
-- make each named chain allocate or forward its owning ID before rendering and
-  publish it structurally through `emit_lir_op`
-- retain display compatibility without making raw result text authoritative
-- add nearby positive and malformed coverage across all named producer families
+- record the exact pre-render allocation/ownership boundary and whether a
+  result can traverse it as a typed operand without PHI changes
+- add or identify one frontend-LIR probe shape that observes this carrier only
+- classify the ternary, logical, and vaarg routes as separate follow-on steps
 
 Completion check:
 
-- fresh build and focused ternary/logical/vaarg producer proof pass with
-  missing, invalid, duplicate, and foreign result authority still rejected;
-  hand the bounded typed helper-result contract back to 751 Step 1.
+- a precise carrier-boundary record and one focused frontend-LIR probe contract
+  exist; no broad migration, PHI change, or backend proof is claimed.
+
+### Step 2 - Isolate the ternary/coerce result path
+
+Goal: bind one focused frontend-LIR probe to the ternary/coerce first-loss
+seam and record its exact typed result requirement.
+
+Completion check:
+
+- the ternary/coerce route has an independent probe and does not rely on
+  logical or vaarg facts.
+
+### Step 3 - Isolate the logical short-circuit result path
+
+Goal: bind one focused frontend-LIR probe to the `fresh_tmp` logical result
+seam and record its exact typed result requirement.
+
+Completion check:
+
+- the logical route has an independent probe and does not rely on ternary or
+  vaarg facts.
+
+### Step 4 - Isolate the vaarg helper result path
+
+Goal: bind one focused frontend-LIR probe to the vaarg helper / `emit_lir_op`
+first-loss seam and record its exact typed result requirement.
+
+Completion check:
+
+- the vaarg route has an independent probe and does not rely on ternary or
+  logical facts.
+
+### Step 5 - Publish the PHI-carrier consumer handoff
+
+Goal: state exactly which typed result facts are proven for a later 751 PHI
+carrier packet and which require separate successors.
+
+Completion check:
+
+- the handoff names each family, typed field, proof, and 751 return point;
+  it does not authorize PHI text recovery or Raw-BIR work.

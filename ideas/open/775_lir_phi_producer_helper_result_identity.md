@@ -73,3 +73,23 @@ fallback.
   target lowering, or any unrelated value family as progress for this blocker.
 - Reject malformed-authority weakening, expectation downgrades, or baseline
   edits in place of native structured result publication.
+
+## Resumption Record: typed expression-result carrier decomposition
+
+No 775 implementation packet, proof, or failure-family reduction occurred.
+The first-loss audit disproved the claimed shared helper seam: satisfying all
+three families would require either a broad generic
+`emit_rval_payload` / `emit_rval_id` / `coerce` API migration or PHI
+carrier/verifier changes, both outside this source's bounded scope.
+
+Classification: `separate decomposition initiative`. Open
+`ideas/open/776_lir_typed_expression_result_carrier_decomposition.md` owns the
+smaller carrier-boundary and one-family-at-a-time probes. It must not claim a
+generic all-expression migration, PHI text recovery, side tables, or Raw-BIR
+work as a shortcut.
+
+Exact return point: after 776 accepts a typed expression-result handoff for a
+single evidenced family and names the remaining unproven families, reactivate
+775 only if its bounded helper contract is then executable without broad API
+migration or PHI-carrier changes. Otherwise preserve 751's existing blocked
+return and create a separately scoped successor from the accepted 776 facts.

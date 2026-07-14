@@ -1,10 +1,10 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/775_lir_phi_producer_helper_result_identity.md
+Source Idea Path: ideas/open/776_lir_typed_expression_result_carrier_decomposition.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Establish typed helper-result authority for PHI producers
+Current Step Title: Establish the typed expression-result carrier boundary
 
 ## Just Finished
 
