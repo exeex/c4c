@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.31
-Current Step Title: Publish direct scalar fp128 call-result authority on AArch64
+Current Step ID: 7.32
+Current Step Title: Verify direct external double call-result authority
 
 ## Just Finished
 
@@ -20,19 +20,33 @@ Current Step Title: Publish direct scalar fp128 call-result authority on AArch64
 
 ## Suggested Next
 
-- Select the next bounded packet from Plan Step 7 after supervisor review;
-  retain the direct scalar call-result producer/verifier seam.
+- Bounded packet 7.32: publish only the existing native-authority seam for a
+  direct, fixed, nonvariadic, zero-argument external `double` call. Its
+  already-fresh `LirCallOp.result` must remain the exact ID used by one
+  same-type FAdd; reachable verification must recognize the call's
+  `direct_callee_link_name_id` through the matching link-ID-keyed external
+  declaration rather than requiring a local function body.
 
 ## Watchouts
 
-- Step 7.31 excludes call arguments, indirect or variadic calls,
-  ABI-expanded calls, conversions, other floating operations, BIR, and every
-  separate family. Native IDs and type refs, never rendered spelling, govern
-  the route; no new cross-operation type-provenance carrier is authorized.
+- Own only the external declaration's native `LinkNameId`, exact `double`
+  return `LirTypeRef`, `None` return extension, and fixed empty signature;
+  require its declaration facts to agree with the call, while preserving the
+  exact result-to-FAdd ID/type edge. The external name, callee/result/use
+  displays, raw signature mirrors, and declaration order remain presentation
+  only and must never create, repair, or select authority.
+- Exclude call arguments, indirect or variadic calls, ABI-expanded calls,
+  other external return types, conversions, other floating operations, BIR,
+  and every separate family. Do not broaden the accepted internal
+  float/double/x86_fp80/fp128 rows or introduce a cross-operation provenance
+  carrier.
 
 ## Proof
 
-- Passed: `cmake --build --preset default && ctest --test-dir build -R
-  '^frontend_lir_call_type_ref$' --output-on-failure > test_after.log 2>&1`.
-  The focused fp128 native-authority and display-independence checks ran in the
-  call type-ref subset; proof log: `test_after.log`.
+- Fresh `cmake --build --preset default` plus `ctest --test-dir build -R
+  '^frontend_lir_call_type_ref$' --output-on-failure`, covering one external
+  double-call-to-FAdd chain; display-only positive mutations; and rejection of
+  missing/invalid/duplicate/unknown/cross-owner result IDs, unresolved or
+  mismatched external declaration IDs, return type/extension/signature
+  conflicts, and wrong FAdd opcode/type/use authority. Run `git diff --check`
+  before handoff.
