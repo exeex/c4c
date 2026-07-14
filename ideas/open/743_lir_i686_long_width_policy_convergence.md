@@ -1,6 +1,6 @@
 # LIR I686 Long-Width Policy Convergence
 
-Status: Open (inactive)
+Status: Open (active)
 Type: target-width semantic policy convergence
 Blocked Consumer: ideas/open/734_lir_to_new_bir_container_completeness.md
 

@@ -1,6 +1,6 @@
 # Unresolved External Direct Scalar-Call Signature and Result Authority
 
-Status: Open (active runbook blocked; source-representation research pending)
+Status: Open (runbook retired; supported source surface lacks the required carrier)
 Type: producer-side unresolved-external call authority prerequisite
 Blocks: Plan Step 7.32 of ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Related research prerequisite: ideas/open/747_frontend_source_representation_for_unresolved_external_direct_calls.md
@@ -69,17 +69,22 @@ publishes.
 - No verifier relaxation or idea-734 receiver claim is accepted until the
   source-level production facts above are proven.
 
-## Durable Blocker
+## Durable Blocker And Retired Runbook Rationale
 
-Step 1 traced the relevant producer seam but did not bind the required positive
-source probe. A declared fixed-empty source call retains `target_fn` and stays
-on the local-target path; an undeclared source call reaches unresolved-external
-handling but lacks the native direct global/link identity required by this
-idea. The evidence does not establish that no legal production-facing source
-representation can satisfy both properties. It requires the distinct,
-documentation-only source-language/frontend investigation in idea 747 before
-this runbook may resume, retire, or be replaced. This does not complete the
-prerequisite and does not unblock, close, or supersede idea 744.
+The completed research delivery in
+`docs/frontend_unresolved_external_direct_call_representation/` (idea 747,
+commit `df18f32e8`) establishes, across the supported source-language and
+frontend/HIR surface, that no legal production-facing plain direct fixed-empty
+scalar-call carrier combines native global/link identity with an absent
+`target_fn`. Retained declarations necessarily resolve `target_fn`; no-target
+forms lack the required native direct identity and fixed-empty declaration
+facts; function-pointer forms are indirect.
+
+This rules out the current idea-746 runbook without authorizing a fabricated
+route. The runbook is retired and no active plan remains. Idea 746 stays open,
+unimplemented, and blocked: resolving it now requires a separately scoped
+source/frontend representation change or a new user-authorized disposition.
+This does not unblock, complete, close, or supersede idea 744.
 
 ## Reviewer Reject Signals
 

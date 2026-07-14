@@ -1,6 +1,6 @@
 # Frontend Source Representation for Unresolved-External Direct Calls
 
-Status: Open
+Status: Closed (research delivery complete)
 Type: Research and architecture documentation
 Parent: `ideas/open/746_lir_unresolved_external_direct_call_signature_result_authority.md`
 Related:
@@ -101,6 +101,19 @@ result. It must not replace the required answer file.
 - No implementation files, test expectations, unsupported markers, allowlists,
   runtime behavior, active plan state, or lifecycle history are changed by
   executing this research idea.
+
+## Completion Record
+
+The required `index.md` and sole numbered answer file were delivered in
+`docs/frontend_unresolved_external_direct_call_representation/` and committed
+in `df18f32e8`. Their evidence-bounded conclusion is that the currently
+supported source surface lacks a legal production-facing plain direct,
+fixed-empty scalar-call carrier with native global/link identity and absent
+`target_fn`.
+
+This completes the documentation research only. It retires the then-active
+idea-746 runbook through a separate lifecycle decision; it does not complete,
+unblock, supersede, or close ideas 746 or 744.
 
 ## Reviewer Reject Signals
 
