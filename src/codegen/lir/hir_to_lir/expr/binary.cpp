@@ -588,8 +588,8 @@ std::string StmtEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Exp
   if (!has_concrete_type(res_spec)) res_spec.base = TB_INT;
   const std::string res_ty = llvm_ty(res_spec);
   TypeSpec lts{};
-  const std::string lv = emit_rval_id(ctx, b.lhs, lts);
-  const std::string lc = to_bool(ctx, lv, lts);
+  const LirOperand lv = emit_rval_operand(ctx, b.lhs, lts);
+  const LirOperand lc = to_bool_operand(ctx, lv, lts);
 
   const auto rhs_target = fresh_direct_target(ctx, fresh_lbl(ctx, "logic.rhs."));
   const auto skip_target = fresh_direct_target(ctx, fresh_lbl(ctx, "logic.skip."));
@@ -602,11 +602,11 @@ std::string StmtEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Exp
     emit_condbr_and_open_lbl(ctx, lc, skip_target, rhs_target, rhs_target);
   }
   TypeSpec rts{};
-  const std::string rv = emit_rval_id(ctx, b.rhs, rts);
-  const std::string rc = to_bool(ctx, rv, rts);
+  const LirOperand rv = emit_rval_operand(ctx, b.rhs, rts);
+  const LirOperand rc = to_bool_operand(ctx, rv, rts);
   std::string rhs_val;
   if (res_ty == "i1") {
-    rhs_val = rc;
+    rhs_val = rc.str();
   } else if (is_float_base(res_spec.base)) {
     const std::string as_i32 = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirCastOp{as_i32, lir::LirCastKind::ZExt, "i1", rc, "i32"});

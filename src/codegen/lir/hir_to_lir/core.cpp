@@ -522,24 +522,26 @@ void open_lbl(FnCtx& ctx, const c4c::codegen::LirDirectBranchTarget& target) {
   ctx.last_term = false;
 }
 
-void emit_condbr_and_open_lbl(FnCtx& ctx, const std::string& cond,
+void emit_condbr_and_open_lbl(FnCtx& ctx, const lir::LirOperand& cond,
                               const c4c::codegen::LirDirectBranchTarget& true_target,
                               const c4c::codegen::LirDirectBranchTarget& false_target,
                               const c4c::codegen::LirDirectBranchTarget& open_target) {
   (void)set_terminator_if_open(
-      ctx, lir::LirCondBr{cond, true_target.label, false_target.label,
-                           true_target.id, false_target.id});
+      ctx, lir::LirCondBr{cond.str(), true_target.label, false_target.label,
+                           true_target.id, false_target.id,
+                           cond.value_id() ? *cond.value_id()
+                                           : lir::LirValueId::invalid()});
   open_lbl(ctx, open_target);
 }
 
-void emit_condbr_and_open_sibling_lbl(FnCtx& ctx, const std::string& cond,
+void emit_condbr_and_open_sibling_lbl(FnCtx& ctx, const lir::LirOperand& cond,
                                       const c4c::codegen::LirDirectBranchTarget& true_target,
                                       const c4c::codegen::LirDirectBranchTarget& false_target,
                                       const c4c::codegen::LirDirectBranchTarget& sibling_target) {
   emit_condbr_and_open_lbl(ctx, cond, true_target, false_target, sibling_target);
 }
 
-void emit_condbr_and_fallthrough_lbl(FnCtx& ctx, const std::string& cond,
+void emit_condbr_and_fallthrough_lbl(FnCtx& ctx, const lir::LirOperand& cond,
                                      const c4c::codegen::LirDirectBranchTarget& true_target,
                                      const c4c::codegen::LirDirectBranchTarget& false_target) {
   emit_condbr_and_open_lbl(ctx, cond, true_target, false_target, false_target);
@@ -1360,12 +1362,14 @@ void StmtEmitter::emit_term_br(
   (void)set_terminator_if_open(ctx, lir::LirBr{target.label, target.id});
 }
 
-void StmtEmitter::emit_term_condbr(FnCtx& ctx, const std::string& cond,
+void StmtEmitter::emit_term_condbr(FnCtx& ctx, const lir::LirOperand& cond,
                                    const c4c::codegen::LirDirectBranchTarget& true_target,
                                    const c4c::codegen::LirDirectBranchTarget& false_target) {
   (void)set_terminator_if_open(
-      ctx, lir::LirCondBr{cond, true_target.label, false_target.label,
-                           true_target.id, false_target.id});
+      ctx, lir::LirCondBr{cond.str(), true_target.label, false_target.label,
+                           true_target.id, false_target.id,
+                           cond.value_id() ? *cond.value_id()
+                                           : lir::LirValueId::invalid()});
 }
 
 void StmtEmitter::emit_term_ret(FnCtx& ctx, lir::LirTypeRef type_str,
@@ -1888,6 +1892,25 @@ std::string StmtEmitter::to_bool(FnCtx& ctx, const std::string& val, const TypeS
     emit_lir_op(ctx, lir::LirCmpOp{tmp, false, "ne", ty, val, "0"});
   }
   return tmp;
+}
+
+lir::LirOperand StmtEmitter::to_bool_operand(FnCtx& ctx, lir::LirOperand val,
+                                              const TypeSpec& ts) {
+  if (llvm_ty(ts) == "i1" && val.value_id() && val.value_id()->valid()) return val;
+
+  const lir::LirOperand result = fresh_value(ctx);
+  const std::string ty = llvm_ty(ts);
+  if (ty == "ptr") {
+    emit_lir_op(ctx, lir::LirCmpOp{result, false, "ne", "ptr", val, "null"});
+  } else if (ty == "i1") {
+    emit_lir_op(ctx, lir::LirCmpOp{result, false, "ne", "i1", val, "false"});
+  } else if (is_float_base(ts.base) && ts.ptr_level == 0 && ts.array_rank == 0) {
+    emit_lir_op(ctx, lir::LirCmpOp{result, true, "une", ty, val,
+                                   fp_literal(ts.base, 0.0)});
+  } else {
+    emit_lir_op(ctx, lir::LirCmpOp{result, false, "ne", ty, val, "0"});
+  }
+  return result;
 }
 
 }  // namespace c4c::codegen::lir

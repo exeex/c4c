@@ -687,12 +687,21 @@ void test_conditional_and_switch_successor_identity_contract() {
     fn.name = "conditional_ok";
     fn.signature_text = "define void @conditional_ok() {";
     fn.blocks = make_blocks();
+    fn.blocks[0].insts.push_back(lir::LirCmpOp{
+        .result = lir::LirOperand::ssa("%condition.authority", lir::LirValueId{7}),
+        .is_float = false,
+        .predicate = "ne",
+        .type_str = "i32",
+        .lhs = "0",
+        .rhs = "1",
+    });
     fn.blocks[0].terminator = lir::LirCondBr{
-        .cond_name = "true",
+        .cond_name = "%condition.authority",
         .true_label = "true_target",
         .false_label = "false_target",
         .true_successor = lir::LirBlockId{1},
         .false_successor = lir::LirBlockId{2},
+        .condition = lir::LirValueId{7},
     };
     return fn;
   };
@@ -718,6 +727,8 @@ void test_conditional_and_switch_successor_identity_contract() {
   const auto& cbr = std::get<lir::LirCondBr>(conditional.functions[0].blocks[0].terminator);
   expect_true(cbr.true_successor.value == 1 && cbr.false_successor.value == 2,
               "conditional targets should carry native block IDs");
+  expect_true(cbr.condition.value == 7,
+              "conditional branch should carry its native condition value ID");
 
   lir::LirModule switch_module;
   switch_module.functions.push_back(make_switch());
@@ -752,6 +763,47 @@ void test_conditional_and_switch_successor_identity_contract() {
   expect_identity_verification_rejected(foreign_conditional,
                                         "verifier should reject foreign conditional target ID");
 
+  lir::LirModule missing_condition;
+  missing_condition.functions.push_back(make_conditional());
+  std::get<lir::LirCondBr>(missing_condition.functions[0].blocks[0].terminator).condition =
+      lir::LirValueId::invalid();
+  expect_identity_verification_rejected(
+      missing_condition, "verifier should reject a missing conditional condition ID");
+  lir::LirModule invalid_condition;
+  invalid_condition.functions.push_back(make_conditional());
+  std::get<lir::LirCondBr>(invalid_condition.functions[0].blocks[0].terminator).condition =
+      lir::LirValueId::invalid();
+  expect_identity_verification_rejected(
+      invalid_condition, "verifier should reject an invalid conditional condition ID");
+  lir::LirModule foreign_condition;
+  foreign_condition.functions.push_back(make_conditional());
+  std::get<lir::LirCondBr>(foreign_condition.functions[0].blocks[0].terminator).condition =
+      lir::LirValueId{99};
+  expect_identity_verification_rejected(
+      foreign_condition, "verifier should reject a foreign conditional condition ID");
+  lir::LirModule misleading_condition_display;
+  misleading_condition_display.functions.push_back(make_conditional());
+  std::get<lir::LirCondBr>(misleading_condition_display.functions[0].blocks[0].terminator)
+      .cond_name = "%misleading.condition.display";
+  expect_identity_verification_rejected(
+      misleading_condition_display,
+      "misleading condition display text must not select or repair a condition ID");
+  lir::LirModule nonboolean_condition;
+  nonboolean_condition.functions.push_back(make_conditional());
+  auto& nonboolean_entry = nonboolean_condition.functions[0].blocks[0];
+  nonboolean_entry.insts.clear();
+  nonboolean_entry.insts.push_back(lir::LirBinOp{
+      .result = lir::LirOperand::ssa("%nonboolean.condition", lir::LirValueId{7}),
+      .opcode = "add",
+      .type_str = "i32",
+      .lhs = "0",
+      .rhs = "1",
+  });
+  std::get<lir::LirCondBr>(nonboolean_entry.terminator).cond_name =
+      "%nonboolean.condition";
+  expect_identity_verification_rejected(
+      nonboolean_condition, "verifier should reject a non-boolean conditional condition ID");
+
   lir::LirModule missing_switch;
   missing_switch.functions.push_back(make_switch());
   std::get<lir::LirSwitch>(missing_switch.functions[0].blocks[0].terminator)
@@ -779,8 +831,9 @@ void test_conditional_and_switch_successor_identity_contract() {
   for (const auto& block : lowered.functions.front().blocks) {
     if (const auto* lowered_cbr = std::get_if<lir::LirCondBr>(&block.terminator)) {
       saw_conditional = true;
-      expect_true(lowered_cbr->true_successor.valid() && lowered_cbr->false_successor.valid(),
-                  "lowering should publish conditional successor IDs before verification");
+      expect_true(lowered_cbr->condition.valid() && lowered_cbr->true_successor.valid() &&
+                      lowered_cbr->false_successor.valid(),
+                  "lowering should publish conditional value and successor IDs before verification");
     }
     if (const auto* lowered_sw = std::get_if<lir::LirSwitch>(&block.terminator)) {
       saw_switch = true;

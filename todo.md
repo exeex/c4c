@@ -8,19 +8,29 @@ Current Step Title: Publish conditional-branch condition authority
 
 ## Just Finished
 
-- Paused 734 after accepted Step 7.21; its next conditional-branch receiver
-  requires this separate typed-condition producer handoff.
+- Step 1 published `LirCondBr.condition` as the current-function `LirValueId`
+  selected from typed boolean comparison production; `cond_name` is now only a
+  verifier-checked display mirror. Missing, invalid, foreign, misleading, and
+  non-boolean condition authority fail closed before printer/downstream use;
+  typed successor validation remains unchanged.
 
 ## Suggested Next
 
-- Execute Step 1 only: publish and verify `LirCondBr` condition value identity.
+- Supervisor: review and accept the Step 1 typed-field handoff before selecting
+  a later 734 conditional-branch receiver packet.
 
 ## Watchouts
 
 - Do not change Raw-BIR receipt, switch/computed-goto authority, or recover a
   condition from `cond_name`, labels, or printer output.
+- The Step 1 condition carrier is `LirCondBr.condition`; later consumers must
+  use that ID, never reconstruct it from `cond_name`.
 
 ## Proof
 
-- Executor: run a fresh build and focused positive/negative producer proof.
+- Executor: `cmake --build --preset default` passed; direct
+  `build/tests/frontend/frontend_lir_call_type_ref_test` passed positive,
+  misleading-display, missing, invalid, foreign, and non-boolean coverage.
+- Executor: `ctest --test-dir build -j --output-on-failure -R '^backend_' >
+  test_after.log` passed (5/5).
 - Supervisor: select and record broader/full acceptance separately.

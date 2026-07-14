@@ -566,6 +566,9 @@ struct LirCondBr {
   // Semantic CFG authority; labels remain display shadows only.
   LirBlockId true_successor = LirBlockId::invalid();
   LirBlockId false_successor = LirBlockId::invalid();
+  // Semantic condition authority; cond_name remains a checked display shadow.
+  // Kept last so legacy aggregate producers retain their existing field order.
+  LirValueId condition = LirValueId::invalid();
 };
 
 struct LirRet {

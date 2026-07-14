@@ -207,8 +207,8 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CastExpr& c,
 
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, const Expr& e) {
   TypeSpec cond_ts{};
-  const std::string cond_v = emit_rval_id(ctx, t.cond, cond_ts);
-  const std::string cond_i1 = to_bool(ctx, cond_v, cond_ts);
+  const LirOperand cond_v = emit_rval_operand(ctx, t.cond, cond_ts);
+  const LirOperand cond_i1 = to_bool_operand(ctx, cond_v, cond_ts);
 
   const auto then_target = fresh_direct_target(ctx, fresh_lbl(ctx, "tern.then."));
   const auto then_end_target = fresh_direct_target(ctx, fresh_lbl(ctx, "tern.then.end."));

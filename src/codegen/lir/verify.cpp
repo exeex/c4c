@@ -1854,6 +1854,37 @@ void verify_function_value_ownership(const LirModule& mod,
     for (const auto& inst : block.insts) collect_definition(inst);
   }
 
+  const auto verify_conditional_condition = [&](const LirCondBr& branch) {
+    if (!branch.condition.valid()) {
+      fail_verify("LirCondBr.condition",
+                  "must carry a valid current-function LirValueId");
+    }
+    const auto definition = definition_insts.find(branch.condition.value);
+    if (definition == definition_insts.end() || definition->second == nullptr) {
+      fail_verify("LirCondBr.condition",
+                  "must identify a current-function boolean value definition");
+    }
+    const auto* comparison = std::get_if<LirCmpOp>(definition->second);
+    if (!comparison) {
+      fail_verify("LirCondBr.condition",
+                  "must identify a current-function boolean comparison result");
+    }
+    if (!comparison->result.value_id() ||
+        *comparison->result.value_id() != branch.condition) {
+      fail_verify("LirCondBr.condition",
+                  "does not match its selected current-function value definition");
+    }
+    if (branch.cond_name != comparison->result.str()) {
+      fail_verify("LirCondBr.cond_name",
+                  "display name must match the condition-selected value definition");
+    }
+  };
+  for (const auto& block : function.blocks) {
+    if (const auto* branch = std::get_if<LirCondBr>(&block.terminator)) {
+      verify_conditional_condition(*branch);
+    }
+  }
+
   const auto verify_use = [&](const LirOperand& operand) {
     const LirValueId* id = operand.value_id();
     if (!id) return;
@@ -1942,11 +1973,9 @@ void verify_terminator(const LirFunction& function, const LirTerminator& termina
     return;
   }
   if (const auto* cbr = std::get_if<LirCondBr>(&terminator)) {
-    const LirOperand cond(cbr->cond_name);
-    require_operand_kind(cond, "LirCondBr.cond_name",
-                         {LirOperandKind::SsaValue,
-                          LirOperandKind::Immediate,
-                          LirOperandKind::SpecialToken});
+    if (cbr->cond_name.empty()) {
+      fail_verify("LirCondBr.cond_name", "display name must not be empty");
+    }
     verify_successor(cbr->true_successor, cbr->true_label,
                      "LirCondBr.true_successor", "LirCondBr.true_label");
     verify_successor(cbr->false_successor, cbr->false_label,

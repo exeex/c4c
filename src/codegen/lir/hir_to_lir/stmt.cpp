@@ -425,8 +425,8 @@ void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const ContinueStmt& s) { emit_contr
 
 void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const IfStmt& s) {
   TypeSpec cond_ts{};
-  const std::string cond_v = emit_rval_id(ctx, s.cond, cond_ts);
-  const std::string cond_i1 = to_bool(ctx, cond_v, cond_ts);
+  const lir::LirOperand cond_v = emit_rval_operand(ctx, s.cond, cond_ts);
+  const lir::LirOperand cond_i1 = to_bool_operand(ctx, cond_v, cond_ts);
   const auto then_target = scheduled_target(s.then_block);
   const auto after_target = scheduled_target(s.after_block);
   if (s.else_block) {
@@ -450,8 +450,8 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const WhileStmt& s) {
   ctx.continue_redirect[s.body_block.value] = cond_target;
 
   TypeSpec cond_ts{};
-  const std::string cond_v = emit_rval_id(ctx, s.cond, cond_ts);
-  const std::string cond_i1 = to_bool(ctx, cond_v, cond_ts);
+  const lir::LirOperand cond_v = emit_rval_operand(ctx, s.cond, cond_ts);
+  const lir::LirOperand cond_i1 = to_bool_operand(ctx, cond_v, cond_ts);
   emit_term_condbr(ctx, cond_i1, body_target, end_target);
 }
 
@@ -473,8 +473,8 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const ForStmt& s) {
   emit_fallthrough_lbl(ctx, cond_target);
   if (s.cond) {
     TypeSpec cts{};
-    std::string cv = emit_rval_id(ctx, *s.cond, cts);
-    cv = to_bool(ctx, cv, cts);
+    lir::LirOperand cv = emit_rval_operand(ctx, *s.cond, cts);
+    cv = to_bool_operand(ctx, cv, cts);
     emit_condbr_and_open_sibling_lbl(ctx, cv, body_target, end_target, latch_target);
   } else {
     emit_br_and_open_lbl(ctx, body_target, latch_target);
@@ -496,8 +496,8 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const DoWhileStmt& s) {
   ctx.continue_redirect[s.body_block.value] = cond_target;
   emit_fallthrough_lbl(ctx, cond_target);
   TypeSpec cond_ts{};
-  const std::string cond_v = emit_rval_id(ctx, s.cond, cond_ts);
-  const std::string cond_i1 = to_bool(ctx, cond_v, cond_ts);
+  const lir::LirOperand cond_v = emit_rval_operand(ctx, s.cond, cond_ts);
+  const lir::LirOperand cond_i1 = to_bool_operand(ctx, cond_v, cond_ts);
   emit_term_condbr(ctx, cond_i1, body_target, end_target);
 }
 
@@ -539,7 +539,11 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const SwitchStmt& s) {
       const std::string t_and = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirBinOp{t_and, "and", "i1", t_ge, t_le});
       const auto next_target = fresh_direct_target(ctx, fresh_lbl(ctx, "sw.range.next."));
-      emit_condbr_and_fallthrough_lbl(ctx, t_and, scheduled_target(bid), next_target);
+      TypeSpec bool_ts{};
+      bool_ts.base = TB_BOOL;
+      emit_condbr_and_fallthrough_lbl(
+          ctx, to_bool_operand(ctx, lir::LirOperand::raw(t_and), bool_ts),
+          scheduled_target(bid), next_target);
     }
   }
 

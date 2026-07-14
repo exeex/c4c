@@ -257,15 +257,15 @@ bool amd64_fixed_aggregate_byval(const hir::Module& mod, const TypeSpec& ts);
 bool set_terminator_if_open(FnCtx& ctx, lir::LirTerminator terminator);
 
 void open_lbl(FnCtx& ctx, const c4c::codegen::LirDirectBranchTarget& target);
-void emit_condbr_and_open_lbl(FnCtx& ctx, const std::string& cond,
+void emit_condbr_and_open_lbl(FnCtx& ctx, const lir::LirOperand& cond,
                               const c4c::codegen::LirDirectBranchTarget& true_target,
                               const c4c::codegen::LirDirectBranchTarget& false_target,
                               const c4c::codegen::LirDirectBranchTarget& open_target);
-void emit_condbr_and_open_sibling_lbl(FnCtx& ctx, const std::string& cond,
+void emit_condbr_and_open_sibling_lbl(FnCtx& ctx, const lir::LirOperand& cond,
                                       const c4c::codegen::LirDirectBranchTarget& true_target,
                                       const c4c::codegen::LirDirectBranchTarget& false_target,
                                       const c4c::codegen::LirDirectBranchTarget& sibling_target);
-void emit_condbr_and_fallthrough_lbl(FnCtx& ctx, const std::string& cond,
+void emit_condbr_and_fallthrough_lbl(FnCtx& ctx, const lir::LirOperand& cond,
                                      const c4c::codegen::LirDirectBranchTarget& true_target,
                                      const c4c::codegen::LirDirectBranchTarget& false_target);
 
@@ -371,7 +371,7 @@ class StmtEmitter {
   // Push a typed LIR instruction (non-terminator) into the current block.
   void emit_lir_op(FnCtx& ctx, lir::LirInst op);
   void emit_term_br(FnCtx& ctx, const c4c::codegen::LirDirectBranchTarget& target);
-  void emit_term_condbr(FnCtx& ctx, const std::string& cond,
+  void emit_term_condbr(FnCtx& ctx, const lir::LirOperand& cond,
                         const c4c::codegen::LirDirectBranchTarget& true_target,
                         const c4c::codegen::LirDirectBranchTarget& false_target);
   void emit_term_ret(FnCtx& ctx, lir::LirTypeRef type_str,
@@ -439,6 +439,8 @@ class StmtEmitter {
 
   // ── to_bool: convert any value to i1 ─────────────────────────────────────
   std::string to_bool(FnCtx& ctx, const std::string& val, const TypeSpec& ts);
+  lir::LirOperand to_bool_operand(FnCtx& ctx, lir::LirOperand val,
+                                  const TypeSpec& ts);
 
 
   // Recursively find field_name in struct/union identified by tag.
