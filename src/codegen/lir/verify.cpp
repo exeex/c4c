@@ -351,6 +351,66 @@ bool has_complete_direct_void_integer_ssa_authority(const LirCallOp& call) {
          call.result.empty() && !call.result.has_authority();
 }
 
+bool is_direct_zero_arg_double_result_claim(const LirCallOp& call) {
+  return call.return_type.kind() == LirTypeKind::Floating &&
+         call.return_type.str() == "double" &&
+         call.callee.kind() == LirOperandKind::Global &&
+         call.direct_callee_link_name_id != kInvalidLinkName &&
+         call.callee_signature.has_value() &&
+         !call.callee_signature->is_variadic &&
+         !call.callee_signature->has_unspecified_params &&
+         call.callee_signature->has_void_param_list &&
+         call.callee_signature->fixed_param_types.empty() &&
+         call.callee_signature->fixed_param_type_refs.empty() &&
+         call.structured_args.empty() && call.arg_type_refs.empty();
+}
+
+void verify_direct_zero_arg_double_result_call(const LirModule& mod,
+                                               const LirCallOp& call) {
+  const bool direct_double_result_authority =
+      call.return_type.kind() == LirTypeKind::Floating &&
+      call.return_type.str() == "double" &&
+      call.callee.kind() == LirOperandKind::Global && call.result.value_id();
+  if (!direct_double_result_authority &&
+      !is_direct_zero_arg_double_result_claim(call)) {
+    return;
+  }
+
+  if (!call.result.value_id()) {
+    fail_verify("LirCallOp.result",
+                "direct zero-argument double call requires LirValueId result authority");
+  }
+  if (!call.callee_signature.has_value() ||
+      call.direct_callee_link_name_id == kInvalidLinkName ||
+      call.callee_signature->is_variadic ||
+      call.callee_signature->has_unspecified_params ||
+      !call.callee_signature->has_void_param_list ||
+      !call.callee_signature->fixed_param_types.empty() ||
+      !call.callee_signature->fixed_param_type_refs.empty() ||
+      !call.structured_args.empty() || !call.arg_type_refs.empty()) {
+    fail_verify("LirCallOp.callee_signature",
+                "direct zero-argument double call requires a fixed nonvariadic empty signature");
+  }
+  const bool module_owns_callee = std::any_of(
+      mod.functions.begin(), mod.functions.end(), [&](const LirFunction& function) {
+        return function.link_name_id == call.direct_callee_link_name_id;
+      });
+  if (!module_owns_callee) {
+    fail_verify("LirCallOp.direct_callee_link_name_id",
+                "direct zero-argument double call requires a module-owned LinkNameId");
+  }
+  const LirCallSignature& signature = *call.callee_signature;
+  if (!signature.return_type_ref.has_value() ||
+      *signature.return_type_ref != call.return_type ||
+      signature.return_type_ref->kind() != LirTypeKind::Floating ||
+      signature.return_type_ref->str() != "double" ||
+      call.return_ext_attr != LirExtAttr::None ||
+      signature.return_ext_attr != LirExtAttr::None) {
+    fail_verify("LirCallOp.callee_signature",
+                "direct zero-argument double call requires matching double return authority");
+  }
+}
+
 void verify_call_callee_signature(const LirModule& mod, const LirCallOp& call,
                                   bool structured_authority_complete) {
   if (!call.callee_signature.has_value()) return;
@@ -1238,6 +1298,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     }
     verify_direct_void_fixed_integer_immediate_call(mod, *op);
     verify_direct_void_fixed_integer_ssa_call(mod, *op);
+    verify_direct_zero_arg_double_result_call(mod, *op);
     verify_integer_boolean_flag_call_authority(mod, *op);
     verify_integer_count_call_authority(mod, *op);
     if (op->result.empty() && op->return_type != "void") {

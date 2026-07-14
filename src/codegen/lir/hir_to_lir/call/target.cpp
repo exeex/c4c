@@ -314,7 +314,13 @@ LirOperand StmtEmitter::emit_call_with_result(
   const bool authoritative_direct_result =
       call_target.callee_link_name_id != kInvalidLinkName &&
       callee_signature.has_value() &&
-      return_type.kind() == LirTypeKind::Integer;
+      (return_type.kind() == LirTypeKind::Integer ||
+       (return_type.kind() == LirTypeKind::Floating &&
+        return_type.str() == "double" &&
+        !callee_signature->is_variadic &&
+        !callee_signature->has_unspecified_params &&
+        callee_signature->has_void_param_list &&
+        callee_signature->fixed_param_type_refs.empty() && args.empty()));
   const LirOperand result = authoritative_direct_result
                                 ? fresh_value(ctx)
                                 : LirOperand(fresh_tmp(ctx));

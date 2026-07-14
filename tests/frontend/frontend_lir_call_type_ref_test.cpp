@@ -1757,6 +1757,125 @@ int lir_direct_scalar_result_call_identity(void) {
       void_result, "verifier should reject result authority on a void call");
 }
 
+void test_direct_scalar_floating_result_call_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+double lir_direct_scalar_floating_result_target(void) { return 1.25; }
+double lir_direct_scalar_floating_result_call_identity(void) {
+  return lir_direct_scalar_floating_result_target() + 2.5;
+}
+)c", "x86_64-linux-gnu");
+
+  const auto require_focused = [](lir::LirModule& module)
+      -> std::pair<lir::LirCallOp&, lir::LirBinOp&> {
+    lir::LirFunction& function = require_function(
+        module, "lir_direct_scalar_floating_result_call_identity");
+    lir::LirCallOp* call = nullptr;
+    lir::LirBinOp* add = nullptr;
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirCallOp>(&inst)) call = candidate;
+        if (auto* candidate = std::get_if<lir::LirBinOp>(&inst)) add = candidate;
+      }
+    }
+    expect_true(call && add, "floating direct-call fixture should contain call and FAdd");
+    return {*call, *add};
+  };
+
+  auto [call, add] = require_focused(lowered);
+  expect_true(call.direct_callee_link_name_id != c4c::kInvalidLinkName &&
+                  call.return_type.kind() == lir::LirTypeKind::Floating &&
+                  call.return_type.str() == "double" && call.callee_signature &&
+                  call.callee_signature->return_type_ref &&
+                  *call.callee_signature->return_type_ref == call.return_type &&
+                  call.callee_signature->has_void_param_list &&
+                  !call.callee_signature->is_variadic &&
+                  !call.callee_signature->has_unspecified_params &&
+                  call.callee_signature->fixed_param_type_refs.empty() &&
+                  call.structured_args.empty() && call.arg_type_refs.empty() &&
+                  call.result.value_id() && call.result.value_id()->valid() &&
+                  add.opcode.typed() == lir::LirBinaryOpcode::FAdd &&
+                  add.type_str.kind() == lir::LirTypeKind::Floating &&
+                  add.type_str.str() == "double" && add.lhs.value_id() &&
+                  *add.lhs.value_id() == *call.result.value_id(),
+              "direct double call should preserve native callee/signature/result authority into FAdd");
+  lir::verify_module(lowered);
+
+  lir::LirModule misleading = lowered;
+  auto [misleading_call, misleading_add] = require_focused(misleading);
+  misleading_call.result.str() = "@misleading-call-result";
+  misleading_add.lhs.str() = "7";
+  lir::verify_module(misleading);
+
+  lir::LirModule missing_result = lowered;
+  require_focused(missing_result).first.result = lir::LirOperand("%missing");
+  expect_identity_verification_rejected(
+      missing_result, "verifier should reject missing direct double call result authority");
+
+  lir::LirModule invalid_result = lowered;
+  require_focused(invalid_result).first.result =
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_result, "verifier should reject invalid direct double call result ID");
+
+  lir::LirModule duplicate_result = lowered;
+  auto [duplicate_call, duplicate_add] = require_focused(duplicate_result);
+  duplicate_add.result = lir::LirOperand::ssa(
+      "%duplicate", *duplicate_call.result.value_id());
+  expect_identity_verification_rejected(
+      duplicate_result, "verifier should reject duplicate direct double call result ID");
+
+  lir::LirModule unknown_use = lowered;
+  require_focused(unknown_use).second.lhs =
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_use, "verifier should reject unknown direct double call FAdd use");
+
+  lir::LirModule cross_function = lowered;
+  cross_function.functions.push_back(
+      make_identity_test_function("direct_double_call_owner", lir::LirValueId{99}));
+  require_focused(cross_function).second.lhs =
+      lir::LirOperand::ssa("%cross", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      cross_function, "verifier should reject cross-function direct double call FAdd use");
+
+  lir::LirModule callee_conflict = lowered;
+  require_focused(callee_conflict).first.direct_callee_link_name_id =
+      c4c::LinkNameId{999};
+  expect_identity_verification_rejected(
+      callee_conflict, "verifier should reject conflicting direct double callee IDs");
+
+  lir::LirModule signature_conflict = lowered;
+  require_focused(signature_conflict).first.callee_signature->is_variadic = true;
+  expect_identity_verification_rejected(
+      signature_conflict, "verifier should reject variadic direct double call signature");
+
+  lir::LirModule count_conflict = lowered;
+  require_focused(count_conflict).first.callee_signature->has_void_param_list = false;
+  require_focused(count_conflict).first.callee_signature->fixed_param_types = {"double"};
+  require_focused(count_conflict).first.callee_signature->fixed_param_type_refs = {
+      lir::LirTypeRef("double")};
+  expect_identity_verification_rejected(
+      count_conflict, "verifier should reject nonzero direct double call parameter count");
+
+  lir::LirModule return_type_conflict = lowered;
+  require_focused(return_type_conflict).first.callee_signature->return_type_ref =
+      lir::LirTypeRef::integer(32);
+  expect_identity_verification_rejected(
+      return_type_conflict, "verifier should reject conflicting direct double return type");
+
+  lir::LirModule opcode_conflict = lowered;
+  require_focused(opcode_conflict).second.opcode = lir::LirBinaryOpcode::Add;
+  expect_identity_verification_rejected(
+      opcode_conflict, "verifier should reject integer opcode on direct double call FAdd use");
+
+  lir::LirModule operand_type_conflict = lowered;
+  require_focused(operand_type_conflict).second.type_str = lir::LirTypeRef::integer(64);
+  expect_identity_verification_rejected(
+      operand_type_conflict, "verifier should reject non-double direct call FAdd use type");
+}
+
 void test_direct_void_immediate_arg_identity_boundary() {
   namespace lir = c4c::codegen::lir;
 
@@ -5632,6 +5751,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_return_identity_contract();
   test_global_array_gep_identity_contract();
   test_direct_scalar_result_call_identity_boundary();
+  test_direct_scalar_floating_result_call_identity_boundary();
   test_direct_void_immediate_arg_identity_boundary();
   test_direct_void_ssa_arg_identity_boundary();
   test_scalar_ordinary_value_chain_identity_boundary();
