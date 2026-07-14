@@ -89,7 +89,7 @@ LirOperand emit_builtin_ffs_call(FnCtx& ctx, ExprId arg_id,
                                  BuiltinId builtin_id);
 LirOperand emit_builtin_ctz_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
 LirOperand emit_builtin_clz_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
-std::string emit_builtin_popcount_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
+LirOperand emit_builtin_popcount_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
 std::string emit_builtin_parity_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
 std::string emit_builtin_clrsb_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id);
 void promote_builtin_fp_predicate_arg(FnCtx& ctx, std::string& value, TypeSpec& value_ts);

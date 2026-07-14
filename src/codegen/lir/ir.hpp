@@ -335,6 +335,7 @@ struct LirCallArg {
 enum class LirIntrinsicKind : unsigned char {
   Cttz,
   Ctlz,
+  Ctpop,
 };
 
 enum class LirZeroCountBehavior : unsigned char {

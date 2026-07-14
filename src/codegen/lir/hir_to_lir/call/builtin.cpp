@@ -125,13 +125,31 @@ LirOperand StmtEmitter::emit_builtin_clz_call(FnCtx& ctx, ExprId arg_id,
   return truncated;
 }
 
-std::string StmtEmitter::emit_builtin_popcount_call(FnCtx& ctx, ExprId arg_id,
-                                                    BuiltinId builtin_id) {
+LirOperand StmtEmitter::emit_builtin_popcount_call(FnCtx& ctx, ExprId arg_id,
+                                                   BuiltinId builtin_id) {
   const PreparedBuiltinIntArg arg = prepare_builtin_int_arg(ctx, arg_id, builtin_id);
-  const std::string tmp = fresh_tmp(ctx);
-  emit_lir_op(ctx, make_lir_call_op(tmp, arg.llvm_ty, "@llvm.ctpop." + arg.llvm_ty, "",
-                                    {{arg.llvm_ty, arg.value}}));
-  return narrow_builtin_int_result(ctx, arg, tmp);
+  const std::string intrinsic_name = "llvm.ctpop." + arg.llvm_ty;
+  const std::string intrinsic_callee = "@" + intrinsic_name;
+  const LinkNameId intrinsic_id = module_->link_names.intern(intrinsic_name);
+  const LirTypeRef integer_type(arg.llvm_ty);
+  LirCallSignature signature;
+  signature.return_type_ref = integer_type;
+  signature.fixed_param_types = {arg.llvm_ty};
+  signature.fixed_param_type_refs = {integer_type};
+  const LirOperand ctpop = fresh_value(ctx);
+  LirCallOp ctpop_call = make_lir_call_op_with_return_type_ref(
+      ctpop, integer_type, intrinsic_callee, "",
+      {{arg.llvm_ty, LirOperand(arg.value), integer_type}}, intrinsic_id,
+      std::move(signature));
+  ctpop_call.callee = LirOperand::global(intrinsic_callee, intrinsic_id);
+  ctpop_call.intrinsic_kind = LirIntrinsicKind::Ctpop;
+  emit_lir_op(ctx, std::move(ctpop_call));
+  if (!arg.is_i64) return ctpop;
+  const LirOperand truncated = fresh_value(ctx);
+  emit_lir_op(ctx, lir::LirCastOp{truncated, lir::LirCastKind::Trunc,
+                                  integer_type, ctpop,
+                                  LirTypeRef::integer(32)});
+  return truncated;
 }
 
 std::string StmtEmitter::emit_builtin_parity_call(FnCtx& ctx, ExprId arg_id,
@@ -434,6 +452,9 @@ LirOperand StmtEmitter::emit_rval_call_operand(FnCtx& ctx,
   if (builtin_is_clz(call_target.builtin_id) && call.args.size() == 1) {
     return emit_builtin_clz_call(ctx, call.args[0], call_target.builtin_id);
   }
+  if (builtin_is_popcount(call_target.builtin_id) && call.args.size() == 1) {
+    return emit_builtin_popcount_call(ctx, call.args[0], call_target.builtin_id);
+  }
   return LirOperand::raw(emit_rval_payload(ctx, call, e));
 }
 
@@ -649,7 +670,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
       return emit_builtin_clz_call(ctx, call.args[0], builtin_id).str();
     }
     if (builtin_is_popcount(builtin_id) && call.args.size() == 1) {
-      return emit_builtin_popcount_call(ctx, call.args[0], builtin_id);
+      return emit_builtin_popcount_call(ctx, call.args[0], builtin_id).str();
     }
     if (builtin_is_parity(builtin_id) && call.args.size() == 1) {
       return emit_builtin_parity_call(ctx, call.args[0], builtin_id);

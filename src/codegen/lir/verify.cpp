@@ -800,6 +800,64 @@ void verify_integer_boolean_flag_call_authority(const LirModule& mod,
   }
 }
 
+bool has_complete_integer_count_call_authority(const LirCallOp& call) {
+  if (call.intrinsic_kind != LirIntrinsicKind::Ctpop ||
+      call.zero_count_behavior.has_value() || !call.result.value_id() ||
+      call.return_type.kind() != LirTypeKind::Integer ||
+      !call.callee.link_name_id() ||
+      call.direct_callee_link_name_id != *call.callee.link_name_id() ||
+      !call.callee_signature.has_value() ||
+      !call.callee_signature->return_type_ref.has_value()) {
+    return false;
+  }
+  const LirCallSignature& signature = *call.callee_signature;
+  if (signature.is_variadic || signature.has_unspecified_params ||
+      signature.has_void_param_list || signature.fixed_param_types.size() != 1 ||
+      signature.fixed_param_type_refs.size() != 1 ||
+      call.arg_type_refs.size() != 1 || call.structured_args.size() != 1) {
+    return false;
+  }
+  return *signature.return_type_ref == call.return_type &&
+         signature.fixed_param_type_refs[0] == call.return_type &&
+         call.arg_type_refs[0] == call.return_type &&
+         call.structured_args[0].type_ref == call.return_type;
+}
+
+void verify_integer_count_call_authority(const LirModule& mod,
+                                         const LirCallOp& call) {
+  if (call.intrinsic_kind != LirIntrinsicKind::Ctpop) return;
+  if (!has_complete_integer_count_call_authority(call)) {
+    fail_verify("LirCallOp",
+                "authoritative integer count call requires complete native callee/signature/argument authority and no zero-count behavior");
+  }
+  const LinkNameId callee_id = *call.callee.link_name_id();
+  if (callee_id == kInvalidLinkName || mod.link_names.spelling(callee_id).empty()) {
+    fail_verify("LirCallOp.callee",
+                "authoritative integer count callee must resolve in the module");
+  }
+  const LirCallSignature& signature = *call.callee_signature;
+  if (call.callee.kind() != LirOperandKind::Global ||
+      !call.callee_type_suffix.empty() ||
+      signature.fixed_param_types[0] != call.return_type.str() ||
+      call.structured_args[0].type != call.return_type.str() ||
+      call.return_ext_attr != LirExtAttr::None ||
+      signature.return_ext_attr != LirExtAttr::None ||
+      call.structured_args[0].ext_attr != LirExtAttr::None) {
+    fail_verify("LirCallOp",
+                "authoritative integer count call has conflicting native shape");
+  }
+  const LirOperand& value_argument = call.structured_args[0].operand;
+  if (value_argument.has_authority() && !value_argument.value_id()) {
+    fail_verify("LirCallOp.structured_args[0].operand",
+                "integer count value argument requires SSA authority when available");
+  }
+  if (value_argument.kind() != LirOperandKind::SsaValue &&
+      value_argument.kind() != LirOperandKind::Immediate) {
+    fail_verify("LirCallOp.structured_args[0].operand",
+                "integer count value argument requires SSA or immediate presentation");
+  }
+}
+
 void verify_direct_void_fixed_integer_immediate_call(const LirModule& mod,
                                                      const LirCallOp& call) {
   if (!is_direct_void_fixed_integer_signature_claim(call)) return;
@@ -1135,7 +1193,8 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     const bool structured_authority_complete =
         has_complete_direct_void_integer_immediate_authority(*op) ||
         has_complete_direct_void_integer_ssa_authority(*op) ||
-        has_complete_integer_boolean_flag_call_authority(*op);
+        has_complete_integer_boolean_flag_call_authority(*op) ||
+        has_complete_integer_count_call_authority(*op);
     require_operand_kind(op->result, "LirCallOp.result",
                          {LirOperandKind::SsaValue}, true);
     verify_call_return_type_ref_mirror(mod, op->return_type);
@@ -1180,6 +1239,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     verify_direct_void_fixed_integer_immediate_call(mod, *op);
     verify_direct_void_fixed_integer_ssa_call(mod, *op);
     verify_integer_boolean_flag_call_authority(mod, *op);
+    verify_integer_count_call_authority(mod, *op);
     if (op->result.empty() && op->return_type != "void") {
       fail_verify("LirCallOp.result",
                   "must hold an SSA result for non-void calls");
