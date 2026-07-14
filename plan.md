@@ -149,22 +149,61 @@ Completion check:
   or names a precise blocker; it does not publish the carrier or claim external
   integration success.
 
+Selection record (complete):
+
+- The one current implementation seam is direct frontend-LIR `LabelAddrExpr`
+  rvalue production. It is the shared unresolved producer for automatic scalar
+  initializer/direct-rvalue consumption and automatic table element
+  initialization.
+- The Step 5 result must be typed and structured, carrying valid current
+  function, target label, and produced value identity. This extends neither
+  769's accepted static structured initializer contract nor 767's accepted
+  static decay contract.
+- Step 5 must expose that label-address value through a native, direct
+  label-address representation. It must not materialize the value through a
+  synthetic identity bridge: `select`, `gep`, `bitcast`, or any comparable
+  fabricated instruction/value route is not an acceptable implementation.
+- Automatic local-table `DeclRef` decay through the local-slot/two-index
+  `LirGepOp` route remains a separately unresolved authority contract. It is
+  integration/dependency evidence for the later return to 764, not Step 5
+  implementation scope.
+
+Step 5 repair record (synthetic bridge rejected):
+
+- The uncommitted `LirLabelAddrOp` implementation renders its SSA result as
+  `select i1 true, blockaddress(...), blockaddress(...)`. Although its focused
+  and broader frontend-LIR proofs are green, that is a synthetic identity
+  bridge and fails this source idea's explicit no-synthetic-bridge gate.
+- This remains an in-scope Step 5 repair: the accepted Step 4 selection is
+  still direct frontend-LIR `LabelAddrExpr` rvalue production, and the needed
+  correction is its native value representation/lowering rather than a
+  carrier, 767, 769, or table-decay change.
+
 ### Step 5 - Implement and prove the selected producer seam
 
-Goal: implement only the Step 4-selected generic upstream contract and activate
-its focused frontend-LIR positive/malformed proof.
+Goal: implement only direct frontend-LIR `LabelAddrExpr` rvalue production as
+a typed structured result and activate its focused proof.
 
 Actions:
 
-- make only selected producer/result and direct frontend-LIR test changes
-- run a fresh build and the Step 4-selected focused proof; retain external
-  cases as later integration probes
+- make only selected producer/result and direct frontend-LIR test changes,
+  yielding valid current-function, target-label, and produced-value identity
+- represent and lower the produced label address natively and directly; reject
+  any `select`, `gep`, `bitcast`, or other synthetic materialization used only
+  to manufacture an SSA identity
+- add focused frontend-LIR positive coverage and nearby malformed verifier
+  coverage for raw, invalid/foreign function or target, non-pointer, and
+  missing/invalid/foreign value identity
+- run a fresh build and the selected focused proof; retain external cases and
+  automatic local-table `DeclRef` decay as later integration/dependency probes
 - report accepted capability, proof, and exact return to 764 Step 1
 
 Completion check:
 
 - the selected producer capability and focused proof pass without carrier or
-  verifier mutation, text recovery, testcase branching, or broad redesign.
+  verifier mutation, text recovery, testcase branching, reopening 767/769, or
+  automatic-table decay implementation, and without `select`, `gep`,
+  `bitcast`, or another synthetic label-address value bridge.
 
 ### Step 6 - Hand off the resolved producer capability to 764
 

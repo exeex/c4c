@@ -3,41 +3,37 @@
 Status: Active
 Source Idea Path: ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Bind probes and select the narrowest generic producer seam
+Current Step ID: 5
+Current Step Title: Repair and prove native direct LabelAddrExpr rvalue production
 
 ## Just Finished
 
-- Plan Step 3 is complete: the static-storage initializer row is complete via
-  769 (`56d86556a`), including structured owner/target positive and malformed
-  verifier coverage; the static-table decay control remains satisfied by 767
-  (`403e86afd`). The direct `&&label` automatic-local harness
-  (`707062aeb`) legitimately covers both the automatic-scalar-initializer and
-  direct-rvalue rows at their shared immediate `LirStoreOp` seam, while the
-  automatic-table decay harness (`85ac8d42c`) fixes its local-slot/two-index
-  `LirGepOp` seam.
-- `22bd5885b` records the remaining automatic-form future positive/malformed
-  producer-authority contracts. These records complete contract extraction;
-  they do not accept current raw/no-ID behavior or select a production seam.
+- Step 5's uncommitted `LirLabelAddrOp` slice is rejected and must not be
+  accepted or handed off. Its printer represents the new result as
+  `select i1 true, blockaddress(...), blockaddress(...)`, a synthetic identity
+  bridge prohibited by 768. The accepted Step 4 seam selection remains direct
+  frontend-LIR `LabelAddrExpr` rvalue production.
 
 ## Suggested Next
 
-- Bind all focused rows to their direct generic producer/result contracts and
-  compare their ownership before choosing any repair. Authorize one narrow
-  producer seam only if it satisfies the static initializer, static-table
-  control, direct-label rvalue/store, and automatic-table decay maps without
-  raw/no-ID authority, carrier changes, or testcase-shaped routing; otherwise
-  name the exact separately scoped blocker and proof packet.
+- Return to Step 5: replace the synthetic bridge with a native direct
+  label-address value representation/lowering while preserving typed current
+  function, target-label, and produced-value authority and its focused
+  positive/malformed contract. Do not touch the carrier, 767, 769, or
+  automatic-table `DeclRef` decay.
 
 ## Watchouts
 
-- The automatic probes establish source-form/immediate-consumer seams and their
-  future malformed contracts; neither makes current raw/no-ID operands semantic
-  authority.
-- Step 4 is a selection decision only. Do not implement, reinterpret raw
-  label-address or decay operands as authority, or reopen 767/769.
+- No `select`, `gep`, `bitcast`, or other synthetic materialization is an
+  acceptable label-address identity bridge. Do not add a carrier change,
+  raw-text recovery, testcase-shaped routing, or reopen accepted 767/769
+  contracts. The automatic local-table `DeclRef` decay-to-`LirGepOp`
+  local-slot/two-index authority contract is not in this packet.
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_' > test_after.log`
-  (fresh build plus the supervisor-selected frontend-LIR subset; log: `test_after.log`).
+- Accepted evidence retained for the rejected slice: fresh targeted build and
+  focused `frontend_lir_label_address_rvalue_probe` proof passed; the matching
+  regression guard passed with `allow-non-decreasing`; and
+  `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_'` was 7/7
+  green. None overrides the no-synthetic-bridge scope gate.
