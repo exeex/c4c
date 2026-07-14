@@ -8,41 +8,18 @@ Current Step Title: Author the required research delivery
 
 ## Just Finished
 
-- Plan Step 1 evidence collection is complete. Candidate coverage was not
-  limited to the two original observations: file-scope fixed-`void` and
-  C unspecified-parameter declarations both materialize an HIR `Function`
-  (the `--dump-hir` probes report `ext` through link-name, structured, and
-  legacy declaration lookup); the direct-call lowerer creates a `DeclRef`
-  whose `link_name_id` is that function's ID, and LIR consequently resolves
-  `target_fn`. The fixed-empty facts therefore exist only on that retained
-  `Function` (`params` contains the `void` sentinel for the fixed form), so
-  neither is a `target_fn`-absent route.
-- The additional legal alternatives also do not satisfy the four-property
-  carrier: a block-scope prototype and an undeclared identifier both reach a
-  plain call with no HIR function/declaration lookup hit and no `LinkNameId`;
-  a function-pointer local retains its `FnPtrSig` but the callee is local and
-  takes the indirect `emit_rval_id` path. A definition, redeclaration,
-  qualified/overload/template direct call, or alias resolves through the same
-  retained `Function`/`target_fn` mechanism; builtin alias calls instead use
-  builtin canonical-name lowering with no `DeclRef` link ID or source
-  fixed-empty declaration contract.
-- LIR ingress confirms the split: `target.cpp` forms `@name` for any plain
-  nonlocal `DeclRef`, but `find_local_target_function` sets `target_fn` when
-  a declaration supplied native link identity; only the no-target branch can
-  record `extern_decl_link_name_map`, and it has no `callee_fn_ptr_sig` unless
-  the callee is an indirect function-pointer carrier. `structured_callee_signature`
-  therefore has no native fixed-empty signature for the direct unresolved
-  branch. Conclusion ready for Step 2: the currently supported source surface
-  has no legal production-facing plain direct fixed-empty scalar-call carrier
-  combining native global/link identity with absent `target_fn`; this is an
-  evidence-bounded supported-surface absence, not an implementation change or
-  an unblock/closure claim for ideas 746 or 744.
+- Plan Step 2 is complete: authored exactly the required index and numbered
+  answer under `docs/frontend_unresolved_external_direct_call_representation/`.
+  The answer records the parser/sema/HIR/LIR evidence, classifies each legal
+  direct-call candidate, and reaches only the supported-surface absence
+  conclusion: no production-facing plain direct fixed-empty scalar-call
+  carrier combines native global/link identity with absent `target_fn`.
 
 ## Suggested Next
 
-- Execute Step 2 only: author exactly the required index and numbered answer
-  document from this evidence, with the candidate classification and the
-  supported-surface absence conclusion; do not advance idea 746 or 744.
+- Hand the completed research evidence to the supervisor for a separate
+  lifecycle decision on idea 746. This delivery does not itself unblock,
+  complete, supersede, retire, or close ideas 746 or 744.
 
 ## Watchouts
 
@@ -62,7 +39,12 @@ Current Step Title: Author the required research delivery
 
 ## Proof
 
-- `git diff --check` passed. No build or broad test run was required for this
-  read-only research packet; narrow `--dump-hir` probes were run from `/tmp`
-  for file-scope fixed-`void`, C unspecified, block-scope prototype,
-  function-pointer, and undeclared call forms. No root proof log was created.
+- Passed: `git diff --check && test "$(find
+  docs/frontend_unresolved_external_direct_call_representation -maxdepth 1
+  -type f -name '*.md' | wc -l)" -eq 2 && test -f
+  docs/frontend_unresolved_external_direct_call_representation/index.md &&
+  test -f docs/frontend_unresolved_external_direct_call_representation/01_legal_source_to_hir_representation.md
+  && rg -n "01_legal_source_to_hir_representation\.md"
+  docs/frontend_unresolved_external_direct_call_representation/index.md`.
+  No build, test, or root proof log was required for this documentation-only
+  packet.
