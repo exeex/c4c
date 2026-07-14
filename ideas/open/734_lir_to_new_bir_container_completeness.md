@@ -1,6 +1,6 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (active; resumed from accepted ordinary value-identity handoff)
+Status: Open (paused at Step 6.3 for direct-branch successor authority blocker)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -44,6 +44,30 @@ After this idea is implemented, accepted and closed, reactivate idea 732 and
 rerun documentation convergence against the landed C++ implementation from
 phase A, then B, then C and onward. Do not resume directly at the old phase-C
 Step 7 checkpoint.
+
+## Resumption Record: direct-branch successor authority blocker
+
+Paused after accepted Step 5.3.5 normalized i32 `Mul` receipt
+(`ea4b63135`, focused 2/2 proof) and the already landed Step 6.1 i32 and Step
+6.2 i64 output-only inline-assembly native-ID binding/selected-global Store
+receipts (`ad82d1456`, `37014f013`). Steps 5.2 through 6.2 are completed
+historical work and must not be repeated.
+
+The interrupted point is `Step 6.3 - Select the next authority-backed
+terminator or inline-assembly row`. The first candidate direct `LirBr` row has
+only a raw target label; this idea cannot recover CFG identity from text and
+does not own the required LIR producer/schema change. Active blocker
+`ideas/open/747_lir_direct_branch_successor_identity_publication.md` owns only
+publication and verification of the same-function structural direct-successor
+`LirBlockId` plus a receiver handoff.
+
+After that blocker is accepted, reactivate this idea at Step 6.3 and replace
+the selection gate with one bounded direct-`LirBr` receiver packet: map the
+handoff's carried successor ID to a typed Raw-BIR direct-jump destination,
+verify same-function edge ownership and rollback, and prove the receiver's
+positive/negative transactional boundary. All conditional/switch/indirect
+terminators and nonselected inline-assembly forms remain separate and
+fail-closed.
 
 ## Resumed Consumer Status
 
