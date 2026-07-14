@@ -70,6 +70,21 @@ After this idea is accepted and closed, the next intended source idea is
 uses the enum/ref foundation from this idea to add targeted `[[deprecated]]`
 coverage and migrate string construction call sites in bounded groups.
 
+## Closure Record
+
+Close accepted: the enum-first foundation is complete. The accepted route was
+audited in `f86b3cfb7`, implemented in `bf75f2603`, and given focused authority
+proof in `d411270f4`; final validation was recorded in `b2ffae838`. A fresh
+build and six focused LIR frontend/backend tests passed, and the matching
+`frontend_lir_call_type_ref` before/after regression guards passed earlier in
+the route. The accepted work retains runtime string construction, avoids broad
+caller migration, and makes no verifier, expectation, or unrelated semantic
+change.
+
+`ideas/open/760_lir_string_constructor_deprecation_migration.md` remains open
+as the successor only for its distinct targeted deprecation and call-site
+migration scope. It is not remaining work required to complete this foundation.
+
 ## Evidence Notes For Later Execution
 
 The runtime string call-site experiment identified these important future
