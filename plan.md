@@ -256,9 +256,62 @@ Completion check:
   `InlineAsmNode` result and its Store through native IDs only, while malformed
   neighbors publish neither module.
 
-#### Step 6.2 - Select the next authority-backed terminator or inline-assembly row
+#### Step 6.2 - Receive the checked i64 output-only inline-assembly binding
 
-Goal: after Step 6.1, select exactly one subsequent row only when its source
+Goal: extend only the accepted source-ID inline-assembly result seam to the
+next producer-verified width, preserving the Step 6.1 i32 path as its nearby
+same-mechanism regression neighbor.
+
+Primary targets:
+
+- `src/backend/bir/lir_to_bir.cpp` native source-value registration and the
+  existing `InlineAsmSpec` receipt path
+- the existing typed Raw-BIR `InlineAsmNode` result carrier/builder/view and
+  reachable Raw-BIR verifier
+- `tests/backend/bir/backend_lir_to_bir_interface_test.cpp` and
+  `frontend_lir_call_type_ref`
+
+Typed source authority and destination:
+
+- admit only the Step-7.25 handoff subrow: one non-explicit-register,
+  output-only `LirInlineAsmOp::ordinary_results[0]` with a valid
+  current-function `LirValueId`, exact `LirTypeRef::integer(64)`, `Output`
+  role, and constraint index zero, followed by one same-ID, exact-i64
+  direct-global `LirStoreOp` use
+- receive it as result index zero of the existing typed `InlineAsmNode` and
+  register its resulting Raw-BIR `ValueId` by the exact source ID in the
+  current-function source-value registry; preserve opaque asm/constraint bytes,
+  ordered clobbers, and side-effect state without treating them as value or
+  target authority
+
+Actions:
+
+- extend the Step 6.1 native source-ID registration and lookup contract only
+  to this exact i64 output/Store edge; preserve accepted i32 behavior and do
+  not fall back to compatibility spelling, rendered operands, `args_str`, asm
+  text, constraint text, or clobbers
+- require current-function ownership, source-ID uniqueness, exact i64 type,
+  output role/index/count coherence, instruction-result linkage, and one typed
+  Store use; maintain full-module rollback on every malformed authority edge
+- prove Raw and Canonical receipt plus missing/invalid/duplicate/cross-function
+  source IDs, wrong role/index/count/type, unknown/cross-function or wrong-type
+  Store use, malformed result linkage, and rollback. Retain the Step 6.1 i32
+  row as a same-feature regression neighbor.
+- keep new receipt fail-closed for inputs, read/write/tied, memory/address/
+  immediate, clobber or explicit-register meaning, vector/aggregate/multi-
+  output, `insn_r`, non-i32/i64 widths, opaque-text-derived facts, and every
+  CFG successor form. Do not parse constraints or asm text or enter target
+  interpretation, binding, allocation, or assembler work.
+
+Completion check:
+
+- a fresh build and focused interface/frontend proof show that the exact i64
+  output-only binding and Store use reach verified Raw and Canonical BIR by
+  native ID only, with malformed neighbors publishing neither module.
+
+#### Step 6.3 - Select the next authority-backed terminator or inline-assembly row
+
+Goal: after Step 6.2, select exactly one subsequent row only when its source
 authority and typed Raw-BIR destination are evidenced. CFG labels remain
 unavailable as typed successor authority and must not be recovered from text.
 
