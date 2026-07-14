@@ -3854,6 +3854,82 @@ long long lir_ternary_coerce_result_authority_loss(int condition, int input) {
   lir::verify_module(lowered);
 }
 
+void test_logical_short_circuit_result_authority_loss_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int lir_logical_short_circuit_result_authority_loss(int lhs, int rhs) {
+  return (lhs && rhs) + 3;
+}
+)c", "x86_64-linux-gnu");
+
+  lir::LirFunction& function =
+      require_function(lowered, "lir_logical_short_circuit_result_authority_loss");
+  std::vector<lir::LirCmpOp*> comparisons;
+  std::vector<lir::LirCastOp*> casts;
+  std::vector<lir::LirPhiOp*> phis;
+  std::vector<lir::LirBinOp*> binary_ops;
+  lir::LirCondBr* logical_branch = nullptr;
+  for (auto& block : function.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* comparison = std::get_if<lir::LirCmpOp>(&inst)) comparisons.push_back(comparison);
+      if (auto* cast = std::get_if<lir::LirCastOp>(&inst)) casts.push_back(cast);
+      if (auto* phi = std::get_if<lir::LirPhiOp>(&inst)) phis.push_back(phi);
+      if (auto* binary = std::get_if<lir::LirBinOp>(&inst)) binary_ops.push_back(binary);
+    }
+    if (auto* branch = std::get_if<lir::LirCondBr>(&block.terminator)) {
+      expect_true(logical_branch == nullptr,
+                  "logical short-circuit probe should have one conditional branch");
+      logical_branch = branch;
+    }
+  }
+
+  expect_true(logical_branch && comparisons.size() == 2 && casts.size() == 1 &&
+                  phis.size() == 1 && binary_ops.size() == 1,
+              "logical short-circuit probe should retain two boolean conversions, a branch, "
+              "one RHS conversion, one PHI, and one later use");
+  expect_true(logical_branch->condition.valid() && logical_branch->true_successor.valid() &&
+                  logical_branch->false_successor.valid(),
+              "logical short-circuit branch should retain structured condition and successor IDs");
+  const auto lhs_boolean = std::find_if(comparisons.begin(), comparisons.end(),
+                                        [&](const lir::LirCmpOp* comparison) {
+    return comparison->result.value_id() &&
+           *comparison->result.value_id() == logical_branch->condition;
+  });
+  expect_true(lhs_boolean != comparisons.end(),
+              "logical LHS boolean conversion should retain the typed result selected by the branch");
+  lir::LirCastOp* rhs_conversion = casts[0];
+  expect_true(rhs_conversion->kind == lir::LirCastKind::ZExt &&
+                  rhs_conversion->from_type.kind() == lir::LirTypeKind::Integer &&
+                  rhs_conversion->from_type.integer_bit_width() == 1 &&
+                  rhs_conversion->to_type.kind() == lir::LirTypeKind::Integer &&
+                  rhs_conversion->to_type.integer_bit_width() == 32 &&
+                  rhs_conversion->operand.value_id(),
+              "logical RHS boolean conversion should retain its typed i1 operand before result loss");
+  const auto rhs_boolean = std::find_if(comparisons.begin(), comparisons.end(),
+                                        [&](const lir::LirCmpOp* comparison) {
+    return comparison->result.value_id() &&
+           *comparison->result.value_id() == *rhs_conversion->operand.value_id();
+  });
+  expect_true(rhs_boolean != comparisons.end(),
+              "logical RHS should enter boolean conversion with a typed result");
+  expect_true(phis[0]->type_str.kind() == lir::LirTypeKind::Integer &&
+                  phis[0]->type_str.integer_bit_width() == 32 && phis[0]->incoming.size() == 2,
+              "logical PHI should retain resolved i32 type and both semantic paths");
+  expect_true(binary_ops[0]->opcode.typed() == lir::LirBinaryOpcode::Add &&
+                  binary_ops[0]->type_str.kind() == lir::LirTypeKind::Integer &&
+                  binary_ops[0]->type_str.integer_bit_width() == 32,
+              "logical result should feed a later typed i32 Add");
+  expect_true(!rhs_conversion->result.value_id() && !phis[0]->result.value_id() &&
+                  !binary_ops[0]->lhs.value_id(),
+              "logical RHS result, PHI result, and later consumer lack LirValueId authority");
+  expect_true(!rhs_conversion->result.has_authority() && !phis[0]->result.has_authority() &&
+                  !binary_ops[0]->lhs.has_authority(),
+              "logical result path is raw after RHS conversion; text-only PHI incoming values "
+              "cannot support a verifier-backed malformed-ID proof");
+  lir::verify_module(lowered);
+}
+
 void test_scalar_fptrunc_result_use_identity_boundary() {
   namespace lir = c4c::codegen::lir;
 
@@ -7071,6 +7147,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_floating_binary_result_use_identity_boundary();
   test_scalar_cast_result_use_identity_boundary();
   test_ternary_coerce_result_authority_loss_boundary();
+  test_logical_short_circuit_result_authority_loss_boundary();
   test_scalar_fptrunc_result_use_identity_boundary();
   test_scalar_fpext_result_use_identity_boundary();
   test_scalar_sitofp_result_use_identity_boundary();
