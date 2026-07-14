@@ -1,7 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (active at resumed Step 7.21; closed CFG successor-authority
-successor 750 supplies the bounded receiver route)
+Status: Open (paused after accepted Step 7.21; conditional-branch condition
+authority successor 755 is active before the next receiver repair)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -267,6 +267,30 @@ transactional rejection/no partial publication. `LirCondBr`, `LirSwitch`, and
 `LirIndirectBrOp` are not receiver-ready in that packet because their condition,
 selector, or address identity remains outside the 750 handoff and must stay
 fail-closed without presentation recovery.
+
+## Runbook Exhaustion Decision: post-Step 7.21
+
+Close rejected. Accepted Step 7.21 (`b528dc1`) received exactly legacy
+`LirIndirectBr.addr` and its ordered current-function targets into verified
+Raw-BIR `IndirectJumpTerm` authority, with transactional malformed
+address/target rollback coverage. The matching backend guard passed 5/5 and
+the prior full checkpoint remains 3034/3034 passing. This proves one bounded
+CFG receiver row, not this source's complete matrix.
+
+The next candidate `LirCondBr` receiver row is not source-authorized:
+`true_successor` and `false_successor` are typed after closed idea 750, but
+`cond_name` remains display text without a current-function `LirValueId`.
+`LirSwitch` likewise lacks typed selector authority, and `LirIndirectBrOp`
+lacks typed address authority. This source must not recover any of those facts
+from labels, names, printer output, or rendered operands.
+
+Classification: `separate-blocker`. Open idea 755 owns only conditional-branch
+condition value identity publication, verification, and a bounded handoff.
+After its accepted handoff, reactivate 734 and repair its runbook for one
+`LirCondBr` Raw-BIR receiver packet that consumes the typed condition and the
+already accepted typed successor IDs. Do not repeat Step 7.21 or absorb switch,
+computed-goto, PHI, local/object, memory/va, aggregate/vector, body-parameter,
+or other remaining families.
 
 ## Why This Exists
 

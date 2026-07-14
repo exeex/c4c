@@ -1,29 +1,26 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
+Source Idea Path: ideas/open/755_lir_conditional_branch_condition_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.21
-Current Step Title: Receive legacy indirect-branch authority
+Current Step ID: 1
+Current Step Title: Publish conditional-branch condition authority
 
 ## Just Finished
 
-- Step 7.21 received legacy `LirIndirectBr.addr` and ordered current-function
-  target IDs into verified Raw-BIR `IndirectJumpTerm` authority, with
-  transactional malformed-address/target rollback coverage.
+- Paused 734 after accepted Step 7.21; its next conditional-branch receiver
+  requires this separate typed-condition producer handoff.
 
 ## Suggested Next
 
-- Supervisor: review and commit the completed Step 7.21 slice, then obtain
-  plan-owner direction for the next bounded receiver packet.
+- Execute Step 1 only: publish and verify `LirCondBr` condition value identity.
 
 ## Watchouts
 
-- `LirCondBr`, `LirSwitch`, and `LirIndirectBrOp` remain unsupported and
-  fail closed; this slice consumes no labels as indirect-branch semantics.
+- Do not change Raw-BIR receipt, switch/computed-goto authority, or recover a
+  condition from `cond_name`, labels, or printer output.
 
 ## Proof
 
-- Passed: `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^backend_' > test_after.log` (5/5); proof log:
-  `test_after.log`.
+- Executor: run a fresh build and focused positive/negative producer proof.
+- Supervisor: select and record broader/full acceptance separately.

@@ -1,91 +1,70 @@
-# LIR-To-New-BIR Container And Import Completeness Runbook
+# LIR Conditional Branch Condition Identity Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Resumed from: accepted Step 7.20 selected `LirMemcpyOp` receipt (`1a3adbc58`)
-and closed idea 750 CFG successor-authority handoff (`f372b29`, lifecycle
-pointer `62be1f1`)
+Source Idea: ideas/open/755_lir_conditional_branch_condition_identity_publication.md
+Activated from: paused idea 734 after accepted Step 7.21 legacy
+`LirIndirectBr` receipt (`b528dc1`); matching backend guard 5/5 and prior full
+checkpoint 3034/3034 passing
 
 ## Purpose
 
-Resume the Raw-BIR receiver route without resetting the accepted Steps 1
-through 7.20 history. Receive exactly the next source-authorized legacy
-indirect-branch row.
+Remove the remaining display-text condition boundary that prevents idea 734
+from receiving one typed conditional-branch row.
 
 ## Goal
 
-Map one existing typed legacy `LirIndirectBr` CFG fact to a verified,
-target-independent Raw-BIR indirect-jump destination without presentation
-recovery or partial publication.
+Publish and verify a current-function typed condition identity for every
+active `LirCondBr`, while keeping `cond_name` display-only.
 
 ## Core Rule
 
-Use only `LirIndirectBr.addr` as `LirValueId` and its ordered
-current-function `LirBlockId` targets. Labels and printer text are never
-semantic inputs.
+The condition carrier is semantic authority. `cond_name`, labels, printer
+output, and rendered text must neither select nor repair it.
 
 ## Read First
 
+- `ideas/open/755_lir_conditional_branch_condition_identity_publication.md`
 - `ideas/open/734_lir_to_new_bir_container_completeness.md`
 - `ideas/closed/750_lir_cfg_terminator_block_identity_completion.md`
-- existing Raw-BIR indirect-jump container, builder, verifier, and importer
-- `src/backend/bir/lir_to_bir/README.md` terminator matrix
-
-## Landed Progress
-
-- Steps 1 through 7.20 are accepted historical work; do not repeat them.
-- Step 6.3 already received the direct `LirBr` row (`97efe9c38`).
-- Closed idea 750 established typed active-successor authority with accepted
-  commits `0f214dc` and `40673da`, focused 1/1 pre/post guard, and fresh full
-  3034/3034 proof.
+- active `LirCondBr` producers and LIR verifier ownership checks
 
 ## Non-Goals
 
-- no LIR producer/schema changes, label-text recovery, canonicalization,
-  target lowering, MIR, emission, or legacy-BIR revival
-- no `LirCondBr`, `LirSwitch`, or `LirIndirectBrOp` receiver work: their
-  condition, selector, or address identities remain outside this packet and
-  fail closed
-- no PHI, memory/va, local/object, aggregate/vector, body-parameter, or other
-  remaining receiver family
+- no Raw-BIR importer/container work; one later 734 packet owns that receipt
+- no successor-carrier rewrite, switch selector, computed-goto address, PHI,
+  local/object, memory/va, aggregate/vector, or parameter authority work
+- no presentation-text recovery, target lowering, MIR, or emission
 
 ## Execution Rules
 
-1. Implement only one legacy `LirIndirectBr` receiving container/wiring path.
-2. Preserve the typed address, current-function target ownership, and target
-   order; reject absent, invalid, foreign, duplicate/ambiguous, or incoherent
-   authority before Raw-BIR publication.
-3. Add reachable verification and nearby positive/negative transactional
-   coverage with no partial module on failure.
-4. Run a fresh build and narrow proof. Leave broader/full acceptance and
-   regression-log handling to the supervisor.
+1. Add only the smallest typed `LirCondBr` condition carrier consistent with
+   existing current-function value authority.
+2. Populate it without parsing `cond_name` and retain the name as a checked
+   display mirror only.
+3. Fail closed for missing, invalid, foreign, or non-boolean condition
+   authority before printing or downstream use.
+4. Add nearby positive and malformed-authority coverage. Require a fresh build
+   and focused proof; the supervisor selects broader acceptance separately.
 
 ## Ordered Steps
 
-### Step 7.21 - Receive legacy indirect-branch authority
+### Step 1 - Publish conditional-branch condition authority
 
-Goal: receive exactly legacy `LirIndirectBr`'s typed address and ordered CFG
-targets into a Raw-BIR typed indirect-jump destination.
-
-Primary targets:
-
-- the smallest Raw-BIR indirect-jump container, builder/view, and verifier
-- LIR-to-Raw-BIR terminator dispatch and transactional module boundary
-- focused receiver coverage plus malformed authority neighbours
+Goal: give active `LirCondBr` a verifier-checked current-function typed
+condition identity suitable for the later bounded Raw-BIR receiver.
 
 Actions:
 
-- map only the existing `LirValueId` address and ordered current-function
-  `LirBlockId` targets; preserve order without inspecting labels
-- validate address/target presence, ownership, uniqueness/ambiguity, and
-  destination coherence before publication
-- prove one valid indirect branch and malformed missing, invalid, duplicate or
-  ambiguous, and foreign-authority failures with whole-module rollback
-- retain `LirCondBr`, `LirSwitch`, and `LirIndirectBrOp` as unsupported,
-  fail-closed neighbours in this packet
+- trace the active producers and introduce the minimal typed condition field
+- populate the field from existing value identity, never from `cond_name`
+- verify presence, validity, owner, and boolean suitability; preserve the
+  existing typed true/false successor checks
+- add focused valid, misleading-display, missing, invalid, foreign, and
+  non-boolean coverage without receiver changes
+- record the exact typed-field handoff and fail-closed boundary for 734
 
 Completion check:
 
-- a fresh build and focused positive/negative proof establish the one typed
-  transactional legacy-indirect receiver without display-text recovery; return
-  the source completion state to plan-owner rather than inferring closure.
+- a fresh build and focused proof show that condition display text cannot
+  establish CFG semantics and that malformed typed condition authority rejects
+  before downstream consumption.
