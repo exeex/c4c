@@ -1,6 +1,7 @@
 # Production LIR Computed-Goto Address Value Publication
 
-Status: Open (active blocker for `ideas/open/734_lir_to_new_bir_container_completeness.md`)
+Status: Open (active plan; blocker for
+`ideas/open/734_lir_to_new_bir_container_completeness.md`)
 Type: bounded production LIR computed-goto authority repair
 Predecessor: `ideas/open/734_lir_to_new_bir_container_completeness.md`, after accepted Step 7.24
 
@@ -49,18 +50,21 @@ it does not reopen 757 or the 734 receiver.
 - successor/CFG publication already completed by 750, or a broad rewrite of
   HIR, parser, sema, rvalue, pointer, local/object, memory/va, PHI,
   aggregate/vector, parameter, call, target-lowering, MIR, or emission families
-- ownership claims for the four other full-suite failures
+- unrelated failure families outside the same `LirIndirectBrOp.addr_value`
+  downstream consumer family
 
 ## Acceptance Criteria
 
-- `ctest --test-dir build -V -R '^llvm_gcc_c_torture_src_comp_goto_1_c$'`
-  no longer fails because `LirIndirectBrOp.addr_value` is absent.
+- The five currently affected consumers (`comp-goto-1`, `20040302-1`,
+  `20041214-1`, `920501-4`, and `920501-5`) no longer fail because
+  `LirIndirectBrOp.addr_value` is absent.
 - The production carrier has a valid current-function pointer `LirValueId` and
   the existing verifier rejects missing, invalid, foreign, non-pointer, or
   display-mismatched authority without text fallback.
 - Focused coverage proves the actual production computed-goto route, not only
   a hand-built LIR fixture, publishes the authority and preserves fail-closed
-  malformed cases.
+  malformed cases; rerunning the five affected consumers shows no remaining
+  carrier failure before a future full baseline candidate is considered.
 - The accepted handoff names the producer seam, typed field, proof, and exact
   return action: resume 734 after Step 7.24 for plan-owner disposition; do not
   re-execute the receiver packet.
@@ -98,10 +102,23 @@ patch was fully reverted. Its build passed, while focused
 `verify_authoritative_gep` requires fully authoritative inputs. Thus a
 GEP-only ID publication, text recovery, or verifier weakening is rejected.
 
-The separate active blocker
-`ideas/open/765_lir_member_bitfield_rvalue_value_identity_publication.md` owns
-only the first confirmed production member/bitfield rvalue identity-loss seam
-for that RHS index. After it supplies a valid structured current-function
-identity and its focused handoff, reactivate this idea at Step 1 and reattempt
-only address publication. Do not resume 734's receiver; its accepted Step 7.24
-remains paused as recorded, and 734 is a later parent route.
+## Resumption Record: accepted 765 producer handoff
+
+765 Step 1 is concluded and archived at
+`ideas/closed/765_lir_member_bitfield_rvalue_value_identity_publication.md`.
+Accepted commit `1e24e2081` repaired the confirmed first production producer:
+`emit_member_rval_operand` now returns the final `emit_bitfield_load` valid
+current-function `LirValueId` for `insn.f1.offset`. Its fresh build,
+`frontend_lir_call_type_ref` proof, matching subset guard, and broad backend
+guard are accepted.
+
+The full baseline candidate was rejected, not accepted: against baseline
+`c8a205218` (3034/3034), five tests fail with the same downstream
+`LirIndirectBrOp.addr_value: must carry current-function pointer LirValueId`
+check: `comp-goto-1`, `20040302-1`, `20041214-1`, `920501-4`, and `920501-5`.
+They are one consumer failure family for this route, not separately accepted
+out-of-scope debt. Resume this idea at Step 1: publish the authoritative
+address GEP pointer identity into the computed-goto carrier, preserve all
+fail-closed checks, rerun all five consumers, and require a later full
+candidate to show no new baseline failures. Do not resume 734's receiver; its
+accepted Step 7.24 remains paused as recorded.
