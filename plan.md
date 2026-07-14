@@ -8,8 +8,8 @@ Resumed from: closed idea 747 direct-branch successor handoff (`cebc0a3bf`)
 
 Continue the bounded target-independent Raw-BIR receiver route without
 repeating accepted work. Receive exactly one producer-published builtin-ffs
-equality-to-zero comparison result and its exact select condition edge from
-native comparison, value, and immediate authority.
+native `Cttz` call result and its exact Add-one lhs edge from intrinsic,
+signature, link-identity, and value authority.
 
 ## Goal
 
@@ -20,15 +20,16 @@ without loss or partial publication. Never recover a fact from presentation.
 
 Every admitted row maps existing typed LIR authority directly to a typed
 Raw-BIR container, importer path, verifier rule, and transactional proof.
-The selected builtin-ffs `LirCmpOp` integer Eq/type, fresh result ID, exact
-immediate zero, and select condition ID are the sole authority.
+The selected builtin-ffs `LirCallOp` native `Cttz` kind, i32/i64 result type,
+fresh result ID, direct `LinkNameId`, exact fixed signature and defined-zero
+behavior, and Add-one lhs ID are the sole authority.
 Presentation is display only.
 
 ## Read First
 
 - `ideas/open/734_lir_to_new_bir_container_completeness.md`
 - `docs/lir_remaining_ordinary_value_identity/handoff_to_734.md`
-- `docs/lir_remaining_ordinary_value_identity/authority_matrix.md` (Step-7.15)
+- `docs/lir_remaining_ordinary_value_identity/authority_matrix.md` (Step-7.16)
 - Raw-BIR instruction builders, views, verifier, and LIR importer
 
 ## Landed Progress
@@ -88,6 +89,11 @@ Presentation is display only.
   proof passed 2/2, the matching regression guard was non-decreasing, and
   fresh broader `^backend_` proof passed 4/4. Do not receive the Cttz lhs or
   select condition through that completed row.
+- Step 7.15: checked i32/i64 builtin-ffs native Eq-zero comparison receipt and
+  its exact select-condition edge (`383c67a31`). The fresh focused
+  backend/producer proof passed 2/2, the matching regression guard was
+  non-decreasing, and fresh broader `^backend_` proof passed 4/4. Do not
+  repeat that comparison/condition row.
 
 ## Non-Goals
 
@@ -95,17 +101,19 @@ Presentation is display only.
   placement, canonicalization, allocation, MIR, emission, assembler work, or
   legacy-BIR revival
 - no conditional, switch, indirect, phi, local/body-parameter, unselected
-  inline-assembly, cttz-call, select false-arm, or new cast/binary receipt
+  inline-assembly, prepared-argument, Eq-zero condition, select false-arm,
+  other intrinsic-call, or new cast/binary receipt
 
 ## Execution Rules
 
 1. Implement exactly one handoff row or explicitly shared typed seam per packet.
 2. Add container, importer, reachable Raw-BIR verification, and transactional
    positive/negative proof together.
-3. Resolve the selected builtin-ffs equality comparison only through its
-   native integer Eq/type, current-function result ID, representable immediate
-   zero, and exact select condition ID; names and rendering are diagnostics
-   only after structured authority exists.
+3. Resolve the selected builtin-ffs Cttz call only through its native kind,
+   i32/i64 result type, current-function result ID, direct `LinkNameId`, exact
+   fixed signature, defined-zero behavior, and exact Add-one lhs ID; names,
+   prepared-argument presentation, and rendering are diagnostics only after
+   structured authority exists.
 4. Preserve full-module rollback for every malformed or unsupported form.
 5. Record a separate producer initiative for any required authority gap.
 
@@ -829,6 +837,56 @@ Completion check:
   2/2. The backend coverage demonstrates verified transactional i32/i64
   builtin-ffs equality-to-zero to select-condition linkage; the frontend test
   remains the producer-authority regression neighbor.
+
+Accepted in `383c67a31`: the fresh focused 2/2 backend/producer proof showed
+verified transactional i32/i64 builtin-ffs equality-to-zero to
+select-condition linkage. The matching regression guard was non-decreasing,
+and fresh broader `^backend_` proof passed 4/4.
+
+### Step 7.16 - Receive the checked builtin-ffs Cttz call/Add-one lhs
+
+Goal: receive only PI's shared i32/i64 builtin-ffs native `Cttz` call result
+and preserve that exact result as the already-admitted Add-one lhs. Do not
+receive the prepared argument, Eq-zero condition, select false arm, or any
+other intrinsic/call row.
+
+Primary targets:
+
+- typed Raw-BIR intrinsic-call payload, builder/view, and reachable verifier
+  support for exact native Cttz identity, signature, and defined-zero behavior
+- LIR-to-Raw-BIR intrinsic-call dispatch and current-function source-value
+  registry, joined only to the existing i32/i64 Add-one lhs receipt
+- focused backend receiver coverage plus `frontend_lir_call_type_ref`
+
+Actions:
+
+- map only PI's producer-verified `LirCallOp{result: valid current-function
+  LirValueId, intrinsic_kind: Cttz, return_type: i32|i64, callee/direct_callee:
+  matching module LinkNameId, fixed nonvariadic signature: (i32|i64, i1) ->
+  i32|i64, zero_count_behavior: Defined}` to one typed Raw-BIR Cttz call
+  result, and preserve that exact source result ID as the lhs of the existing
+  same-width builtin-ffs `LirBinOp{opcode: Add, rhs: LirIntegerImmediate{1}}`
+- require valid, unique current-function Cttz results; native kind, direct
+  callee/link, return/fixed-parameter type, argument-count, i1 false-flag and
+  defined-zero coherence; and resolved same-function result-to-Add lhs
+  linkage. Retain the existing intrinsic input validation only as an integrity
+  guard; this packet does not add a prepared-argument receipt or derive any
+  fact from its display spelling
+- prove i32 and i64 positive Cttz-call-to-Add-lhs boundaries plus neighboring
+  transactional failures for missing/invalid/duplicate/cross-owner result,
+  wrong intrinsic/callee/signature/zero behavior, or unresolved/wrong
+  result-to-lhs linkage. Keep prepared-argument receipt, Eq-zero comparison
+  and condition, Add-one false arm, other intrinsic/call producers,
+  pointer/vector/complex/aggregate/object work, implicit coercions, and
+  presentation-derived authority fail-closed
+
+Completion check:
+
+- a fresh build and focused
+  `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof pass
+  2/2. The backend coverage demonstrates verified transactional i32/i64
+  builtin-ffs Cttz-call result to existing Add-one-lhs linkage; the frontend
+  test remains the producer-authority regression neighbor.
 
 ### Source completion gate (not an executor packet)
 
