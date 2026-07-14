@@ -196,12 +196,76 @@ Completion check:
 
 ### Step 6 - Complete terminators and structured inline-assembly transport
 
-Goal: receive only structured-authority terminator and inline-assembly rows.
+Goal: receive only a source-authorized terminator or inline-assembly row at a
+time. Do not treat raw CFG labels or compatibility rendering as authority.
+
+#### Step 6.1 - Receive the checked i32 output-only inline-assembly binding
+
+Goal: repair the existing Raw-BIR inline-assembly receipt seam so the first
+currently producer-verified semantic output binding is registered by its native
+source identity, rather than by its compatibility spelling.
+
+Primary targets:
+
+- `src/backend/bir/lir_to_bir.cpp` source-value registration and the existing
+  `InlineAsmSpec` receipt path
+- the existing typed Raw-BIR `InlineAsmNode` result carrier/builder/view and
+  reachable Raw-BIR verifier
+- `tests/backend/bir/backend_lir_to_bir_interface_test.cpp` and the focused
+  frontend LIR identity proof
+
+Typed source authority and destination:
+
+- admit only `LirInlineAsmOp::ordinary_results[0]` whose `value` is a valid,
+  current-function `LirValueId`, whose `type` is exactly `LirTypeRef::integer(32)`,
+  whose role is `Output`, and whose constraint index is zero; its one later
+  `LirStoreOp` use must carry the same source ID and exact i32 type
+- receive that binding as result index zero of the existing typed
+  `InlineAsmNode`, register the resulting Raw-BIR `ValueId` under that exact
+  source ID in the current-function source-value registry, and preserve the
+  existing opaque asm bytes, opaque constraint bytes, ordered clobbers, and
+  side-effect flag without using any of them as value authority
+
+Actions:
+
+- replace spelling-keyed lookup/registration for this admitted semantic result
+  edge with exact `LirValueId` lookup and registration; do not derive an ID
+  from `result`, `args_str`, rendered operands, asm text, constraint text, or
+  clobbers
+- retain the existing `InlineAsmNode`/ordinary result carrier; verify the
+  source-backed result has current-function ownership, unique source identity,
+  exact i32 type, and coherent instruction-result index/definition before its
+  typed Store use is accepted
+- prove Raw and Canonical positive receipt for the one output-only i32 binding
+  and its Store edge, plus missing/invalid/duplicate/cross-function binding
+  IDs, wrong role/index/count/type, unknown or cross-function Store use,
+  binding-to-Store type mismatch, malformed result linkage, and full-module
+  rollback
+- keep newly admitted source-ID receipt fail-closed for i64, inputs,
+  read/write/tied, memory/address/immediate, clobber/explicit-register,
+  vector/aggregate/multi-output, `insn_r`, and all opaque-text-derived facts;
+  do not reopen target interpretation, constraint parsing/binding, allocation,
+  or assembler work. Preserve the closed idea-731 carrier contract rather than
+  claiming that its broader historical transport validates this new source-ID
+  registry row.
 
 Completion check:
 
-- admitted rows have typed containers and transactional neighboring proof;
-  target interpretation remains absent.
+- a fresh build and focused interface/frontend proof show that one i32
+  output-only semantic binding reaches a verified Raw and Canonical
+  `InlineAsmNode` result and its Store through native IDs only, while malformed
+  neighbors publish neither module.
+
+#### Step 6.2 - Select the next authority-backed terminator or inline-assembly row
+
+Goal: after Step 6.1, select exactly one subsequent row only when its source
+authority and typed Raw-BIR destination are evidenced. CFG labels remain
+unavailable as typed successor authority and must not be recovered from text.
+
+Completion check:
+
+- the selected row names its exact typed source carriers, destination,
+  verifier ownership, transactional proof, and fail-closed neighbors.
 
 ### Step 7 - Integrate the dispatcher, verifier and build boundary
 
