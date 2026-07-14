@@ -696,9 +696,37 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
       }
       if (const auto* gep =
               std::get_if<GetElementPtrNode>(&instruction.payload)) {
-        const bool base_resolves =
-            gep->base.valid() && gep->base.epoch == module.epoch_ &&
-            gep->base.slot < module.globals_.size();
+        bool base_resolves = false;
+        bool base_matches_element_type = false;
+        if (const auto* global =
+                std::get_if<GlobalObjectId>(&gep->base.authority)) {
+          base_resolves = global->valid() && global->epoch == module.epoch_ &&
+              global->slot < module.globals_.size();
+          base_matches_element_type = base_resolves &&
+              module.globals_[global->slot].object_type == gep->element_type;
+        } else if (const auto* label =
+                       std::get_if<LabelAddressGepBase>(&gep->base.authority)) {
+          const auto value = function.values_.get(function_id, label->value);
+          if (value && label->value.owner == function_id) {
+            const auto& definition = value.value().get();
+            if (definition.kind == ValueKind::Ordinary &&
+                definition.type == Type{TypeKind::Pointer}) {
+              if (const auto* constant =
+                      std::get_if<ConstantDef>(&definition.definition);
+                  constant && constant->constant.valid() &&
+                  constant->constant.epoch == module.epoch_ &&
+                  constant->constant.slot < module.constants_.size()) {
+                if (const auto* label_constant =
+                        std::get_if<LabelAddressConstant>(
+                            &module.constants_[constant->constant.slot].payload)) {
+                  base_resolves = label_constant->target.owner == function_id &&
+                      function.blocks_.contains(function_id, label_constant->target);
+                  base_matches_element_type = base_resolves;
+                }
+              }
+            }
+          }
+        }
         bool indices_resolve = !instruction.operands.empty();
         for (const auto index : instruction.operands) {
           const auto value = function.values_.get(function_id, index);
@@ -720,12 +748,10 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
             (result_value &&
              (!result_value->source_id ||
               result_value->source_id->owner != function_id)) ||
-            (base_resolves &&
-             module.globals_[gep->base.slot].object_type !=
-                 gep->element_type))
+            !base_matches_element_type)
           report(result, VerificationRule::ValueDefinition, function_id,
                  inst_id,
-                 "getelementptr must have one exact global array base, nonempty ordered integer indices, and one source-backed pointer result");
+                 "getelementptr must have one exact global-array or current-function label-address base, nonempty ordered integer indices, and one source-backed pointer result");
       }
       if (const auto* abs = std::get_if<AbsNode>(&instruction.payload)) {
         const Type i32{TypeKind::Integer, 32, "i32"};

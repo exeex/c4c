@@ -3,28 +3,27 @@
 Status: Active
 Source Idea Path: ideas/open/774_raw_bir_gep_function_label_address_base.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Specify the structured Raw-BIR GEP-base variant
+Current Step ID: 2
+Current Step Title: Carry the variant through Raw-BIR GEP lowering consumers
 
 ## Just Finished
 
-- Plan Step 1: introduced the explicit Raw-BIR GEP-base authority variant for
-  the legacy global object or an exact current-function `LabelAddressConstant`.
-  The public builder preserves global-array validation and rejects missing,
-  foreign, undefined, and non-label identities before staging state; focused
-  tests cover both alternatives.
+- Plan Step 2: updated the Raw-BIR verifier to consume the typed GEP-base
+  authority directly. Global bases retain their exact global-array contract;
+  label bases must resolve to an exact current-function pointer
+  `LabelAddressConstant` with a current-function target. Focused coverage now
+  publishes and inspects the label-base Raw-BIR path without a global coercion.
 
 ## Suggested Next
 
-- Execute Step 2: carry the structured GEP-base authority through Raw-BIR GEP
-  lowering consumers, preserving global-array behavior and without text
-  recovery, synthetic values, or global coercion.
+- Execute Step 3: prove the bounded Raw-BIR boundary and prepare the exact
+  handoff for 773 Step 2; do not perform printer, dispatch, or 772 work.
 
 ## Watchouts
 
-- The function-owned direct label address remains a dedicated base alternative
-  carrying its exact ValueId; current global-only consumers still receive an
-  invalid global projection for that alternative and must be updated in Step 2.
+- `GetElementPtrBase` no longer exposes a legacy global projection. Downstream
+  consumers must dispatch on `authority`; no text, generic value operand, or
+  synthetic global is permitted.
 
 ## Proof
 

@@ -180,15 +180,11 @@ struct LabelAddressGepBase {
 using GetElementPtrBaseAuthority =
     std::variant<GlobalObjectId, LabelAddressGepBase>;
 
-// Keep the legacy GlobalObjectId projection available to the still-global-only
-// Raw-BIR consumers.  Step 2 switches those consumers to authority; a
-// label-address base deliberately has an invalid global projection and thus
-// cannot be mistaken for a global object.
-struct GetElementPtrBase : GlobalObjectId {
+struct GetElementPtrBase {
   GetElementPtrBaseAuthority authority = GlobalObjectId{};
 
   GetElementPtrBase() = default;
-  GetElementPtrBase(GlobalObjectId global) : GlobalObjectId(global), authority(global) {}
+  GetElementPtrBase(GlobalObjectId global) : authority(global) {}
   GetElementPtrBase(LabelAddressGepBase label) : authority(label) {}
 };
 

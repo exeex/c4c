@@ -3319,8 +3319,11 @@ void test_selected_global_array_gep_receipt() {
     const auto instruction =
         function.instruction(instructions[instruction_index]).value();
     const auto* gep = instruction.get_element_ptr();
+    const auto* global_base = gep
+        ? std::get_if<bir::GlobalObjectId>(&gep->base.authority)
+        : nullptr;
     expect(instruction.opcode() == bir::Opcode::GetElementPtr && gep &&
-               gep->base == globals[instruction_index] &&
+               global_base && *global_base == globals[instruction_index] &&
                gep->element_type ==
                    module_view.global_object(globals[instruction_index])
                        .value().object_type &&
@@ -4102,11 +4105,13 @@ void test_label_address_gep_base_builder_contract() {
             label.value(), target.value());
         if (!defined) return defined;
         foreign_label = label.value();
-        return bir::Result<void, bir::BuildError>::success();
+        return function_builder.set_terminator(target.value(), bir::ReturnTerm{});
       });
   expect(foreign_edited.has_value(),
          "foreign label-address fixture should define its constant");
 
+  bir::InstId gep_id{};
+  bir::ValueId label_value{};
   const auto edited = builder.with_function(
       function.value(), [&](bir::FunctionBuilder& function_builder) {
         const auto target = function_builder.create_block("target");
@@ -4125,6 +4130,7 @@ void test_label_address_gep_base_builder_contract() {
         auto defined = function_builder.define_label_address_constant(
             label.value(), target.value());
         if (!defined) return defined;
+        label_value = label.value();
         defined = function_builder.define_int_constant(index.value(), 0);
         if (!defined) return defined;
         defined = function_builder.define_int_constant(non_label.value(), 0);
@@ -4167,16 +4173,33 @@ void test_label_address_gep_base_builder_contract() {
         expect(!missing.has_value() &&
                    missing.error() == bir::BuildError::DefinitionTypeMismatch,
                "GEP builder must reject an undefined label-address identity before staging state");
+        defined = function_builder.define_label_address_constant(
+            missing_label.value(), target.value());
+        if (!defined) return defined;
         const auto accepted = function_builder.append(
             entry.value(), bir::GetElementPtrSpec{
                                bir::LabelAddressGepBase{label.value()}, array_type,
                                true, {index.value()}, 80});
         expect(accepted.has_value(),
                "GEP builder must retain the exact current-function label-address identity");
-        return bir::Result<void, bir::BuildError>::success();
+        gep_id = accepted.value().instruction;
+        const auto entry_terminated =
+            function_builder.set_terminator(entry.value(), bir::ReturnTerm{});
+        if (!entry_terminated) return entry_terminated;
+        return function_builder.set_terminator(target.value(), bir::ReturnTerm{});
       });
   expect(edited.has_value(),
          "label-address GEP builder fixture should retain only the accepted structured base");
+  auto raw = std::move(builder).publish();
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "a verified label-address GEP base should publish Raw BIR");
+  const auto function_view = raw.value().view().function(function.value()).value();
+  const auto* gep = function_view.instruction(gep_id).value().get_element_ptr();
+  const auto* published_label = gep
+      ? std::get_if<bir::LabelAddressGepBase>(&gep->base.authority)
+      : nullptr;
+  expect(published_label && published_label->value == label_value,
+         "Raw-BIR verification must preserve the typed label-address GEP base without a global projection");
 }
 
 void test_selected_global_array_gep_rejections() {
