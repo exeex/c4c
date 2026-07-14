@@ -33,9 +33,10 @@ The standard workflow is:
 5. when the source idea itself is complete, close both the active runbook and
    the linked idea
 
-The active runbook can be exhausted, blocked, or retired without the linked
-source idea being complete. Do not treat runbook exhaustion as automatic idea
-closure.
+The active runbook can be exhausted or blocked without the linked source idea
+being complete. Send that state to plan-owner for an explicit close, repair,
+replace, or conclude decision. A retired runbook must not leave its idea open
+without an executable repair route or a named successor.
 
 If work is interrupted by a more important idea:
 
@@ -229,22 +230,28 @@ Do this in order:
    plus an executor-compatible skeleton, not a separate plan-owner packet
    format
 
-### Close Plan
+### Close Or Conclude Plan
 
-Use when the active plan is complete and the source idea itself is complete.
+Use when the active plan is complete, or when evidence has conclusively
+disproved or superseded its bounded route.
 
 Do this:
 
 1. verify the runbook is actually complete
-2. verify the source idea is actually complete, not merely that the current
-   route is exhausted
-3. for code-bearing work, require supervisor-owned acceptance proof; the plan
+2. choose exactly one source disposition:
+   - capability complete; or
+   - intentionally concluded with an explicit negative, no-change, or
+     superseded outcome
+3. if required durable intent remains after an intentional conclusion, create
+   or identify its separately scoped open successor and record the parent
+   return path before archival
+4. for code-bearing work, require supervisor-owned acceptance proof; the plan
    owner does not generate or roll forward canonical regression logs
-4. update the source file in `ideas/open/` only enough to mark it complete and
-   add durable leftover-issue notes if needed
-5. delete [`todo.md`](/workspaces/c4c/todo.md)
-6. delete [`plan.md`](/workspaces/c4c/plan.md)
-7. move the updated source file from `ideas/open/` to `ideas/closed/`
+5. update the source file in `ideas/open/` only enough to record the chosen
+   disposition, evidence, and successor/return path when applicable
+6. delete [`todo.md`](/workspaces/c4c/todo.md)
+7. delete [`plan.md`](/workspaces/c4c/plan.md)
+8. move the updated source file from `ideas/open/` to `ideas/closed/`
 
 ## Decision Rules
 
@@ -254,7 +261,12 @@ When new work appears during execution:
   [`todo.md`](/workspaces/c4c/todo.md) or [`plan.md`](/workspaces/c4c/plan.md),
   not the source idea.
 - If the current runbook is exhausted but the source idea still has durable
-  remaining scope, deactivate or rewrite the runbook; do not close the idea.
+  remaining scope, reject capability closure and classify the next action as
+  an in-scope runbook repair or a separate blocker. Do not leave an open idea
+  with only a retired runbook.
+- If a bounded route is disproved, it may be intentionally concluded and
+  archived without claiming capability completion, but remaining durable
+  intent must have a named open successor first.
 - If it is adjacent but not required, prefer a new file under `ideas/open/`
   over mutating the linked source idea.
 - If it is more important than the current active runbook, perform a deactivation/switch instead of mutating the plan ad hoc.

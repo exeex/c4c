@@ -45,6 +45,47 @@ Reviewer packets name: objective, focus, tooling, review question, a
 `review/...` report path, and blocker behavior. Construct one only after a
 reviewer gate is satisfied.
 
+## Close And Blocker Loop
+
+When a runbook or `todo.md` is exhausted, delegate the semantic close decision
+to plan-owner. The supervisor supplies accepted proof and does not infer source
+completion.
+
+Handle the result as a closed loop:
+
+1. On `close accepted`, inspect the lifecycle diff, run the required final
+   validation, and commit the closure.
+2. On `close rejected`, require exact unmet source criteria plus one
+   classification: `repair-current-route` or `separate-blocker`.
+3. For `repair-current-route`, have plan-owner repair or replace the runbook,
+   then dispatch bounded executor packets against the repaired route.
+4. For `separate-blocker`, have plan-owner create a distinct idea under
+   `ideas/open/`, preserve the blocked parent's exact return point, switch to
+   the blocker, and execute it. After the blocker closes, reactivate the parent
+   and retry its interrupted step or close decision.
+5. If evidence disproves a bounded route or establishes a legitimate no-change
+   result, have plan-owner archive it as intentionally concluded without
+   claiming capability completion. When required durable intent remains, a
+   named open successor must exist before that conclusion is accepted.
+
+Never respond to rejected closure by merely retiring the runbook, moving to
+unrelated work, and leaving the source idea open without an executable repair
+or named successor.
+
+## Terminal State Routing
+
+If neither `plan.md` nor `todo.md` exists, enumerate `ideas/open/` before
+choosing a terminal response.
+
+- If any open idea exists, delegate plan-owner to activate an executable idea
+  or resolve the earliest blocked dependency through the close-and-blocker
+  loop. Do not invent an `eligible` filter that turns a nonempty inventory into
+  an idle state.
+- Emit the exact line `WAIT_FOR_NEW_IDEA` only when `ideas/open/` is actually
+  empty and no unresolved durable intent requires a successor idea.
+
+An open-but-blocked inventory is supervisor work, not a wait condition.
+
 ## Reviewer Gates
 
 Reviewer use is off by default. Invoke `c4c-reviewer` only when:

@@ -15,8 +15,10 @@ This repo uses one active-plan lifecycle.
 - Keep regex-friendly single-line `Current Step ID:` and `Current Step Title:`
   fields near the top of `todo.md`. Add hook-managed review/baseline reminders
   only when emitted; do not keep a permanent review counter there.
-- Runbook exhaustion does not prove source-idea completion. A runbook may be
-  retired, replaced, or blocked while its idea stays open.
+- Runbook exhaustion does not prove source-idea completion. Send exhausted
+  runbooks to plan-owner for an explicit close, repair, replace, or conclude
+  decision. Do not leave a retired runbook's idea open without an executable
+  repair route or a named successor that owns the remaining intent.
 - Record a separate initiative under `ideas/open/` instead of silently
   expanding the current idea.
 
@@ -121,8 +123,20 @@ conversation opened in a repo with lifecycle files.
 - Both `plan.md` and `todo.md`, incomplete work: stay in execution mode.
 - Both present, todo complete: ask plan-owner whether to close, deactivate, or
   replace; do not infer idea completion.
+- If plan-owner rejects closure, it must return the exact unmet source
+  criteria and classify them as an in-scope runbook repair or a separately
+  scoped blocker. The supervisor owns the response: repair and continue the
+  current route, or have plan-owner create and activate the blocker idea, then
+  reactivate the parent after the blocker closes. Do not strand the rejected
+  idea as open with a retired runbook.
+- A disproven or no-change route may be archived as intentionally concluded
+  without claiming capability completion. If durable required intent remains,
+  the conclusion must name an open successor before the old idea is archived.
 - Only one present: plan-owner repairs the inconsistent state.
-- Neither present, open ideas exist: plan-owner activates one.
+- Neither present, open ideas exist: plan-owner activates an executable idea
+  or resolves the earliest blocked dependency by repairing it or creating and
+  activating a separately scoped successor. "No eligible idea" is not
+  equivalent to an empty `ideas/open/` inventory.
 - Neither present, no open ideas: print `WAIT_FOR_NEW_IDEA` and stop.
 
 Prompts under `prompts/` are compatibility references; role skills are

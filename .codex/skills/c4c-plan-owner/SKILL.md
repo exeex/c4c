@@ -121,6 +121,9 @@ when that idea type is requested or clearly fits the task.
   `plan.md` edits second, and idea edits last
 - decide whether the active plan is complete and whether the linked source idea
   is actually complete
+- on rejected closure, return exact unmet source criteria and classify the
+  required next lifecycle action as `repair-current-route` or
+  `separate-blocker`
 - close the active plan and move the source idea into `ideas/closed/`
 - require supervisor-owned acceptance proof before closing code-bearing work
 
@@ -170,8 +173,11 @@ when that idea type is requested or clearly fits the task.
     implementation commits, roughly 5 to 10, unless blocked sooner by repair,
     activation, close, or supervisor-directed repair.
 12. Do not close a source idea just because the current runbook or `todo.md`
-    slice is exhausted. Close only when the source idea itself is satisfied or
-    intentionally concluded as complete.
+    slice is exhausted. Close only when the source idea is satisfied or an
+    evidence-backed route is intentionally concluded with an explicit outcome.
+    A conclusion that leaves required durable intent unmet must name an open
+    successor before archival; never leave the old idea open with only a
+    retired runbook.
 13. If activation, repair, or switch must create or reset `todo.md`, keep it to
     metadata plus empty or placeholder executor fields. Do not pre-fill routine
     progress narratives on behalf of the executor.
@@ -204,9 +210,27 @@ When the delegated task is to close an idea or active plan:
    - `close accepted`
    - `close rejected`
 
-Close is only valid when both conditions hold:
+For `close rejected`, also return:
 
-- source-idea completion is true under `plan-lifecycle`
+- every unmet source criterion
+- classification as `repair-current-route` or `separate-blocker`
+- the exact runbook repair, successor scope, or lifecycle transition required
+- the parent return point that must be preserved when a blocker runs first
+
+An evidence-backed negative or no-change outcome may return `close accepted`
+as `intentionally concluded`; it must not claim the requested capability was
+implemented. If the capability remains durable required intent, name the open
+successor that owns it before accepting archival.
+
+Close is valid only when one source disposition and its proof condition hold:
+
+- the source idea is capability-complete; or
+- the attempted route is intentionally concluded with an explicit negative,
+  no-change, or superseded outcome and any remaining durable intent has a
+  named open successor
+
+And:
+
 - required supervisor-owned acceptance proof is present and accepted, or the
   closure is explicitly lifecycle-only/documentation-only
 
