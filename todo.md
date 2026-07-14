@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 7.6
-Current Step Title: Receive the checked ordinary scalar floating compare result
+Current Step ID: 7.7
+Current Step Title: Receive the checked explicit scalar FPTrunc result
 
 ## Just Finished
 
@@ -18,15 +18,16 @@ Current Step Title: Receive the checked ordinary scalar floating compare result
 
 ## Suggested Next
 
-- Ask the supervisor for the next bounded receiver packet from the active
-  runbook; do not generalize the admitted floating comparison or compatibility
-  use boundary.
+- Execute Step 7.7 as one bounded receiver packet: import only the
+  producer-verified explicit scalar double-to-float `LirCastOp::FPTrunc` from
+  an admitted floating source and its exact later float FMul use. Do not widen
+  floating casts, infer source authority from text, or receive implicit,
+  pointer/bitcast/vector/complex/aggregate, or monostate-source forms.
 
 ## Watchouts
 
-- This is an in-scope runbook repair, not source completion. Step 7.6 admits
-  only the checked scalar-double `OLt` boundary and a non-materialized exact
-  `ZExt` use; other comparisons, cast receipts, non-scalar forms, and
+- This is an in-scope runbook repair, not source completion. Step 7.7 admits
+  only the checked FPTrunc boundary; all other casts, non-scalar forms, and
   presentation-derived authority remain fail-closed.
 
 ## Proof
@@ -34,4 +35,5 @@ Current Step Title: Receive the checked ordinary scalar floating compare result
 - Step 7.6 passed the supervisor-selected proof: `cmake --build --preset
   default && ctest --test-dir build -j --output-on-failure -R
   '^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$'` (2/2);
-  proof log: `test_after.log`.
+  proof log: `test_after.log`. The matching regression guard passed 2/2
+  before/after, and fresh broader `^backend_` proof passed 4/4.

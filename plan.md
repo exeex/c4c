@@ -7,9 +7,9 @@ Resumed from: closed idea 747 direct-branch successor handoff (`cebc0a3bf`)
 ## Purpose
 
 Continue the bounded target-independent Raw-BIR receiver route without
-repeating accepted work. Receive exactly one producer-published ordinary
-scalar floating comparison result/use boundary from native mode, predicate,
-type, and value authority.
+repeating accepted work. Receive exactly one producer-published explicit
+scalar floating narrowing-cast result/use chain from native kind, endpoints,
+and value authority.
 
 ## Goal
 
@@ -20,15 +20,15 @@ without loss or partial publication. Never recover a fact from presentation.
 
 Every admitted row maps existing typed LIR authority directly to a typed
 Raw-BIR container, importer path, verifier rule, and transactional proof.
-The selected ordinary scalar floating `LirCmpOp` native mode/predicate/type,
-current-function argument/result IDs, and later typed use are the sole
-authority. Presentation is display only.
+The selected explicit scalar floating `LirCastOp::FPTrunc` native kind and
+endpoints, current-function source/result IDs, and later typed use are the
+sole authority. Presentation is display only.
 
 ## Read First
 
 - `ideas/open/734_lir_to_new_bir_container_completeness.md`
 - `docs/lir_remaining_ordinary_value_identity/handoff_to_734.md`
-- `docs/lir_remaining_ordinary_value_identity/authority_matrix.md` (Step-7.6)
+- `docs/lir_remaining_ordinary_value_identity/authority_matrix.md` (Step-7.7)
 - Raw-BIR instruction builders, views, verifier, and LIR importer
 
 ## Landed Progress
@@ -61,6 +61,8 @@ authority. Presentation is display only.
   its later typed FAdd use (`2eee4d6dd`). Do not receive FAdd in that packet.
 - Step 7.5: ordinary scalar floating double FAdd-to-FMul receipt
   (`af00014d7`). Do not generalize floating binary or literal authority.
+- Step 7.6: ordinary scalar floating double OLt comparison receipt with its
+  non-materialized exact ZExt use (`c0534153e`). Do not generalize compare.
 
 ## Non-Goals
 
@@ -75,9 +77,9 @@ authority. Presentation is display only.
 1. Implement exactly one handoff row or explicitly shared typed seam per packet.
 2. Add container, importer, reachable Raw-BIR verification, and transactional
    positive/negative proof together.
-3. Resolve the selected floating comparison only through its native
-   mode/predicate/type and current-function source IDs; names and rendering
-   are diagnostics only after structured authority exists.
+3. Resolve the selected FPTrunc only through its native kind/endpoints and
+   current-function source IDs; names and rendering are diagnostics only after
+   structured authority exists.
 4. Preserve full-module rollback for every malformed or unsupported form.
 5. Record a separate producer initiative for any required authority gap.
 
@@ -419,6 +421,47 @@ Completion check:
   2/2. The backend coverage demonstrates one verified transactional ordinary
   scalar floating comparison boundary; the frontend test remains the
   producer-authority regression neighbor.
+
+Accepted in `c0534153e`: the fresh focused 2/2 backend/producer proof showed
+one verified transactional ordinary scalar double OLt comparison and its exact
+non-materialized ZExt use. The matching regression guard passed 2/2
+before/after, and fresh broader `^backend_` proof passed 4/4.
+
+### Step 7.7 - Receive the checked explicit scalar FPTrunc result
+
+Goal: receive only the authority-matrix Step-7.7 explicit nonpointer,
+nonvector scalar double-to-float `LirCastOp::FPTrunc` and its exact later float
+FMul use. Do not generalize floating casts.
+
+Primary targets:
+
+- typed Raw-BIR FPTrunc payload, builder/view, and reachable verifier
+- LIR-to-Raw-BIR cast dispatch and current-function source-value registry
+- focused backend receiver coverage plus `frontend_lir_call_type_ref`
+
+Actions:
+
+- map only the producer-verified explicit scalar `LirCastOp{result: valid
+  current-function LirValueId, operand: exact admitted floating source ID,
+  kind: FPTrunc, from_type: double, to_type: float}` to one typed Raw-BIR
+  result, preserving its exact later float FMul use
+- require valid, unique current-function results; resolved source/result use
+  edges; exact FPTrunc kind and double-to-float endpoints; strict narrowing;
+  instruction-result linkage; and full-module rollback for missing, invalid,
+  duplicate, cross-owner, unresolved-use, wrong-kind/endpoints/direction, or
+  malformed-linkage authority
+- prove the positive source-to-FPTrunc-to-FMul chain plus neighboring
+  transactional failures. Keep FPExt and integer/floating conversions,
+  pointer/bitcast/vector/complex/aggregate, implicit, no-op, monostate-source,
+  and presentation-derived casts fail-closed
+
+Completion check:
+
+- a fresh build and focused
+  `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof pass
+  2/2. The backend coverage demonstrates one verified transactional explicit
+  scalar FPTrunc chain; the frontend test remains the producer-authority
+  regression neighbor.
 
 ### Source completion gate (not an executor packet)
 
