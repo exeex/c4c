@@ -2167,6 +2167,133 @@ int lir_scalar_ordinary_value_chain_identity(void) {
       missing_type, "verifier should reject missing scalar binary type authority");
 }
 
+void test_scalar_floating_binary_result_use_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+double lir_scalar_floating_binary_result_use_identity(void) {
+  return (1.25 + 2.5) * 4.0;
+}
+)c", "x86_64-linux-gnu");
+
+  lir::LirFunction& function = require_function(
+      lowered, "lir_scalar_floating_binary_result_use_identity");
+  std::vector<lir::LirBinOp*> binary_ops;
+  for (auto& block : function.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* binary = std::get_if<lir::LirBinOp>(&inst)) {
+        binary_ops.push_back(binary);
+      }
+    }
+  }
+  expect_true(binary_ops.size() == 2,
+              "scalar-floating probe should lower exactly two binary operations");
+  expect_true(binary_ops[0]->opcode.typed() == lir::LirBinaryOpcode::FAdd &&
+                  binary_ops[1]->opcode.typed() == lir::LirBinaryOpcode::FMul &&
+                  binary_ops[0]->type_str.kind() == lir::LirTypeKind::Floating &&
+                  binary_ops[0]->type_str.str() == "double" &&
+                  binary_ops[1]->type_str.kind() == lir::LirTypeKind::Floating &&
+                  binary_ops[1]->type_str.str() == "double" &&
+                  binary_ops[0]->result.value_id() &&
+                  binary_ops[0]->result.value_id()->valid() &&
+                  binary_ops[1]->lhs.value_id() &&
+                  *binary_ops[1]->lhs.value_id() ==
+                      *binary_ops[0]->result.value_id() &&
+                  binary_ops[1]->result.value_id() &&
+                  binary_ops[1]->result.value_id()->valid() &&
+                  *binary_ops[1]->result.value_id() !=
+                      *binary_ops[0]->result.value_id(),
+              "scalar floating chain should retain native opcodes, exact type, and result/use IDs");
+  expect_true(!binary_ops[0]->lhs.has_authority() &&
+                  !binary_ops[0]->rhs.has_authority() &&
+                  !binary_ops[1]->rhs.has_authority(),
+              "floating literals should remain honest monostate compatibility operands");
+  lir::verify_module(lowered);
+
+  const auto require_focused_binary_ops =
+      [](lir::LirModule& module) -> std::vector<lir::LirBinOp*> {
+    lir::LirFunction& focused = require_function(
+        module, "lir_scalar_floating_binary_result_use_identity");
+    std::vector<lir::LirBinOp*> found;
+    for (auto& block : focused.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* binary = std::get_if<lir::LirBinOp>(&inst)) {
+          found.push_back(binary);
+        }
+      }
+    }
+    expect_true(found.size() == 2,
+                "focused scalar-floating fixture should contain two binary operations");
+    return found;
+  };
+
+  lir::LirModule misleading = lowered;
+  std::vector<lir::LirBinOp*> misleading_ops =
+      require_focused_binary_ops(misleading);
+  misleading_ops[0]->result.str() = "@rendered-not-floating-result";
+  misleading_ops[1]->lhs.str() = "7";
+  lir::verify_module(misleading);
+
+  lir::LirModule invalid_result = lowered;
+  require_focused_binary_ops(invalid_result)[0]->result =
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_result,
+      "verifier should reject invalid scalar floating binary result ID");
+
+  lir::LirModule duplicate_result = lowered;
+  std::vector<lir::LirBinOp*> duplicate_ops =
+      require_focused_binary_ops(duplicate_result);
+  duplicate_ops[1]->result = lir::LirOperand::ssa(
+      "%duplicate", *duplicate_ops[0]->result.value_id());
+  expect_identity_verification_rejected(
+      duplicate_result,
+      "verifier should reject duplicate scalar floating binary result ID");
+
+  lir::LirModule unknown_use = lowered;
+  require_focused_binary_ops(unknown_use)[1]->lhs =
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_use, "verifier should reject unknown scalar floating binary use");
+
+  lir::LirModule cross_function_use = lowered;
+  cross_function_use.functions.push_back(
+      make_identity_test_function("scalar_floating_binary_owner",
+                                  lir::LirValueId{99}));
+  require_focused_binary_ops(cross_function_use)[1]->lhs =
+      lir::LirOperand::ssa("%cross", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      cross_function_use,
+      "verifier should reject cross-function scalar floating binary use");
+
+  lir::LirModule invalid_opcode = lowered;
+  require_focused_binary_ops(invalid_opcode)[0]->opcode =
+      lir::LirBinaryOpcodeRef("not-a-binary-opcode");
+  expect_identity_verification_rejected(
+      invalid_opcode,
+      "verifier should reject invalid scalar floating binary opcode");
+
+  lir::LirModule conflicting_opcode = lowered;
+  require_focused_binary_ops(conflicting_opcode)[0]->opcode =
+      lir::LirBinaryOpcode::Add;
+  expect_identity_verification_rejected(
+      conflicting_opcode,
+      "verifier should reject integer opcode on authoritative floating binary type");
+
+  lir::LirModule missing_type = lowered;
+  require_focused_binary_ops(missing_type)[0]->type_str = lir::LirTypeRef{};
+  expect_identity_verification_rejected(
+      missing_type,
+      "verifier should reject missing scalar floating binary type authority");
+
+  lir::LirModule conflicting_type = lowered;
+  require_focused_binary_ops(conflicting_type)[0]->type_str =
+      lir::LirTypeRef::integer(64);
+  expect_identity_verification_rejected(
+      conflicting_type,
+      "verifier should reject integer type on authoritative floating binary opcode");
+}
+
 void test_scalar_cast_result_use_identity_boundary() {
   namespace lir = c4c::codegen::lir;
 
@@ -3134,6 +3261,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_direct_void_immediate_arg_identity_boundary();
   test_direct_void_ssa_arg_identity_boundary();
   test_scalar_ordinary_value_chain_identity_boundary();
+  test_scalar_floating_binary_result_use_identity_boundary();
   test_scalar_cast_result_use_identity_boundary();
   test_scalar_compare_result_use_identity_boundary();
   test_scalar_select_result_use_identity_boundary();

@@ -469,7 +469,11 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
           l_is_int && r_is_int && is_any_int(lts.base) &&
           lts.ptr_level == 0 && lts.array_rank == 0 &&
           !is_vector_value(lts);
-      if (authoritative_scalar_integer) {
+      const bool authoritative_scalar_floating =
+          l_is_flt && r_is_flt && is_float_base(lts.base) &&
+          lts.ptr_level == 0 && lts.array_rank == 0 &&
+          !is_vector_value(lts);
+      if (authoritative_scalar_integer || authoritative_scalar_floating) {
         const LirOperand result = fresh_value(ctx);
         const LirOperand lhs = source_lv.has_authority() && source_lv.str() == lv
                                    ? source_lv

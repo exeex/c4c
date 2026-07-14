@@ -488,6 +488,32 @@ bool is_integer_cmp_predicate(LirCmpPredicate predicate) {
   }
 }
 
+bool is_floating_binary_opcode(LirBinaryOpcode opcode) {
+  switch (opcode) {
+    case LirBinaryOpcode::FAdd:
+    case LirBinaryOpcode::FSub:
+    case LirBinaryOpcode::FMul:
+    case LirBinaryOpcode::FDiv:
+    case LirBinaryOpcode::FRem:
+    case LirBinaryOpcode::FNeg:
+      return true;
+    default:
+      return false;
+  }
+}
+
+void verify_bin_op_authority(const LirBinOp& op) {
+  if (!op.result.value_id()) return;
+  const std::optional<LirBinaryOpcode> opcode = op.opcode.typed();
+  if (!opcode) return;
+  const bool floating_opcode = is_floating_binary_opcode(*opcode);
+  const bool floating_type = op.type_str.kind() == LirTypeKind::Floating;
+  if (floating_opcode != floating_type) {
+    fail_verify("LirBinOp.type_str",
+                "authoritative floating binary opcode and type must agree");
+  }
+}
+
 void verify_cmp_op_authority(const LirCmpOp& op) {
   if (!op.result.value_id()) return;
   if (op.is_float || op.type_str.kind() != LirTypeKind::Integer) {
@@ -963,6 +989,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     } else {
       verify_value_operand(op->rhs, "LirBinOp.rhs");
     }
+    verify_bin_op_authority(*op);
     return;
   }
   if (const auto* op = std::get_if<LirCmpOp>(&inst)) {
