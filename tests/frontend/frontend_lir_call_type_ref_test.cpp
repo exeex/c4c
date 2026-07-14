@@ -4331,8 +4331,10 @@ int lir_ffs_cttz_i64_literal(void) {
     const lir::LirCallSignature* signature =
         pair.call->callee_signature ? &*pair.call->callee_signature : nullptr;
     expect_true(
-        pair.call->result.value_id() && pair.call->result.value_id()->valid() &&
+            pair.call->result.value_id() && pair.call->result.value_id()->valid() &&
             pair.call->intrinsic_kind == lir::LirIntrinsicKind::Cttz &&
+            pair.call->cttz_zero_behavior ==
+                lir::LirCttzZeroBehavior::Defined &&
             pair.call->return_type.kind() == lir::LirTypeKind::Integer &&
             pair.call->return_type.integer_bit_width() == width &&
             pair.call->callee.link_name_id() &&
@@ -4521,6 +4523,198 @@ int lir_ffs_cttz_i64_literal(void) {
       .call->structured_args[1].operand = lir::LirOperand::integer("true", 1);
   expect_identity_verification_rejected(
       wrong_flag_value, "verifier should reject nonfalse ffs cttz flag");
+}
+
+void test_builtin_ctz_call_narrow_result_use_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int lir_ctz_i32_source;
+long long lir_ctz_i64_source;
+int lir_ctz_i32(void) {
+  return __builtin_ctz(lir_ctz_i32_source) + 1;
+}
+int lir_ctz_i64(void) {
+  return __builtin_ctzll(lir_ctz_i64_source) + 1;
+}
+int lir_ctz_i32_literal(void) {
+  return __builtin_ctz(8) + 1;
+}
+int lir_ctz_i64_literal(void) {
+  return __builtin_ctzll(8LL) + 1;
+}
+)c", "x86_64-linux-gnu");
+
+  struct FocusedChain {
+    lir::LirCallOp* call = nullptr;
+    lir::LirCastOp* trunc = nullptr;
+    lir::LirBinOp* later_use = nullptr;
+  };
+  const auto require_focused_chain = [](lir::LirModule& module,
+                                        std::string_view function_name,
+                                        bool expect_trunc) {
+    lir::LirFunction& focused = require_function(module, function_name);
+    FocusedChain chain;
+    for (auto& block : focused.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* call = std::get_if<lir::LirCallOp>(&inst)) {
+          expect_true(chain.call == nullptr,
+                      "focused ctz fixture should contain one call");
+          chain.call = call;
+        }
+        if (auto* cast = std::get_if<lir::LirCastOp>(&inst)) {
+          expect_true(chain.trunc == nullptr,
+                      "focused ctz fixture should contain at most one cast");
+          chain.trunc = cast;
+        }
+        if (auto* binary = std::get_if<lir::LirBinOp>(&inst)) {
+          expect_true(chain.later_use == nullptr,
+                      "focused ctz fixture should contain one later binary use");
+          chain.later_use = binary;
+        }
+      }
+    }
+    expect_true(chain.call && chain.later_use &&
+                    (expect_trunc ? chain.trunc != nullptr : chain.trunc == nullptr),
+                "focused ctz fixture should contain its exact call/trunc/use chain");
+    return chain;
+  };
+
+  FocusedChain i32 = require_focused_chain(lowered, "lir_ctz_i32", false);
+  FocusedChain i64 = require_focused_chain(lowered, "lir_ctz_i64", true);
+  FocusedChain i32_literal =
+      require_focused_chain(lowered, "lir_ctz_i32_literal", false);
+  FocusedChain i64_literal =
+      require_focused_chain(lowered, "lir_ctz_i64_literal", true);
+  const auto expect_call_contract = [&lowered](const FocusedChain& chain,
+                                                unsigned width,
+                                                lir::LirOperandKind value_kind) {
+    const lir::LirCallSignature* signature =
+        chain.call->callee_signature ? &*chain.call->callee_signature : nullptr;
+    expect_true(
+        chain.call->result.value_id() && chain.call->result.value_id()->valid() &&
+            chain.call->intrinsic_kind == lir::LirIntrinsicKind::Cttz &&
+            chain.call->cttz_zero_behavior ==
+                lir::LirCttzZeroBehavior::Undefined &&
+            chain.call->return_type.kind() == lir::LirTypeKind::Integer &&
+            chain.call->return_type.integer_bit_width() == width &&
+            chain.call->callee.kind() == lir::LirOperandKind::Global &&
+            chain.call->callee.link_name_id() &&
+            chain.call->direct_callee_link_name_id ==
+                *chain.call->callee.link_name_id() &&
+            lowered.link_names.spelling(*chain.call->callee.link_name_id()) ==
+                "llvm.cttz.i" + std::to_string(width) &&
+            signature && signature->return_type_ref &&
+            *signature->return_type_ref == chain.call->return_type &&
+            !signature->is_variadic && !signature->has_unspecified_params &&
+            !signature->has_void_param_list &&
+            signature->fixed_param_type_refs.size() == 2 &&
+            signature->fixed_param_type_refs[0] == chain.call->return_type &&
+            signature->fixed_param_type_refs[1] == lir::LirTypeRef::integer(1) &&
+            chain.call->arg_type_refs.size() == 2 &&
+            chain.call->arg_type_refs[0] == chain.call->return_type &&
+            chain.call->arg_type_refs[1] == lir::LirTypeRef::integer(1) &&
+            chain.call->structured_args.size() == 2 &&
+            chain.call->structured_args[0].type_ref == chain.call->return_type &&
+            chain.call->structured_args[0].operand.kind() == value_kind &&
+            !chain.call->structured_args[0].operand.has_authority() &&
+            chain.call->structured_args[1].type_ref ==
+                lir::LirTypeRef::integer(1) &&
+            chain.call->structured_args[1].operand.integer_immediate() &&
+            chain.call->structured_args[1].operand.integer_immediate()->value == 1,
+        "ctz should publish exact native callee/signature/true-flag authority");
+  };
+  expect_call_contract(i32, 32, lir::LirOperandKind::SsaValue);
+  expect_call_contract(i64, 64, lir::LirOperandKind::SsaValue);
+  expect_call_contract(i32_literal, 32, lir::LirOperandKind::Immediate);
+  expect_call_contract(i64_literal, 64, lir::LirOperandKind::Immediate);
+  expect_true(i32.later_use->lhs.value_id() &&
+                  *i32.later_use->lhs.value_id() == *i32.call->result.value_id(),
+              "i32 ctz should preserve its exact call result into the later use");
+  expect_true(i64.trunc->kind == lir::LirCastKind::Trunc &&
+                  i64.trunc->from_type == lir::LirTypeRef::integer(64) &&
+                  i64.trunc->to_type == lir::LirTypeRef::integer(32) &&
+                  i64.trunc->operand.value_id() &&
+                  *i64.trunc->operand.value_id() == *i64.call->result.value_id() &&
+                  i64.trunc->result.value_id() &&
+                  i64.trunc->result.value_id()->valid() &&
+                  i64.later_use->lhs.value_id() &&
+                  *i64.later_use->lhs.value_id() == *i64.trunc->result.value_id(),
+              "i64 ctz should preserve call/trunc/final-use identity");
+  expect_true(i64_literal.trunc->operand.value_id() &&
+                  *i64_literal.trunc->operand.value_id() ==
+                      *i64_literal.call->result.value_id() &&
+                  i64_literal.later_use->lhs.value_id() &&
+                  *i64_literal.later_use->lhs.value_id() ==
+                      *i64_literal.trunc->result.value_id(),
+              "literal i64 ctz should preserve the same exact narrowing chain");
+  lir::verify_module(lowered);
+
+  lir::LirModule misleading = lowered;
+  FocusedChain misleading_i64 =
+      require_focused_chain(misleading, "lir_ctz_i64", true);
+  misleading_i64.call->result.str() = "@rendered-not-ctz-result";
+  misleading_i64.call->callee.str() = "%rendered-not-ctz-callee";
+  misleading_i64.call->args_str = "rendered-not-ctz-arguments";
+  misleading_i64.trunc->operand.str() = "7";
+  misleading_i64.trunc->result.str() = "@rendered-not-trunc-result";
+  misleading_i64.later_use->lhs.str() = "%rendered-not-final-use";
+  lir::verify_module(misleading);
+
+  lir::LirModule missing_behavior = lowered;
+  require_focused_chain(missing_behavior, "lir_ctz_i32", false)
+      .call->cttz_zero_behavior.reset();
+  expect_identity_verification_rejected(
+      missing_behavior, "verifier should reject ctz without zero behavior authority");
+
+  lir::LirModule conflicting_behavior = lowered;
+  require_focused_chain(conflicting_behavior, "lir_ctz_i32", false)
+      .call->cttz_zero_behavior = lir::LirCttzZeroBehavior::Defined;
+  expect_identity_verification_rejected(
+      conflicting_behavior, "verifier should reject ctz true flag with defined-zero semantics");
+
+  lir::LirModule false_flag = lowered;
+  require_focused_chain(false_flag, "lir_ctz_i32", false)
+      .call->structured_args[1].operand = lir::LirOperand::integer("false", 0);
+  expect_identity_verification_rejected(
+      false_flag, "verifier should reject false flag for undefined-zero ctz");
+
+  lir::LirModule missing_result = lowered;
+  require_focused_chain(missing_result, "lir_ctz_i32", false).call->result =
+      lir::LirOperand("%missing");
+  expect_identity_verification_rejected(
+      missing_result, "verifier should reject ctz without call result authority");
+
+  lir::LirModule unknown_trunc_source = lowered;
+  require_focused_chain(unknown_trunc_source, "lir_ctz_i64", true)
+      .trunc->operand = lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_trunc_source, "verifier should reject unknown ctz trunc source ID");
+
+  lir::LirModule wrong_trunc_kind = lowered;
+  require_focused_chain(wrong_trunc_kind, "lir_ctz_i64", true).trunc->kind =
+      lir::LirCastKind::ZExt;
+  expect_identity_verification_rejected(
+      wrong_trunc_kind, "verifier should reject non-truncating ctz i64 narrowing");
+
+  lir::LirModule wrong_trunc_endpoint = lowered;
+  require_focused_chain(wrong_trunc_endpoint, "lir_ctz_i64", true)
+      .trunc->to_type = lir::LirTypeRef::integer(64);
+  expect_identity_verification_rejected(
+      wrong_trunc_endpoint, "verifier should reject nonnarrowing ctz trunc endpoints");
+
+  lir::LirModule unknown_final_use = lowered;
+  require_focused_chain(unknown_final_use, "lir_ctz_i64", true)
+      .later_use->lhs = lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_final_use, "verifier should reject unknown final ctz i32 use ID");
+
+  lir::LirModule literal_payload_authority = lowered;
+  require_focused_chain(literal_payload_authority, "lir_ctz_i64_literal", true)
+      .call->structured_args[0].operand = lir::LirOperand::integer("8", 8);
+  expect_identity_verification_rejected(
+      literal_payload_authority,
+      "verifier should reject payload authority on compatible ctz literal input");
 }
 
 void test_scalar_abs_result_use_identity_boundary() {
@@ -5089,6 +5283,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_builtin_ffs_plus_one_select_use_identity_boundary();
   test_builtin_ffs_zero_compare_select_condition_identity_boundary();
   test_builtin_ffs_cttz_call_result_add_use_identity_boundary();
+  test_builtin_ctz_call_narrow_result_use_identity_boundary();
   test_scalar_abs_result_use_identity_boundary();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";

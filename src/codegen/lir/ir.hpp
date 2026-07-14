@@ -336,6 +336,11 @@ enum class LirIntrinsicKind : unsigned char {
   Cttz,
 };
 
+enum class LirCttzZeroBehavior : unsigned char {
+  Defined,
+  Undefined,
+};
+
 // Typed call instruction.
 // Covers both direct calls, indirect calls, and intrinsic calls.
 struct LirCallOp {
@@ -350,6 +355,7 @@ struct LirCallOp {
   std::vector<LirCallArg> structured_args;  // Generated argument facts; empty for raw compatibility.
   LirExtAttr return_ext_attr = LirExtAttr::None;
   std::optional<LirIntrinsicKind> intrinsic_kind;
+  std::optional<LirCttzZeroBehavior> cttz_zero_behavior;
 };
 
 // Typed binary arithmetic/bitwise/unary operation.
