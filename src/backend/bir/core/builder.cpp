@@ -1296,6 +1296,11 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
     const auto* intrinsic = std::get_if<IntrinsicCallNode>(&lhs_producer.value().get().payload);
     return intrinsic && intrinsic->kind == IntrinsicKind::Cttz && intrinsic->type == i32;
   }();
+  const bool exact_fptosi_add = exact_add && lhs_producer && [&] {
+    const auto* cast = std::get_if<CastNode>(&lhs_producer.value().get().payload);
+    return cast && cast->kind == CastKind::FPToSI && cast->from_type == f64 &&
+        cast->to_type == i32;
+  }();
   if ((!exact_fadd && !exact_fmul && !exact_float_fmul && !exact_add && !exact_sext_add && !exact_mul) ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
@@ -1322,7 +1327,7 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       }()) ||
       (exact_add && !std::holds_alternative<LoadNode>(lhs_producer.value().get().payload) &&
        !std::holds_alternative<AbsNode>(lhs_producer.value().get().payload) &&
-       !exact_cttz_add) ||
+       !exact_cttz_add && !exact_fptosi_add) ||
       (exact_sext_add && [&] {
         const auto* cast = std::get_if<CastNode>(&lhs_producer.value().get().payload);
         return !cast || cast->kind != CastKind::SExt || cast->from_type != i32 ||
@@ -1579,7 +1584,9 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, CastSpec 
       spec.kind == CastKind::SIToFP && spec.from_type == i32 && spec.to_type == f64;
   const bool scalar_uitofp =
       spec.kind == CastKind::UIToFP && spec.from_type == i32 && spec.to_type == f64;
-  if ((!intrinsic_trunc && !scalar_sext && !scalar_fptrunc && !scalar_fpext && !scalar_sitofp && !scalar_uitofp) || !operand ||
+  const bool scalar_fptosi =
+      spec.kind == CastKind::FPToSI && spec.from_type == f64 && spec.to_type == i32;
+  if ((!intrinsic_trunc && !scalar_sext && !scalar_fptrunc && !scalar_fpext && !scalar_sitofp && !scalar_uitofp && !scalar_fptosi) || !operand ||
       operand.value().get().type != spec.from_type ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
@@ -1609,6 +1616,12 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, CastSpec 
     const auto producer = function_data.insts_.get(function_, operand_def->instruction);
     const auto* binary = producer ? std::get_if<BinaryNode>(&producer.value().get().payload) : nullptr;
     if (!binary || binary->opcode != BinaryOpcode::Add || binary->type != i32)
+      return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  }
+  if (scalar_fptosi) {
+    const auto producer = function_data.insts_.get(function_, operand_def->instruction);
+    const auto* binary = producer ? std::get_if<BinaryNode>(&producer.value().get().payload) : nullptr;
+    if (!binary || binary->opcode != BinaryOpcode::FAdd || binary->type != f64)
       return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   }
   detail::InstData instruction;

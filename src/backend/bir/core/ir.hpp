@@ -200,7 +200,7 @@ struct IntrinsicCallNode {
   std::optional<bool> zero_count_is_undef;
 };
 
-enum class CastKind : std::uint8_t { Trunc, SExt, FPTrunc, FPExt, SIToFP, UIToFP };
+enum class CastKind : std::uint8_t { Trunc, SExt, FPTrunc, FPExt, SIToFP, UIToFP, FPToSI };
 
 struct CastNode {
   CastKind kind = CastKind::Trunc;

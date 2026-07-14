@@ -825,7 +825,12 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                   }()
                 : add ? (std::holds_alternative<LoadNode>(producer.value().get().payload) ||
                          std::holds_alternative<AbsNode>(producer.value().get().payload) ||
-                         cttz_add)
+                         cttz_add || [&] {
+                           const auto* producer_cast = std::get_if<CastNode>(
+                               &producer.value().get().payload);
+                           return producer_cast && producer_cast->kind == CastKind::FPToSI &&
+                               producer_cast->from_type == f64 && producer_cast->to_type == i32;
+                         }())
                       : sext_add ? [&] {
                           const auto* cast = std::get_if<CastNode>(
                               &producer.value().get().payload);
@@ -947,7 +952,9 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
             cast->from_type == i32 && cast->to_type == f64;
         const bool scalar_uitofp = cast->kind == CastKind::UIToFP &&
             cast->from_type == i32 && cast->to_type == f64;
-        bool exact = (intrinsic_trunc || scalar_sext || scalar_fptrunc || scalar_fpext || scalar_sitofp || scalar_uitofp) &&
+        const bool scalar_fptosi = cast->kind == CastKind::FPToSI &&
+            cast->from_type == f64 && cast->to_type == i32;
+        bool exact = (intrinsic_trunc || scalar_sext || scalar_fptrunc || scalar_fpext || scalar_sitofp || scalar_uitofp || scalar_fptosi) &&
             instruction.operands.size() == 1 && instruction.results.size() == 1;
         if (exact) {
           const auto operand = function.values_.get(function_id, instruction.operands[0]);
@@ -977,6 +984,12 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
             const auto* binary = producer
                 ? std::get_if<BinaryNode>(&producer.value().get().payload) : nullptr;
             exact = binary && binary->opcode == BinaryOpcode::Add && binary->type == i32;
+          }
+          if (exact && scalar_fptosi) {
+            const auto producer = function.insts_.get(function_id, def->instruction);
+            const auto* binary = producer
+                ? std::get_if<BinaryNode>(&producer.value().get().payload) : nullptr;
+            exact = binary && binary->opcode == BinaryOpcode::FAdd && binary->type == f64;
           }
         }
         if (exact) { const auto result_value = function.values_.get(function_id, instruction.results[0]); exact = result_value && result_value.value().get().type == cast->to_type && result_value.value().get().source_id.has_value() && result_value.value().get().source_id->owner == function_id; }

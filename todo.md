@@ -8,29 +8,24 @@ Current Step Title: Receive the checked explicit scalar FPToSI result
 
 ## Just Finished
 
-- Step 7.10 complete: received only the checked explicit scalar unsigned
-  i32-to-double `LirCastOp::UIToFP` from the admitted i32 Add result and its
-  one exact later double `FMul` use, with a distinct typed Raw-BIR cast kind,
-  builder/view/verifier receipt, source-ID registry path, and transactional
-  rejection coverage. The positive receiver assertion proves that native
-  `UIToFP` maps to `CastKind::UIToFP`, preserving authority beyond signless
-  i32 endpoint types.
+- Step 7.11 complete: received only the checked explicit scalar
+  double-to-signed-i32 `LirCastOp::FPToSI` from the admitted double `FAdd`
+  result through its one exact later i32 `Add` use. The Raw-BIR cast kind,
+  builder, verifier, source-ID registry, importer, and focused receiver test
+  preserve native `FPToSI` authority and reject invalid, duplicate,
+  unresolved/cross-owner, wrong-kind/endpoint, and malformed-use linkage
+  transactionally.
 
 ## Suggested Next
 
-- Execute Step 7.11 only: receive the producer-authorized explicit scalar
-  double-to-signed-i32 `LirCastOp::FPToSI` from the admitted double FAdd result
-  through its one exact later i32 Add use. Require native FPToSI kind authority
-  because signless i32 type refs do not independently distinguish an
-  FPToSI/FPToUI kind swap; retain all other conversion families and
-  presentation-derived authority fail-closed.
+- Runbook is exhausted after Step 7.11; ask plan-owner for the required
+  explicit close, repair, replace, or conclude decision before selecting more
+  work.
 
 ## Watchouts
 
-- FPToSI is a native-kind-authorized double-to-signed-i32 boundary only.
-  UIToFP and SIToFP are independently accepted historical work; FPToUI, all
-  other cast families, non-scalar forms, and presentation-derived authority
-  remain fail-closed.
+- FPToSI remains a native-kind-authorized double-to-signed-i32 boundary only;
+  FPToUI and every other cast family remain fail-closed.
 
 ## Proof
 
