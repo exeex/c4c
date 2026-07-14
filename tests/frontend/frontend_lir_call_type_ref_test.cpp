@@ -3930,7 +3930,7 @@ int lir_logical_short_circuit_result_authority_loss(int lhs, int rhs) {
   lir::verify_module(lowered);
 }
 
-void test_vaarg_helper_result_authority_loss_boundary() {
+void test_vaarg_helper_result_authority_boundary() {
   namespace lir = c4c::codegen::lir;
 
   c4c::hir::Module hir_module = lower_hir_module(R"c(
@@ -3969,12 +3969,68 @@ int lir_vaarg_helper_result_authority_loss(int count, ...) {
                   binary_ops[0]->type_str.kind() == lir::LirTypeKind::Integer &&
                   binary_ops[0]->type_str.integer_bit_width() == 32,
               "vaarg result should have a later typed i32 Add consumer");
-  expect_true(!va_args[0]->result.value_id() && !binary_ops[0]->lhs.value_id(),
-              "vaarg helper result and its later consumer lack LirValueId authority");
-  expect_true(!va_args[0]->result.has_authority() && !binary_ops[0]->lhs.has_authority(),
-              "vaarg helper returns raw result text through emit_lir_op, so no verifier-backed "
-              "malformed-ID proof exists");
+  expect_true(va_args[0]->result.kind() == lir::LirOperandKind::SsaValue &&
+                  va_args[0]->result.value_id() && va_args[0]->result.value_id()->valid() &&
+                  binary_ops[0]->lhs.kind() == lir::LirOperandKind::SsaValue &&
+                  binary_ops[0]->lhs.value_id() &&
+                  *binary_ops[0]->lhs.value_id() == *va_args[0]->result.value_id(),
+              "vaarg helper result should retain its exact native ID into the later Add use");
   lir::verify_module(lowered);
+
+  const auto require_vaarg_and_consumer = [](lir::LirModule& module,
+                                              lir::LirVaArgOp*& va_arg,
+                                              lir::LirBinOp*& consumer) {
+    lir::LirFunction& focused =
+        require_function(module, "lir_vaarg_helper_result_authority_loss");
+    va_arg = nullptr;
+    consumer = nullptr;
+    for (auto& block : focused.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirVaArgOp>(&inst)) va_arg = candidate;
+        if (auto* candidate = std::get_if<lir::LirBinOp>(&inst)) consumer = candidate;
+      }
+    }
+    expect_true(va_arg && consumer,
+                "focused vaarg fixture should retain its semantic result and immediate consumer");
+  };
+
+  lir::LirModule missing_result = lowered;
+  lir::LirVaArgOp* missing_va_arg = nullptr;
+  lir::LirBinOp* missing_consumer = nullptr;
+  require_vaarg_and_consumer(missing_result, missing_va_arg, missing_consumer);
+  missing_va_arg->result = lir::LirOperand("%missing-vaarg-result");
+  expect_identity_verification_rejected(
+      missing_result,
+      "verifier should reject vaarg result authority missing from its native consumer chain");
+
+  lir::LirModule invalid_result = lowered;
+  lir::LirVaArgOp* invalid_va_arg = nullptr;
+  lir::LirBinOp* invalid_consumer = nullptr;
+  require_vaarg_and_consumer(invalid_result, invalid_va_arg, invalid_consumer);
+  invalid_va_arg->result =
+      lir::LirOperand::ssa("%invalid-vaarg-result", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_result, "verifier should reject invalid vaarg result authority");
+
+  lir::LirModule duplicate_result = lowered;
+  lir::LirVaArgOp* duplicate_va_arg = nullptr;
+  lir::LirBinOp* duplicate_consumer = nullptr;
+  require_vaarg_and_consumer(duplicate_result, duplicate_va_arg, duplicate_consumer);
+  duplicate_consumer->result = lir::LirOperand::ssa(
+      "%duplicate-vaarg-result", *duplicate_va_arg->result.value_id());
+  expect_identity_verification_rejected(
+      duplicate_result, "verifier should reject duplicate vaarg result authority");
+
+  lir::LirModule foreign_result = lowered;
+  foreign_result.functions.push_back(
+      make_identity_test_function("vaarg_foreign_result_owner", lir::LirValueId{99}));
+  lir::LirVaArgOp* foreign_va_arg = nullptr;
+  lir::LirBinOp* foreign_consumer = nullptr;
+  require_vaarg_and_consumer(foreign_result, foreign_va_arg, foreign_consumer);
+  foreign_consumer->lhs =
+      lir::LirOperand::ssa("%foreign-vaarg-result", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      foreign_result, "verifier should reject a foreign vaarg result authority use");
 }
 
 void test_scalar_fptrunc_result_use_identity_boundary() {
@@ -7195,7 +7251,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_cast_result_use_identity_boundary();
   test_ternary_coerce_result_authority_loss_boundary();
   test_logical_short_circuit_result_authority_loss_boundary();
-  test_vaarg_helper_result_authority_loss_boundary();
+  test_vaarg_helper_result_authority_boundary();
   test_scalar_fptrunc_result_use_identity_boundary();
   test_scalar_fpext_result_use_identity_boundary();
   test_scalar_sitofp_result_use_identity_boundary();

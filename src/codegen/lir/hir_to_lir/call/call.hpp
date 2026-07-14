@@ -150,6 +150,7 @@ std::string emit_amd64_va_arg_from_overflow(FnCtx& ctx, const TypeSpec& res_ts,
                                             const std::string& res_ty,
                                             const Amd64VaListPtrs& access,
                                             int size_bytes);
+LirOperand emit_vaarg_rval_operand(FnCtx& ctx, const VaArgExpr& v, const Expr& e);
 std::string emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const Expr& e);
 
 #endif  // C4C_CODEGEN_LIR_HIR_TO_LIR_CALL_MEMBERS_INCLUDED

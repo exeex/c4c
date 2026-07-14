@@ -275,6 +275,28 @@ std::string StmtEmitter::emit_aarch64_vaarg_hfa(
   return out;
 }
 
+LirOperand StmtEmitter::emit_vaarg_rval_operand(FnCtx& ctx, const VaArgExpr& v,
+                                                 const Expr& e) {
+  TypeSpec res_ts = e.type.spec;
+  if (!has_concrete_type(res_ts)) res_ts = resolve_expr_type(ctx, e);
+  const bool is_scalar_or_pointer_payload =
+      res_ts.array_rank == 0 &&
+      (res_ts.ptr_level > 0 ||
+       (res_ts.ptr_level == 0 &&
+        (is_any_int(res_ts.base) || res_ts.base == TB_FLOAT || res_ts.base == TB_DOUBLE ||
+         res_ts.base == TB_LONGDOUBLE)));
+  if (module_ != nullptr && module_->prefer_semantic_va_ops &&
+      llvm_target_is_amd64_sysv(mod_.target_profile) && is_scalar_or_pointer_payload) {
+    TypeSpec ap_ts{};
+    const std::string ap_ptr = emit_va_list_obj_ptr(ctx, v.ap, ap_ts);
+    const LirOperand result = fresh_value(ctx);
+    emit_lir_op(ctx, lir::LirVaArgOp{result, LirOperand(ap_ptr),
+                                     lir::LirTypeRef(llvm_ty(res_ts))});
+    return result;
+  }
+  return LirOperand::raw(emit_rval_payload(ctx, v, e));
+}
+
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const Expr& e) {
   TypeSpec ap_ts{};
   const std::string ap_ptr = emit_va_list_obj_ptr(ctx, v.ap, ap_ts);

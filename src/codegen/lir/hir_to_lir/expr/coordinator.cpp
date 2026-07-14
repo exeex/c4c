@@ -527,6 +527,9 @@ LirOperand StmtEmitter::emit_rval_operand(FnCtx& ctx, ExprId id,
     LirOperand result = emit_cast_rval_operand(ctx, *cast);
     return result.has_authority() ? result : LirOperand::raw(result.str());
   }
+  if (const auto* va_arg = std::get_if<VaArgExpr>(&e.payload)) {
+    return emit_vaarg_rval_operand(ctx, *va_arg, e);
+  }
   return emit_rval_expr(ctx, e);
 }
 
