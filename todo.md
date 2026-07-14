@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.12
-Current Step Title: Publish explicit floating-to-unsigned-integer cast authority (complete)
+Current Step ID: 7.13
+Current Step Title: Publish wider scalar select narrowing result/use authority
 
 ## Just Finished
 
@@ -22,19 +22,27 @@ Current Step Title: Publish explicit floating-to-unsigned-integer cast authority
 
 ## Suggested Next
 
-- Select the next bounded Step-7 matrix row whose result allocation, operand
-  propagation, type authority, and verifier rules form one coherent packet.
+- Execute Step 7.13: publish the existing i64 builtin-ffs select through its
+  required i64-to-i32 narrowing result/use chain.
 
 ## Watchouts
 
-- Preserve Step-7.12's authoritative floating source, production-selected
-  FPToUI kind, exact floating/integer endpoints, and result/use identity.
-- Native LIR integer refs are signless: production selects FPToSI/FPToUI from
-  destination `TypeSpec`; verification proves the native conversion family and
-  exact endpoints without reconstructing unsignedness from rendered spelling.
-- Exclude pointer, bitcast, vector, complex, aggregate, implicit coercion,
-  other cast producers, CFG/parameters, calls, inline assembly, and BIR from
-  this completed packet.
+- Own only PI's wider `ffs` family route where the existing authoritative i64
+  `LirSelectOp` result must narrow to the builtin's i32 result. Preserve the
+  exact select ID as the narrowing cast operand and the exact cast result ID
+  into one later ordinary i32 use.
+- Route the wider result through an operand-returning narrowing seam: allocate
+  the i64-to-i32 `Trunc` with `fresh_value`, retain exact native
+  endpoint refs, and return the same operand through builtin CallExpr lowering.
+- Require current-function ownership plus coherent integer Trunc direction;
+  reject invalid/duplicate results, unknown or cross-function uses,
+  missing/conflicting endpoints, and nonnarrowing or wrong-kind casts.
+- Keep the select's internal cttz call, plus-one binary, zero comparison,
+  condition, and false arm as honest compatibility. Never derive their IDs or
+  the select/cast edge from rendered spelling.
+- Preserve the Step-7.3 i32 select and all completed scalar cast contracts.
+  Exclude other builtins/calls, other select or cast producers, pointer/vector/
+  aggregate/object work, CFG/parameters, inline assembly, and BIR.
 
 ## Proof
 
