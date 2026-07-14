@@ -630,9 +630,14 @@ std::string StmtEmitter::emit_set_assign_value(FnCtx& ctx, const AssignableLValu
     return emit_store_assignable_value(ctx, lhs, rhs, rhs_ts, true);
   }
 
-  std::string coerced_rhs = coerce(ctx, rhs.str(), rhs_ts, lhs.pointee_ts);
   const bool same_representation =
       llvm_value_ty(mod_, rhs_ts) == llvm_value_ty(mod_, lhs.pointee_ts);
+  if (rhs.kind() == LirOperandKind::DirectConstant && same_representation &&
+      llvm_value_ty(mod_, rhs_ts) == "ptr") {
+    return emit_store_assignable_value(ctx, lhs, rhs, lhs.pointee_ts, false);
+  }
+
+  std::string coerced_rhs = coerce(ctx, rhs.str(), rhs_ts, lhs.pointee_ts);
   LirOperand stored_rhs = integer_store_operand_after_coercion(
       rhs, coerced_rhs, same_representation);
   const bool is_agg = (lhs.pointee_ts.base == TB_STRUCT || lhs.pointee_ts.base == TB_UNION) &&
