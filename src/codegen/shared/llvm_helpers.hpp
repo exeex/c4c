@@ -424,7 +424,9 @@ inline std::string llvm_base(TypeBase b) {
     case TB_CHAR: case TB_SCHAR: case TB_UCHAR: return "i8";
     case TB_SHORT: case TB_USHORT: return "i16";
     case TB_INT: case TB_UINT: return "i32";
-    case TB_LONG: case TB_ULONG: return "i64";
+    case TB_LONG:
+    case TB_ULONG:
+      return "i" + std::to_string(c4c::long_width_bits(active_target_profile()));
     case TB_LONGLONG: case TB_ULONGLONG: return "i64";
     case TB_INT128: case TB_UINT128: return "i128";
     case TB_FLOAT: return "float";

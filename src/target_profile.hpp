@@ -46,6 +46,12 @@ struct TargetProfile {
   bool has_float_return_registers = false;
 };
 
+// C long is the one scalar integer width that differs among supported targets.
+// Keep this policy structured so producer, verifier, and receiver share it.
+constexpr unsigned long_width_bits(const TargetProfile& target_profile) {
+  return target_profile.arch == TargetArch::I686 ? 32u : 64u;
+}
+
 std::string default_host_target_triple();
 TargetProfile default_target_profile(TargetArch arch);
 TargetProfile target_profile_from_triple(std::string_view target_triple);

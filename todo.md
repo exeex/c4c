@@ -8,46 +8,29 @@ Current Step Title: Publish the structured target-aware width policy
 
 ## Just Finished
 
-- Plan Step 1 inventory is complete. The structured authority/conflict matrix
-  is: (1) `src/target_profile.hpp` enumerates I686 and LP64-capable X86_64,
-  Aarch64, and Riscv64 profiles; C `long`/`unsigned long` must be 32 bits on
-  I686 and 64 bits on those LP64 profiles. (2) Shared LIR production currently
-  conflicts: `src/codegen/shared/llvm_helpers.hpp::llvm_base` and its callers
-  `llvm_ty`/`llvm_value_ty` map both bases unconditionally to `i64`, despite
-  `hir_to_lir.cpp` setting the structured active `TargetProfile`. (3) LIR
-  verification repeats the unconditional policy in
-  `verify.cpp::exact_plain_scalar_mirror`: it demands i64 for every plain
-  scalar except `int`/`unsigned int`, then
-  `verify_plain_fixed_scalar_parameter_relationship` applies it to logical,
-  signature, and typed-mirror parameter authority.
-- New-BIR already consumes structured profile authority in the opposite
-  direction: `src/backend/bir/lir_to_bir.cpp::lower_constant_type` maps
-  `TB_LONG`/`TB_ULONG` to 32 only when `module.target_profile.arch == I686`,
-  otherwise 64. `lower_signature_type` uses that authority and rejects a
-  disagreeing typed mirror; `lower_function_parameter_types` feeds it into
-  function receipt, `lower_signature_return_info`/`lower_return_info_from_type`
-  feed return receipt, and global lowering reaches it through
-  `lower_global_compatibility_type`/`lower_global_type`. The same receiver
-  therefore accepts I686 long returns/globals as i32 while current producer
-  and verifier publish/require i64 parameter mirrors.
-- Existing focused evidence is in
-  `tests/frontend/frontend_lir_function_signature_type_ref_test.cpp` for
-  LIR signature type-ref production/verification, and
-  `tests/backend/bir/backend_lir_to_bir_interface_test.cpp`: direct scalar
-  returns assert I686 `long` i32 (around `test_direct_scalar_signature_receipt`),
-  globals assert I686 `long` i32 (around
-  `test_scalar_global_type_authority_without_mirror`), while plain parameter
-  rejections deliberately keep `long`/`unsigned long` blocked pending 743.
-  Neighboring `int`, `long long`, float/double, and pointer cases are present
-  in those receipt/rejection families and remain regression obligations.
+- Plan Step 2 is complete. `c4c::long_width_bits(const TargetProfile&)` in
+  `src/target_profile.hpp` is now the shared structured authority: I686 is 32
+  bits and every other supported LP64 profile is 64. Shared LLVM production
+  (`llvm_base`, therefore `llvm_ty`/`llvm_value_ty`) uses the active structured
+  profile; LIR verification passes `LirModule::target_profile` into
+  `exact_plain_scalar_mirror`; and new-BIR uses the helper in
+  `lower_constant_type` while admitting `TB_LONG`/`TB_ULONG` through the
+  existing plain parameter receipt path. Signature, return, and global receipt
+  therefore compare the same structured width rule without text or name
+  recovery.
+- Focused coverage now proves I686 i32 and LP64 i64 long/unsigned-long
+  parameter mirrors in frontend LIR production and verification; new-BIR
+  accepts I686 and LP64 parameter, return, and global receipt at the matching
+  widths, and rejects malformed I686 i64 parameter, return, and global mirrors
+  transactionally. Existing `int`, `long long`, float/double, and pointer
+  neighbor assertions remain in the same test families.
 
 ## Suggested Next
 
-- Execute Step 2 only: introduce one shared structured helper such as
-  `long_width_bits(const TargetProfile&, TypeBase)` at the shared LLVM type
-  policy seam, then make LLVM production, `exact_plain_scalar_mirror`, and
-  new-BIR signature/return/global receipt use it. Do not use rendered text,
-  triples, names, or testcase branches as authority.
+- Execute Step 3 only after supervisor acceptance: run the requested
+  cross-target proof/checkpoint and publish the exact bounded idea-734 handoff
+  for the `long`/`unsigned long` parameter rows. Do not treat this packet alone
+  as an idea-734 unblock or closure decision.
 
 ## Watchouts
 
@@ -69,7 +52,8 @@ Current Step Title: Publish the structured target-aware width policy
 
 ## Proof
 
-- `git diff --check` passed. No build or test run was required for this
-  read-only inventory; the named build and CTest commands are the required
-  later code-packet proof, followed by the supervisor-selected regression
-  checkpoint before handoff.
+- Passed: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^(frontend_lir_function_signature_type_ref|backend_lir_to_bir_interface)$'
+  with CTest output in `test_after.log`; both focused tests passed. `git diff
+  --check` also passed. The supervisor still owns the Step 3 regression
+  checkpoint and handoff decision.

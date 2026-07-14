@@ -157,10 +157,15 @@ c4c::TypeSpec scalar_type(c4c::TypeBase base) {
   return type;
 }
 
-lir::LirTypeRef stable_parameter_mirror(c4c::TypeBase base) {
+lir::LirTypeRef stable_parameter_mirror(c4c::TypeBase base,
+                                        c4c::TargetArch arch = c4c::TargetArch::X86_64) {
   switch (base) {
     case c4c::TB_INT:
     case c4c::TB_UINT: return lir::LirTypeRef::integer(32);
+    case c4c::TB_LONG:
+    case c4c::TB_ULONG:
+      return lir::LirTypeRef::integer(
+          c4c::long_width_bits(c4c::default_target_profile(arch)));
     case c4c::TB_LONGLONG:
     case c4c::TB_ULONGLONG: return lir::LirTypeRef::integer(64);
     case c4c::TB_FLOAT: return lir::LirTypeRef("float");
@@ -171,7 +176,8 @@ lir::LirTypeRef stable_parameter_mirror(c4c::TypeBase base) {
 
 lir::LirFunction stable_parameter_function(
     std::string name, bool declaration,
-    const std::vector<c4c::TypeBase>& bases) {
+    const std::vector<c4c::TypeBase>& bases,
+    c4c::TargetArch arch = c4c::TargetArch::X86_64) {
   lir::LirFunction function =
       declaration ? void_declaration(std::move(name))
                   : void_definition(std::move(name), {return_block(0, "entry")});
@@ -185,7 +191,7 @@ lir::LirFunction stable_parameter_function(
     function.signature_params.push_back(
         {"%signature-display-" + std::to_string(index), signature, false});
     function.signature_param_type_refs.push_back(
-        stable_parameter_mirror(bases[index]));
+        stable_parameter_mirror(bases[index], arch));
   }
   return function;
 }
@@ -840,11 +846,26 @@ void test_direct_scalar_signature_receipt() {
                      .return_type ==
                  bir::Type{bir::TypeKind::Floating, 64, "double"},
          "Windows long double signatures must use the target-shaped double carrier");
+
+  lir::LirModule lp64;
+  lp64.target_profile = c4c::default_target_profile(c4c::TargetArch::X86_64);
+  lp64.functions.push_back(declaration(
+      "lp64_long", target_long, lir::LirTypeRef::integer(64)));
+  const auto lp64_raw = bir::lower_lir_to_raw_bir(lp64);
+  expect(lp64_raw.has_value() &&
+             lp64_raw.value()
+                     .view()
+                     .function(lp64_raw.value().view().functions().front())
+                     .value()
+                     .signature()
+                     .return_type == bir::Type{bir::TypeKind::Integer, 64, "i64"},
+         "LP64 long signatures must retain i64 structured mirrors");
 }
 
 void test_direct_scalar_signature_rejections_and_transactionality() {
   const auto rejected = [](auto mutate, const std::string& message) {
     lir::LirModule module;
+    module.target_profile = c4c::default_target_profile(c4c::TargetArch::I686);
     auto accepted = void_declaration("accepted_before_failure");
     accepted.return_type.inner_rank = -1;
     module.functions.push_back(std::move(accepted));
@@ -874,6 +895,12 @@ void test_direct_scalar_signature_rejections_and_transactionality() {
         function.signature_return_type_ref = lir::LirTypeRef::integer(64);
       },
       "conflicting integer mirrors must reject the complete module transactionally");
+  rejected(
+      [](lir::LirFunction& function) {
+        function.return_type.base = c4c::TB_LONG;
+        function.signature_return_type_ref = lir::LirTypeRef::integer(64);
+      },
+      "I686 long i64 return mirrors must reject target-policy conflicts");
   rejected(
       [](lir::LirFunction& function) {
         function.signature_return_type_ref = lir::LirTypeRef("float");
@@ -973,8 +1000,9 @@ void test_plain_parameter_signature_receipt() {
   module.functions.push_back(
       explicit_void_parameter_function("void_params", false));
   const std::vector<c4c::TypeBase> bases = {
-      c4c::TB_INT,       c4c::TB_UINT,  c4c::TB_LONGLONG,
-      c4c::TB_ULONGLONG, c4c::TB_FLOAT, c4c::TB_DOUBLE};
+      c4c::TB_INT,       c4c::TB_UINT,  c4c::TB_LONG,
+      c4c::TB_ULONG,     c4c::TB_LONGLONG, c4c::TB_ULONGLONG,
+      c4c::TB_FLOAT,     c4c::TB_DOUBLE};
   module.functions.push_back(
       stable_parameter_function("stable_params", true, bases));
   module.functions.push_back(
@@ -983,6 +1011,8 @@ void test_plain_parameter_signature_receipt() {
   const std::vector<bir::Type> expected_types = {
       {bir::TypeKind::Integer, 32, "i32"},
       {bir::TypeKind::Integer, 32, "i32"},
+      {bir::TypeKind::Integer, 64, "i64"},
+      {bir::TypeKind::Integer, 64, "i64"},
       {bir::TypeKind::Integer, 64, "i64"},
       {bir::TypeKind::Integer, 64, "i64"},
       {bir::TypeKind::Floating, 32, "float"},
@@ -1027,6 +1057,21 @@ void test_plain_parameter_signature_receipt() {
   expect(canonical.has_value(),
          "the same parameter graph should publish CanonicalBir");
   expect_graph(canonical.value(), "CanonicalBir");
+
+  lir::LirModule i686;
+  i686.target_profile = c4c::default_target_profile(c4c::TargetArch::I686);
+  const std::vector<c4c::TypeBase> i686_bases = {c4c::TB_LONG, c4c::TB_ULONG};
+  i686.functions.push_back(stable_parameter_function(
+      "i686_long_params", true, i686_bases, c4c::TargetArch::I686));
+  i686.functions.push_back(stable_parameter_function(
+      "i686_long_params", false, i686_bases, c4c::TargetArch::I686));
+  const auto i686_raw = bir::lower_lir_to_raw_bir(i686);
+  expect(i686_raw.has_value() &&
+             i686_raw.value().view().function(i686_raw.value().view().functions().front())
+                     .value().signature().parameter_types ==
+                 std::vector<bir::Type>{{bir::TypeKind::Integer, 32, "i32"},
+                                        {bir::TypeKind::Integer, 32, "i32"}},
+         "I686 long and unsigned-long parameters must receive i32 signatures");
 }
 
 void test_plain_parameter_signature_rejections_and_transactionality() {
@@ -1112,20 +1157,12 @@ void test_plain_parameter_signature_rejections_and_transactionality() {
       "narrow parameters must remain fail-closed");
   rejected(
       [](auto& function) {
-        function.params[0].second.base = c4c::TB_LONG;
-        function.signature_params[0].type.base = c4c::TB_LONG;
+        function.params[0].second.base = c4c::TB_ULONG;
+        function.signature_params[0].type.base = c4c::TB_ULONG;
         function.signature_param_type_refs[0] = lir::LirTypeRef::integer(64);
       },
       bir::ImportErrorCode::UnsupportedFunctionParameters,
-      "long parameters must remain blocked pending idea 743");
-  rejected(
-      [](auto& function) {
-        function.params[0].second.base = c4c::TB_ULONG;
-        function.signature_params[0].type.base = c4c::TB_ULONG;
-        function.signature_param_type_refs[0] = lir::LirTypeRef::integer(32);
-      },
-      bir::ImportErrorCode::UnsupportedFunctionParameters,
-      "I686 unsigned-long policy conflicts must remain blocked pending idea 743",
+      "I686 unsigned-long i64 mirrors must reject target-policy conflicts",
       c4c::TargetArch::I686);
   rejected(
       [](auto& function) {
@@ -4649,6 +4686,25 @@ void test_scalar_global_type_authority_without_mirror() {
                !bir::lower_lir_to_canonical_bir(candidate).has_value(),
            "scalar globals must reject invalid non-split inner-rank residue transactionally");
   }
+
+  lir::LirModule lp64;
+  lp64.target_profile = c4c::default_target_profile(c4c::TargetArch::X86_64);
+  auto lp64_long = module.globals.front();
+  lp64_long.name = "lp64_long_declaration";
+  lp64_long.llvm_type = "i64";
+  lp64.globals.push_back(std::move(lp64_long));
+  const auto lp64_imported = bir::lower_lir_to_raw_bir(lp64);
+  expect(lp64_imported.has_value() &&
+             lp64_imported.value().view().global_object(
+                 lp64_imported.value().view().global_objects().front()).value().object_type ==
+                 bir::Type{bir::TypeKind::Integer, 64, "i64"},
+         "LP64 long globals must receive i64 storage");
+
+  auto malformed_i686 = module;
+  malformed_i686.globals.front().llvm_type = "i64";
+  expect(!bir::lower_lir_to_raw_bir(malformed_i686).has_value() &&
+             !bir::lower_lir_to_canonical_bir(malformed_i686).has_value(),
+         "I686 long globals must reject i64 target-policy conflicts transactionally");
 }
 
 void test_enum_storage_global_receipt_and_rejections() {

@@ -2236,15 +2236,18 @@ bool same_plain_fixed_scalar_type(const TypeSpec& lhs,
          lhs.is_fn_ptr == rhs.is_fn_ptr;
 }
 
-bool exact_plain_scalar_mirror(const TypeSpec& type,
+bool exact_plain_scalar_mirror(const LirModule& mod, const TypeSpec& type,
                                const LirTypeRef& mirror) {
   if (type.base == TB_FLOAT)
     return mirror.kind() == LirTypeKind::Floating && mirror.str() == "float";
   if (type.base == TB_DOUBLE)
     return mirror.kind() == LirTypeKind::Floating && mirror.str() == "double";
   unsigned expected_width = 64;
-  if (type.base == TB_INT || type.base == TB_UINT)
+  if (type.base == TB_INT || type.base == TB_UINT) {
     expected_width = 32;
+  } else if (type.base == TB_LONG || type.base == TB_ULONG) {
+    expected_width = c4c::long_width_bits(mod.target_profile);
+  }
   return mirror.kind() == LirTypeKind::Integer &&
          mirror.integer_bit_width() == expected_width &&
          mirror.str() == "i" + std::to_string(expected_width);
@@ -2272,7 +2275,8 @@ bool abi_expanded_logical_parameter(const TypeSpec& type) {
   }
 }
 
-void verify_plain_fixed_scalar_parameter_relationship(const LirFunction& fn) {
+void verify_plain_fixed_scalar_parameter_relationship(const LirModule& mod,
+                                                      const LirFunction& fn) {
   if (fn.signature_is_variadic || fn.signature_has_void_param_list) return;
   const bool logical_plain =
       !fn.params.empty() &&
@@ -2311,7 +2315,7 @@ void verify_plain_fixed_scalar_parameter_relationship(const LirFunction& fn) {
     if (!plain_fixed_scalar_parameter(logical) || signature.is_byval ||
         !plain_fixed_scalar_parameter(signature.type) ||
         !same_plain_fixed_scalar_type(logical, signature.type) ||
-        !exact_plain_scalar_mirror(signature.type, mirror)) {
+        !exact_plain_scalar_mirror(mod, signature.type, mirror)) {
       std::ostringstream detail;
       detail << "plain fixed scalar parameter " << index << " of function '"
              << fn.name
@@ -2321,7 +2325,8 @@ void verify_plain_fixed_scalar_parameter_relationship(const LirFunction& fn) {
   }
 }
 
-void verify_function_signature_structured_param_shape(const LirFunction& fn) {
+void verify_function_signature_structured_param_shape(const LirModule& mod,
+                                                      const LirFunction& fn) {
   if (fn.signature_has_void_param_list) {
     if (!fn.signature_params.empty() || !fn.signature_param_type_refs.empty()) {
       fail_verify("LirFunction.signature_has_void_param_list",
@@ -2334,7 +2339,7 @@ void verify_function_signature_structured_param_shape(const LirFunction& fn) {
     return;
   }
 
-  verify_plain_fixed_scalar_parameter_relationship(fn);
+  verify_plain_fixed_scalar_parameter_relationship(mod, fn);
 
   if (!fn.signature_params.empty() &&
       fn.signature_param_type_refs.size() != fn.signature_params.size()) {
@@ -2356,7 +2361,7 @@ void verify_function_signature_type_ref_shadows(const LirModule& mod) {
       fail_verify("LirFunction.signature_text", "missing define/declare signature line");
     }
 
-    verify_function_signature_structured_param_shape(fn);
+    verify_function_signature_structured_param_shape(mod, fn);
 
     if (fn.signature_return_type_ref.has_value()) {
       verify_function_signature_return_type_ref_mirror(

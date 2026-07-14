@@ -614,6 +614,24 @@ int defined_non_one_to_one(char narrow, int *pointer) { return 4; }
       "plain fixed scalar verification should reject a conflicting mirror width");
 }
 
+void test_target_profile_long_signature_publication() {
+  const auto verify_profile = [](c4c::TargetArch arch, std::string_view expected) {
+    c4c::hir::Module hir_module = lower_hir_module(R"c(
+void long_params(long signed_value, unsigned long unsigned_value) {}
+)c");
+    hir_module.target_profile = c4c::default_target_profile(arch);
+    const auto module = c4c::codegen::lir::lower(hir_module);
+    const auto& function = require_function(module, "long_params", false);
+    expect_true(function.signature_param_type_refs.size() == 2 &&
+                    function.signature_param_type_refs[0].str() == expected &&
+                    function.signature_param_type_refs[1].str() == expected,
+                "long parameter mirrors must follow the structured target profile");
+    c4c::codegen::lir::verify_module(module);
+  };
+  verify_profile(c4c::TargetArch::I686, "i32");
+  verify_profile(c4c::TargetArch::X86_64, "i64");
+}
+
 void test_aarch64_hfa_parameter_classification() {
   c4c::hir::Module hir_module = lower_hir_module(R"c(
 struct HfaPair {
@@ -659,6 +677,7 @@ int main() {
   test_vrm_signature_type_refs_preserve_carrier_identity();
   test_vrm_call_boundaries_reject_non_expanded_carriers();
   test_definition_logical_parameter_publication();
+  test_target_profile_long_signature_publication();
   test_aarch64_hfa_parameter_classification();
 
   c4c::hir::Module hir_module = lower_hir_module(R"c(

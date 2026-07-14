@@ -260,6 +260,8 @@ bool supported_plain_parameter_base(TypeBase base) {
   switch (base) {
     case TB_INT:
     case TB_UINT:
+    case TB_LONG:
+    case TB_ULONG:
     case TB_LONGLONG:
     case TB_ULONGLONG:
     case TB_FLOAT:
@@ -524,7 +526,7 @@ std::optional<Type> lower_constant_type(const LirModule& module,
     case TB_UINT: width = 32; break;
     case TB_LONG:
     case TB_ULONG:
-      width = module.target_profile.arch == c4c::TargetArch::I686 ? 32 : 64;
+      width = c4c::long_width_bits(module.target_profile);
       break;
     case TB_LONGLONG:
     case TB_ULONGLONG: width = 64; break;
