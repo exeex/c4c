@@ -1,34 +1,30 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
+Source Idea Path: ideas/open/757_lir_computed_goto_address_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.23
-Current Step Title: Receive typed switch authority
+Current Step ID: 1
+Current Step Title: Publish computed-goto address authority
+你該做code review了
 
 ## Just Finished
 
-- Completed plan Step 7.23: added transactional typed `LirSwitch` receipt as
-  Raw-BIR `SwitchTerm`, retaining only its current-function integer selector,
-  default successor, and ordered case successors. Builder/view/verifier and
-  receiver coverage reject malformed selector/target authority without Raw or
-  Canonical publication.
+- Paused 734 after accepted Step 7.23; its next computed-goto receiver requires
+  this separate typed-address producer handoff.
 
 ## Suggested Next
 
-- Supervisor/plan-owner: assess the exhausted Step 7.23 runbook against the
-  source idea and choose closure, repair, or a separately scoped successor.
+- Execute Step 1 only: publish and verify `LirIndirectBrOp` address value
+  identity.
 
 ## Watchouts
 
-- The receiver reads only `selector`, `default_successor`, and
-  `case_successors`; selector/label display shadows remain outside semantic
-  lowering. `LirIndirectBrOp`, PHI, and all other unreceived families remain
-  unsupported and fail closed.
+- Do not change Raw-BIR receipt or computed-goto successor authority, and do
+  not recover an address from `addr`, labels, or printer output.
 
 ## Proof
 
-- Passed: `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^backend_' > test_after.log` (5/5 backend tests).
-  The exact proof log is `test_after.log`; broader/full acceptance remains
-  supervisor-owned.
+- 734 Step 7.23 accepted: fresh build and matching backend guard 5/5; its
+  rejected full baseline candidate is not a green full-suite result.
+- Executor: run a fresh build and focused positive/negative producer proof.
+- Supervisor: select and record broader/full acceptance separately.

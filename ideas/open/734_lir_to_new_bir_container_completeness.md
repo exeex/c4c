@@ -1,8 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (resumed after accepted Step 7.22 and closed switch-selector
-authority successor 756; the next packet is the bounded typed `LirSwitch`
-Raw-BIR receiver)
+Status: Open (paused after accepted Step 7.23; computed-goto address-authority
+successor 757 is active before the next receiver repair)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -346,6 +345,38 @@ typed authority and reject malformed input transactionally before publication.
 Do not derive semantics from selector/label display text, repeat Step 7.22, or
 absorb `LirIndirectBrOp`, PHI, local/object, memory/va, aggregate/vector,
 body-parameter, or any other family.
+
+## Runbook Exhaustion Decision: post-Step 7.23
+
+Close rejected. Accepted Step 7.23 (`0995a3deb`) received exactly typed
+`LirSwitch.selector`, `default_successor`, and ordered `case_successors` into
+verified Raw-BIR `SwitchTerm` authority, with transactional malformed-selector
+and target rollback coverage. The supervisor acceptance evidence is a fresh
+build plus matching backend guard 5/5 before and after (non-decreasing). A
+full baseline candidate was rejected: the current full result has 73 failures
+against the stored 3034/3034 green checkpoint, so this is not full-suite green
+evidence.
+
+This one bounded switch receiver does not satisfy the source completion gate.
+The earliest remaining computed-goto row, `LirIndirectBrOp`, has ordered typed
+current-function `successors` from closed idea 750, but its pointer `addr`
+remains only a `LirOperand` without a current-function `LirValueId`. Idea 734
+must not recover pointer identity from its operand spelling, labels, printer
+output, or rendered text. PHI, local/object, memory/va, aggregate/vector,
+body-parameter, and all other unreceived families remain separately scoped and
+fail closed.
+
+Classification: `separate-blocker`. Open idea
+`ideas/open/757_lir_computed_goto_address_value_identity_publication.md` owns
+only publication, verification, focused malformed-authority coverage, and a
+typed handoff for the active `LirIndirectBrOp` address. This source is paused
+after completed Steps 1 through 7.23. After 757 closes with the exact
+structured handoff, reactivate 734 and repair its runbook for one bounded
+`LirIndirectBrOp` Raw-BIR receiver packet: consume only the typed address and
+already typed ordered successors, preserve target order and transactional
+rejection, and do not inspect operand or label text for semantic recovery. Do
+not repeat Step 7.23 or absorb PHI, local/object, memory/va, aggregate/vector,
+body-parameter, or other remaining families.
 
 ## Why This Exists
 
