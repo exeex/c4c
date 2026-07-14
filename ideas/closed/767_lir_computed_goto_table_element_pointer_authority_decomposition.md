@@ -1,7 +1,6 @@
 # LIR Computed-Goto Table-Element Pointer Authority Decomposition
 
-Status: Open (active blocker for
-`ideas/open/764_lir_production_computed_goto_addr_value_publication.md`)
+Status: Complete (handoff accepted)
 Type: decomposition of production LIR table-element pointer authority seams
 Predecessor: 764 Step 1, paused after accepted 765 and 766 prerequisites
 
@@ -79,3 +78,29 @@ correct ownership surface for extracting and proving the capabilities.
 - Reject choosing or implementing a broad pointer/table redesign before direct
   frontend-LIR probes bind the static-local and local source forms to their
   producer/result contracts.
+
+## Completion and Handoff
+
+All six runbook steps are complete. Step 1 established the fresh five-consumer
+1/5 versus 4/5 baseline; Steps 2-4 mapped the static-local and local forms to
+their shared `IndexExpr` string-GEP/load authority-loss boundary and selected
+one generic structured table-element access seam. Step 5 was accepted in
+commit `403e86afd`: supported static-global and current-function-local lvalue
+bases now retain authority through typed i64 indexed GEP results, and pointer
+loads consume the exact GEP operand and return valid pointer result IDs. It
+activated direct static-local and local frontend-LIR positive/malformed
+contracts without changing accepted 766 SSA GEP behavior.
+
+Accepted proof is a fresh `cmake --build --preset default`, direct
+`./build/tests/frontend/frontend_lir_call_type_ref_test`, exact aggregate
+`^frontend_cxx_` CTest 1/1, and its matching allow-non-decreasing guard. The
+aggregate bucket is one CTest test; existing before/after frontend CTest logs
+remain the evidence and are not changed by this handoff. The producer fixture
+uses unverified lowering solely for inspection and removes unpublished
+`IndirBr` before isolated verifier mutations. No `IndirBr.addr_value` carrier
+publication, Raw-BIR/importer, verifier change, text recovery, testcase
+branching, or broad redesign is claimed.
+
+The exact return point is 764 Step 1: freshly rerun all five preserved
+consumers and publish `LirIndirectBrOp.addr_value` only as necessary from the
+now-verified pointer result, then return to 734 for plan-owner disposition.

@@ -203,13 +203,41 @@ defect. The newly separated unresolved seam is computed-goto label-address
 table-element load/result identity: static local pointer-table forms in the
 first three remaining integrations and a local pointer-table form in the last.
 
-This requires a decomposition initiative before choosing another
-implementation seam. The active
-`ideas/open/767_lir_computed_goto_table_element_pointer_authority_decomposition.md`
-owns the four-case baseline, static-versus-local table-element seam inventory,
+This required a decomposition initiative before choosing another implementation
+seam. The then-active, now closed
+`ideas/closed/767_lir_computed_goto_table_element_pointer_authority_decomposition.md`
+owned the four-case baseline, static-versus-local table-element seam inventory,
 direct frontend-LIR focused capability probes, and producer/result-contract
-binding. It excludes `IndirBr` publication and verifier relaxation,
-Raw-BIR/importer, 734, and redoing accepted 765/766. After those focused
-table-element capabilities select and resolve the narrowest generic seam,
-resume 764 Step 1: rerun all five consumers and publish as necessary, then
-return to 734 for plan-owner disposition.
+binding. It excluded `IndirBr` publication and verifier relaxation,
+Raw-BIR/importer, 734, and redoing accepted 765/766. Its accepted capability
+now resumes 764 Step 1: rerun all five consumers and publish as necessary,
+then return to 734 for plan-owner disposition.
+
+## Resumption Record: accepted 767 table-element handoff
+
+767 is capability-complete and archived at
+`ideas/closed/767_lir_computed_goto_table_element_pointer_authority_decomposition.md`.
+Accepted commit `403e86afd` implemented the generic operand-carrying
+`IndexExpr` table-element access route: supported static-global and
+current-function-local bases retain authority through a typed i64 indexed GEP
+with a valid result ID, and the pointer load consumes that exact GEP operand
+and returns its own valid pointer result ID. The accepted 766 SSA-specific GEP
+path remains intact. Static-local and local frontend-LIR contracts cover the
+focused positive and malformed authority cases; their computed-goto fixtures
+use unverified lowering only to observe the producer and remove unpublished
+`IndirBr` before isolated verifier mutations.
+
+Accepted proof is a fresh `cmake --build --preset default`, passing direct
+`./build/tests/frontend/frontend_lir_call_type_ref_test`, exact aggregate
+`ctest --test-dir build -j --output-on-failure -R '^frontend_cxx_'` (1/1), and
+a matching allow-non-decreasing guard because that CTest bucket is one
+aggregate test. The before/after frontend CTest evidence is retained in the
+existing todo record; no logs are changed by this lifecycle handoff.
+
+Resume at `Step 1 - Publish and prove production computed-goto address carrier
+authority`: freshly rerun all five preserved consumers, then publish
+`LirIndirectBrOp.addr_value` only as necessary from the verified pointer
+result. Do not reimplement 767, claim its work published the carrier, change
+Raw-BIR/importer or the 734 receiver, weaken the verifier, recover from text,
+or broaden pointer/table scope. After the five-consumer/carrier proof is
+accepted, return to 734 for plan-owner disposition.

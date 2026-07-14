@@ -1,193 +1,97 @@
-# Computed-Goto Table-Element Pointer Authority Decomposition Runbook
+# Production Computed-Goto Address Authority Runbook
 
 Status: Active
-Source Idea: ideas/open/767_lir_computed_goto_table_element_pointer_authority_decomposition.md
-Activated from: switched from 764 Step 1 after accepted 765/766 reduced the
-five-consumer family to one passing arithmetic form and four table-element
-authority failures.
+Source Idea: ideas/open/764_lir_production_computed_goto_addr_value_publication.md
+Resumed from: completed 767 (`403e86afd`), which now supplies the verified
+static-local and local table-element pointer result required by this carrier
+repair.
 
 ## Purpose
 
-Replace the repeatedly moving monolithic carrier route with focused,
-frontend-LIR producer/result capability probes for computed-goto table elements.
+Complete only the downstream production computed-goto carrier publication
+after accepted 765, 766, and 767 producer/result handoffs. The five affected
+tests remain one consumer family and are not acceptable baseline debt.
 
 ## Goal
 
-Identify the narrowest generic table-element pointer-authority seam before any
-new implementation packet, without consuming 764's downstream carrier work.
+Publish the verified current-function pointer `LirValueId` into
+`LirIndirectBrOp.addr_value` so `comp-goto-1`, `20040302-1`, `20041214-1`,
+`920501-4`, and `920501-5` no longer fail at that carrier check.
 
 ## Core Rule
 
-Each focused probe must prove one structured table-element producer/result
-contract. External cases are integration evidence, never authority sources or
-testcase-shaped implementation selectors.
+`addr_value` is semantic authority and may be published only from a verified,
+current-function pointer address result. `addr`, labels, printer output,
+rendered LLVM, and testcase names are never authority sources.
 
 ## Read First
 
-- `ideas/open/767_lir_computed_goto_table_element_pointer_authority_decomposition.md`
 - `ideas/open/764_lir_production_computed_goto_addr_value_publication.md`
-- `ideas/closed/765_lir_member_bitfield_rvalue_value_identity_publication.md`
+- `ideas/closed/767_lir_computed_goto_table_element_pointer_authority_decomposition.md`
 - `ideas/closed/766_lir_ssa_indexed_gep_pointer_result_authority.md`
-- direct frontend-LIR production coverage and the table-element load/result
-  producers reached by the four remaining integration probes
+- `ideas/closed/765_lir_member_bitfield_rvalue_value_identity_publication.md`
+- the computed-goto `IndirBrStmt` publication seam and existing
+  `LirIndirectBrOp` verifier checks
+
+## Landed Prerequisites
+
+- 765 accepted in `1e24e2081` supplies the `insn.f1.offset` RHS identity.
+- 766 accepted in `74379f4a2` supplies the structured SSA-based GEP pointer
+  result and nearby malformed-authority coverage.
+- 767 accepted in `403e86afd` supplies structured static-global and
+  current-function-local table-element GEP/load pointer results. Its fresh
+  build, direct frontend-LIR test, aggregate `^frontend_cxx_` CTest 1/1, and
+  matching allow-non-decreasing guard are accepted; it did not publish the
+  downstream carrier field.
 
 ## Non-Goals
 
-- no `IndirBr`/`LirIndirectBrOp.addr_value` publication or verifier relaxation
-- no Raw-BIR/importer, 734, backend/case probe, or 765/766 rework
-- no text recovery, testcase-specific logic, synthetic bridge, or broad
-  pointer/rvalue/CFG/PHI/local-object/memory/va/aggregate-vector redesign
+- no Raw-BIR/importer changes or re-execution of 734 Step 7.24
+- no reimplementation of accepted 765/766/767 producer contracts,
+  GEP-contract/verifier change, partial/raw authority, display-text recovery,
+  failure exclusion, expectation downgrade, or baseline exception
+- no rvalue, CFG, PHI, local/object, memory/va, aggregate/vector,
+  target-lowering, MIR, or emission-family redesign
 
 ## Execution Rules
 
-1. Run and record the exact 1/5 versus 4/5 baseline before extracting probes.
-2. Use frontend-LIR production tests because the failures precede Raw-BIR and
-   backend import; the external four are integration probes only.
-3. Before selection, extract and record each focused harness and its exact
-   positive/malformed contract, but do not treat current raw behavior as a
-   passing positive capability.
-4. Do not select an implementation seam until both source forms have one
-   recorded producer/result contract and probe harness; do not implement until
-   the selected seam has its own post-selection packet.
+1. Rerun the exact five-consumer command before changing the carrier route;
+   classify results by the shared downstream authority boundary, not testcase.
+2. Repair only the common `IndirBrStmt` address-to-carrier seam if verified
+   upstream authority reaches it; preserve all existing fail-closed checks.
+3. The accepted 767 table-element route is a prerequisite, not implementation
+   scope. Do not reopen it or use its producer-only unverified-lowering fixture
+   as carrier proof.
+4. Prove the repaired family before a future supervisor full-baseline gate; no
+   candidate may be accepted if it expands baseline failures.
 
 ## Ordered Steps
 
-### Step 1 - Establish the table-element failure-family baseline
+### Step 1 - Publish and prove production computed-goto address carrier authority
 
-Goal: retain the exact boundary between the resolved arithmetic route and the
-remaining table-element authority family.
+Goal: retain the accepted 765/766/767 pointer identity through the immediate
+address-to-`LirIndirectBrOp` publication seam and eliminate the same missing
+carrier-authority failure across all five consumers.
 
-Actions:
+Primary targets:
 
-- run the preserved five-case command after a fresh build
-- record `comp-goto-1` as the passing arithmetic integration and classify the
-  other four only by their shared missing authority stop
-- retain the external cases as integration evidence; do not patch them
-
-Completion check:
-
-- baseline records 1 pass / 4 failures and no conclusion claims a generic
-  carrier publication defect.
-
-### Step 2 - Enumerate static-local and local table-element seams
-
-Goal: trace only far enough to distinguish the two generic source forms and
-their direct LIR producer/result candidates.
+- the direct computed-goto address-to-`LirIndirectBrOp` publication seam
+- nearby carrier verifier and focused production-path coverage
 
 Actions:
 
-- inventory static local pointer-table element load/results separately from
-  local pointer-table element load/results
-- for each, identify the structured value entering and leaving its direct LIR
-  producer and the missing-result authority boundary
-- do not choose a repair or broaden scope
+- fresh-build and rerun all five preserved consumers; confirm whether the
+  verified table-element pointer result now reaches `IndirBrStmt`
+- if needed, minimally publish that valid current-function pointer
+  `LirValueId` into `addr_value`, retaining all malformed-authority checks
+- add or extend focused production-path coverage without testcase-specific
+  branching, then rerun all five preserved consumers
+- report the typed-field handoff and proof for plan-owner disposition to 734;
+  do not re-execute 734 Step 7.24
 
 Completion check:
 
-- a compact source-form map names each form's producer/result contract without
-  using testcase numbers as ownership labels.
-
-### Step 3 - Extract and record direct frontend-LIR probe harnesses
-
-Goal: make the two source forms executable as direct production-path harnesses
-with one precise positive and malformed contract each, without accepting the
-current raw behavior as a successful capability.
-
-Actions:
-
-- extract or record directly relevant frontend-LIR production harnesses for the
-  static-local and local table-element result contracts
-- record the exact future positive structured-result assertion and nearby
-  malformed rejection required by each contract; do not assert a green
-  positive result before its producer implementation exists
-- document why frontend-LIR, rather than backend/case, owns these probes
-
-Completion check:
-
-- each source form has one focused frontend-LIR harness and an exact
-  positive/malformed contract that is not a reduced copy of a named external
-  testcase; no expectation is weakened or marked passing against raw behavior.
-
-### Step 4 - Bind probes and select the narrowest generic seam
-
-Goal: make an evidence-backed handoff to one implementation packet or return a
-specific unresolved contract blocker.
-
-Actions:
-
-- bind each focused probe to its direct producer/result contract and compare
-  the two maps for a shared narrow implementation owner
-- select no implementation until the shared or separate generic seam is clear
-- report the selected seam, the non-accepting harness contracts, and the
-  post-selection implementation/proof packet required before return to 764
-
-Completion check:
-
-- the decomposition authorizes one narrow generic implementation/proof packet,
-  or names a precise separately scoped blocker; it does not yet claim positive
-  capability success or return to 764.
-
-Selected seam and handoff:
-
-- Selected: one generic structured table-element access route, from supported
-  global or current-function-local lvalue base through typed indexed GEP to an
-  exact pointer-load result. Both source forms reach
-  `StmtEmitter::emit_lval_dispatch(IndexExpr)` and then the same string
-  `emit_indexed_gep`/`emit_rval_from_access_ptr` boundary; the static-local
-  form starts global and the local form starts in a current-function slot, but
-  neither distinction survives that boundary today.
-- `emit_rval_payload(IndexExpr)` independently confirms the shared owner by
-  dispatching the lvalue then loading the returned string pointer. The
-  structured GEP overload already accepted for 766's SSA-base route remains
-  intact; this packet must not rework it.
-- Step 5 may touch only `src/codegen/lir/hir_to_lir/lowering.hpp`,
-  `src/codegen/lir/hir_to_lir/lvalue.cpp`,
-  `src/codegen/lir/hir_to_lir/expr/misc.cpp`, and the two existing contract
-  locations in `tests/frontend/frontend_lir_call_type_ref_test.cpp`, absent a
-  new evidence-backed blocker. Its proof is a fresh build followed by
-  `ctest --test-dir build -j --output-on-failure -R '^frontend_cxx_'`.
-
-### Step 5 - Implement and prove the selected table-element authority seam
-
-Goal: after Step 4 selects the generic owner, implement only that bounded
-producer/result contract and activate the recorded focused harnesses.
-
-Actions:
-
-- implement the generic structured table-element access route only in
-  `lowering.hpp`, `lvalue.cpp`, and `expr/misc.cpp`: retain supported global
-  or current-function-local base authority, form a typed indexed GEP with a
-  valid result ID, and load through that exact GEP operand into a valid pointer
-  result ID; do not change the accepted 766 SSA-specific GEP path
-- activate the recorded static-local contract in
-  `test_global_array_gep_identity_contract` and local contract alongside
-  `test_local_and_parameter_rvalue_identity_route`, each with its focused
-  positive and malformed cases; do not substitute external testcase matching
-- run a fresh `cmake --build --preset default`, then exactly
-  `ctest --test-dir build -j --output-on-failure -R '^frontend_cxx_'`; retain
-  the external four as later integration probes
-
-Completion check:
-
-- the selected generic seam and its focused positive/malformed proof pass
-  without expectation downgrade, testcase-shaped logic, verifier relaxation,
-  textual recovery, Raw-BIR/importer work, a generic `IndirBr` publication
-  claim, or broad pointer/table redesign.
-
-### Step 6 - Hand off the resolved capability to 764
-
-Goal: preserve the selected seam and accepted focused proof so the parent can
-resume only its downstream carrier work.
-
-Actions:
-
-- report the implemented producer/result contract, direct proof, and remaining
-  integration obligations to the supervisor for lifecycle recording
-- request return to 764 Step 1 only after Step 5 is accepted; do not rerun or
-  publish the parent carrier during this decomposition packet
-
-Completion check:
-
-- lifecycle handoff names the accepted capability and exact return: 764 reruns
-  all five consumers and publishes carrier authority only as necessary, then
-  returns to 734 for plan-owner disposition.
+- a fresh build, focused positive/malformed proof, and all five affected
+  consumers have no `LirIndirectBrOp.addr_value` missing-authority failure; a
+  later supervisor full-suite candidate shows no new baseline failures before
+  acceptance.

@@ -1,43 +1,39 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/767_lir_computed_goto_table_element_pointer_authority_decomposition.md
+Source Idea Path: ideas/open/764_lir_production_computed_goto_addr_value_publication.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Hand off the resolved capability to 764
+Current Step ID: 1
+Current Step Title: Publish and prove production computed-goto address carrier authority
 
 ## Just Finished
 
-- Completed 767 Step 5: `IndexExpr` now has an operand-carrying structured
-  lvalue route. Supported static-global and current-function-local table bases
-  retain authority into a typed i64 indexed GEP with a valid result ID, and the
-  rvalue load consumes that exact GEP operand and gets its own valid result ID.
-  The legacy fallback remains for unsupported bases/indices, and accepted 766
-  SSA behavior was not otherwise changed.
-- Activated static-local and local computed-goto table-element frontend-LIR
-  contracts, including raw/invalid/foreign base, raw index, missing GEP result,
-  and foreign/nonmatching load-pointer rejection. The fixtures strip the
-  unpublished `IndirBr` only before isolated verifier checks; no `IndirBr`
-  publication is claimed.
+- 767 is capability-complete and closed after accepted Step 5 commit
+  `403e86afd`: its generic table-element access route retains supported global
+  and current-function-local base authority through typed GEP and exact pointer
+  load results. Direct frontend-LIR proof and the aggregate `^frontend_cxx_`
+  CTest bucket passed; it made no carrier-publication claim.
 
 ## Suggested Next
 
-- Step 6: hand the completed producer/result contract and direct proof to the
-  supervisor for lifecycle recording and return to 764 Step 1 only after
-  acceptance; do not publish or rerun the parent carrier here.
+- Resume 764 Step 1: freshly rerun the preserved five consumers after 767,
+  then publish `LirIndirectBrOp.addr_value` only if the shared carrier seam
+  still lacks authority. Do not reimplement the accepted table-element route.
 
 ## Watchouts
 
-- The statement seam remains out of scope: no `IndirBrStmt`/`addr_value`,
-  Raw-BIR/importer, backend, verifier, or testcase-specific changes were made.
-- Computed-goto fixtures are lowered without the global verifier only to
-  observe the table producer; their isolated GEP/load modules remove the
-  unpublished indirect branch before verifier mutation checks.
+- 767 is closed; treat its static/local table-element producer/result contract
+  as an accepted prerequisite, not scope for 764. No Raw-BIR/importer or 734
+  receiver work; no verifier weakening, text recovery, testcase branching, or
+  broad pointer/table redesign.
 
 ## Proof
 
-- Fresh `cmake --build --preset default` succeeded. The direct focused
-  `./build/tests/frontend/frontend_lir_call_type_ref_test` passed. The exact
-  delegated command `ctest --test-dir build -j --output-on-failure -R
-  '^frontend_cxx_' > test_after.log` passed (1/1); `test_after.log` is the
-  proof log. `git diff --check` passed.
+- Accepted 767 prerequisite: `403e86afd`; fresh build, direct
+  `./build/tests/frontend/frontend_lir_call_type_ref_test`, exact aggregate
+  `^frontend_cxx_` CTest 1/1, and its matching allow-non-decreasing guard
+  passed. Existing before/after frontend CTest evidence remains recorded; no
+  logs were changed during this lifecycle switch.
+- Before handoff to 734, run a fresh build, focused carrier positive/malformed
+  proof, and exactly `ctest --test-dir build -j --output-on-failure -R
+  '^(llvm_gcc_c_torture_src_comp_goto_1_c|llvm_gcc_c_torture_src_20040302_1_c|llvm_gcc_c_torture_src_20041214_1_c|llvm_gcc_c_torture_src_920501_4_c|llvm_gcc_c_torture_src_920501_5_c)$'`.
