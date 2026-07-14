@@ -1,93 +1,90 @@
-# Production Computed-Goto Address Authority Runbook
+# LIR SSA-Based Indexed-GEP Pointer-Result Authority Runbook
 
 Status: Active
-Source Idea: ideas/open/764_lir_production_computed_goto_addr_value_publication.md
-Resumed from: concluded 765 Step 1 (`1e24e2081`), which now carries the valid
-`insn.f1.offset` member/bitfield RHS `LirValueId` required for the address GEP.
+Source Idea: ideas/open/766_lir_ssa_indexed_gep_pointer_result_authority.md
+Activated from: switched from 764 Step 1 after its investigation established
+the upstream SSA-based indexed-GEP pointer-result authority prerequisite.
 
 ## Purpose
 
-Complete only the downstream production computed-goto carrier repair revealed
-by the accepted 765 producer handoff. The rejected full-suite candidate shows
-one consumer failure family, not acceptable baseline debt.
+Repair only the contract and direct producer that prevent an SSA-based indexed
+GEP from carrying a structured current-function pointer-result identity.
 
 ## Goal
 
-For the production computed-goto address route, publish the verified
-current-function pointer `LirValueId` into `LirIndirectBrOp.addr_value` so the
-five affected consumers no longer fail at that carrier check.
+Authorize and retain the production indexed-GEP pointer result without
+weakening authority rules or performing the downstream computed-goto carrier
+publication.
 
 ## Core Rule
 
-`addr_value` is semantic authority and can be published only from the valid,
-current-function pointer address result. `addr`, labels, printer output,
-rendered LLVM, and testcase names are never authority sources.
+A pointer-result ID is semantic authority. It may be produced only from the
+contract's valid current-function structured GEP inputs; rendered text and
+synthetic bridges are never authority sources.
 
 ## Read First
 
+- `ideas/open/766_lir_ssa_indexed_gep_pointer_result_authority.md`
 - `ideas/open/764_lir_production_computed_goto_addr_value_publication.md`
 - `ideas/closed/765_lir_member_bitfield_rvalue_value_identity_publication.md`
-- `ideas/open/734_lir_to_new_bir_container_completeness.md` resumption record
-- the computed-goto `IndirBrStmt` producer, `emit_indexed_gep`, and existing
-  `LirIndirectBrOp` verifier checks
-
-## Landed Progress
-
-- 765 Step 1 is accepted in `1e24e2081`: its focused
-  `frontend_lir_call_type_ref` proof passed, matching subset guard passed, and
-  broad backend guard passed.
-- The previous full baseline (`c8a205218`) was 3034/3034. The candidate after
-  `1e24e2081` has five failures: `comp-goto-1`, `20040302-1`, `20041214-1`,
-  `920501-4`, and `920501-5`. Each stops at the same missing
-  `LirIndirectBrOp.addr_value` current-function-pointer authority check.
+- `src/codegen/lir/hir_to_lir/lvalue.cpp` (`emit_indexed_gep`) and the
+  authoritative-GEP verifier/nearby LIR coverage
 
 ## Non-Goals
 
-- no Raw-BIR/importer changes or re-execution of 734 Step 7.24
-- no GEP verifier relaxation, partial/raw-index publication, display-text
-  recovery, failure exclusions, expectation downgrades, or baseline exceptions
-- no general rvalue, CFG, PHI, local/object, memory/va, aggregate/vector,
-  target-lowering, MIR, or emission redesign
+- no `LirIndirectBrOp` or `IndirBrStmt` publication, five-consumer proof, or
+  computed-goto carrier change
+- no Raw-BIR/importer work or 734 Step 7.24 re-execution
+- no verifier weakening, partial/raw authority, text recovery, synthetic cast,
+  alloca/load, phi, or select bridge
+- no broad pointer/rvalue/CFG/PHI/local-object/memory/va/aggregate-vector/
+  target-lowering/MIR/emission redesign
 
 ## Execution Rules
 
-1. Repair the common downstream carrier seam, not a named consumer.
-2. Preserve fail-closed rejection for missing, invalid, foreign, non-pointer,
-   display-mismatched, and partial/raw authority.
-3. Prove the repaired consumer family before asking the supervisor to run a
-   future full baseline candidate. No candidate may be accepted if it expands
-   baseline failures.
+1. Change only the smallest contract and direct `emit_indexed_gep` producer
+   surfaces established by the evidence.
+2. Preserve fail-closed behavior for malformed, foreign, invalid, non-pointer,
+   raw, and partial authority.
+3. Prove a nearby same-feature positive and malformed case before the handoff;
+   the supervisor owns any broader regression gate.
 
 ## Ordered Steps
 
-### Step 1 - Publish and prove production computed-goto address carrier authority
+### Step 1 - Define and publish SSA-based indexed-GEP pointer-result authority
 
-Goal: use the now-valid production address GEP identity to populate and verify
-`LirIndirectBrOp.addr_value`, eliminating the same authority failure across
-the five affected consumers.
-
-Primary targets:
-
-- the immediate computed-goto address-to-`LirIndirectBrOp` publication seam
-- nearby verifier and focused production-path coverage
+Goal: make the verifier and direct `emit_indexed_gep` producer represent the
+valid current-function pointer result of an SSA-based indexed GEP.
 
 Actions:
 
-- reproduce the five affected tests and confirm their shared carrier failure
-  before changing code
-- trace from the authoritative address GEP to the `IndirBrStmt` publication
-  point; minimally preserve the valid pointer `LirValueId` into `addr_value`
-- retain the existing malformed-authority checks and add/extend focused
-  production-path coverage without testcase-specific branching
-- after the narrow proof, rerun all five affected tests; the full candidate is
-  a later supervisor gate and must demonstrate no new baseline failures before
-  acceptance
-- record the typed-field handoff and return only to 734 after its accepted
-  Step 7.24; do not repeat the receiver packet
+- trace the existing GEP authority data model and specify the minimal
+  structured SSA-base condition needed alongside valid current-function inputs
+- implement the bounded verifier/producer contract so `emit_indexed_gep`
+  retains and returns the pointer `LirValueId`, rather than raw string-only
+  output
+- do not add an identity bridge at the statement or carrier seam
 
 Completion check:
 
-- a fresh build, focused positive/malformed proof, and the five affected
-  consumers show no `LirIndirectBrOp.addr_value` missing-authority failure;
-  a future supervisor full-suite candidate has no new baseline failures before
-  it can be accepted.
+- a fresh build passes and the direct production path has a structurally
+  retained verifier-valid GEP pointer-result ID.
+
+### Step 2 - Prove the contract and hand off to 764
+
+Goal: demonstrate the nearby positive and malformed behavior, then make the
+return route executable without consuming 764's carrier work.
+
+Actions:
+
+- add or extend direct nearby coverage for the SSA-based result and malformed
+  rejection cases required by the resulting contract
+- run the focused proof selected by the supervisor after a fresh build
+- report the producer/result field, proof, and exact return action to the
+  supervisor for lifecycle recording
+
+Completion check:
+
+- focused positive and malformed proof passes; the accepted handoff says to
+  resume 764 Step 1 for `LirIndirectBrOp.addr_value` publication and its five
+  consumers, not to alter them here.

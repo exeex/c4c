@@ -122,3 +122,42 @@ address GEP pointer identity into the computed-goto carrier, preserve all
 fail-closed checks, rerun all five consumers, and require a later full
 candidate to show no new baseline failures. Do not resume 734's receiver; its
 accepted Step 7.24 remains paused as recorded.
+
+## Resumption Record: SSA-based indexed-GEP pointer-result authority blocker
+
+Paused at `Step 1 - Publish and prove production computed-goto address carrier
+authority`; no implementation from 764 was accepted. The accepted predecessor
+progress remains 765 Step 1 in `1e24e2081`: `emit_member_rval_operand` now
+supplies the valid current-function RHS `LirValueId` for
+`insn.f1.offset`, and its fresh build, focused
+`frontend_lir_call_type_ref` proof, matching subset guard, and broad backend
+guard remain the accepted producer proof references.
+
+The exact five-consumer reproduction command was:
+
+`ctest --test-dir build -j --output-on-failure -R '^(llvm_gcc_c_torture_src_comp_goto_1_c|llvm_gcc_c_torture_src_20040302_1_c|llvm_gcc_c_torture_src_20041214_1_c|llvm_gcc_c_torture_src_920501_4_c|llvm_gcc_c_torture_src_920501_5_c)$'`
+
+All five stop at the same missing `LirIndirectBrOp.addr_value` authority
+check. The first newly established blocking fact is upstream of the carrier:
+`src/codegen/lir/hir_to_lir/lvalue.cpp::emit_indexed_gep` emits a raw-result
+`LirGepOp` and returns string-only. Although the statement seam correctly
+copies `addr.value_id()`, the production address GEP uses an SSA base and the
+current authoritative-GEP contract only permits a global `LinkNameId` base.
+A stmt-only pointer-bitcast bridge was rejected: a fresh
+`cmake --build --preset default` passed, but
+`ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
+failed at `verify_cast_op_authority` because authoritative casts require
+integer endpoints. No production or test edits remain from that rejected
+route, and no `test_after.log` was written.
+
+This contract/producer repair is outside 764's bounded downstream
+carrier-publication scope. The separately active blocker
+`ideas/open/766_lir_ssa_indexed_gep_pointer_result_authority.md` owns only
+current-function pointer-result identities for SSA-based indexed GEPs and its
+direct nearby coverage. It must not change Raw-BIR/importer, revive 734 Step
+7.24, weaken the verifier, use display/text recovery, or absorb this idea's
+`LirIndirectBrOp.addr_value` publication. After that blocker is accepted,
+resume 764 at Step 1: publish the verified GEP pointer `LirValueId` into
+`LirIndirectBrOp.addr_value`, rerun all five consumers above, then return to
+734 for plan-owner disposition. Do not substitute a synthetic alloca/load,
+phi, select, or text-derived ID at the statement seam.

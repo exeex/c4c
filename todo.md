@@ -1,44 +1,38 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/764_lir_production_computed_goto_addr_value_publication.md
+Source Idea Path: ideas/open/766_lir_ssa_indexed_gep_pointer_result_authority.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Publish and prove production computed-goto address carrier authority
+Current Step Title: Define and publish SSA-based indexed-GEP pointer-result authority
 
 ## Just Finished
 
-- Switched from concluded 765 after its accepted Step 1 (`1e24e2081`) repaired
-  the first upstream producer seam: `emit_member_rval_operand` now carries the
-  final `emit_bitfield_load` current-function `LirValueId` for
-  `insn.f1.offset`. The full baseline candidate must not be accepted yet:
-  `comp-goto-1` and four same-family consumers now fail at the downstream
-  `LirIndirectBrOp.addr_value` carrier check.
+- Switched from 764 Step 1 after its preserved investigation established that
+  `emit_indexed_gep` is the upstream raw-result/string-only owner. The accepted
+  765 RHS identity handoff is available; no code or test edit was accepted for
+  the rejected pointer-cast bridge.
 
 ## Suggested Next
 
-- Reproduce the five affected tests, then complete 764 Step 1 by publishing
-  the verifier-valid pointer identity from the now-authoritative computed-goto
-  address GEP into `LirIndirectBrOp.addr_value`. Do not resume 734 directly.
+- Inspect the authoritative-GEP verifier contract and direct
+  `emit_indexed_gep` producer, then implement only the verifier-valid
+  SSA-based pointer-result authority required by Step 1.
 
 ## Watchouts
 
-- Do not change Raw-BIR/importer or re-execute 734 Step 7.24. Do not weaken
-  `verify_authoritative_gep`, synthesize a GEP ID from a partial/raw index, or
-  derive authority from rendered operands, labels, LLVM/printer text, or a
-  testcase name.
-- Treat `comp-goto-1`, `20040302-1`, `20041214-1`, `920501-4`, and `920501-5`
-  as one downstream consumer family for repair/proof; none may be excluded,
-  downgraded, or accepted as a baseline exception.
+- Do not publish `LirIndirectBrOp.addr_value` or change `IndirBrStmt`; that is
+  764 Step 1 after this blocker completes. Do not touch Raw-BIR/importer or
+  734 Step 7.24.
+- Do not weaken the verifier, accept raw/partial/text-derived authority, or
+  introduce a synthetic cast, alloca/load, phi, or select bridge.
 
 ## Proof
 
-- 765 accepted proof: `1e24e2081`; fresh `cmake --build --preset default`;
-  `^frontend_lir_call_type_ref$` passed; matching subset guard passed with
-  the known downstream comp-goto failure unchanged; broad backend guard
-  passed.
-- Baseline guard is rejected: baseline `c8a205218` was 3034/3034; candidate
-  `1e24e2081` has five `LirIndirectBrOp.addr_value` current-function-pointer
-  failures. Before any future baseline accept, run the same five affected
-  tests after the carrier repair and then the supervisor-selected full
-  candidate; require no new baseline failures.
+- Incoming evidence: `cmake --build --preset default` passed for the rejected
+  stmt-only pointer-cast route; `ctest --test-dir build -j --output-on-failure
+  -R '^frontend_lir_call_type_ref$'` then failed because authoritative casts
+  require integer endpoints. This is a rejected contract, not a proof target.
+- Before this idea's handoff, run a fresh build plus focused direct
+  SSA-indexed-GEP positive and malformed-authority coverage selected from the
+  nearby verifier/producer test surface.
