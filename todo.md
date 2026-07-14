@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.8
-Current Step Title: Publish explicit scalar floating extension result/use authority (complete)
+Current Step ID: 7.9
+Current Step Title: Publish explicit signed-integer-to-floating cast authority
 
 ## Just Finished
 
@@ -22,18 +22,29 @@ Current Step Title: Publish explicit scalar floating extension result/use author
 
 ## Suggested Next
 
-- Select the next bounded Step-7 matrix row whose result allocation, operand
-  propagation, type authority, and verifier rules form one coherent packet.
+- Execute Step 7.9: publish one explicit authoritative-source scalar `SIToFP`
+  result/use chain.
 
 ## Watchouts
 
-- Preserve Step-7.8's strict authoritative-source, exact-endpoint, widening
-  contract and Step-7.7's corresponding narrowing contract.
-- Keep same-representation no-ops and monostate-source casts honest
-  compatibility; never reconstruct identity from rendered spelling.
-- Exclude integer/floating conversions, pointer, bitcast, vector, complex,
-  aggregate, implicit coercion, other cast producers, CFG/parameters, calls,
-  inline assembly, and BIR from this completed packet.
+- Own only PX's explicit nonpointer, nonvector conversion from a signed scalar
+  integer to a scalar floating type. Use an authoritative Step-6 signed integer
+  result as the exact `SIToFP` operand and preserve the cast result into a later
+  ordinary floating operation.
+- Extend `coerce_operand` only for an authoritative source and exact scalar
+  endpoint families: allocate through `fresh_value`, retain native `SIToFP`
+  plus exact integer source and floating destination type refs, and return the
+  identical result operand to the later use.
+- Require the authoritative cast kind and endpoint families to agree; reject
+  invalid/duplicate results, unknown or cross-function uses, missing or
+  conflicting endpoints, floating sources, integer destinations, and other
+  cast kinds on the SIToFP claim.
+- Accept misleading displays only after native authority is proven. Keep
+  monostate-source conversion and all text-only neighbors honest compatibility;
+  never infer identity or signedness from rendered spelling.
+- Preserve Steps 7.1, 7.7, and 7.8. Exclude `UIToFP`, `FPToSI`, `FPToUI`,
+  pointer, bitcast, vector, complex, aggregate, implicit coercion, other cast
+  producers, CFG/parameters, calls, inline assembly, and BIR.
 
 ## Proof
 
