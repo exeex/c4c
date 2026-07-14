@@ -31,3 +31,8 @@ Current Step Title: Carry the variant through Raw-BIR GEP lowering consumers
   `ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$'`.
   Canonical regression logs were not touched because they remain
   supervisor-owned.
+- Baseline review rejected `test_baseline.new.log` (3037 total, 1 failed:
+  `llvm_gcc_c_torture_src_pr70460_c`) against the 3034/0 baseline. This is the
+  already-out-of-scope 772 `emit_indexed_gep` / pr70460 repair blocker, not a
+  774 baseline refresh or repair claim; resume 774 at Step 3 with its bounded
+  Raw-BIR proof.
