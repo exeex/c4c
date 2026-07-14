@@ -20,9 +20,10 @@ returns `LirOperand::ssa(display, id)`. Current production `fresh_value` calls
 cover CC-LOAD-1 and CC-GEP-1 in `StmtEmitter::emit_rval_operand`, plus the
 Step-3 structured direct integer-call result in `emit_call_with_result` and the
 Step-6 ordinary scalar integer and Step-7.5 ordinary scalar floating arithmetic
-branches in `emit_binary_rval_operand`, plus the Step-7.1 explicit scalar integer cast in
-`emit_cast_rval_operand` and the Step-7.2 ordinary scalar integer compare branch
-in `emit_binary_rval_operand`, plus the Step-7.3 scalar builtin-ffs select in
+branches in `emit_binary_rval_operand`, plus the Step-7.1 explicit scalar
+integer cast in `emit_cast_rval_operand` and the Step-7.2 integer / Step-7.6
+floating ordinary scalar compare branches in `emit_binary_rval_operand`, plus
+the Step-7.3 scalar builtin-ffs select in
 `emit_builtin_ffs_call` and the Step-7.4 integer builtin-abs result in
 `emit_post_builtin_call_operand`. Other active modern result constructions
 identified below still use `fresh_tmp`, an equivalent direct `%t` increment,
@@ -96,7 +97,7 @@ grouped only where they share one producer and disposition.
 | `LirGepOp`: `result,ptr,indices`; `element_type,inbounds` | Active in PR/PL/PX/PC/PV and PF parameter setup; CC-GEP-1 exact producer is PR selected-global array branch | CC-GEP-1 uses `fresh_value`, global `LinkNameId`, typed native indices; other routes use `fresh_tmp`, raw base, often raw `LirGepIndex` presentation | Native type/bool; ownership-ready; **741 exact** only for selected-global typed path | Preserve CC-GEP-1 as **regression neighbor**. Other paths require object/base and typed-index work; `lir_local_gep_identity.c`; **separate pointer/object family** |
 | `LirCallOp`: `result`; `callee,direct_callee_link_name_id`; `structured_args[].operand`; typed signature/type/ext/ABI fields; text mirrors | Active, PC: `prepare_call_args`, `emit_void_call`, `emit_call_with_result`, `make_lir_call_op_with_return_type_ref` | Structured direct integer result uses `fresh_value`; the common `OwnedLirTypedCallArg` stores `LirOperand`. Focused direct void fixed integer arguments preserve either the native immediate or the exact CC-LOAD-1 selected-global result ID, with exact type refs, when coercion keeps the representation; other arguments remain monostate compatibility | Direct integer result has exact ID ownership. The focused direct void fixed immediate and selected-global SSA rows have authority-first exact type/count/ext/result verification; SSA uses additionally resolve through current-function ownership | Steps 3-5 close scalar result, fixed immediate, and selected-global SSA rows on the common carrier; indirect/variadic/ABI/aggregate rows and intrinsic results remain unclaimed; text mirrors are presentation-only |
 | `LirBinOp`: `result,lhs,rhs`; `opcode,type_str` | Active, PB scalar/complex arithmetic and logical helpers; also PL compound assignment, PI builtins, PV, PS | Step-6 normalized ordinary scalar integer and Step-7.5 ordinary scalar floating arithmetic use `fresh_value`; unchanged authoritative operands retain the common carrier, while floating literals and unavailable producers remain monostate. Complex/vector/pointer/logical and other producers remain text-only with `fresh_tmp` | Native opcode/type refs plus exact result/use ownership for the two scalar rows; authoritative floating opcode/type alternatives must agree, and generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | `lir_scalar_ordinary_value_chain_identity.c` and `lir_scalar_floating_binary_result_use_identity.c` close only the representative integer and floating scalar seams. Complex/vector, pointer/object, logical-helper, and other producer rows remain distinct |
-| `LirCmpOp`: `result,lhs,rhs`; `is_float,predicate,type_str` | Active, PB comparisons/logical, PI FP/builtin checks, PV, PS loop/range lowering, `core.cpp` helpers; Step-7.2 representative is PB ordinary scalar integer comparison | Step-7.2 scalar integer comparison uses `fresh_value`, preserves unchanged source operands, and feeds the exact result operand into its existing normalization cast; other comparison producers remain text-only with `fresh_tmp` | Native integer predicate and exact compared type; authoritative integer results reject float mode/type/predicate conflict, while generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | `lir_scalar_compare_result_use_identity.c` closes only the representative ordinary integer compare/use row. Float, pointer, vector, logical-helper, builtin, vaarg, and statement comparison producers remain unclaimed |
+| `LirCmpOp`: `result,lhs,rhs`; `is_float,predicate,type_str` | Active, PB comparisons/logical, PI FP/builtin checks, PV, PS loop/range lowering, `core.cpp` helpers; Steps 7.2 and 7.6 own PB ordinary scalar integer and floating comparisons | The two PB scalar rows use `fresh_value`, preserve structurally available operands, and feed the exact result into the existing normalization cast; floating literals remain monostate. Other comparison producers remain text-only with `fresh_tmp` | Native mode/predicate/exact compared type must agree for authoritative integer and floating results; generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | `lir_scalar_compare_result_use_identity.c` and `lir_scalar_floating_compare_result_use_identity.c` close only the two PB ordinary scalar compare/use rows. Pointer, vector, complex/logical-helper, builtin, vaarg, and statement producers remain unclaimed |
 | `LirPhiOp`: `result`; `incoming[value,label]`; `type_str` | Active, PX `emit_rval_payload(TernaryExpr)`, PB `emit_logical`, PV AArch64/AMD64 joins | Result `fresh_tmp`; incoming value and predecessor are raw strings | Native result type only; result kind/nonempty incoming; incoming entries are not visited for value ownership | Result can share generic allocation, but incoming values need `LirOperand` and predecessors need `LirBlockId`; `lir_phi_identity.c`; **distinct value+CFG carrier** |
 | `LirSelectOp`: `result,cond,true_val,false_val`; `type_str` | Active only in PI `emit_builtin_ffs_call` | Step-7.3 i32 ffs route uses `fresh_value`, exact scalar type, native zero immediate, and returns the same result operand; condition/false arm remain honest monostate SSA compatibility and wider ffs narrowing remains raw | Authoritative integer select requires a native result and SSA condition shape; generic ownership rejects invalid/duplicate definitions and unknown/cross-function later uses | `lir_scalar_select_result_use_identity.c` closes the current i32 scalar select/use route. Wider narrowing and unavailable internal producer authority remain explicitly unclaimed |
 | `LirInsertElementOp`: `result,vec,elem,index`; `vec_type,elem_type` | Active, PB vector-scalar arithmetic branches | Text-only operands; result `fresh_tmp` | Native types; kind/type only and ownership-ready | `lir_insertelement_identity.c`; **generic result/use plus distinct vector/index semantics** |
@@ -313,9 +314,10 @@ authoritative integer result. Misleading compare-result/cast-operand displays
 with unchanged IDs pass.
 
 This packet does not reopen the Step-7.1 cast producer claim: the normalization
-cast has no authoritative result. Float, pointer, vector, logical-helper,
-builtin, vaarg, and statement comparison producers remain compatibility. Steps
-7.3 and 7.4 separately own the current scalar select and integer abs route;
+cast has no authoritative result. Step 7.6 separately owns the PB ordinary
+scalar floating comparison. Pointer, vector, complex/logical-helper, builtin,
+vaarg, and statement comparison producers remain compatibility. Steps 7.3 and
+7.4 separately own the current scalar select and integer abs route;
 pointer/object, aggregate/vector, CFG/parameters, other calls, inline assembly,
 and BIR are unchanged.
 
@@ -390,8 +392,32 @@ conflicts. Misleading result/use displays with unchanged IDs pass.
 
 This packet does not publish floating literal authority or broaden complex,
 vector, pointer, logical-helper, compound-assignment, builtin, vaarg, or
-statement binary producers. Previously closed cast/compare/select/abs/call
-families, CFG/parameters, inline assembly, and BIR remain unchanged.
+statement binary producers. Previously closed cast/integer-compare/select/abs/
+call families remain unchanged; Step 7.6 separately owns the PB ordinary
+floating comparison. CFG/parameters, inline assembly, and BIR remain unchanged.
+
+## Step-7.6 ordinary scalar floating compare contract
+
+The claimed row is PB's ordinary, nonpointer, nonvector scalar floating
+comparison after complex, vector, pointer, and logical-helper routes have
+exited. The existing comparison table now allocates this result through
+`fresh_value`, stores native floating mode, native `LirCmpPredicateRef`, and the
+exact compared `LirTypeRef`, then passes that same result operand to the
+existing i1-to-i32 normalization cast. Floating literals have no native payload
+carrier and remain honest monostate operands.
+
+The focused double OLt result has one valid function-owned ID, and the
+compatibility-result ZExt consumes that exact ID. Generic function ownership
+rejects invalid/duplicate results and unknown/cross-function uses. Reachable
+comparison verification requires authoritative mode, predicate family, and
+type family to agree: invalid predicates, integer predicates in floating mode,
+missing/integer compared types, and a false floating-mode claim reject.
+Misleading comparison-result/cast-operand displays with unchanged IDs pass.
+
+This packet does not publish the normalization cast result or broaden pointer,
+vector, complex, logical-helper, builtin, vaarg, statement, aggregate/object,
+CFG/parameter, call, inline-assembly, or BIR routes. All other Step-7 rows and
+previously closed producer families remain unchanged.
 
 ## Mechanical coverage check
 
@@ -441,6 +467,10 @@ Current-source spot checks used for this baseline:
   integer comparison through `fresh_value`, retains native integer predicate
   and compared type authority, and passes the exact result ID to its existing
   monostate-result normalization cast;
+- representative scalar floating compare: the same PB comparison table
+  allocates double OLt through `fresh_value`, retains native floating mode,
+  predicate, and exact compared type, and passes the exact result ID to the
+  compatibility-result normalization cast while literals remain monostate;
 - representative scalar select: `call/builtin.cpp` allocates the i32 ffs select
   through `fresh_value`, carries exact scalar type plus native zero authority,
   and returns the exact result ID to a later ordinary use while internal inputs

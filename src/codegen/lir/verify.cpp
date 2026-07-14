@@ -488,6 +488,24 @@ bool is_integer_cmp_predicate(LirCmpPredicate predicate) {
   }
 }
 
+bool is_floating_cmp_predicate(LirCmpPredicate predicate) {
+  switch (predicate) {
+    case LirCmpPredicate::OEq:
+    case LirCmpPredicate::ONe:
+    case LirCmpPredicate::OGt:
+    case LirCmpPredicate::OGe:
+    case LirCmpPredicate::OLt:
+    case LirCmpPredicate::OLe:
+    case LirCmpPredicate::UEq:
+    case LirCmpPredicate::UNe:
+    case LirCmpPredicate::Ord:
+    case LirCmpPredicate::Uno:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool is_floating_binary_opcode(LirBinaryOpcode opcode) {
   switch (opcode) {
     case LirBinaryOpcode::FAdd:
@@ -516,12 +534,24 @@ void verify_bin_op_authority(const LirBinOp& op) {
 
 void verify_cmp_op_authority(const LirCmpOp& op) {
   if (!op.result.value_id()) return;
-  if (op.is_float || op.type_str.kind() != LirTypeKind::Integer) {
+  const std::optional<LirCmpPredicate> predicate = op.predicate.typed();
+  if (!predicate) return;
+  if (op.is_float) {
+    if (op.type_str.kind() != LirTypeKind::Floating) {
+      fail_verify("LirCmpOp.type_str",
+                  "authoritative scalar floating compare requires floating type authority");
+    }
+    if (!is_floating_cmp_predicate(*predicate)) {
+      fail_verify("LirCmpOp.predicate",
+                  "authoritative scalar floating compare requires a floating predicate");
+    }
+    return;
+  }
+  if (op.type_str.kind() != LirTypeKind::Integer) {
     fail_verify("LirCmpOp.type_str",
                 "authoritative scalar integer compare requires integer type authority");
   }
-  const std::optional<LirCmpPredicate> predicate = op.predicate.typed();
-  if (!predicate || !is_integer_cmp_predicate(*predicate)) {
+  if (!is_integer_cmp_predicate(*predicate)) {
     fail_verify("LirCmpOp.predicate",
                 "authoritative scalar integer compare requires an integer predicate");
   }

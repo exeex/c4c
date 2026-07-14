@@ -509,15 +509,22 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
           l_is_int && r_is_int && is_any_int(lts.base) &&
           lts.ptr_level == 0 && lts.array_rank == 0 &&
           !is_vector_value(lts);
-      const LirOperand cmp_result = authoritative_scalar_integer_compare
+      const bool authoritative_scalar_floating_compare =
+          l_is_flt && r_is_flt && is_float_base(lts.base) &&
+          lts.ptr_level == 0 && lts.array_rank == 0 &&
+          !is_vector_value(lts);
+      const bool authoritative_scalar_compare =
+          authoritative_scalar_integer_compare ||
+          authoritative_scalar_floating_compare;
+      const LirOperand cmp_result = authoritative_scalar_compare
                                         ? fresh_value(ctx)
                                         : LirOperand(fresh_tmp(ctx));
-      const LirOperand lhs = authoritative_scalar_integer_compare &&
+      const LirOperand lhs = authoritative_scalar_compare &&
                                      source_lv.has_authority() &&
                                      source_lv.str() == lv
                                  ? source_lv
                                  : LirOperand(lv);
-      const LirOperand rhs = authoritative_scalar_integer_compare &&
+      const LirOperand rhs = authoritative_scalar_compare &&
                                      source_rv.has_authority() &&
                                      source_rv.str() == rv
                                  ? source_rv

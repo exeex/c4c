@@ -2561,6 +2561,148 @@ int lir_scalar_compare_result_use_identity(void) {
       "verifier should reject floating type on authoritative integer compare");
 }
 
+void test_scalar_floating_compare_result_use_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int lir_scalar_floating_compare_result_use_identity(void) {
+  return 1.25 < 2.5;
+}
+)c", "x86_64-linux-gnu");
+
+  lir::LirFunction& function = require_function(
+      lowered, "lir_scalar_floating_compare_result_use_identity");
+  lir::LirCmpOp* comparison = nullptr;
+  lir::LirCastOp* normalization = nullptr;
+  for (auto& block : function.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* candidate = std::get_if<lir::LirCmpOp>(&inst)) {
+        comparison = candidate;
+      }
+      if (auto* candidate = std::get_if<lir::LirCastOp>(&inst)) {
+        normalization = candidate;
+      }
+    }
+  }
+  expect_true(comparison && normalization && comparison->is_float &&
+                  comparison->predicate.typed() == lir::LirCmpPredicate::OLt &&
+                  comparison->type_str.kind() == lir::LirTypeKind::Floating &&
+                  comparison->type_str.str() == "double" &&
+                  comparison->result.value_id() &&
+                  comparison->result.value_id()->valid() &&
+                  !comparison->lhs.has_authority() &&
+                  !comparison->rhs.has_authority() &&
+                  normalization->kind == lir::LirCastKind::ZExt &&
+                  normalization->from_type.kind() == lir::LirTypeKind::Integer &&
+                  normalization->from_type.integer_bit_width() == 1 &&
+                  normalization->to_type.kind() == lir::LirTypeKind::Integer &&
+                  normalization->to_type.integer_bit_width() == 32 &&
+                  normalization->operand.value_id() &&
+                  *normalization->operand.value_id() ==
+                      *comparison->result.value_id() &&
+                  !normalization->result.has_authority(),
+              "scalar floating compare should retain native mode/predicate/type and exact normalization use ID");
+  lir::verify_module(lowered);
+
+  const auto require_focused_compare = [](lir::LirModule& module)
+      -> std::pair<lir::LirCmpOp&, lir::LirCastOp&> {
+    lir::LirFunction& focused = require_function(
+        module, "lir_scalar_floating_compare_result_use_identity");
+    lir::LirCmpOp* found_comparison = nullptr;
+    lir::LirCastOp* found_normalization = nullptr;
+    for (auto& block : focused.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirCmpOp>(&inst)) {
+          expect_true(found_comparison == nullptr,
+                      "focused floating-compare fixture should contain one comparison");
+          found_comparison = candidate;
+        }
+        if (auto* candidate = std::get_if<lir::LirCastOp>(&inst)) {
+          expect_true(found_normalization == nullptr,
+                      "focused floating-compare fixture should contain one normalization cast");
+          found_normalization = candidate;
+        }
+      }
+    }
+    expect_true(found_comparison && found_comparison->result.value_id() &&
+                    found_normalization,
+                "focused floating-compare fixture should contain its result/use pair");
+    return {*found_comparison, *found_normalization};
+  };
+
+  lir::LirModule misleading = lowered;
+  auto [misleading_compare, misleading_use] =
+      require_focused_compare(misleading);
+  misleading_compare.result.str() = "@rendered-not-floating-compare-result";
+  misleading_use.operand.str() = "7";
+  lir::verify_module(misleading);
+
+  lir::LirModule invalid_result = lowered;
+  require_focused_compare(invalid_result).first.result =
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_result,
+      "verifier should reject invalid scalar floating compare result ID");
+
+  lir::LirModule duplicate_result = lowered;
+  auto [duplicate_compare, duplicate_use] =
+      require_focused_compare(duplicate_result);
+  duplicate_use.result = lir::LirOperand::ssa(
+      "%duplicate", *duplicate_compare.result.value_id());
+  expect_identity_verification_rejected(
+      duplicate_result,
+      "verifier should reject duplicate scalar floating compare result ID");
+
+  lir::LirModule unknown_use = lowered;
+  require_focused_compare(unknown_use).second.operand =
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_use, "verifier should reject unknown scalar floating compare use");
+
+  lir::LirModule cross_function_use = lowered;
+  cross_function_use.functions.push_back(
+      make_identity_test_function("scalar_floating_compare_owner",
+                                  lir::LirValueId{99}));
+  require_focused_compare(cross_function_use).second.operand =
+      lir::LirOperand::ssa("%cross", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      cross_function_use,
+      "verifier should reject cross-function scalar floating compare use");
+
+  lir::LirModule invalid_predicate = lowered;
+  require_focused_compare(invalid_predicate).first.predicate =
+      lir::LirCmpPredicateRef("not-a-compare-predicate");
+  expect_identity_verification_rejected(
+      invalid_predicate,
+      "verifier should reject invalid scalar floating compare predicate");
+
+  lir::LirModule wrong_family_predicate = lowered;
+  require_focused_compare(wrong_family_predicate).first.predicate =
+      lir::LirCmpPredicate::Slt;
+  expect_identity_verification_rejected(
+      wrong_family_predicate,
+      "verifier should reject integer predicate on floating compare mode");
+
+  lir::LirModule missing_type = lowered;
+  require_focused_compare(missing_type).first.type_str = lir::LirTypeRef{};
+  expect_identity_verification_rejected(
+      missing_type,
+      "verifier should reject missing scalar floating compare type authority");
+
+  lir::LirModule conflicting_type = lowered;
+  require_focused_compare(conflicting_type).first.type_str =
+      lir::LirTypeRef::integer(64);
+  expect_identity_verification_rejected(
+      conflicting_type,
+      "verifier should reject integer type on floating compare mode");
+
+  lir::LirModule conflicting_mode = lowered;
+  require_focused_compare(conflicting_mode).first.is_float = false;
+  expect_identity_verification_rejected(
+      conflicting_mode,
+      "verifier should reject integer mode on authoritative floating comparison");
+}
+
 void test_scalar_select_result_use_identity_boundary() {
   namespace lir = c4c::codegen::lir;
 
@@ -3264,6 +3406,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_floating_binary_result_use_identity_boundary();
   test_scalar_cast_result_use_identity_boundary();
   test_scalar_compare_result_use_identity_boundary();
+  test_scalar_floating_compare_result_use_identity_boundary();
   test_scalar_select_result_use_identity_boundary();
   test_scalar_abs_result_use_identity_boundary();
 
