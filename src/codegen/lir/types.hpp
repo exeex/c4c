@@ -94,6 +94,15 @@ class LirTypeRef {
     return runtime_text(std::move(text));
   }
 
+  // Parsed LIR call return types are re-owned runtime text from input, not a
+  // closed set of builtins. Dynamic aggregate, vector, struct, and function
+  // spellings must remain supported through this local compatibility boundary.
+  [[nodiscard, deprecated(
+      "parsed/re-owned LIR typed-call return text: audit this compatibility boundary")]]
+  static LirTypeRef parsed_typed_call_return_text(std::string text) {
+    return runtime_text(std::move(text));
+  }
+
   [[nodiscard]] static LirTypeRef vrm_register(unsigned width) {
     LirTypeRef type("c4c.vrm" + std::to_string(width), LirTypeKind::VrmRegister);
     type.vrm_width_ = width;

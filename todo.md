@@ -8,17 +8,17 @@ Current Step Title: Repair the targeted warning-inventory route
 
 ## Just Finished
 
-- Step 6 first narrow repair packet complete: added the deprecated,
-  searchable `LirTypeRef::parsed_typed_call_argument_text` compatibility
-  boundary for parsed/re-owned typed-call argument text. Its only selected
-  warning sites are `own_lir_typed_call_args` and the empty-mirror fallback in
-  `lir_call_arg_type_refs`; both document that dynamic aggregate, vector,
-  struct, and function spellings remain runtime-text compatibility paths.
+- Step 6 targeted warning-inventory repair complete: added the deprecated,
+  searchable `LirTypeRef::parsed_typed_call_return_text` compatibility
+  boundary and used it only when `make_lir_call_op` re-owns parsed typed-call
+  return text. The existing parsed argument boundary remains unchanged; both
+  local boundaries retain dynamic aggregate, vector, struct, and function
+  spellings as runtime-text compatibility paths.
 
 ## Suggested Next
 
-- Step 6: inspect the two warned parsed/re-owned typed-call sites and select
-  the next bounded closed-set migration or retained compatibility boundary.
+- Step 6: inspect the remaining warning inventory and select the next bounded
+  closed-set migration or retained runtime-text compatibility boundary.
 
 ## Watchouts
 
@@ -34,11 +34,13 @@ Current Step Title: Repair the targeted warning-inventory route
 - The parsed typed-call boundary intentionally covers text supplied by the
   parser and its legacy string-mirror fallback; do not treat it as evidence
   that the generic `LirTypeRef` constructors should be deprecated.
+- The parsed typed-call return boundary is intentionally limited to
+  `make_lir_call_op`; do not broaden it to unrelated return-type construction.
 
 ## Proof
 
-- `cmake --build --preset default` succeeded and emitted only the scoped
-  `parsed_typed_call_argument_text` deprecation warnings for the two selected
-  parsed/re-owned typed-call sites.
+- `cmake --build --preset default` succeeded. Its only deprecation warning
+  names were the deliberate local `parsed_typed_call_argument_text` and
+  `parsed_typed_call_return_text` inventory boundaries.
 - `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log`
   passed; `test_after.log` is the focused proof log.

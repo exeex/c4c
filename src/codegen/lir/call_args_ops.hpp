@@ -123,7 +123,8 @@ inline LirCallOp make_lir_call_op(std::string result,
                                   std::optional<LirCallSignature> callee_signature = std::nullopt) {
   return make_lir_call_op_with_return_type_ref(
       LirOperand(std::string(trim_lir_arg_text(result))),
-      LirTypeRef(std::string(trim_lir_arg_text(return_type))),
+      LirTypeRef::parsed_typed_call_return_text(
+          std::string(trim_lir_arg_text(return_type))),
       std::move(callee),
       callee_type_suffix,
       args,
