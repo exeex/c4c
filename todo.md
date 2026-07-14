@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/776_lir_typed_expression_result_carrier_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Establish the typed expression-result carrier boundary
+Current Step ID: 2
+Current Step Title: Isolate the ternary/coerce result path
 
 ## Just Finished
 
