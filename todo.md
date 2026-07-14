@@ -8,32 +8,30 @@ Current Step Title: Publish direct scalar float call-result authority
 
 ## Just Finished
 
-- Completed Plan Step 7.28: the existing direct-call producer now allocates a
-  fresh `LirValueId` for exactly a direct, fixed, nonvariadic, zero-argument
-  `double` result call, and its ordinary `double` FAdd use preserves that ID.
-- Step 7.28's native-only verifier checks the module-owned direct callee ID,
-  exact empty signature, matching `double` return refs, result authority, and
-  floating use shape while display-only mutations remain compatible.
+- Completed Plan Step 7.29: a direct, fixed, nonvariadic, zero-argument
+  native `float` call now allocates a fresh `LirValueId` and preserves it into
+  an ordinary `float` FAdd, alongside the existing direct `double` route.
+- The native-only float verifier requires module-owned direct callee ID, exact
+  empty signature, matching `float` return refs, and result authority; focused
+  coverage rejects result, ownership, signature, return, opcode, and operand
+  type conflicts while display-only mutations remain compatible.
 
 ## Suggested Next
 
-- Executor: implement only a direct, fixed, nonvariadic, zero-argument `float`
-  result call whose exact fresh result ID flows to an ordinary `float` FAdd.
-  Require the native direct-callee `LinkNameId`, zero-parameter structured
-  signature, matching `float` return refs, a fresh result ID, same-ID FAdd use,
-  display independence, and reachable rejection of missing, invalid, or
-  duplicate results; unknown or cross-owner uses; callee/signature/count/
-  variadic/return-type conflicts; and floating opcode/operand/type conflicts.
+- Supervisor: select the next bounded active-plan packet; this packet does not
+  broaden direct call-result authority beyond the completed zero-argument
+  `float` row.
 
 ## Watchouts
 
-- This packet excludes integer and `double` calls, call arguments, indirect,
-  variadic, and ABI-expanded calls, conversions, other floating operations,
-  BIR, and every separate family. Native IDs and type refs, never rendered
-  spelling, govern the route.
+- The completed float row excludes call arguments, indirect, variadic, and
+  ABI-expanded calls, conversions, other floating operations, BIR, and every
+  separate family. Native IDs and type refs, never rendered spelling, govern
+  the route.
 
 ## Proof
 
-- Proposed proof: `cmake --build --preset default && ctest --test-dir build -R
+- Passed: `cmake --build --preset default && ctest --test-dir build -R
   '^frontend_lir_call_type_ref$' --output-on-failure > test_after.log 2>&1`.
-- Also run `git diff --check`.
+  The focused test log is `test_after.log`.
+- Also passed: `git diff --check`.
