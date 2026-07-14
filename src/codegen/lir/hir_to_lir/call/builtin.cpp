@@ -26,13 +26,27 @@ std::string StmtEmitter::narrow_builtin_int_result(FnCtx& ctx,
 LirOperand StmtEmitter::emit_builtin_ffs_call(FnCtx& ctx, ExprId arg_id,
                                               BuiltinId builtin_id) {
   const PreparedBuiltinIntArg arg = prepare_builtin_int_arg(ctx, arg_id, builtin_id);
-  const std::string cttz = fresh_tmp(ctx);
-  emit_lir_op(ctx, make_lir_call_op(cttz, arg.llvm_ty, "@llvm.cttz." + arg.llvm_ty, "",
-                                    {{arg.llvm_ty, arg.value}, {"i1", "false"}}));
+  const std::string intrinsic_name = "llvm.cttz." + arg.llvm_ty;
+  const std::string intrinsic_callee = "@" + intrinsic_name;
+  const LinkNameId intrinsic_id = module_->link_names.intern(intrinsic_name);
+  const LirTypeRef integer_type(arg.llvm_ty);
+  LirCallSignature signature;
+  signature.return_type_ref = integer_type;
+  signature.fixed_param_types = {arg.llvm_ty, "i1"};
+  signature.fixed_param_type_refs = {integer_type, LirTypeRef::integer(1)};
+  const LirOperand cttz = fresh_value(ctx);
+  LirCallOp cttz_call = make_lir_call_op_with_return_type_ref(
+      cttz, integer_type, intrinsic_callee, "",
+      {{arg.llvm_ty, LirOperand(arg.value), integer_type},
+       {"i1", LirOperand::integer("false", 0), LirTypeRef::integer(1)}},
+      intrinsic_id, std::move(signature));
+  cttz_call.callee = LirOperand::global(intrinsic_callee, intrinsic_id);
+  cttz_call.intrinsic_kind = LirIntrinsicKind::Cttz;
+  emit_lir_op(ctx, std::move(cttz_call));
   const LirOperand plus1 = fresh_value(ctx);
   emit_lir_op(ctx, lir::LirBinOp{
                        plus1, LirBinaryOpcodeRef(LirBinaryOpcode::Add),
-                       LirTypeRef(arg.llvm_ty), LirOperand(cttz),
+                       integer_type, cttz,
                        LirOperand::integer("1", 1)});
   const LirOperand is_zero = fresh_value(ctx);
   emit_lir_op(ctx, lir::LirCmpOp{

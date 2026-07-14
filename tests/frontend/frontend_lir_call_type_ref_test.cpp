@@ -3770,7 +3770,10 @@ int lir_wide_ffs_select_trunc_identity(void) {
           later_use->lhs.value_id() &&
           *later_use->lhs.value_id() == *trunc->result.value_id(),
       "wide ffs should preserve exact select-to-trunc-to-use identities");
-  expect_true(!cttz->result.has_authority() &&
+  expect_true(cttz->result.value_id() &&
+                  builtin_plus_one->lhs.value_id() &&
+                  *builtin_plus_one->lhs.value_id() ==
+                      *cttz->result.value_id() &&
                   builtin_plus_one->result.value_id() &&
                   select->false_val.value_id() &&
                   *select->false_val.value_id() ==
@@ -3956,7 +3959,7 @@ int lir_ffs_plus_one_i64(void) {
             pair.plus_one->type_str.kind() == lir::LirTypeKind::Integer &&
             pair.plus_one->type_str.integer_bit_width() == width &&
             pair.plus_one->lhs.kind() == lir::LirOperandKind::SsaValue &&
-            !pair.plus_one->lhs.has_authority() &&
+            pair.plus_one->lhs.value_id() && pair.plus_one->lhs.value_id()->valid() &&
             pair.plus_one->rhs.integer_immediate() &&
             pair.plus_one->rhs.integer_immediate()->value == 1 &&
             pair.select->false_val.value_id() &&
@@ -4150,7 +4153,7 @@ int lir_ffs_zero_compare_i64(void) {
   const auto expect_width_contract = [](const FocusedPair& pair,
                                         unsigned width) {
     expect_true(
-        !pair.cttz->result.has_authority() &&
+        pair.cttz->result.value_id() && pair.cttz->result.value_id()->valid() &&
             pair.comparison->result.value_id() &&
             pair.comparison->result.value_id()->valid() &&
             !pair.comparison->is_float &&
@@ -4267,6 +4270,257 @@ int lir_ffs_zero_compare_i64(void) {
   expect_identity_verification_rejected(
       unrepresentable_zero,
       "verifier should reject unrepresentable ffs comparison immediate");
+}
+
+void test_builtin_ffs_cttz_call_result_add_use_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int lir_ffs_cttz_i32_source;
+long long lir_ffs_cttz_i64_source;
+int lir_ffs_cttz_i32(void) {
+  return __builtin_ffs(lir_ffs_cttz_i32_source);
+}
+int lir_ffs_cttz_i64(void) {
+  return __builtin_ffsll(lir_ffs_cttz_i64_source);
+}
+int lir_ffs_cttz_i32_literal(void) {
+  return __builtin_ffs(7);
+}
+int lir_ffs_cttz_i64_literal(void) {
+  return __builtin_ffsll(7LL);
+}
+)c", "x86_64-linux-gnu");
+
+  struct FocusedPair {
+    lir::LirCallOp* call = nullptr;
+    lir::LirBinOp* plus_one = nullptr;
+  };
+  const auto require_focused_pair = [](lir::LirModule& module,
+                                       std::string_view function_name) {
+    lir::LirFunction& focused = require_function(module, function_name);
+    FocusedPair pair;
+    for (auto& block : focused.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* call = std::get_if<lir::LirCallOp>(&inst)) {
+          expect_true(pair.call == nullptr,
+                      "focused ffs fixture should contain one cttz call");
+          pair.call = call;
+        }
+        if (auto* binary = std::get_if<lir::LirBinOp>(&inst)) {
+          expect_true(pair.plus_one == nullptr,
+                      "focused ffs fixture should contain one add-one binary");
+          pair.plus_one = binary;
+        }
+      }
+    }
+    expect_true(pair.call && pair.plus_one,
+                "focused ffs fixture should contain cttz/add-one pair");
+    return pair;
+  };
+
+  FocusedPair i32 = require_focused_pair(lowered, "lir_ffs_cttz_i32");
+  FocusedPair i64 = require_focused_pair(lowered, "lir_ffs_cttz_i64");
+  FocusedPair i32_literal =
+      require_focused_pair(lowered, "lir_ffs_cttz_i32_literal");
+  FocusedPair i64_literal =
+      require_focused_pair(lowered, "lir_ffs_cttz_i64_literal");
+  const auto expect_width_contract = [&lowered](const FocusedPair& pair,
+                                                unsigned width,
+                                                lir::LirOperandKind value_kind) {
+    const lir::LirCallSignature* signature =
+        pair.call->callee_signature ? &*pair.call->callee_signature : nullptr;
+    expect_true(
+        pair.call->result.value_id() && pair.call->result.value_id()->valid() &&
+            pair.call->intrinsic_kind == lir::LirIntrinsicKind::Cttz &&
+            pair.call->return_type.kind() == lir::LirTypeKind::Integer &&
+            pair.call->return_type.integer_bit_width() == width &&
+            pair.call->callee.link_name_id() &&
+            pair.call->direct_callee_link_name_id ==
+                *pair.call->callee.link_name_id() &&
+            lowered.link_names.spelling(*pair.call->callee.link_name_id()) ==
+                "llvm.cttz.i" + std::to_string(width) &&
+            signature && signature->return_type_ref &&
+            *signature->return_type_ref == pair.call->return_type &&
+            !signature->is_variadic && !signature->has_unspecified_params &&
+            !signature->has_void_param_list &&
+            signature->fixed_param_type_refs.size() == 2 &&
+            signature->fixed_param_type_refs[0] == pair.call->return_type &&
+            signature->fixed_param_type_refs[1].integer_bit_width() == 1 &&
+            pair.call->arg_type_refs.size() == 2 &&
+            pair.call->arg_type_refs[0] == pair.call->return_type &&
+            pair.call->arg_type_refs[1].integer_bit_width() == 1 &&
+            pair.call->structured_args.size() == 2 &&
+            pair.call->structured_args[0].type_ref == pair.call->return_type &&
+            pair.call->structured_args[0].operand.kind() == value_kind &&
+            !pair.call->structured_args[0].operand.has_authority() &&
+            pair.call->structured_args[1].type_ref.integer_bit_width() == 1 &&
+            pair.call->structured_args[1].operand.integer_immediate() &&
+            pair.call->structured_args[1].operand.integer_immediate()->value == 0 &&
+            pair.plus_one->lhs.value_id() &&
+            *pair.plus_one->lhs.value_id() == *pair.call->result.value_id(),
+        "ffs cttz should preserve callee/signature/argument/result authority into add-one");
+  };
+  expect_width_contract(i32, 32, lir::LirOperandKind::SsaValue);
+  expect_width_contract(i64, 64, lir::LirOperandKind::SsaValue);
+  expect_width_contract(i32_literal, 32, lir::LirOperandKind::Immediate);
+  expect_width_contract(i64_literal, 64, lir::LirOperandKind::Immediate);
+  lir::verify_module(lowered);
+
+  lir::LirModule misleading = lowered;
+  FocusedPair misleading_i32 =
+      require_focused_pair(misleading, "lir_ffs_cttz_i32");
+  FocusedPair misleading_i64 =
+      require_focused_pair(misleading, "lir_ffs_cttz_i64");
+  misleading_i32.call->result.str() = "@rendered-not-cttz-result";
+  misleading_i32.call->callee.str() = "%rendered-not-cttz-callee";
+  misleading_i32.call->args_str = "rendered-not-cttz-arguments";
+  misleading_i32.plus_one->lhs.str() = "7";
+  misleading_i64.call->result.str() = "8";
+  misleading_i64.call->callee.str() = "%rendered-not-wide-cttz";
+  misleading_i64.plus_one->lhs.str() = "@rendered-not-wide-add-lhs";
+  lir::verify_module(misleading);
+
+  lir::LirModule missing_result = lowered;
+  require_focused_pair(missing_result, "lir_ffs_cttz_i32").call->result =
+      lir::LirOperand("%missing");
+  expect_identity_verification_rejected(
+      missing_result, "verifier should reject ffs cttz without result authority");
+
+  lir::LirModule invalid_result = lowered;
+  require_focused_pair(invalid_result, "lir_ffs_cttz_i32").call->result =
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_result, "verifier should reject invalid ffs cttz result ID");
+
+  lir::LirModule duplicate_result = lowered;
+  FocusedPair duplicate =
+      require_focused_pair(duplicate_result, "lir_ffs_cttz_i32");
+  duplicate.plus_one->result = lir::LirOperand::ssa(
+      "%duplicate", *duplicate.call->result.value_id());
+  expect_identity_verification_rejected(
+      duplicate_result, "verifier should reject duplicate ffs cttz result ID");
+
+  lir::LirModule unknown_use = lowered;
+  require_focused_pair(unknown_use, "lir_ffs_cttz_i32").plus_one->lhs =
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_use, "verifier should reject unknown ffs cttz add-one use");
+
+  lir::LirModule cross_function_use = lowered;
+  cross_function_use.functions.push_back(
+      make_identity_test_function("ffs_cttz_owner", lir::LirValueId{99}));
+  require_focused_pair(cross_function_use, "lir_ffs_cttz_i64")
+      .plus_one->lhs = lir::LirOperand::ssa("%cross", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      cross_function_use,
+      "verifier should reject cross-function ffs cttz add-one use");
+
+  lir::LirModule missing_callee_authority = lowered;
+  FocusedPair missing_callee =
+      require_focused_pair(missing_callee_authority, "lir_ffs_cttz_i32");
+  missing_callee.call->callee = lir::LirOperand(missing_callee.call->callee.str());
+  expect_identity_verification_rejected(
+      missing_callee_authority,
+      "verifier should reject ffs cttz without callee authority");
+
+  lir::LirModule conflicting_callee_authority = lowered;
+  require_focused_pair(conflicting_callee_authority, "lir_ffs_cttz_i32")
+      .call->direct_callee_link_name_id = c4c::LinkNameId{99};
+  expect_identity_verification_rejected(
+      conflicting_callee_authority,
+      "verifier should reject conflicting ffs cttz callee authority");
+
+  lir::LirModule unresolved_callee = lowered;
+  FocusedPair unresolved =
+      require_focused_pair(unresolved_callee, "lir_ffs_cttz_i64");
+  unresolved.call->callee =
+      lir::LirOperand::global("@unresolved", c4c::LinkNameId{99});
+  unresolved.call->direct_callee_link_name_id = c4c::LinkNameId{99};
+  expect_identity_verification_rejected(
+      unresolved_callee, "verifier should reject unresolved ffs cttz callee ID");
+
+  lir::LirModule missing_signature = lowered;
+  require_focused_pair(missing_signature, "lir_ffs_cttz_i32")
+      .call->callee_signature.reset();
+  expect_identity_verification_rejected(
+      missing_signature, "verifier should reject missing ffs cttz signature");
+
+  lir::LirModule variadic_signature = lowered;
+  require_focused_pair(variadic_signature, "lir_ffs_cttz_i32")
+      .call->callee_signature->is_variadic = true;
+  expect_identity_verification_rejected(
+      variadic_signature, "verifier should reject variadic ffs cttz signature");
+
+  lir::LirModule missing_return_ref = lowered;
+  require_focused_pair(missing_return_ref, "lir_ffs_cttz_i64")
+      .call->callee_signature->return_type_ref.reset();
+  expect_identity_verification_rejected(
+      missing_return_ref, "verifier should reject missing ffs cttz return ref");
+
+  lir::LirModule wrong_return_type = lowered;
+  require_focused_pair(wrong_return_type, "lir_ffs_cttz_i64")
+      .call->return_type = lir::LirTypeRef("double");
+  expect_identity_verification_rejected(
+      wrong_return_type, "verifier should reject conflicting ffs cttz return type");
+
+  lir::LirModule wrong_parameter_type = lowered;
+  require_focused_pair(wrong_parameter_type, "lir_ffs_cttz_i64")
+      .call->callee_signature->fixed_param_type_refs[0] =
+      lir::LirTypeRef::integer(32);
+  expect_identity_verification_rejected(
+      wrong_parameter_type,
+      "verifier should reject conflicting ffs cttz parameter type");
+
+  lir::LirModule missing_argument = lowered;
+  require_focused_pair(missing_argument, "lir_ffs_cttz_i32")
+      .call->structured_args.pop_back();
+  expect_identity_verification_rejected(
+      missing_argument, "verifier should reject missing ffs cttz argument");
+
+  lir::LirModule wrong_argument_mirror = lowered;
+  require_focused_pair(wrong_argument_mirror, "lir_ffs_cttz_i32")
+      .call->arg_type_refs[0] = lir::LirTypeRef::integer(64);
+  expect_identity_verification_rejected(
+      wrong_argument_mirror,
+      "verifier should reject conflicting ffs cttz argument mirror");
+
+  lir::LirModule wrong_value_authority = lowered;
+  require_focused_pair(wrong_value_authority, "lir_ffs_cttz_i32")
+      .call->structured_args[0].operand =
+      lir::LirOperand::global("@not-a-value", c4c::LinkNameId{99});
+  expect_identity_verification_rejected(
+      wrong_value_authority,
+      "verifier should reject non-SSA ffs cttz value authority");
+
+  lir::LirModule literal_value_authority = lowered;
+  require_focused_pair(literal_value_authority, "lir_ffs_cttz_i32_literal")
+      .call->structured_args[0].operand = lir::LirOperand::integer("7", 7);
+  expect_identity_verification_rejected(
+      literal_value_authority,
+      "verifier should reject payload authority on compatible ffs literal input");
+
+  lir::LirModule unknown_value_authority = lowered;
+  require_focused_pair(unknown_value_authority, "lir_ffs_cttz_i64")
+      .call->structured_args[0].operand =
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_value_authority,
+      "verifier should reject unknown ffs cttz value argument authority");
+
+  lir::LirModule wrong_flag_authority = lowered;
+  require_focused_pair(wrong_flag_authority, "lir_ffs_cttz_i32")
+      .call->structured_args[1].operand =
+      lir::LirOperand::global("@not-false", c4c::LinkNameId{99});
+  expect_identity_verification_rejected(
+      wrong_flag_authority,
+      "verifier should reject non-immediate ffs cttz flag authority");
+
+  lir::LirModule wrong_flag_value = lowered;
+  require_focused_pair(wrong_flag_value, "lir_ffs_cttz_i32")
+      .call->structured_args[1].operand = lir::LirOperand::integer("true", 1);
+  expect_identity_verification_rejected(
+      wrong_flag_value, "verifier should reject nonfalse ffs cttz flag");
 }
 
 void test_scalar_abs_result_use_identity_boundary() {
@@ -4834,6 +5088,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_wide_ffs_select_trunc_result_use_identity_boundary();
   test_builtin_ffs_plus_one_select_use_identity_boundary();
   test_builtin_ffs_zero_compare_select_condition_identity_boundary();
+  test_builtin_ffs_cttz_call_result_add_use_identity_boundary();
   test_scalar_abs_result_use_identity_boundary();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";

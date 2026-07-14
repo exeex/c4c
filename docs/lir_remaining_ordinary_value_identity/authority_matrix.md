@@ -24,9 +24,9 @@ branches in `emit_binary_rval_operand`, plus the Step-7.1 explicit scalar
 integer, Steps 7.7/7.8 explicit scalar FPTrunc/FPExt casts, Steps 7.9/7.10
 explicit scalar SIToFP/UIToFP casts, and the Steps 7.11/7.12 explicit scalar
 FPToSI/FPToUI casts in `emit_cast_rval_operand`, plus the Step-7.13 wide
-builtin-ffs select narrowing cast, Step-7.14 shared ffs add-one result, and
-Step-7.15 shared ffs zero-comparison result, plus the Step-7.2 integer /
-Step-7.6 floating ordinary
+builtin-ffs select narrowing cast, Step-7.14 shared ffs add-one result,
+Step-7.15 shared ffs zero-comparison result, and Step-7.16 shared ffs cttz call
+result, plus the Step-7.2 integer / Step-7.6 floating ordinary
 scalar compare branches in `emit_binary_rval_operand`, plus the Step-7.3 scalar builtin-ffs select in
 `emit_builtin_ffs_call` and the Step-7.4 integer builtin-abs result in
 `emit_post_builtin_call_operand`. Other active modern result constructions
@@ -99,11 +99,11 @@ grouped only where they share one producer and disposition.
 | `LirMemsetOp`: `dst,byte_val,size`; `is_volatile` | Active, PL `emit_store_assignable_value` zero aggregate and PS `emit_non_control_flow_stmt(LocalDecl)` | Text-only/monostate operands; no result | Native bool; verifier kinds only | `lir_memset_native_use_identity.c`; **separate memory/object family** |
 | `LirCastOp`: `result,operand`; `kind,from_type,to_type` | Active in PX/PB/PL/PC/PI/PV/PO and PF fixed-vector parameter setup; Steps 7.1 and 7.7-7.12 own PX explicit scalar cast routes, while Step 7.13 owns only PI's wide builtin-ffs select narrowing | The focused routes use `fresh_value`, exact input `LirOperand`, and the operand-returning coercion wrapper. Step 7.13 reuses the integer seam for an authoritative i64 select source and exact i64-to-i32 Trunc; other builtin narrowing and cast producers remain text-only with `fresh_tmp` | Native kind and exact endpoints; authoritative integer casts require coherent widths, floating casts and conversions require exact endpoint families, and generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | The focused scalar cast probes close the representative PX routes plus only the wide ffs select-to-Trunc-to-use chain. Pointer, bitcast, vector, aggregate, implicit coercion, other builtins, and other producers remain unclaimed |
 | `LirGepOp`: `result,ptr,indices`; `element_type,inbounds` | Active in PR/PL/PX/PC/PV and PF parameter setup; CC-GEP-1 exact producer is PR selected-global array branch | CC-GEP-1 uses `fresh_value`, global `LinkNameId`, typed native indices; other routes use `fresh_tmp`, raw base, often raw `LirGepIndex` presentation | Native type/bool; ownership-ready; **741 exact** only for selected-global typed path | Preserve CC-GEP-1 as **regression neighbor**. Other paths require object/base and typed-index work; `lir_local_gep_identity.c`; **separate pointer/object family** |
-| `LirCallOp`: `result`; `callee,direct_callee_link_name_id`; `structured_args[].operand`; typed signature/type/ext/ABI fields; text mirrors | Active, PC: `prepare_call_args`, `emit_void_call`, `emit_call_with_result`, `make_lir_call_op_with_return_type_ref` | Structured direct integer result uses `fresh_value`; the common `OwnedLirTypedCallArg` stores `LirOperand`. Focused direct void fixed integer arguments preserve either the native immediate or the exact CC-LOAD-1 selected-global result ID, with exact type refs, when coercion keeps the representation; other arguments remain monostate compatibility | Direct integer result has exact ID ownership. The focused direct void fixed immediate and selected-global SSA rows have authority-first exact type/count/ext/result verification; SSA uses additionally resolve through current-function ownership | Steps 3-5 close scalar result, fixed immediate, and selected-global SSA rows on the common carrier; indirect/variadic/ABI/aggregate rows and intrinsic results remain unclaimed; text mirrors are presentation-only |
-| `LirBinOp`: `result,lhs,rhs`; `opcode,type_str` | Active, PB scalar/complex arithmetic and logical helpers; also PL compound assignment, PI builtins, PV, PS | Step-6 ordinary scalar integer, Step-7.5 ordinary scalar floating arithmetic, and Step-7.14 PI i32/i64 ffs add-one use `fresh_value`. Ordinary integer immediates retain authority only when representable by the normalized operation type; the ffs row keeps cttz lhs monostate, publishes exact immediate one, and preserves the result ID as the select false arm | Native opcode/type refs plus exact ownership; authoritative floating opcode/type alternatives agree, and authoritative integer operand alternatives are SSA or representable integer immediates when present. Generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | The ordinary scalar probes plus the focused i32/i64 ffs add-one probe close only those rows. Converted modulo/bit-pattern literals remain compatibility operands. Other builtins, complex/vector, pointer/object, logical-helper, and other producers remain distinct |
+| `LirCallOp`: `result`; `callee,direct_callee_link_name_id`; `intrinsic_kind`; `structured_args[].operand`; typed signature/type/ext/ABI fields; text mirrors | Active in PC and PI; common builders include `make_lir_call_op_with_return_type_ref` | Structured direct integer results use `fresh_value`; fixed integer arguments use `OwnedLirTypedCallArg`. Step 7.16 additionally publishes only PI's native Cttz kind, i32/i64 ffs result, module `LinkNameId` callee, exact nonvariadic integer/i1 signature and refs, authority-free prepared SSA/immediate presentation, and immediate false | Direct integer results have exact ownership. The fixed void rows and Step-7.16 native Cttz row have authority-first callee/signature/type/count/ext/argument validation; authoritative prepared values must be current-function SSA, while monostate literal presentation stays compatible | Steps 3-5 and 7.16 close scalar result, fixed void arguments, and only the ffs cttz result-to-add edge. Other intrinsic, indirect, variadic, ABI, aggregate, and object rows remain unclaimed; text mirrors are presentation-only |
+| `LirBinOp`: `result,lhs,rhs`; `opcode,type_str` | Active, PB scalar/complex arithmetic and logical helpers; also PL compound assignment, PI builtins, PV, PS | Step-6 ordinary scalar integer, Step-7.5 ordinary scalar floating arithmetic, and Step-7.14 PI i32/i64 ffs add-one use `fresh_value`. Ordinary integer immediates retain authority only when representable by the normalized operation type; Step 7.16 supplies the exact cttz result ID as the ffs lhs, while exact immediate one and the add-one-to-select edge remain authoritative | Native opcode/type refs plus exact ownership; authoritative floating opcode/type alternatives agree, and authoritative integer operand alternatives are SSA or representable integer immediates when present. Generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | The ordinary scalar probes plus the focused i32/i64 ffs add-one/cttz probes close only those rows. Converted modulo/bit-pattern literals remain compatibility operands. Other builtins, complex/vector, pointer/object, logical-helper, and other producers remain distinct |
 | `LirCmpOp`: `result,lhs,rhs`; `is_float,predicate,type_str` | Active, PB comparisons/logical, PI FP/builtin checks, PV, PS loop/range lowering, `core.cpp` helpers; Steps 7.2 and 7.6 own PB ordinary scalar integer and floating comparisons, while Step 7.15 owns PI's shared i32/i64 ffs equality-to-zero row | The PB rows use `fresh_value` and feed the result into normalization. Step 7.15 uses `fresh_value`, native Eq/exact integer type, an honest monostate prepared argument, exact immediate zero, and the result ID as the select condition. Other comparison producers remain text-only | Native mode/predicate/type authority must agree; the authoritative integer select-condition edge accepts only SSA or representable integer-immediate comparison operands when authority is present. Generic ownership rejects invalid/duplicate definitions and unknown/cross-function uses | Focused probes close the two PB rows and only the shared ffs zero-comparison-to-condition edge. Other builtin, pointer, vector, complex/logical-helper, vaarg, and statement producers remain unclaimed |
 | `LirPhiOp`: `result`; `incoming[value,label]`; `type_str` | Active, PX `emit_rval_payload(TernaryExpr)`, PB `emit_logical`, PV AArch64/AMD64 joins | Result `fresh_tmp`; incoming value and predecessor are raw strings | Native result type only; result kind/nonempty incoming; incoming entries are not visited for value ownership | Result can share generic allocation, but incoming values need `LirOperand` and predecessors need `LirBlockId`; `lir_phi_identity.c`; **distinct value+CFG carrier** |
-| `LirSelectOp`: `result,cond,true_val,false_val`; `type_str` | Active only in PI `emit_builtin_ffs_call` | Step-7.3 i32 and Step-7.13 i64 ffs routes use `fresh_value`, exact scalar type, and native zero immediate; Step 7.14 preserves the shared add-one result ID as the false arm, and Step 7.15 preserves the shared equality-to-zero result ID as the condition | Authoritative integer select requires a native result and an SSA condition defined by a current-function comparison; generic ownership rejects invalid/duplicate definitions and unknown/cross-function condition, false-arm, select-to-cast, and later-use edges | Focused probes close direct i32 select use, i64 select → Trunc → use, add-one → false-arm, and zero-comparison → condition edges. Internal cttz authority and other producers remain unclaimed |
+| `LirSelectOp`: `result,cond,true_val,false_val`; `type_str` | Active only in PI `emit_builtin_ffs_call` | Step-7.3 i32 and Step-7.13 i64 ffs routes use `fresh_value`, exact scalar type, and native zero immediate; Step 7.14 preserves add-one as the false arm, Step 7.15 preserves equality-to-zero as the condition, and Step 7.16 supplies the add-one's exact cttz lhs | Authoritative integer select requires a native result and an SSA condition defined by a current-function comparison; generic ownership rejects invalid/duplicate definitions and unknown/cross-function edges | Focused probes close direct i32 select use, i64 select → Trunc → use, and the shared cttz → add-one → false-arm plus comparison → condition chain. Other producers remain unclaimed |
 | `LirInsertElementOp`: `result,vec,elem,index`; `vec_type,elem_type` | Active, PB vector-scalar arithmetic branches | Text-only operands; result `fresh_tmp` | Native types; kind/type only and ownership-ready | `lir_insertelement_identity.c`; **generic result/use plus distinct vector/index semantics** |
 | `LirExtractElementOp`: `result,vec,index`; `vec_type,index_type` | Active, PX `emit_rval_payload(IndexExpr)` vector branch | Text-only operands; result `fresh_tmp` | Native types; kind/type only and ownership-ready | `lir_extractelement_identity.c`; **generic result/use plus distinct vector/index semantics** |
 | `LirShuffleVectorOp`: `result,vec1,vec2,mask`; `vec_type,mask_type` | Active, PB vector-scalar splat branches | Text-only operands; result `fresh_tmp` | Native types; kind/type only and ownership-ready | `lir_shufflevector_identity.c`; mask needs distinct typed constant/vector carrier; **generic result/use plus distinct vector semantics** |
@@ -347,10 +347,10 @@ condition to retain SSA shape and resolve to its current-function comparison;
 missing or wrong-alternative condition authority rejects. Misleading
 select-result/use displays with unchanged IDs pass.
 
-Step 7.13 separately owns the wider ffs select-to-Trunc chain, and Step 7.14
-owns the shared add-one-to-false-arm edge. Step 7.15 owns the shared
-zero-comparison-to-condition edge. No internal cttz call authority is inferred.
-Step 7.4 separately owns the current integer abs route;
+Step 7.13 separately owns the wider ffs select-to-Trunc chain, Step 7.14 owns
+the shared add-one-to-false-arm edge, Step 7.15 owns the zero-comparison-to-
+condition edge, and Step 7.16 owns cttz-to-add-one. Step 7.4 separately owns
+the current integer abs route;
 aggregate/vector, pointer/object, CFG/parameters, other calls, inline assembly,
 and BIR are unchanged.
 
@@ -590,9 +590,9 @@ and strict narrowing direction; wrong kind, missing or noninteger endpoints,
 and equal/widening direction reject. Misleading select, cast, and later-use
 displays with unchanged IDs pass.
 
-Step 7.14 separately owns the shared plus-one result and false arm, and Step
-7.15 owns the shared zero comparison and select condition. The internal cttz
-call remains honest monostate compatibility. Other builtins and calls,
+Step 7.14 separately owns the shared plus-one result and false arm, Step 7.15
+owns the shared zero comparison and select condition, and Step 7.16 owns the
+cttz call and plus-one lhs. Other builtins and calls,
 other select or cast producers, pointer/vector/complex/aggregate/object work,
 implicit coercions, CFG/parameters, inline assembly, and BIR remain outside
 this packet.
@@ -601,9 +601,9 @@ this packet.
 
 The claimed row is only PI's shared scalar i32/i64 add-one operation inside
 `emit_builtin_ffs_call`. The producer allocates its `LirBinOp.result` through
-`fresh_value`, records native integer Add and the exact i32 or i64 type, retains
-the internal cttz lhs as honest monostate SSA compatibility, and publishes the
-structurally known rhs as `LirIntegerImmediate{1}`. The existing
+`fresh_value`, records native integer Add and the exact i32 or i64 type, and
+publishes the structurally known rhs as `LirIntegerImmediate{1}`. Step 7.16
+separately owns the exact cttz lhs. The existing
 `LirSelectOp.false_val` receives that exact add-one result ID.
 
 Generic ownership rejects invalid or duplicate add-one results and unknown or
@@ -620,8 +620,9 @@ operation width, so the generic verifier invariant does not reinterpret their
 legacy display payload. This does not affect the exact representable ffs
 immediate one.
 
-Step 7.15 separately owns the zero comparison and select condition. The cttz
-result remains compatibility. Other builtins, calls, binary/select producers,
+Step 7.15 separately owns the zero comparison and select condition, and Step
+7.16 owns the cttz result and plus-one lhs. Other builtins, calls,
+binary/select producers,
 pointer/vector/complex/aggregate/object work, CFG/parameters, inline assembly,
 and BIR remain outside this packet.
 
@@ -630,8 +631,9 @@ and BIR remain outside this packet.
 The claimed row is only PI's shared scalar i32/i64 equality-to-zero operation
 inside `emit_builtin_ffs_call`. The producer allocates its `LirCmpOp.result`
 through `fresh_value`, records integer mode, native Eq, and the exact i32 or i64
-compared type, retains the prepared argument as honest monostate SSA when no
-native authority is available, and publishes `LirIntegerImmediate{0}`. The
+compared type, retains the prepared argument as honest monostate SSA or
+immediate presentation when no native authority is available, and publishes
+`LirIntegerImmediate{0}`. The
 existing `LirSelectOp.cond` receives that exact comparison result ID.
 
 Generic ownership rejects invalid or duplicate comparison results and unknown
@@ -644,9 +646,38 @@ unrepresentable immediates reject. Production asserts exact Eq, i32/i64 width,
 zero, and comparison-to-condition identity. Misleading comparison-result and
 condition displays with unchanged IDs pass.
 
-The cttz result remains compatibility. Other builtin comparisons, calls,
-selects, pointer/vector/complex/aggregate/object work, CFG/parameters, inline
-assembly, and BIR remain outside this packet.
+Step 7.16 separately owns the cttz result and plus-one lhs. Other builtin
+comparisons, calls, selects, pointer/vector/complex/aggregate/object work,
+CFG/parameters, inline assembly, and BIR remain outside this packet.
+
+## Step-7.16 builtin-ffs cttz-call/add-lhs contract
+
+The claimed row is only PI's i32/i64 `llvm.cttz` call inside
+`emit_builtin_ffs_call`. Its result is allocated through `fresh_value` and the
+exact result ID is the accepted Step-7.14 add-one lhs. The callee carries a
+module-owned `LinkNameId`, and `LirIntrinsicKind::Cttz` records the semantic
+intrinsic category without relying on its spelling. The nonvariadic signature
+has exact matching integer return/first-parameter refs and an i1 second
+parameter. Structured arguments retain the prepared value as honest monostate
+SSA or literal Immediate presentation when unavailable and publish the
+structural false flag as `LirIntegerImmediate{0}` with exact i1 type.
+
+The authority-first verifier recognizes the native Cttz kind and fixed
+integer/i1 boolean-flag shape rather than an intrinsic spelling. It requires a
+resolvable callee ID shared by the operand and direct-callee field, complete
+matching signature, return and argument refs, exact counts, no variadic/
+unspecified/ABI extension facts, valid SSA/immediate prepared-value
+presentation, and immediate false. Any native prepared-value authority must be
+a valid current-function SSA ID; literal presentation remains monostate.
+Generic ownership
+rejects invalid/duplicate call results and unknown or cross-function add-one
+uses. Missing, wrong-alternative, conflicting, or unresolved callee,
+signature, type, argument, flag, result, and use authority reject. Misleading
+callee/call/result/add displays with unchanged native authority pass.
+
+Other cttz/ctlz/ctpop and intrinsic/builtin/direct/indirect calls, ABI and
+variadic work, pointer/vector/complex/aggregate/object families,
+CFG/parameters, inline assembly, and BIR remain outside this packet.
 
 ## Mechanical coverage check
 
@@ -728,12 +759,13 @@ Current-source spot checks used for this baseline:
   through `fresh_value`, carries exact scalar type plus native zero authority,
   returns the exact result ID to a later ordinary use, and carries the exact
   Step-7.14 add-one result ID as its false arm plus the exact Step-7.15
-  equality-to-zero result ID as its condition;
+  equality-to-zero result ID as its condition; Step 7.16 supplies the add-one's
+  exact structured cttz call-result lhs;
 - representative wide scalar select narrowing: the i64 ffs select allocates an
   exact result, preserves that ID into an exact fresh i64-to-i32 Trunc, and
   preserves the cast result ID into a later i32 Add while its exact native i64
-  add-one and equality-to-zero results feed the false arm and condition; the
-  cttz producer remains compatibility;
+  cttz, add-one, and equality-to-zero results feed the add lhs, false arm, and
+  condition respectively;
 - representative scalar abs: `call/builtin.cpp` routes the existing integer
   abs argument through the common operand/coercion seam, allocates its exact
   i32/i64 result through `fresh_value`, and preserves the result ID into a later
