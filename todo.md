@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.14
-Current Step Title: Publish builtin-ffs plus-one result/select-use authority (complete)
+Current Step ID: 7.15
+Current Step Title: Publish builtin-ffs zero-comparison/select-condition authority
 
 ## Just Finished
 
@@ -27,23 +27,25 @@ Current Step Title: Publish builtin-ffs plus-one result/select-use authority (co
 
 ## Suggested Next
 
-- Select the next bounded Step-7 ordinary-value identity row from the source
-  idea and establish its exact producer/use boundary before implementation.
+- Execute Step 7.15: publish the builtin-ffs scalar zero-comparison result as
+  the exact condition use of its existing `LirSelectOp`.
 
 ## Watchouts
 
-- Preserve the Step-7.14 contract: only PI's shared scalar i32/i64 add-one is
-  newly authoritative, with exact fresh result, native Add/type, immediate one,
-  and exact false-arm identity.
-- Ordinary scalar binary literals retain authority only when their payload is
-  representable by the normalized operation type. Keep converted modulo/
-  bit-pattern literals compatibility-only until a richer native payload model
-  exists.
-- Keep the cttz-produced lhs honest monostate until its call-result row is
-  separately owned. Do not infer it or any select edge from rendered text.
-- Preserve Steps 7.3 and 7.13 and continue excluding the zero comparison,
-  select condition, other builtins/calls/binaries/selects, pointer/vector/
-  aggregate/object work, CFG/parameters, inline assembly, and BIR.
+- Own only PI's shared i32/i64 equality-to-zero `LirCmpOp` inside
+  `emit_builtin_ffs_call`. Allocate its result through `fresh_value` and
+  preserve that exact result ID as the existing select condition.
+- Retain native integer Eq predicate and exact i32/i64 compared type authority;
+  publish the structural zero as `LirIntegerImmediate` while leaving the
+  prepared builtin argument honest monostate when it lacks native authority.
+- Require unique current-function result ownership and exact condition use;
+  reject invalid/duplicate results, unknown or cross-function uses, invalid or
+  conflicting predicate/mode/type authority, and malformed zero alternatives.
+- Accept misleading comparison/condition displays only after native authority
+  is proven. Never infer the argument result or select edge from rendered text.
+- Preserve Steps 7.2, 7.3, 7.13, and 7.14. Exclude the cttz call result, other
+  builtin comparisons/calls/selects, pointer/vector/aggregate/object work,
+  CFG/parameters, inline assembly, and BIR.
 
 ## Proof
 
