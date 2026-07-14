@@ -9812,7 +9812,80 @@ void test_scalar_double_to_signed_i32_fptosi_receipt_and_rejections() {
   rejected([](auto&, auto& cast, auto&) { cast.result = lir::LirOperand::raw("%missing"); }, "missing cast result authority must reject atomically");
   rejected([](auto&, auto& cast, auto&) { cast.operand = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); }, "unresolved or cross-owner cast source must reject atomically");
   rejected([](auto&, auto& cast, auto&) { cast.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{11}); }, "duplicate cast result must reject atomically");
-  rejected([](auto&, auto& cast, auto&) { cast.kind = lir::LirCastKind::FPToUI; }, "FPToUI must remain fail-closed");
+  rejected([](auto&, auto& cast, auto&) { cast.kind = lir::LirCastKind::UIToFP; }, "wrong floating-to-integer direction must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.from_type = lir::LirTypeRef("float"); }, "wrong cast source endpoint must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.to_type = lir::LirTypeRef::integer(64); }, "wrong cast destination endpoint must reject atomically");
+  rejected([](auto&, auto&, auto& use) { use.lhs = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); }, "unresolved downstream i32 Add use must reject atomically");
+  rejected([](auto&, auto&, auto& use) { use.opcode = lir::LirBinaryOpcode::Mul; }, "non-Add downstream use must reject atomically");
+  rejected([](auto&, auto&, auto& use) { use.type_str = lir::LirTypeRef::integer(64); }, "wrong downstream i32 Add type must reject atomically");
+  rejected([](auto& candidate, auto&, auto&) { candidate.functions[0].blocks[0].insts.pop_back(); }, "missing downstream i32 Add use must reject atomically");
+}
+
+lir::LirModule scalar_double_to_unsigned_i32_fptoui_module() {
+  auto module = downstream_double_fadd_module();
+  auto& block = module.functions[0].blocks[0];
+  block.insts.pop_back();
+  block.insts.push_back(lir::LirCastOp{
+      .result = lir::LirOperand::ssa("%presentation-only-fptoui-result", lir::LirValueId{12}),
+      .kind = lir::LirCastKind::FPToUI,
+      .from_type = lir::LirTypeRef("double"),
+      .operand = lir::LirOperand::ssa("%presentation-only-fadd", lir::LirValueId{11}),
+      .to_type = lir::LirTypeRef::integer(32),
+  });
+  block.insts.push_back(lir::LirBinOp{
+      lir::LirOperand::ssa("%presentation-only-fptoui-add", lir::LirValueId{13}),
+      lir::LirBinaryOpcode::Add, lir::LirTypeRef::integer(32),
+      lir::LirOperand::ssa("%presentation-only-fptoui-use", lir::LirValueId{12}),
+      lir::LirOperand::integer("presentation-four", 4)});
+  return module;
+}
+
+void test_scalar_double_to_unsigned_i32_fptoui_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto function_id = view.functions()[0];
+    const auto function = view.function(function_id).value();
+    const auto insts = function.instructions(function.blocks()[0]).value();
+    const auto fadd = function.instruction(insts[1]).value();
+    const auto fptoui = function.instruction(insts[2]).value();
+    const auto add = function.instruction(insts[3]).value();
+    expect(insts.size() == 4 && fadd.binary() &&
+               fadd.binary()->opcode == bir::BinaryOpcode::FAdd &&
+               fptoui.cast() && fptoui.cast()->kind == bir::CastKind::FPToUI &&
+               fptoui.cast()->from_type == bir::Type{bir::TypeKind::F64, 64, "double"} &&
+               fptoui.cast()->to_type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+               fptoui.operands() == std::vector<bir::ValueId>{fadd.results()[0]} &&
+               fptoui.results().size() == 1 &&
+               function.value(fptoui.results()[0]).value().source_id ==
+                   bir::SourceValueId{function_id, 12} &&
+               add.binary() && add.binary()->opcode == bir::BinaryOpcode::Add &&
+               add.operands()[0] == fptoui.results()[0] && add.results().size() == 1 &&
+               function.value(add.results()[0]).value().source_id ==
+                   bir::SourceValueId{function_id, 13},
+           layer + " must preserve the native double-to-unsigned-i32 FPToUI and exact i32 Add use");
+  };
+  const auto module = scalar_double_to_unsigned_i32_fptoui_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "scalar FPToUI must publish verified Raw BIR");
+  inspect(raw.value(), "Raw BIR");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(), "scalar FPToUI must canonicalize");
+  inspect(canonical.value(), "Canonical BIR");
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto candidate = scalar_double_to_unsigned_i32_fptoui_module();
+    auto& cast = std::get<lir::LirCastOp>(candidate.functions[0].blocks[0].insts[3]);
+    auto& use = std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[4]);
+    mutate(candidate, cast, use);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value(), message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value(), message + " (Canonical rollback)");
+  };
+  rejected([](auto&, auto& cast, auto&) { cast.result = lir::LirOperand::raw("%missing"); }, "missing cast result authority must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.operand = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); }, "unresolved or cross-owner cast source must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{11}); }, "duplicate cast result must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.kind = lir::LirCastKind::UIToFP; }, "wrong floating-to-integer direction must reject atomically");
   rejected([](auto&, auto& cast, auto&) { cast.from_type = lir::LirTypeRef("float"); }, "wrong cast source endpoint must reject atomically");
   rejected([](auto&, auto& cast, auto&) { cast.to_type = lir::LirTypeRef::integer(64); }, "wrong cast destination endpoint must reject atomically");
   rejected([](auto&, auto&, auto& use) { use.lhs = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); }, "unresolved downstream i32 Add use must reject atomically");
@@ -10832,6 +10905,7 @@ int main() {
   test_scalar_signed_i32_to_double_sitofp_receipt_and_rejections();
   test_scalar_unsigned_i32_to_double_uitofp_receipt_and_rejections();
   test_scalar_double_to_signed_i32_fptosi_receipt_and_rejections();
+  test_scalar_double_to_unsigned_i32_fptoui_receipt_and_rejections();
   test_normalized_i32_add_receipt_and_rejections();
   test_normalized_i32_mul_receipt_and_rejections();
   test_native_intrinsic_receipt_and_rejections();

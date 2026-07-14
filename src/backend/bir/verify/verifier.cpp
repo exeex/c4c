@@ -828,7 +828,8 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                          cttz_add || [&] {
                            const auto* producer_cast = std::get_if<CastNode>(
                                &producer.value().get().payload);
-                           return producer_cast && producer_cast->kind == CastKind::FPToSI &&
+                           return producer_cast && (producer_cast->kind == CastKind::FPToSI ||
+                               producer_cast->kind == CastKind::FPToUI) &&
                                producer_cast->from_type == f64 && producer_cast->to_type == i32;
                          }())
                       : sext_add ? [&] {
@@ -954,7 +955,9 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
             cast->from_type == i32 && cast->to_type == f64;
         const bool scalar_fptosi = cast->kind == CastKind::FPToSI &&
             cast->from_type == f64 && cast->to_type == i32;
-        bool exact = (intrinsic_trunc || scalar_sext || scalar_fptrunc || scalar_fpext || scalar_sitofp || scalar_uitofp || scalar_fptosi) &&
+        const bool scalar_fptoui = cast->kind == CastKind::FPToUI &&
+            cast->from_type == f64 && cast->to_type == i32;
+        bool exact = (intrinsic_trunc || scalar_sext || scalar_fptrunc || scalar_fpext || scalar_sitofp || scalar_uitofp || scalar_fptosi || scalar_fptoui) &&
             instruction.operands.size() == 1 && instruction.results.size() == 1;
         if (exact) {
           const auto operand = function.values_.get(function_id, instruction.operands[0]);
@@ -985,7 +988,7 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                 ? std::get_if<BinaryNode>(&producer.value().get().payload) : nullptr;
             exact = binary && binary->opcode == BinaryOpcode::Add && binary->type == i32;
           }
-          if (exact && scalar_fptosi) {
+          if (exact && (scalar_fptosi || scalar_fptoui)) {
             const auto producer = function.insts_.get(function_id, def->instruction);
             const auto* binary = producer
                 ? std::get_if<BinaryNode>(&producer.value().get().payload) : nullptr;
