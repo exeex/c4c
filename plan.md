@@ -943,6 +943,54 @@ Completion check:
   the producer-authority regression neighbor. The supervisor additionally
   selects and records the matching broader checkpoint.
 
+### Step 7.18 - Receive the checked builtin-clz call/narrow/final-use
+
+Goal: receive only PI's i32/i64 builtin-clz native `Ctlz` call result with its
+exact direct i32 Add use or exact i64-to-i32 Trunc-to-Add chain. Do not
+generalize intrinsic, call, cast, or binary receipt.
+
+Primary targets:
+
+- existing typed Raw-BIR intrinsic-call and cast payloads, builders, views, and
+  reachable verification for exact `Ctlz` identity and undefined-zero behavior
+- LIR-to-Raw-BIR intrinsic/cast dispatch and current-function source-value
+  registry, joined only to the existing exact final Add use
+- focused backend receiver coverage plus `frontend_lir_call_type_ref`
+
+Actions:
+
+- map only PI's producer-verified `LirCallOp{result: valid current-function
+  LirValueId, intrinsic_kind: Ctlz, return_type: i32|i64, callee/direct_callee:
+  matching module LinkNameId, fixed nonvariadic signature: (i32|i64, i1) ->
+  i32|i64, zero_count_behavior: Undefined, i1 flag:
+  LirIntegerImmediate{1}}` to the existing typed Raw-BIR Ctlz call result;
+  preserve the i32 result only as the exact later i32 Add use, and preserve
+  the i64 result only through `LirCastOp{result: valid current-function
+  LirValueId, operand: that result, kind: Trunc, from_type: i64, to_type: i32}`
+  to its exact later i32 Add use
+- require valid, unique current-function call and narrowing results; native
+  kind, direct callee/link, fixed parameter and return types, argument count,
+  i1 true-flag and undefined-zero coherence; strict i64-to-i32 Trunc; and
+  resolved same-function call-to-Trunc/final-Add use linkage. Retain prepared
+  argument handling only as integrity validation; do not receive it or derive
+  any fact from its display spelling
+- prove i32 and i64 positive clz boundaries plus neighboring transactional
+  failures for missing/invalid/duplicate/cross-owner result, wrong intrinsic,
+  callee/signature/zero behavior/flag, wrong cast kind/endpoints, or
+  unresolved/wrong final-use linkage. Keep ctz, ffs, popcount, prepared
+  arguments, other intrinsic/call/cast producers, pointer/vector/complex/
+  aggregate/object work, implicit coercions, and presentation-derived authority
+  fail-closed
+
+Completion check:
+
+- a fresh build and focused
+  `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof pass
+  2/2. The backend coverage demonstrates verified transactional i32 direct and
+  i64 Trunc-mediated builtin-clz final-use chains; the frontend test remains
+  the producer-authority regression neighbor. The supervisor additionally
+  selects and records the matching broader checkpoint.
+
 ### Source completion gate (not an executor packet)
 
 Do not execute this as a placeholder. This source cannot close until its

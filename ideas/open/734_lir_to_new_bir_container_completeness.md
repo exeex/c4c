@@ -140,24 +140,24 @@ stack/local objects, body parameters, producerless legacy alternatives, and
 every handoff fail-closed form remain separate and unsupported until their own
 typed source/receiver contracts are selected.
 
-## Runbook Exhaustion Decision: Step 7.16
+## Runbook Repair Decision: Step 7.17
 
-Close rejected. Accepted Step 7.16 (`cf7f2cd8d`) has fresh focused 2/2 proof,
-non-decreasing matching regression guard, and fresh broader `^backend_` 4/4
+Close rejected. Accepted Step 7.17 (`701476a5a`) has fresh focused 2/2 proof,
+a non-decreasing matching regression guard, and fresh broader `^backend_` 4/4
 proof, but it does not satisfy this source's coverage-matrix completion gate.
-The matrix still records receiver-ready typed rows, beginning with PI's
-builtin-ctz i32/i64 Cttz call, i64 narrowing, and final-use chain under
-authority-matrix Step 7.17; builtin-clz, builtin-popcount, and later bounded
-rows remain after it. It also records valid current-LIR families with missing
-producer authority, including pointer/object, stack/local, body-parameter,
-aggregate/vector, va-list/memory, CFG, and opaque inline-asm forms.
+The next receiver-ready typed row is PI's builtin-clz i32/i64 Ctlz call, i64
+narrowing, and final-use chain under authority-matrix Step 7.18; builtin-
+popcount and later bounded rows remain after it. Valid current-LIR families
+with missing producer authority, including pointer/object, stack/local,
+body-parameter, aggregate/vector, va-list/memory, CFG, and opaque inline-asm
+forms, remain separately scoped.
 
-Classification: `repair-current-route` for Step 7.17 because its required
+Classification: `repair-current-route` for Step 7.18 because its required
 authority and typed Raw-BIR receiving seams already exist; execute one bounded
 receiver packet without presentation recovery. The listed missing-authority
 families are not absorbed by that packet: each requires its own separately
 scoped successor/blocker before any receiver work. Return point after Step
-7.17 acceptance is the next matrix receiver-ready row, with the same source
+7.18 acceptance is the next matrix receiver-ready row, with the same source
 completion gate reapplied.
 
 ## Why This Exists
