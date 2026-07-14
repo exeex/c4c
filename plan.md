@@ -47,6 +47,9 @@ sole direct-edge authority; presentation is display only.
   (`cebc0a3bf`). Do not repeat this direct-branch row.
 - Step 6.4: explicit i32-to-i64 `LirCastOp::SExt` receipt and its exact i64
   Add use (`39518d27a`). Do not repeat this cast row.
+- Step 6.5: selected i32 `LirCmpOp::Slt` receipt with the admitted global Load
+  lhs and native immediate seven (`03448676f`). Do not repeat or generalize
+  this compare row.
 
 ## Non-Goals
 
@@ -54,7 +57,7 @@ sole direct-edge authority; presentation is display only.
   placement, canonicalization, allocation, MIR, emission, assembler work, or
   legacy-BIR revival
 - no conditional, switch, indirect, phi, local/body-parameter, unselected
-  inline-assembly, cast, or compare receipt
+  inline-assembly, or new cast/compare receipt
 
 ## Execution Rules
 
@@ -168,13 +171,44 @@ Completion check:
   verified transactional typed i32 `SLT` compare using structured authority
   only.
 
-### Step 7 - Integrate the dispatcher, verifier and build boundary
+### Step 7.1 - Prove mixed accepted-row dispatcher transactionality
 
-Goal: prove landed families form one production importer with no partial state.
+Goal: cover one production module that dispatches already accepted ordinary
+rows in source order and prove that a later malformed admitted row publishes
+no partial Raw-BIR module. This is a shared typed seam coverage packet, not a
+new LIR receipt.
+
+Primary targets:
+
+- `src/backend/bir/lir_to_bir.cpp` existing instruction dispatcher and
+  transactional lowering boundary
+- `tests/backend/bir/backend_lir_to_bir_interface_test.cpp` focused mixed-row
+  positive and rollback coverage
+
+Actions:
+
+- construct exactly one module using only already admitted forms: the selected
+  global i32 Load, normalized i32 Add, explicit i32-to-i64 SExt, and selected
+  i32 SLT compare with its current-function Load lhs and native immediate
+  seven rhs; assert that the existing importer preserves their source order and
+  typed result/use authority without adding a new builder, container, or
+  instruction dispatch alternative
+- construct a neighboring copy differing only in the final selected compare's
+  native authority (for example predicate/mode/type coherence) and assert the
+  existing transactional lowering boundary returns the established rejection
+  with no Raw-BIR module publication; do not test for partial graph repair
+- retain every individual row's existing negative checks. Do not admit the
+  compare normalization `LirCastOp{ZExt, i1, i32}`, other compare predicates
+  or types, floating/pointer/vector/complex rows, or any currently unsupported
+  instruction family
 
 Completion check:
 
-- broader proof passes and every accepted row has typed authority and receipt.
+- a fresh build and the focused
+  `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof pass
+  2/2. The backend test demonstrates ordered mixed existing-row receipt and
+  full rollback of the one malformed final compare, while the frontend test
+  remains the producer-authority regression neighbor.
 
 ### Step 8 - Prove lossless completeness and transactional publication
 
