@@ -1,6 +1,6 @@
 # LIR Computed-Goto Address Value Identity Publication
 
-Status: Open (active blocker for idea 734's next bounded computed-goto receiver)
+Status: Closed (capability complete)
 Type: bounded LIR computed-goto producer authority repair
 Predecessor: `ideas/open/734_lir_to_new_bir_container_completeness.md`
 
@@ -63,10 +63,10 @@ the LIR producer boundary.
 
 ## Resumption Record: rvalue identity-preservation blocker
 
-Last accepted progress remains paused idea 734 Step 7.23: commit `0995a3deb`
+Historical pre-closure state: last accepted progress was paused idea 734 Step 7.23: commit `0995a3deb`
 received typed `LirSwitch` authority, and the matching backend guard accepted
 5/5. The full-baseline candidate with 73 failures was rejected and is not
-full-suite-green evidence. No 757 step is complete. The separately scoped 758
+full-suite-green evidence. At that time no 757 step was complete. The separately scoped 758
 blocker is now capability-complete at commit `c8a205218`: eligible local and
 parameter rvalue identities survive through the rvalue/operand route into
 immediate typed consumers, with no display-text recovery.
@@ -98,3 +98,25 @@ The uncommitted 757 prototype (field plus verifier) was reverted after the
 focused test failed under real lowering because the address ID was absent; it
 has no implementation commit. Before that packet, the supervisor recorded a
 fresh build and the exact focused test passing 1/1 in `test_before.log`.
+
+## Closure Decision
+
+Close accepted: capability complete. Commit `8527c6dbc` publishes optional
+typed `LirIndirectBrOp.addr_value` directly from `emit_rval_operand`; `addr`
+is a checked display mirror and is never semantic authority. The LIR verifier
+rejects missing, invalid, foreign, non-pointer, and display-mismatched IDs
+before printing or downstream use, while the existing ordered `successors`
+authority remains unchanged.
+
+Supervisor acceptance evidence is the fresh build plus focused
+`^frontend_lir_call_type_ref$` proof passing 1/1, and a matching
+`^backend_` before/after regression guard passing 5/5 under
+allow-non-decreasing. Direct supervisor review found no text-derived authority
+or scope drift.
+
+Handoff to open predecessor
+`ideas/open/734_lir_to_new_bir_container_completeness.md`: resume exactly at
+Step 7.24, `Receive typed computed-goto authority`. Consume only verified
+`addr_value` and ordered `successors` in one transactional Raw-BIR receiver
+packet; preserve target order and reject malformed authority before publication.
+`addr`, labels, printer output, and rendered text remain non-authoritative.

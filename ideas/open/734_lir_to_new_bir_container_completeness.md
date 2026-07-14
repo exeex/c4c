@@ -1,7 +1,8 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (paused after accepted Step 7.23; computed-goto address-authority
-successor 757 is active before the next receiver repair)
+Status: Open (resumed after accepted Step 7.23 and closed computed-goto
+address-authority successor 757; the next packet is the bounded typed
+`LirIndirectBrOp` Raw-BIR receiver)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -366,17 +367,40 @@ output, or rendered text. PHI, local/object, memory/va, aggregate/vector,
 body-parameter, and all other unreceived families remain separately scoped and
 fail closed.
 
-Classification: `separate-blocker`. Open idea
-`ideas/open/757_lir_computed_goto_address_value_identity_publication.md` owns
-only publication, verification, focused malformed-authority coverage, and a
-typed handoff for the active `LirIndirectBrOp` address. This source is paused
-after completed Steps 1 through 7.23. After 757 closes with the exact
-structured handoff, reactivate 734 and repair its runbook for one bounded
-`LirIndirectBrOp` Raw-BIR receiver packet: consume only the typed address and
-already typed ordered successors, preserve target order and transactional
-rejection, and do not inspect operand or label text for semantic recovery. Do
-not repeat Step 7.23 or absorb PHI, local/object, memory/va, aggregate/vector,
-body-parameter, or other remaining families.
+Classification: `separate-blocker`. Closed idea
+`ideas/closed/757_lir_computed_goto_address_value_identity_publication.md`
+owned only publication, verification, focused malformed-authority coverage,
+and a typed handoff for the active `LirIndirectBrOp` address. Its accepted
+handoff resumes this source for one bounded `LirIndirectBrOp` Raw-BIR receiver
+packet: consume only the typed address and already typed ordered successors,
+preserve target order and transactional rejection, and do not inspect operand
+or label text for semantic recovery. Do not repeat Step 7.23 or absorb PHI,
+local/object, memory/va, aggregate/vector, body-parameter, or other remaining
+families.
+
+## Resumption Record: computed-goto address authority completion
+
+Closed idea 757 completed the active computed-goto address prerequisite with
+accepted implementation `8527c6dbc`. Each active `LirIndirectBrOp` now carries
+optional typed `addr_value` authority populated directly by `emit_rval_operand`;
+`addr` remains a checked display mirror only. The LIR verifier rejects missing,
+invalid, foreign, non-pointer, and display-mismatched authority before printing
+or downstream consumption. Closed idea 750's ordered current-function
+`successors` remain the sole target authority.
+
+The accepted proof is a fresh build plus focused
+`^frontend_lir_call_type_ref$` proof 1/1, with matching `^backend_` regression
+guard passing 5/5 before and after under allow-non-decreasing. No Raw-BIR work
+landed in 757.
+
+Exact return action: repair and execute one bounded Step 7.24
+`LirIndirectBrOp` Raw-BIR receiver. Consume only `addr_value` and ordered
+`successors`; verify address presence, validity, current-function ownership,
+pointer suitability, target presence/ownership/order, and transactional
+rejection before publication. Do not derive semantics from `addr`, labels,
+printer output, or rendered text; do not repeat Step 7.23 or absorb PHI,
+local/object, memory/va, aggregate/vector, body-parameter, or any other
+family.
 
 ## Why This Exists
 

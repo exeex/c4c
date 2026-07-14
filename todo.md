@@ -1,29 +1,31 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/757_lir_computed_goto_address_value_identity_publication.md
+Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Publish computed-goto address authority
+Current Step ID: 7.24
+Current Step Title: Receive typed computed-goto authority
 
 ## Just Finished
 
-- Step 1 complete: `LirIndirectBrOp.addr_value` now carries the preserved
-  current-function pointer `LirValueId`; `addr` is verified only as its display
-  mirror, and missing, invalid, foreign, non-pointer, and misleading-display
-  authority rejects before printing/downstream use.
+- Closed 757 after accepted Step 1: `LirIndirectBrOp.addr_value` now carries
+  verified current-function pointer authority; ordered `successors` remains
+  the target authority accepted by 750.
 
 ## Suggested Next
 
-- Supervisor: accept this Step 1 slice and route the typed `addr_value` plus
-  ordered `successors` handoff to the bounded idea 734 receiver packet.
+- Execute Step 7.24 only: receive typed `LirIndirectBrOp` address/successor
+  authority into Raw-BIR with transactional validation.
 
 ## Watchouts
 
-- Idea 734 may consume `LirIndirectBrOp.addr_value` only after LIR verification;
-  `addr`, labels, and printer output remain non-authoritative display mirrors.
+- The receiver reads only `addr_value` and ordered `successors`; address/label
+  display shadows remain outside semantic lowering.
+- PHI and all other unreceived families remain unsupported and fail closed.
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1; detailed focused output: `test_after.log`.
+- 757 accepted: fresh build; focused `^frontend_lir_call_type_ref$` 1/1; and
+  matching non-decreasing `^backend_` regression guard 5/5 before and after.
+- Executor: run a fresh build and focused receiver proof for Step 7.24.
 - Supervisor: select and record broader/full acceptance separately.
