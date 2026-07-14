@@ -1,9 +1,9 @@
 # Unresolved External Direct Scalar-Call Signature and Result Authority
 
-Status: Open (runbook retired; supported source surface lacks the required carrier)
+Status: Closed (corrected route accepted; capability delivered through normal Function authority)
 Type: producer-side unresolved-external call authority prerequisite
 Blocks: Plan Step 7.32 of ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
-Related research prerequisite: ideas/open/747_frontend_source_representation_for_unresolved_external_direct_calls.md
+Related research prerequisite: ideas/closed/747_frontend_source_representation_for_unresolved_external_direct_calls.md
 
 ## Goal
 
@@ -80,11 +80,36 @@ scalar-call carrier combines native global/link identity with an absent
 forms lack the required native direct identity and fixed-empty declaration
 facts; function-pointer forms are indirect.
 
-This rules out the current idea-746 runbook without authorizing a fabricated
-route. The runbook is retired and no active plan remains. Idea 746 stays open,
-unimplemented, and blocked: resolving it now requires a separately scoped
-source/frontend representation change or a new user-authorized disposition.
-This does not unblock, complete, close, or supersede idea 744.
+This ruled out the then-current idea-746 runbook without authorizing a
+fabricated route. At that point the runbook was retired, idea 746 stayed open
+pending a source/frontend representation decision, and idea 744 remained
+blocked. The corrected disposition below supersedes that temporary state.
+
+## Closure Disposition
+
+Close accepted under the user's corrected architecture. The retired route's
+requirement that a legal direct external call remain a plain unresolved call
+with absent `target_fn` was stale and is explicitly superseded; that disproven
+route is not claimed as implemented.
+
+A block-scope extern function declaration instead creates a normal bodyless
+extern HIR `Function` in the compile module's ordinary function list. It needs
+neither a separate extern-function list nor frontend reconstruction of call
+facts. Later processing uses the normal direct-function path.
+
+Commit `0d3781e70` (`Retain block-scope extern function declarations`) delivers
+the durable authority intent through that corrected route:
+
+- the parser retains the explicit block-scope extern prototype
+- HIR registers a bodyless extern `Function`
+- the LIR declaration and direct call share `LinkNameId` and a structured
+  fixed-void signature
+- the scalar result owns a `LirValueId` that reaches the following `FAdd`
+
+Accepted supervisor proof consists of a fresh default build, 8/8 related
+parser/HIR/LIR/BIR tests, and a matching `frontend_lir_call_type_ref`
+regression guard of 1/1 before and 1/1 after with no new failures. The remaining
+ordinary producer/verifier/matrix work returns to open idea 744 at Step 7.32.
 
 ## Reviewer Reject Signals
 

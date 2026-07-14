@@ -1,6 +1,6 @@
 # LIR Remaining Ordinary Value Identity Publication
 
-Status: Open (inactive; prerequisite 746 active)
+Status: Active (resumed at Step 7.32 after corrected idea-746 prerequisite)
 Type: producer-side ordinary value-authority decomposition
 Blocked Consumer: ideas/open/734_lir_to_new_bir_container_completeness.md
 Builds On: ideas/closed/741_lir_structured_operand_and_terminator_identity_decomposition.md
@@ -43,13 +43,30 @@ rows are the baseline inventory source for this initiative.
 
 ## Active-Plan Routing Note
 
-The active runbook was switched to
-`ideas/open/746_lir_unresolved_external_direct_call_signature_result_authority.md`
-because Plan Step 7.32 found the plain-`DeclRef` unresolved-external scalar
-call producer lacks both retained native `FnPtrSig` and a
-`fresh_value(ctx)`-allocated result `LirValueId`. This idea remains open and
-must not retry Step 7.32 until idea 746 hands off that bounded native-authority
-contract with accepted proof.
+This idea is resumed at its exact interrupted return point, Plan Step 7.32;
+Steps 1-6 and the earlier Step 7 packets must not be repeated. Accepted progress
+includes Step 1 classification (`fe3c14691`), Step 2 probes (`8426c128a`),
+Step 3 direct scalar-call result (`07303df86`), Step 4 immediate argument
+(`9505f0443`), Step 5 SSA argument (`c0e14731d`), Step 6 scalar chain
+(`e3485e70a`), and later ordinary identity packets through AArch64 fp128 call
+result authority (`91ff4cf24`). Commit `d1e7c6a8` selected the external-double
+packet before it encountered the former blocker.
+
+The old switch record described a plain unresolved external call with absent
+`target_fn`. Idea 746 is now closed under the user's corrected architecture and
+commit `0d3781e70`: a block-scope extern declaration creates a normal bodyless
+extern HIR `Function` in the compile module's ordinary function list, and the
+call follows the normal direct-function path with shared `LinkNameId`, retained
+structured fixed-void signature, and an owning scalar result `LirValueId`.
+Accepted proof is a fresh default build, 8/8 related parser/HIR/LIR/BIR tests,
+and matching `frontend_lir_call_type_ref` regression results of 1/1 before and
+1/1 after with no new failures.
+
+Step 7.32 is unblocked but not yet complete. Resume by finishing its focused
+producer/verifier/matrix contract on the normal resolved extern `Function`
+route, including reachable malformed-neighbor obligations. Do not add a
+separate extern-function list, recreate an absent-`target_fn` route, or claim
+the Step 7.32 receiver handoff before those remaining checks are recorded.
 
 ## Authority Contract
 
