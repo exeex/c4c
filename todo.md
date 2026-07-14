@@ -8,18 +8,17 @@ Current Step Title: Carry the validated form through printer and backend/lowerin
 
 ## Just Finished
 
-- Lifecycle return: 774 is capability-complete and archived. Its accepted
-  typed Raw-BIR GEP-base representation (`c64b78c48`, `97121c359`) is now the
-  bounded Step 2 input; it does not complete any 773 printer or dispatch work.
-- Step 1 remains accepted in `a4415f99c`: only the current-function typed
-  direct-label-address `DirectConstant(LirValueId)` passes the GEP verifier
-  gate, with nearby malformed-boundary coverage.
+- Step 2 complete: the LIR printer renders only the table-backed current-function
+  direct-label-address GEP base, and LIR-to-Raw-BIR lowers that validated
+  `DirectConstant(LirValueId)` as 774's typed `LabelAddressGepBase` without
+  display recovery, fabricated SSA, or global projection. Nearby interface
+  coverage proves both the accepted base identity and rejection of an arbitrary
+  direct constant.
 
 ## Suggested Next
 
-- Execute Step 2 only: add printer receipt and typed-direct-label LIR-to-BIR
-  dispatch using the structured Raw-BIR authority, with focused positive and
-  malformed coverage. Do not edit 772 `emit_indexed_gep` forwarding or pr70460.
+- Supervisor: select the next active-plan packet. Do not edit 772
+  `emit_indexed_gep` forwarding or pr70460 as part of this completed Step 2 slice.
 
 ## Watchouts
 
@@ -29,10 +28,8 @@ Current Step Title: Carry the validated form through printer and backend/lowerin
 
 ## Proof
 
-- 774 accepted fresh `cmake --build --preset default` and
-  `ctest --test-dir build -j --output-on-failure -R
-  '^backend_lir_to_bir_interface$'`; matched `^backend_` before/after guards
-  passed 5/5. This proof establishes the Raw-BIR input only.
-- Step 2 requires its own fresh build and focused verifier/printer/lowering
-  proof. Do not refresh or accept `test_baseline.new.log`; 772 owns the later
-  pr70460 forwarding repair and baseline route.
+- Passed fresh `cmake --build --preset default` and
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'` (5/5).
+  The required proof log is `test_after.log`. Do not refresh or accept
+  `test_baseline.new.log`; 772 owns the later pr70460 forwarding repair and
+  baseline route.

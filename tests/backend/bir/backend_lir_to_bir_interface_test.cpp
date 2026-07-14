@@ -3505,6 +3505,36 @@ void test_direct_label_address_constant_receipt_and_rejections() {
   expect(printed.find("store ptr blockaddress(@direct_label_owner, %target), ptr %label_address_slot") !=
              std::string::npos,
          "pointer store must render the structured direct label-address constant");
+  const std::string direct_gep_printed = lir::print_llvm(direct_gep_module());
+  expect(direct_gep_printed.find(
+             "getelementptr inbounds [2 x i32], ptr blockaddress(@direct_label_owner, %target)") !=
+             std::string::npos,
+         "GEP must render its structured direct label-address base without display recovery");
+  const auto direct_gep_raw = bir::lower_lir_to_raw_bir(direct_gep_module());
+  expect(direct_gep_raw.has_value() &&
+             bir::FoundationVerifier::verify(direct_gep_raw.value()).ok(),
+         "direct label-address GEP must publish verified Raw BIR");
+  const auto direct_gep_view = direct_gep_raw.value().view();
+  const auto direct_gep_function =
+      direct_gep_view.function(direct_gep_view.functions()[0]).value();
+  const auto direct_gep_instructions =
+      direct_gep_function.instructions(direct_gep_function.blocks()[0]).value();
+  const auto* direct_gep = direct_gep_function
+      .instruction(direct_gep_instructions[0]).value().get_element_ptr();
+  const auto* direct_gep_base = direct_gep
+      ? std::get_if<bir::LabelAddressGepBase>(&direct_gep->base.authority)
+      : nullptr;
+  expect(direct_gep_base &&
+             direct_gep_base->value ==
+                 direct_gep_function.source_value(
+                     bir::SourceValueId{direct_gep_function.id(), 63}).value(),
+         "GEP lowering must retain the exact typed direct label-address base identity");
+  auto malformed_direct_gep = direct_gep_module();
+  std::get<lir::LirGepOp>(malformed_direct_gep.functions[0].blocks[0].insts[0]).ptr =
+      lir::LirOperand::direct_constant(lir::LirValueId{61});
+  expect(!bir::lower_lir_to_raw_bir(malformed_direct_gep).has_value() &&
+             !bir::lower_lir_to_canonical_bir(malformed_direct_gep).has_value(),
+         "GEP lowering must reject a direct constant without the current-function label-address authority");
   const auto raw = bir::lower_lir_to_raw_bir(module);
   expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
          "direct label-address constant must publish verified Raw BIR");

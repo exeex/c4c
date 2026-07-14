@@ -2527,20 +2527,34 @@ Result<void, ImportError> validate_function(const LirModule& module,
       }
       if (const auto* gep = std::get_if<LirGepOp>(&instruction)) {
         const auto* result = gep->result.value_id();
-        const auto* base = gep->ptr.link_name_id();
+        const auto* global_base = gep->ptr.link_name_id();
+        const auto* direct_base = gep->ptr.value_id();
+        const bool is_global_base =
+            gep->ptr.kind() == codegen::lir::LirOperandKind::Global &&
+            global_base && *global_base != c4c::kInvalidLinkName;
+        const bool is_direct_label_base =
+            gep->ptr.kind() == codegen::lir::LirOperandKind::DirectConstant &&
+            direct_base && direct_base->valid() &&
+            source_values.find(direct_base->value) != source_values.end() &&
+            source_values.at(direct_base->value).kind == TypeKind::Pointer &&
+            std::any_of(function.direct_label_address_constants.begin(),
+                        function.direct_label_address_constants.end(),
+                        [&](const auto& constant) {
+                          return constant.value == *direct_base;
+                        });
         if (gep->element_type.kind() !=
                 codegen::lir::LirTypeKind::Array ||
             gep->result.kind() != codegen::lir::LirOperandKind::SsaValue ||
             !result || !result->valid() ||
-            gep->ptr.kind() != codegen::lir::LirOperandKind::Global ||
-            !base || *base == c4c::kInvalidLinkName || gep->indices.empty()) {
+            (!is_global_base && !is_direct_label_base) || gep->indices.empty()) {
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
-                            "getelementptr requires authoritative result/base identities and nonempty typed array indices");
+                            "getelementptr requires an authoritative result, a global or current-function direct label-address base, and nonempty typed array indices");
         }
+        if (is_global_base) {
         const LirGlobal* selected = nullptr;
         for (const auto& global : module.globals) {
-          if (global.link_name_id != *base) continue;
+          if (global.link_name_id != *global_base) continue;
           if (selected)
             return fail<void>(
                 ImportErrorCode::UnsupportedOrdinaryInstruction, name,
@@ -2555,6 +2569,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
                             "getelementptr element type must exactly identify its selected global array object");
+        }
         for (const auto& index : gep->indices) {
           if (!index.is_authoritative())
             return fail<void>(
@@ -3694,9 +3709,12 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 continue;
               }
               if (const auto* gep = std::get_if<LirGepOp>(&instruction)) {
-                const auto base =
+                GetElementPtrBase base;
+                std::optional<Type> element_type;
+                if (gep->ptr.kind() == codegen::lir::LirOperandKind::Global) {
+                const auto global =
                     global_objects.find(*gep->ptr.link_name_id());
-                if (base == global_objects.end()) {
+                if (global == global_objects.end()) {
                   edit_error = ImportError{
                       ImportErrorCode::UnsupportedOrdinaryInstruction, name,
                       block.label,
@@ -3717,6 +3735,38 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                       "validated getelementptr global type disappeared"};
                   return Result<void, BuildError>::failure(
                       BuildError::InvalidGlobalObject);
+                }
+                base = global->second;
+                element_type = lower_global_type(module, *selected);
+                } else if (gep->ptr.kind() ==
+                           codegen::lir::LirOperandKind::DirectConstant) {
+                  const auto* value_id = gep->ptr.value_id();
+                  const auto label = value_id
+                      ? source_values.find(value_id->value)
+                      : source_values.end();
+                  if (!value_id || !value_id->valid() ||
+                      label == source_values.end()) {
+                    edit_error = ImportError{
+                        ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                        block.label,
+                        "validated direct label-address GEP base disappeared from the current-function registry"};
+                    return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                  }
+                  base = LabelAddressGepBase{label->second};
+                  element_type = lower_lir_type(module, gep->element_type);
+                } else {
+                  edit_error = ImportError{
+                      ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                      block.label,
+                      "validated getelementptr base has an unsupported authority alternative"};
+                  return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                }
+                if (!element_type) {
+                  edit_error = ImportError{
+                      ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                      block.label,
+                      "validated getelementptr element type disappeared"};
+                  return Result<void, BuildError>::failure(BuildError::InvalidValue);
                 }
                 std::vector<ValueId> indices;
                 indices.reserve(gep->indices.size());
@@ -3762,7 +3812,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 auto appended = function_builder.append(
                     blocks.at(block.id.value),
                     GetElementPtrSpec{
-                        base->second, *lower_global_type(module, *selected),
+                        base, *element_type,
                         gep->inbounds, std::move(indices),
                         gep->result.value_id()->value});
                 if (!appended) {

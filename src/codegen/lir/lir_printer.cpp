@@ -306,6 +306,8 @@ void render_inst(std::ostringstream& os, const LirFunction& function,
                                 LirOperandKind::SpecialToken})
        << " to " << require_type_ref(op->to_type, "LirCastOp.to_type") << "\n";
   } else if (const auto* op = std::get_if<LirGepOp>(&inst)) {
+    const std::string direct = resolve_direct_label_address(function, op->ptr,
+                                                            link_names);
     os << "  "
        << require_operand_kind(op->result, "LirGepOp.result",
                                {LirOperandKind::SsaValue})
@@ -313,8 +315,11 @@ void render_inst(std::ostringstream& os, const LirFunction& function,
     if (op->inbounds) os << "inbounds ";
     os << require_type_ref(op->element_type, "LirGepOp.element_type")
        << ", ptr "
-       << require_operand_kind(op->ptr, "LirGepOp.ptr",
-                               {LirOperandKind::SsaValue, LirOperandKind::Global});
+       << (direct.empty()
+               ? require_operand_kind(op->ptr, "LirGepOp.ptr",
+                                      {LirOperandKind::SsaValue,
+                                       LirOperandKind::Global})
+               : direct);
     for (const auto& idx : op->indices) {
       os << ", ";
       if (idx.is_authoritative()) {
