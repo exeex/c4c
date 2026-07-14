@@ -440,24 +440,24 @@ void verify_cast_op_authority(const LirCastOp& op) {
   }
 
   if (!op.result.value_id()) return;
-  if (op.kind == LirCastKind::FPToSI) {
+  if (op.kind == LirCastKind::FPToSI || op.kind == LirCastKind::FPToUI) {
     if (op.from_type.kind() != LirTypeKind::Floating ||
         op.to_type.kind() != LirTypeKind::Integer) {
       fail_verify(
           "LirCastOp.from_type",
-          "authoritative FPToSI requires floating-to-integer endpoint type refs");
+          "authoritative floating-to-integer cast requires floating-to-integer endpoint type refs");
     }
     const std::string_view from_type = op.from_type.str();
     if (from_type != "half" && from_type != "float" &&
         from_type != "double" && from_type != "x86_fp80" &&
         from_type != "fp128") {
       fail_verify("LirCastOp.from_type",
-                  "authoritative FPToSI requires an exact floating source type");
+                  "authoritative floating-to-integer cast requires an exact floating source type");
     }
     if (!op.to_type.integer_bit_width()) {
       fail_verify(
           "LirCastOp.to_type",
-          "authoritative FPToSI requires an exact integer destination type");
+          "authoritative floating-to-integer cast requires an exact integer destination type");
     }
     return;
   }
