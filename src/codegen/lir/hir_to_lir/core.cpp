@@ -1903,7 +1903,7 @@ lir::LirOperand StmtEmitter::to_bool_operand(FnCtx& ctx, lir::LirOperand val,
   if (ty == "ptr") {
     const lir::LirOperand as_int(fresh_tmp(ctx));
     emit_lir_op(ctx, lir::LirCastOp{as_int, lir::LirCastKind::PtrToInt,
-                                    lir::LirTypeRef("ptr"), val,
+                                    lir::LirTypeRef(lir::LirBuiltinType::Pointer), val,
                                     lir::LirTypeRef::integer(64)});
     emit_lir_op(ctx, lir::LirCmpOp{result, false, "ne",
                                    lir::LirTypeRef::integer(64), as_int,
