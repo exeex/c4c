@@ -1,6 +1,6 @@
 # Production LIR Computed-Goto Address Value Publication
 
-Status: Open (active plan; blocker for
+Status: Open (paused blocker for
 `ideas/open/734_lir_to_new_bir_container_completeness.md`)
 Type: bounded production LIR computed-goto authority repair
 Predecessor: `ideas/open/734_lir_to_new_bir_container_completeness.md`, after accepted Step 7.24
@@ -183,3 +183,33 @@ carrier authority`: pass the verified GEP pointer `LirValueId` into
 `LirIndirectBrOp.addr_value`, retain the carrier verifier checks, rerun all
 five preserved consumers, and only then return to 734 for plan-owner
 disposition. Do not redo 766 or re-execute 734 Step 7.24.
+
+## Resumption Record: computed-goto table-element pointer authority decomposition
+
+Paused again at `Step 1 - Publish and prove production computed-goto address
+carrier authority`; no carrier-publication implementation from 764 was
+accepted. The route has now moved its first bad fact upstream twice: 765
+resolved the member/bitfield RHS identity and 766 resolved the SSA indexed-GEP
+pointer result. The exact current proof is a fresh
+`cmake --build --preset default`, followed by:
+
+`ctest --test-dir build -j --output-on-failure -R '^(llvm_gcc_c_torture_src_comp_goto_1_c|llvm_gcc_c_torture_src_20040302_1_c|llvm_gcc_c_torture_src_20041214_1_c|llvm_gcc_c_torture_src_920501_4_c|llvm_gcc_c_torture_src_920501_5_c)$'`
+
+The result is 1/5 passing: `comp-goto-1` passes, while `20040302-1`,
+`20041214-1`, `920501-4`, and `920501-5` all still fail at the same missing
+`LirIndirectBrOp.addr_value` authority. The `IndirBrStmt` seam already copies
+`addr.value_id()`, so this is not a generic downstream carrier-publication
+defect. The newly separated unresolved seam is computed-goto label-address
+table-element load/result identity: static local pointer-table forms in the
+first three remaining integrations and a local pointer-table form in the last.
+
+This requires a decomposition initiative before choosing another
+implementation seam. The active
+`ideas/open/767_lir_computed_goto_table_element_pointer_authority_decomposition.md`
+owns the four-case baseline, static-versus-local table-element seam inventory,
+direct frontend-LIR focused capability probes, and producer/result-contract
+binding. It excludes `IndirBr` publication and verifier relaxation,
+Raw-BIR/importer, 734, and redoing accepted 765/766. After those focused
+table-element capabilities select and resolve the narrowest generic seam,
+resume 764 Step 1: rerun all five consumers and publish as necessary, then
+return to 734 for plan-owner disposition.

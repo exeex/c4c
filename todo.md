@@ -1,38 +1,38 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/764_lir_production_computed_goto_addr_value_publication.md
+Source Idea Path: ideas/open/767_lir_computed_goto_table_element_pointer_authority_decomposition.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Publish and prove production computed-goto address carrier authority
+Current Step Title: Establish the table-element failure-family baseline
 
 ## Just Finished
 
-- 766 completed and was accepted in `74379f4a2`: the direct
-  `emit_indexed_gep` operand overload now retains the verified SSA-based GEP
-  pointer `LirValueId` in `LirGepOp.result`. Its focused proof and supervisor
-  backend proof passed; it did not publish the downstream carrier field.
+- Switched from 764 Step 1 after 765 and 766 resolved the arithmetic route but
+  the fresh preserved five-case proof reached only 1/5 passing. The remaining
+  four failures share missing `LirIndirectBrOp.addr_value` authority and are
+  table-element source forms, not a generic `IndirBrStmt` publication defect.
 
 ## Suggested Next
 
-- Resume 764 Step 1: carry the accepted GEP pointer `LirValueId` through the
-  direct `IndirBrStmt` seam into `LirIndirectBrOp.addr_value`, preserve all
-  carrier verifier checks, then prove the shared five-consumer family.
+- Reproduce the exact five-case baseline, preserve the 1/5 versus 4/5 split,
+  then inventory static-local and local table-element load/result producers
+  before creating any focused frontend-LIR capability probe.
 
 ## Watchouts
 
-- Do not redo 766's GEP contract work, weaken a verifier, derive authority
-  from text, or introduce a synthetic cast, alloca/load, phi, or select.
-- Do not change Raw-BIR/importer or re-execute 734 Step 7.24. Treat
-  `comp-goto-1`, `20040302-1`, `20041214-1`, `920501-4`, and `920501-5` as one
-  family; none may be excluded, downgraded, or accepted as baseline debt.
+- The statement seam already copies `addr.value_id()`: do not patch
+  `IndirBrStmt`/`addr_value`, weaken a verifier, or derive authority from text.
+- Use frontend-LIR direct production tests; backend/case and the four external
+  cases are integration proof only. Do not touch Raw-BIR/importer, 734, or
+  accepted 765/766 work.
 
 ## Proof
 
-- Accepted prerequisite: `74379f4a2`; fresh `cmake --build --preset default`,
-  focused `^frontend_lir_call_type_ref$`, a non-regressive matching guard, and
-  supervisor backend proof 5/5 passed. The focused output is in
-  `test_after.log`.
-- Before handoff to 734, run a fresh build, focused positive/malformed carrier
-  proof, and the preserved five-consumer command:
-  `ctest --test-dir build -j --output-on-failure -R '^(llvm_gcc_c_torture_src_comp_goto_1_c|llvm_gcc_c_torture_src_20040302_1_c|llvm_gcc_c_torture_src_20041214_1_c|llvm_gcc_c_torture_src_920501_4_c|llvm_gcc_c_torture_src_920501_5_c)$'`.
+- Incoming exact proof: fresh `cmake --build --preset default`, then
+  `ctest --test-dir build -j --output-on-failure -R '^(llvm_gcc_c_torture_src_comp_goto_1_c|llvm_gcc_c_torture_src_20040302_1_c|llvm_gcc_c_torture_src_20041214_1_c|llvm_gcc_c_torture_src_920501_4_c|llvm_gcc_c_torture_src_920501_5_c)$'`;
+  `comp-goto-1` passes and the remaining four fail at the same missing carrier
+  authority.
+- Step 1 repeats that build-plus-command baseline before source-form probes;
+  later steps use directly relevant frontend-LIR production proof selected from
+  the mapped producer/result contracts.
