@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/759_lir_typed_ref_enum_foundation.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Extend the enum-first pattern to related closed-set refs
+Current Step ID: 4
+Current Step Title: Add focused proof for typed authority
 
 ## Just Finished
 
@@ -15,8 +15,9 @@ Current Step Title: Extend the enum-first pattern to related closed-set refs
 
 ## Suggested Next
 
-- Step 4 proof: add focused coverage that distinguishes enum-authoritative
-  builtin queries from dynamic runtime text compatibility.
+- Step 4 implementation: add focused coverage for enum-constructed
+  `LirTypeRef` builtin queries and a supported dynamic text form; cover the
+  related closed-set wrappers only if their constructor/query behavior changes.
 
 ## Watchouts
 
@@ -27,8 +28,6 @@ Current Step Title: Extend the enum-first pattern to related closed-set refs
   enum foundation pass.
 - Dynamic vector, array, struct, function, opaque, VRM, and arbitrary integer
   spellings remain supported text-backed inputs in this foundation slice.
-- Step 3 needs no API churn: both related wrappers already satisfy the
-  enum-first pattern.
 
 ## Proof
 
