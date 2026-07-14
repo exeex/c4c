@@ -9,10 +9,12 @@ Current Step Title: Repair the targeted warning-inventory route
 ## Just Finished
 
 - Step 6 targeted warning-inventory repair complete: the AArch64 fixed-vector
-  ABI bitcast now uses `LirBuiltinType::I32` for its closed target and the
-  HIR-rendered vector source value type only through the deprecated,
-  searchable `hir_rendered_aarch64_vector_abi_source_type_text` local helper.
-  The ABI conversion remains unchanged; HFA GEP/store text was not touched.
+  call-argument ABI bitcast now uses `LirBuiltinType::I32` for its closed
+  target and the HIR-rendered vector source value type only through the
+  deprecated, searchable
+  `hir_rendered_aarch64_vector_call_argument_abi_source_type_text` local
+  helper. The ABI conversion remains unchanged; HFA GEP/store text was not
+  touched.
 
 ## Suggested Next
 
@@ -59,5 +61,5 @@ Current Step Title: Repair the targeted warning-inventory route
 - `cmake --build --preset default` succeeded; its warnings are deliberate
   local inventory boundaries, including the new AArch64 vector ABI source
   helper.
-- `ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|backend_lir_)' > test_after.log`
-  passed (6/6); `test_after.log` is the focused proof log.
+- `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+  passed (5/5); `test_after.log` is the focused proof log.
