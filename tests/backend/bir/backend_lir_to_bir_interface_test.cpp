@@ -9084,6 +9084,87 @@ lir::LirModule direct_native_floating_call_module() {
   return module;
 }
 
+lir::LirModule downstream_double_fadd_module() {
+  auto module = direct_native_floating_call_module();
+  auto& block = module.functions[0].blocks[0];
+  block.insts.push_back(lir::LirConstFloat{
+      lir::LirValueId{10}, scalar_type(c4c::TB_DOUBLE), 1.25});
+  block.insts.push_back(lir::LirBinOp{
+      lir::LirOperand::ssa("%misleading-double-fadd", lir::LirValueId{11}),
+      lir::LirBinaryOpcode::FAdd, lir::LirTypeRef("double"),
+      lir::LirOperand::ssa("%presentation-only-call-use", lir::LirValueId{9}),
+      lir::LirOperand::ssa("%presentation-only-rhs", lir::LirValueId{10})});
+  return module;
+}
+
+void test_downstream_double_fadd_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto caller_id = view.functions()[0];
+    const auto caller = view.function(caller_id).value();
+    const auto insts = caller.instructions(caller.blocks()[0]).value();
+    expect(insts.size() == 2,
+           layer + " must retain the direct double Call and one FAdd instruction");
+    const auto call = caller.instruction(insts[0]).value();
+    const auto fadd = caller.instruction(insts[1]).value();
+    const auto result = caller.value(fadd.results()[0]).value();
+    expect(call.opcode() == bir::Opcode::Call && call.results().size() == 1 &&
+               fadd.opcode() == bir::Opcode::Binary && fadd.binary() &&
+               fadd.binary()->opcode == bir::BinaryOpcode::FAdd &&
+               fadd.binary()->type == bir::Type{bir::TypeKind::F64, 64, "double"} &&
+               fadd.operands().size() == 2 &&
+               fadd.operands()[0] == call.results()[0] &&
+               caller.value(fadd.operands()[1]).value().type ==
+                   bir::Type{bir::TypeKind::F64, 64, "double"} &&
+               fadd.results().size() == 1 &&
+               result.type == bir::Type{bir::TypeKind::F64, 64, "double"} &&
+               result.source_id == bir::SourceValueId{caller_id, 11} &&
+               caller.source_value(*result.source_id).value() == fadd.results()[0],
+           layer + " must retain one source-backed F64 FAdd with ordered call-result and current-function SSA operands");
+  };
+
+  const auto module = downstream_double_fadd_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "downstream double FAdd must publish verified Raw BIR");
+  inspect(raw.value(), "Raw BIR");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(), "downstream double FAdd must canonicalize");
+  inspect(canonical.value(), "Canonical BIR");
+
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto candidate = downstream_double_fadd_module();
+    auto& fadd = std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[2]);
+    mutate(candidate, fadd);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() && raw_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value() && canonical_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Canonical rollback)");
+  };
+  rejected([](auto&, auto& fadd) {
+             fadd.lhs = lir::LirOperand::ssa("%missing", lir::LirValueId{77});
+           }, "missing accepted direct-call result must reject");
+  rejected([](auto&, auto& fadd) {
+             fadd.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{9});
+           }, "duplicate FAdd result identity must reject");
+  rejected([](auto&, auto& fadd) {
+             fadd.rhs = lir::LirOperand::ssa("%foreign", lir::LirValueId{77});
+           }, "cross-owner or missing RHS SSA authority must reject");
+  rejected([](auto&, auto& fadd) { fadd.type_str = lir::LirTypeRef("float"); },
+           "wrong FAdd type must reject");
+  rejected([](auto&, auto& fadd) { fadd.opcode = lir::LirBinaryOpcode::FSub; },
+           "non-FAdd opcode must reject");
+  rejected([](auto&, auto& fadd) {
+             fadd.rhs = lir::LirOperand::integer("literal", 1);
+           }, "non-SSA FAdd operand must reject");
+  rejected([](auto&, auto& fadd) { fadd.result = lir::LirOperand::raw("%raw"); },
+           "malformed FAdd result authority must reject");
+}
+
 void test_direct_native_floating_call_receipt_and_rejections() {
   const auto inspect = [](const auto& graph, const std::string& layer) {
     const auto view = graph.view();
@@ -9395,6 +9476,7 @@ int main() {
   test_direct_zero_argument_void_call_rejections();
   test_direct_integer_call_receipt_and_rejections();
   test_direct_native_floating_call_receipt_and_rejections();
+  test_downstream_double_fadd_receipt_and_rejections();
   test_native_intrinsic_receipt_and_rejections();
   test_native_intrinsic_i64_trunc_receipt_and_rejections();
   return 0;

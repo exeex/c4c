@@ -74,6 +74,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
     case Opcode::Call:
       return std::holds_alternative<CallNode>(instruction.payload) ||
              std::holds_alternative<IntrinsicCallNode>(instruction.payload);
+    case Opcode::Binary:
+      return std::holds_alternative<BinaryNode>(instruction.payload);
     case Opcode::Cast:
       return std::holds_alternative<CastNode>(instruction.payload);
   }
@@ -727,6 +729,43 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           report(result, VerificationRule::ValueDefinition, function_id,
                  inst_id,
                  "call must target one module-owned nonvariadic function with exact ordered operands and result arity");
+      }
+      if (const auto* binary = std::get_if<BinaryNode>(&instruction.payload)) {
+        const Type f64{TypeKind::F64, 64, "double"};
+        bool exact = binary->opcode == BinaryOpcode::FAdd &&
+            binary->type == f64 && instruction.operands.size() == 2 &&
+            instruction.results.size() == 1;
+        if (exact) {
+          for (const auto operand_id : instruction.operands) {
+            const auto operand = function.values_.get(function_id, operand_id);
+            exact = operand && operand.value().get().type == f64;
+            if (!exact) break;
+          }
+        }
+        if (exact) {
+          const auto lhs = function.values_.get(function_id, instruction.operands[0]);
+          const auto* lhs_def = lhs
+              ? std::get_if<InstResultDef>(&lhs.value().get().definition)
+              : nullptr;
+          if (!lhs_def) {
+            exact = false;
+          } else {
+            const auto producer =
+                function.insts_.get(function_id, lhs_def->instruction);
+            exact = producer &&
+                std::holds_alternative<CallNode>(producer.value().get().payload);
+          }
+        }
+        if (exact) {
+          const auto result_value =
+              function.values_.get(function_id, instruction.results[0]);
+          exact = result_value && result_value.value().get().type == f64 &&
+              result_value.value().get().source_id.has_value() &&
+              result_value.value().get().source_id->owner == function_id;
+        }
+        if (!exact)
+          report(result, VerificationRule::ValueDefinition, function_id, inst_id,
+                 "binary must retain the exact F64 FAdd direct-call-result use, ordered F64 operands, and source-backed result");
       }
       if (const auto* call = std::get_if<IntrinsicCallNode>(&instruction.payload)) {
         const bool count_flag = call->kind == IntrinsicKind::Cttz ||

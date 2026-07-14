@@ -17,6 +17,7 @@ namespace c4c::backend::bir {
 namespace {
 
 using codegen::lir::LirBlock;
+using codegen::lir::LirBinOp;
 using codegen::lir::LirBr;
 using codegen::lir::LirCallOp;
 using codegen::lir::LirCastOp;
@@ -483,6 +484,30 @@ bool exact_direct_native_floating_call(const LirModule& module,
     resolved = true;
   }
   return resolved;
+}
+
+bool exact_downstream_double_fadd(
+    const LirBinOp& bin,
+    const std::unordered_map<std::uint32_t, Type>& source_values,
+    const std::unordered_set<std::uint32_t>& native_floating_call_results) {
+  const Type f64{TypeKind::F64, 64, "double"};
+  const auto* result = bin.result.value_id();
+  const auto* lhs = bin.lhs.value_id();
+  const auto* rhs = bin.rhs.value_id();
+  if (bin.result.kind() != codegen::lir::LirOperandKind::SsaValue || !result ||
+      !result->valid() || !bin.opcode.typed() ||
+      *bin.opcode.typed() != codegen::lir::LirBinaryOpcode::FAdd ||
+      bin.type_str.kind() != codegen::lir::LirTypeKind::Floating ||
+      bin.type_str.str() != "double" ||
+      bin.lhs.kind() != codegen::lir::LirOperandKind::SsaValue || !lhs ||
+      !lhs->valid() || bin.rhs.kind() != codegen::lir::LirOperandKind::SsaValue ||
+      !rhs || !rhs->valid() ||
+      native_floating_call_results.count(lhs->value) == 0)
+    return false;
+  const auto lhs_value = source_values.find(lhs->value);
+  const auto rhs_value = source_values.find(rhs->value);
+  return lhs_value != source_values.end() && rhs_value != source_values.end() &&
+         lhs_value->second == f64 && rhs_value->second == f64;
 }
 
 bool exact_integer_intrinsic_call(
@@ -1734,6 +1759,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_map<std::string, Type> ordinary_values;
   std::unordered_map<std::uint32_t, Type> source_values;
   std::unordered_set<std::uint32_t> intrinsic_results;
+  std::unordered_set<std::uint32_t> native_floating_call_results;
   labels.reserve(function.blocks.size());
   block_ids.reserve(function.blocks.size());
   for (const auto& block : function.blocks) {
@@ -1960,7 +1986,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
           if (!source_values.emplace(call->result.value_id()->value, *result_type).second)
             return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                               name, block.label,
-                              "duplicate authoritative LirValueId definition");
+                            "duplicate authoritative LirValueId definition");
+          native_floating_call_results.insert(call->result.value_id()->value);
           continue;
         }
         if (!exact_direct_integer_call(module, *call, source_values))
@@ -1973,6 +2000,16 @@ Result<void, ImportError> validate_function(const LirModule& module,
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
                             "duplicate authoritative LirValueId definition");
+        continue;
+      }
+      if (const auto* bin = std::get_if<LirBinOp>(&instruction)) {
+        if (!exact_downstream_double_fadd(*bin, source_values,
+                                          native_floating_call_results) ||
+            !source_values.emplace(bin->result.value_id()->value,
+                                   Type{TypeKind::F64, 64, "double"}).second)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "binary requires the exact double FAdd of one accepted native floating call result and one current-function double SSA value");
         continue;
       }
       if (const auto* cast = std::get_if<LirCastOp>(&instruction)) {
@@ -2324,6 +2361,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
           std::unordered_map<std::string, BlockId> blocks;
           std::unordered_map<std::string, std::pair<ValueId, Type>> ordinary_values;
           std::unordered_map<std::uint32_t, ValueId> source_values;
+          std::unordered_set<std::uint32_t> native_floating_call_results;
           blocks.reserve(function.blocks.size());
           for (const LirBlock& block : function.blocks) {
             auto created_block = function_builder.create_block(block.label);
@@ -2722,6 +2760,41 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                     return Result<void, BuildError>::failure(
                         BuildError::DuplicateSourceValue);
                   }
+                  if (native_floating_result)
+                    native_floating_call_results.insert(
+                        call->result.value_id()->value);
+                }
+                continue;
+              }
+              if (const auto* bin = std::get_if<LirBinOp>(&instruction)) {
+                const auto lhs = source_values.find(bin->lhs.value_id()->value);
+                const auto rhs = source_values.find(bin->rhs.value_id()->value);
+                if (lhs == source_values.end() || rhs == source_values.end() ||
+                    native_floating_call_results.count(
+                        bin->lhs.value_id()->value) == 0) {
+                  edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                                           name, block.label,
+                                           "validated double FAdd operands disappeared from the current-function registry"};
+                  return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                }
+                auto appended = function_builder.append(
+                    blocks.at(block.label),
+                    BinarySpec{BinaryOpcode::FAdd,
+                               Type{TypeKind::F64, 64, "double"}, lhs->second,
+                               rhs->second, bin->result.value_id()->value});
+                if (!appended) {
+                  edit_error = builder_failure(name, block.label,
+                                               "append double FAdd", appended.error());
+                  return Result<void, BuildError>::failure(appended.error());
+                }
+                if (appended.value().results.size() != 1 ||
+                    !source_values.emplace(bin->result.value_id()->value,
+                                           appended.value().results[0]).second) {
+                  edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                                           name, block.label,
+                                           "double FAdd result registration failed"};
+                  return Result<void, BuildError>::failure(
+                      BuildError::DuplicateSourceValue);
                 }
                 continue;
               }

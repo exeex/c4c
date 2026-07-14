@@ -3,46 +3,35 @@
 Status: Active
 Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 5.3.3
-Current Step Title: Receive the checked downstream double FAdd source chain
+Current Step ID: 6
+Current Step Title: Complete terminators and structured inline-assembly transport
 
 ## Just Finished
 
-- Plan Step 5.3.2 received the resolved fixed-void native-double `LirCallOp`
-  into one direct Raw-BIR `Call` with its native `F64` result, current-function
-  source identity, and exact resolved `LinkNameId` target. Raw and Canonical
-  receipt plus missing/conflicting callee, result identity, return/signature,
-  and alternate-carrier rollback coverage now pass; scalar `FAdd` remains
-  unimported.
+- Plan Step 5.3.3 received only the checked downstream `double` `LirBinOp`
+  `FAdd`: one typed Raw-BIR `Binary` with an `F64` source-backed result,
+  ordered current-function SSA operands, and a left edge restricted to the
+  accepted direct native-double Call result. Raw and Canonical receipt plus
+  missing, duplicate, cross-owner, wrong-type, non-`FAdd`, non-SSA, and
+  malformed-result rollback coverage now pass.
 
 ## Suggested Next
 
-- Execute Plan Step 5.3.3 only: receive the exact checked downstream
-  `LirBinOp{result, opcode=FAdd, type_str=double, lhs=<Step 5.3.2 call
-  result>, rhs=<current-function double SSA>}` into one typed Raw-BIR binary
-  instruction/result. Add the Binary builder payload/spec and reachable
-  verifier rule for this source-ID/type/opcode/operand linkage, then prove Raw
-  and Canonical receipt plus transactional rejection of missing, duplicate,
-  cross-owner, wrong-type, non-`FAdd`, non-SSA, or malformed-result authority
-  with `backend_lir_to_bir_interface` and `frontend_lir_call_type_ref`.
+- Select one bounded Plan Step 6 terminator or structured inline-assembly
+  receipt packet; do not infer any additional scalar operation family from the
+  completed FAdd seam.
 
 ## Watchouts
 
-- This packet admits neither a general binary family nor a new call form: keep
-  every integer, other floating opcode, unary, literal/presentation-derived,
-  compound, complex, vector, pointer/object, logical-helper, builtin, and
-  nonchecked operand/result row fail-closed. Do not infer operands, types, or
-  opcode from text; do not receive casts, compares, selects, returns, or any
-  further downstream use.
+- The new Binary container is deliberately closed to `FAdd`/`F64` and requires
+  a direct native-double Call producer on the left. All other binary forms,
+  literals, presentation-derived operands, casts, compares, selects, returns,
+  and downstream uses remain fail-closed.
 
 ## Proof
 
-- Plan Step 5.3.2 passed:
+- Plan Step 5.3.3 passed:
   `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^(backend_lir_to_bir_interface|frontend_lir_call_type_ref)$'
   > test_after.log`.
-  The matching `test_before.log` is green.
-- Plan Step 5.3.3 proof:
-  `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^(backend_lir_to_bir_interface|frontend_lir_call_type_ref)$'
-  > test_after.log`.
+  The focused subset passed; `test_after.log` is the proof log.

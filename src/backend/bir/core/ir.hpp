@@ -134,7 +134,15 @@ struct ValueDef {
       definition = UnresolvedDef{};
 };
 
-enum class Opcode : std::uint8_t { InlineAsm, Store, Load, GetElementPtr, Call, Cast };
+enum class Opcode : std::uint8_t {
+  InlineAsm,
+  Store,
+  Load,
+  GetElementPtr,
+  Call,
+  Binary,
+  Cast,
+};
 
 struct InlineAsmNode {
   std::string asm_text;
@@ -163,6 +171,13 @@ struct CallNode {
   FunctionId callee{};
 };
 
+enum class BinaryOpcode : std::uint8_t { FAdd };
+
+struct BinaryNode {
+  BinaryOpcode opcode = BinaryOpcode::FAdd;
+  Type type{};
+};
+
 enum class IntrinsicKind : std::uint8_t { Cttz, Ctlz, Ctpop };
 
 struct IntrinsicCallNode {
@@ -182,7 +197,7 @@ struct CastNode {
 
 using InstPayload =
     std::variant<InlineAsmNode, StoreNode, LoadNode, GetElementPtrNode,
-                 CallNode, IntrinsicCallNode, CastNode>;
+                 CallNode, BinaryNode, IntrinsicCallNode, CastNode>;
 
 class BlockView;
 class FunctionView;

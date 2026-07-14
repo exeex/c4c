@@ -28,6 +28,9 @@ class InstView {
   const CallNode* call() const noexcept {
     return std::get_if<CallNode>(&data_->payload);
   }
+  const BinaryNode* binary() const noexcept {
+    return std::get_if<BinaryNode>(&data_->payload);
+  }
   const IntrinsicCallNode* intrinsic_call() const noexcept {
     return std::get_if<IntrinsicCallNode>(&data_->payload);
   }
