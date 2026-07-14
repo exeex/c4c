@@ -3465,6 +3465,99 @@ void test_indirect_branch_terminator_receipt_and_rejections() {
          "foreign indirect target authority must publish neither Raw nor Canonical BIR");
 }
 
+void test_typed_computed_goto_receipt_and_rejections() {
+  auto computed_goto_module = [] {
+    auto module = selected_global_array_gep_module();
+    auto& function = module.functions.front();
+    auto& entry = function.blocks.front();
+    entry.insts.push_back(lir::LirIndirectBrOp{
+        lir::LirOperand::ssa("%misleading-address-display", lir::LirValueId{61}),
+        lir::LirValueId{61}, {"misleading-second", "misleading-first"},
+        {lir::LirBlockId{2}, lir::LirBlockId{1}}});
+    entry.terminator = lir::LirUnreachable{};
+    function.blocks.push_back(return_block(1, "first-target"));
+    function.blocks.push_back(return_block(2, "second-target"));
+    return module;
+  };
+
+  const auto module = computed_goto_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "typed computed-goto authority must publish verified Raw BIR");
+  const auto view = raw.value().view();
+  const auto function_id = view.functions()[0];
+  const auto function = view.function(function_id).value();
+  const auto blocks = function.blocks();
+  const auto terminator = function.terminator(blocks[0]);
+  const auto* indirect = terminator.has_value()
+                             ? std::get_if<bir::IndirectJumpTerm>(&terminator.value())
+                             : nullptr;
+  expect(indirect && indirect->address ==
+                         function.source_value(bir::SourceValueId{function_id, 61}).value() &&
+             indirect->targets == std::vector<bir::BlockId>({blocks[2], blocks[1]}) &&
+             function.successors(blocks[0]).value() == indirect->targets,
+         "computed goto must consume only typed address and ordered successor authority");
+
+  const auto rejected = [&](auto mutate, bir::ImportErrorCode expected,
+                            const std::string& message) {
+    auto candidate = computed_goto_module();
+    mutate(candidate);
+    const auto rejected_raw = bir::lower_lir_to_raw_bir(candidate);
+    expect(!rejected_raw.has_value() && rejected_raw.error().code == expected,
+           message + " (Raw rollback)");
+    expect(!bir::lower_lir_to_canonical_bir(candidate).has_value(),
+           message + " (Canonical rollback)");
+  };
+  rejected([](lir::LirModule& candidate) {
+    std::get<lir::LirIndirectBrOp>(candidate.functions[0].blocks[0].insts.back())
+        .addr_value.reset();
+  }, bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+  "missing computed-goto address authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    std::get<lir::LirIndirectBrOp>(candidate.functions[0].blocks[0].insts.back())
+        .addr_value = lir::LirValueId{999};
+  }, bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+  "foreign computed-goto address authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    std::get<lir::LirIndirectBrOp>(candidate.functions[0].blocks[0].insts.back())
+        .addr_value = lir::LirValueId::invalid();
+  }, bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+  "invalid computed-goto address authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    auto& entry = candidate.functions[0].blocks[0];
+    entry.insts.insert(entry.insts.end() - 1,
+                       lir::LirConstInt{lir::LirValueId{63}, scalar_type(c4c::TB_INT), 1});
+    std::get<lir::LirIndirectBrOp>(entry.insts.back()).addr_value = lir::LirValueId{63};
+  }, bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+  "non-pointer computed-goto address authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    std::get<lir::LirIndirectBrOp>(candidate.functions[0].blocks[0].insts.back())
+        .successors.clear();
+  }, bir::ImportErrorCode::MissingBranchTarget,
+  "missing computed-goto successor authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    std::get<lir::LirIndirectBrOp>(candidate.functions[0].blocks[0].insts.back())
+        .successors = {lir::LirBlockId{2}, lir::LirBlockId{2}};
+  }, bir::ImportErrorCode::MissingBranchTarget,
+  "duplicate computed-goto successors must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    std::get<lir::LirIndirectBrOp>(candidate.functions[0].blocks[0].insts.back())
+        .successors = {lir::LirBlockId{999}};
+  }, bir::ImportErrorCode::MissingBranchTarget,
+  "invalid computed-goto successors must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    candidate.functions[0].blocks.pop_back();
+    candidate.functions.push_back(
+        void_definition("foreign-owner", {return_block(2, "foreign-target")}));
+  }, bir::ImportErrorCode::MissingBranchTarget,
+  "foreign computed-goto successors must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    candidate.functions[0].blocks[0].insts.push_back(
+        lir::LirConstInt{lir::LirValueId{64}, scalar_type(c4c::TB_INT), 1});
+  }, bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+  "computed-goto carrier with later instructions must reject transactionally");
+}
+
 lir::LirModule selected_global_i32_slt_compare_module();
 
 void test_switch_terminator_receipt_and_rejections() {
@@ -11497,6 +11590,7 @@ int main() {
   test_direct_global_integer_load_rejections();
   test_selected_global_array_gep_receipt();
   test_indirect_branch_terminator_receipt_and_rejections();
+  test_typed_computed_goto_receipt_and_rejections();
   test_switch_terminator_receipt_and_rejections();
   test_conditional_branch_terminator_receipt_and_rejections();
   test_selected_global_array_gep_ssa_index_receipt();

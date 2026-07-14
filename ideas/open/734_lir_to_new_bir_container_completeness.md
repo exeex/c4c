@@ -586,3 +586,40 @@ observations where the active runbook now records implemented capability.
 - Reject partial publication, string-based fixups, testcase-shaped matching,
   helper-only refactors, or proof that omits neighboring variants/metadata
   families.
+
+## Resumption Record: post-Step 7.24 production computed-goto blocker
+
+Paused after accepted Step 7.24, `Receive typed computed-goto authority`.
+The uncommitted coherent receiver slice is limited to
+`src/backend/bir/lir_to_bir.cpp`,
+`tests/backend/bir/backend_lir_to_bir_interface_test.cpp`, and its `todo.md`
+record: it imports the final `LirIndirectBrOp` instruction carrier into Raw-BIR
+`IndirectJumpTerm` using only typed `addr_value` and ordered `successors`, with
+transactional positive and malformed-authority coverage. Do not re-execute
+this receiver packet when this source resumes.
+
+Accepted executor proof: fresh `cmake --build --preset default` passed; the
+matching `^backend_` before/after regression guard passed 5/5 under
+allow-non-decreasing in `test_before.log` and `test_after.log`. Supervisor
+broader validation built freshly and ran
+`ctest --test-dir build -j --output-on-failure`: 3029/3034 passed and 5 failed.
+Only the reproduced `^llvm_gcc_c_torture_src_comp_goto_1_c$` failure is routed
+here: before Raw-BIR import it reports
+`LirIndirectBrOp.addr_value: must carry current-function pointer LirValueId`.
+The remaining failures (`20040302-1.c`, `20041214-1.c`, `920501-4.c`, and
+`920501-5.c`) have no ownership claim in this record.
+
+Classification: `separate-blocker`. The active production computed-goto path
+does not populate the same authority that closed 757's bounded handoff proved.
+Open `ideas/open/764_lir_production_computed_goto_addr_value_publication.md`
+owns only tracing and repairing that first production authority-loss owner,
+verifying the carried current-function pointer `LirValueId`, and handing it
+back. It must not change Raw-BIR/importer receiver code or recover identity
+from display text.
+
+Interrupted point: Step 7.24 is complete pending broader/lifecycle
+disposition, not incomplete implementation. Exact return action after 764 has
+accepted a producer handoff proving `comp-goto-1.c` publishes valid
+`addr_value`: reactivate 734 after Step 7.24 and send the completed receiver
+slice to plan-owner for a close/repair decision. Preserve the accepted receiver
+work and proof; do not repeat Step 7.24.

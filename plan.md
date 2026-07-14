@@ -1,97 +1,78 @@
-# LIR-To-New-BIR Container And Import Completeness Runbook
+# Production Computed-Goto Address Authority Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Resumed from: accepted Step 7.23 typed `LirSwitch` receipt (`0995a3deb`) and
-closed idea 757 computed-goto address-authority handoff (`8527c6dbc`). The
-fresh focused producer proof passed 1/1; the matching `^backend_` regression
-guard passed 5/5 before and after under allow-non-decreasing.
+Source Idea: ideas/open/764_lir_production_computed_goto_addr_value_publication.md
+Activated from: switched from 734 after accepted Step 7.24; 734 remains open
+and resumable.
 
 ## Purpose
 
-Resume the Raw-BIR receiver route without resetting accepted Steps 1 through
-7.23. Receive exactly the newly authorized typed `LirIndirectBrOp` CFG row.
+Repair only the production computed-goto producer route that fails to publish
+the existing typed address authority required by the accepted Raw-BIR receiver.
 
 ## Goal
 
-Map one existing typed computed-goto address with ordered typed destinations to
-a verified, target-independent Raw-BIR indirect-jump destination without
-presentation recovery or partial publication.
+For `comp-goto-1.c`, publish a verified current-function pointer `LirValueId`
+in `LirIndirectBrOp.addr_value` without any text-derived recovery.
 
 ## Core Rule
 
-Use only `LirIndirectBrOp.addr_value` as the current-function pointer
-`LirValueId` and ordered `successors` as CFG authority. `addr`, labels, printer
-output, and rendered text are never semantic inputs.
+`addr_value` is the semantic address authority. `addr`, labels, printer output,
+rendered LLVM, and testcase names are never inputs for deriving or repairing it.
 
 ## Read First
 
-- `ideas/open/734_lir_to_new_bir_container_completeness.md`
+- `ideas/open/764_lir_production_computed_goto_addr_value_publication.md`
+- `ideas/open/734_lir_to_new_bir_container_completeness.md` resumption record
 - `ideas/closed/757_lir_computed_goto_address_value_identity_publication.md`
-- `ideas/closed/750_lir_cfg_terminator_block_identity_completion.md`
-- existing Raw-BIR indirect-jump container, builder/view, verifier, and
-  LIR-to-Raw-BIR terminator dispatch
-- `src/backend/bir/lir_to_bir/README.md` terminator matrix
-
-## Landed Progress
-
-- Steps 1 through 7.23 are accepted historical work; do not repeat them.
-- Step 7.21 received legacy `LirIndirectBr` (`b528dc1`), Step 7.22 received
-  `LirCondBr` (`220a3b5ad`), and Step 7.23 received `LirSwitch`
-  (`0995a3deb`).
-- Closed 750 established ordered computed-goto successor authority; closed 757
-  established typed pointer `addr_value` authority (`8527c6dbc`).
+- `src/codegen/lir/hir_to_lir/stmt.cpp` and the production rvalue path reached
+  by `IndirBrStmt`
 
 ## Non-Goals
 
-- no LIR producer/schema changes, presentation recovery, canonicalization,
-  target lowering, MIR, emission, or legacy-BIR revival
-- no legacy `LirIndirectBr`, `LirCondBr`, `LirSwitch`, PHI, local/object,
-  memory/va, aggregate/vector, body-parameter, or other remaining receiver
-  family
-- do not interpret the address beyond preserving its existing typed pointer
-  fact and ordered targets
+- no Raw-BIR/importer receiver changes or rerun of 734 Step 7.24
+- no display-text recovery, successor/CFG redesign, or ownership of unrelated
+  full-suite failures
+- no broad HIR/parser/sema/rvalue, PHI, local/object, memory/va,
+  aggregate/vector, parameter, target-lowering, MIR, or emission expansion
 
 ## Execution Rules
 
-1. Implement only one `LirIndirectBrOp` receiving container/wiring path.
-2. Preserve typed pointer address authority, typed destination ownership, and
-   destination order; reject absent, invalid, foreign, non-pointer, duplicate,
-   ambiguous, or incoherent authority before Raw-BIR publication.
-3. Add reachable verification and nearby positive/negative transactional
-   coverage with no partial module on failure.
-4. Run a fresh build and narrow proof. Leave broader/full acceptance and
-   regression-log handling to the supervisor.
+1. Keep the repair at the first evidenced production owner that drops the
+   current-function pointer value identity.
+2. Preserve existing verifier fail-closed behavior; strengthen focused coverage
+   rather than weakening checks.
+3. Build and run focused producer proof before the handoff. The supervisor owns
+   regression logs and broader/full acceptance.
 
 ## Ordered Steps
 
-### Step 7.24 - Receive typed computed-goto authority
+### Step 1 - Trace and publish production computed-goto address authority
 
-Goal: receive exactly `LirIndirectBrOp.addr_value` with its ordered
-current-function successors into a Raw-BIR indirect-jump destination.
+Goal: identify the first production owner that leaves the `IndirBrStmt` target
+without a `LirValueId`, then minimally publish its existing pointer identity to
+`LirIndirectBrOp.addr_value`.
 
 Primary targets:
 
-- the smallest existing/new Raw-BIR indirect-jump container, builder/view, and
-  verifier seams required by this row
-- LIR-to-Raw-BIR terminator dispatch and transactional module boundary
-- focused receiver coverage plus malformed-authority neighbours
+- `src/codegen/lir/hir_to_lir/stmt.cpp`
+- only the immediate production rvalue/operand seam evidenced by
+  `comp-goto-1.c`
+- focused frontend or production-route test coverage
 
 Actions:
 
-- map only `addr_value` as `LirValueId` and `successors` as ordered
-  destinations; do not inspect address or label text for semantics
-- validate address presence, validity, current-function ownership, pointer
-  suitability, successor presence/ownership/order, duplicate or ambiguous
-  destinations, and destination coherence before publication
-- prove one valid computed goto and missing, invalid, foreign, non-pointer,
-  misleading-display, duplicate/ambiguous, or incoherent authority failures
-  with whole-module rollback
-- retain PHI and all other unreceived families as unsupported fail-closed
-  neighbours in this packet
+- reproduce `ctest --test-dir build -V -R '^llvm_gcc_c_torture_src_comp_goto_1_c$'`
+  and trace the target operand to the first missing authority owner
+- publish the valid current-function pointer ID through the existing carrier;
+  do not parse any rendered spelling or invent a parallel identity model
+- retain verifier rejection for missing, invalid, foreign, non-pointer, and
+  display-mismatched authority
+- add focused production-path positive coverage and neighbouring malformed
+  authority proof, then record a handoff explicitly limited to this route
 
 Completion check:
 
-- a fresh build and focused positive/negative proof establish the one typed
-  transactional computed-goto receiver without presentation recovery; return
-  source completion state to plan-owner rather than inferring closure.
+- fresh build plus focused proof establishes that the production computed-goto
+  carrier publishes valid `addr_value`; return to 734 after completed Step 7.24
+  for plan-owner disposition without modifying or repeating the receiver.

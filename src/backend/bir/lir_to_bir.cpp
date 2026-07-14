@@ -32,6 +32,7 @@ using codegen::lir::LirFunction;
 using codegen::lir::LirGepOp;
 using codegen::lir::LirGlobal;
 using codegen::lir::LirIndirectBr;
+using codegen::lir::LirIndirectBrOp;
 using codegen::lir::LirInlineAsmOp;
 using codegen::lir::LirInlineAsmValueBinding;
 using codegen::lir::LirInlineAsmValueRole;
@@ -2350,8 +2351,31 @@ Result<void, ImportError> validate_function(const LirModule& module,
       return fail<void>(ImportErrorCode::DuplicateBlockId, name, block.label,
                         "LirBlockId values must be unique within a function");
     block_labels_by_id.emplace(block.id.value, block.label);
+    for (std::size_t index = 0; index < block.insts.size(); ++index) {
+      if (!std::get_if<LirIndirectBrOp>(&block.insts[index])) continue;
+      if (index + 1 != block.insts.size() ||
+          !std::holds_alternative<LirUnreachable>(block.terminator))
+        return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                          name, block.label,
+                          "LirIndirectBrOp must be the final instruction carrier with an unreachable terminator sentinel");
+    }
     for (const auto& instruction : block.insts) {
       if (std::get_if<LirMemcpyOp>(&instruction)) continue;
+      if (const auto* indirect_br = std::get_if<LirIndirectBrOp>(&instruction)) {
+        const auto address = indirect_br->addr_value && indirect_br->addr_value->valid()
+                                 ? source_values.find(indirect_br->addr_value->value)
+                                 : source_values.end();
+        if (address == source_values.end() ||
+            address->second.kind != TypeKind::Pointer)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "LirIndirectBrOp.addr_value must resolve to a current-function pointer value");
+        if (indirect_br->successors.empty())
+          return fail<void>(ImportErrorCode::MissingBranchTarget, name,
+                            block.label,
+                            "LirIndirectBrOp.successors must not be empty");
+        continue;
+      }
       if (const auto* constant = std::get_if<LirConstInt>(&instruction)) {
         const auto type = lower_constant_type(module, constant->type);
         if (!constant->result.valid())
@@ -2937,6 +2961,21 @@ Result<void, ImportError> validate_function(const LirModule& module,
         "already be first");
 
   for (const auto& block : function.blocks) {
+    if (!block.insts.empty()) {
+      if (const auto* indirect_br =
+              std::get_if<LirIndirectBrOp>(&block.insts.back())) {
+        std::unordered_set<std::uint32_t> targets;
+        for (const auto successor : indirect_br->successors) {
+          if (!successor.valid() ||
+              block_labels_by_id.find(successor.value) ==
+                  block_labels_by_id.end() ||
+              !targets.insert(successor.value).second)
+            return fail<void>(ImportErrorCode::MissingBranchTarget, name,
+                              block.label,
+                              "LirIndirectBrOp.successors must resolve uniquely in current-function order");
+        }
+      }
+    }
     auto checked = std::visit(
         [&](const auto& terminator) -> Result<void, ImportError> {
           using Term = std::decay_t<decltype(terminator)>;
@@ -3478,6 +3517,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 }
                 continue;
               }
+              if (std::get_if<LirIndirectBrOp>(&instruction)) continue;
               if (const auto* memcpy = std::get_if<LirMemcpyOp>(&instruction)) {
                 const auto& authority = *memcpy->selected_authority;
                 const auto destination_owner = imported_link_names.find(
@@ -4319,9 +4359,37 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                               *lower_lir_type(module, inline_asm.ordinary_results[index].type)});
               }
             }
-            auto terminator = lower_terminator(
-                module, imported_return_type, block.terminator, source_values,
-                function_builder, blocks, name, block.label);
+            Result<Terminator, ImportError> terminator =
+                !block.insts.empty() &&
+                        std::get_if<LirIndirectBrOp>(&block.insts.back())
+                    ? [&]() -> Result<Terminator, ImportError> {
+                        const auto& indirect_br =
+                            std::get<LirIndirectBrOp>(block.insts.back());
+                        const auto address = source_values.find(
+                            indirect_br.addr_value->value);
+                        if (address == source_values.end())
+                          return fail<Terminator>(
+                              ImportErrorCode::UnsupportedOrdinaryInstruction,
+                              name, block.label,
+                              "validated LirIndirectBrOp.addr_value disappeared from the current-function registry");
+                        std::vector<BlockId> targets;
+                        targets.reserve(indirect_br.successors.size());
+                        for (const auto successor : indirect_br.successors) {
+                          const auto target = blocks.find(successor.value);
+                          if (target == blocks.end())
+                            return fail<Terminator>(
+                                ImportErrorCode::MissingBranchTarget, name,
+                                block.label,
+                                "validated LirIndirectBrOp successor disappeared from the current-function registry");
+                          targets.push_back(target->second);
+                        }
+                        return Result<Terminator, ImportError>::success(
+                            IndirectJumpTerm{address->second, std::move(targets)});
+                      }()
+                    : lower_terminator(module, imported_return_type,
+                                       block.terminator, source_values,
+                                       function_builder, blocks, name,
+                                       block.label);
             if (!terminator) {
               edit_error = std::move(terminator.error());
               return Result<void, BuildError>::failure(
