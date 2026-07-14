@@ -2012,6 +2012,40 @@ void verify_terminator(const LirFunction& function, const LirTerminator& termina
   }
 }
 
+void verify_indirect_br_successors(const LirFunction& function,
+                                   const LirIndirectBrOp& op) {
+  if (op.successors.size() != op.targets.size()) {
+    fail_verify("LirIndirectBrOp.successors",
+                "must carry one current-function LirBlockId for every target label");
+  }
+  std::unordered_set<uint32_t> seen_successors;
+  for (size_t i = 0; i < op.successors.size(); ++i) {
+    const LirBlockId successor = op.successors[i];
+    if (!successor.valid()) {
+      fail_verify("LirIndirectBrOp.successors",
+                  "must carry valid current-function LirBlockIds");
+    }
+    const auto destination = std::find_if(
+        function.blocks.begin(), function.blocks.end(), [&](const LirBlock& block) {
+          return block.id == successor;
+        });
+    if (destination == function.blocks.end() ||
+        std::count_if(function.blocks.begin(), function.blocks.end(),
+                      [&](const LirBlock& block) { return block.id == successor; }) != 1) {
+      fail_verify("LirIndirectBrOp.successors",
+                  "must identify exactly one current-function block per target");
+    }
+    if (!seen_successors.insert(successor.value).second) {
+      fail_verify("LirIndirectBrOp.successors",
+                  "must not contain duplicate current-function LirBlockIds");
+    }
+    if (op.targets[i] != destination->label) {
+      fail_verify("LirIndirectBrOp.targets",
+                  "display label must match the successor-selected destination");
+    }
+  }
+}
+
 std::string_view legacy_type_decl_name(std::string_view decl) {
   constexpr std::string_view marker = " = type ";
   const std::size_t marker_pos = decl.find(marker);
@@ -2682,7 +2716,12 @@ void verify_module(const LirModule& mod) {
     verify_function_value_ownership(mod, function);
     for (const auto& inst : function.alloca_insts) verify_inst(mod, inst);
     for (const auto& block : function.blocks) {
-      for (const auto& inst : block.insts) verify_inst(mod, inst);
+      for (const auto& inst : block.insts) {
+        verify_inst(mod, inst);
+        if (const auto* indirect_br = std::get_if<LirIndirectBrOp>(&inst)) {
+          verify_indirect_br_successors(function, *indirect_br);
+        }
+      }
       verify_terminator(function, block.terminator);
     }
   }

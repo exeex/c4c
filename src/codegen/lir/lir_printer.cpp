@@ -196,7 +196,7 @@ void render_inst(std::ostringstream& os, const LirInst& inst,
        << ", [";
     for (size_t i = 0; i < op->targets.size(); ++i) {
       if (i) os << ", ";
-      os << "label " << op->targets[i];
+      os << "label %" << op->targets[i];
     }
     os << "]\n";
   } else if (const auto* op = std::get_if<LirExtractValueOp>(&inst)) {

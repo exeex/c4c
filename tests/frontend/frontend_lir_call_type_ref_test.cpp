@@ -793,6 +793,107 @@ void test_conditional_and_switch_successor_identity_contract() {
               "forward control-flow lowering should publish conditional and switch authority");
 }
 
+void test_indirect_branch_successor_identity_contract() {
+  namespace lir = c4c::codegen::lir;
+  auto make = [] {
+    lir::LirFunction fn;
+    fn.name = "indirect_branch_ok";
+    fn.signature_text = "define void @indirect_branch_ok() {";
+    lir::LirBlock entry;
+    entry.id = lir::LirBlockId{0};
+    entry.label = "entry";
+    entry.insts.push_back(
+        lir::LirStackSaveOp{lir::LirOperand::ssa("%dispatch", lir::LirValueId{1})});
+    entry.insts.push_back(lir::LirIndirectBrOp{
+        .addr = lir::LirOperand::ssa("%dispatch", lir::LirValueId{1}),
+        .targets = {"first_target", "second_target"},
+        .successors = {lir::LirBlockId{1}, lir::LirBlockId{2}},
+    });
+    lir::LirBlock first;
+    first.id = lir::LirBlockId{1};
+    first.label = "first_target";
+    lir::LirBlock second;
+    second.id = lir::LirBlockId{2};
+    second.label = "second_target";
+    fn.blocks = {std::move(entry), std::move(first), std::move(second)};
+    return fn;
+  };
+
+  lir::LirModule valid;
+  valid.functions.push_back(make());
+  lir::verify_module(valid);
+  const auto& indirect = std::get<lir::LirIndirectBrOp>(valid.functions[0].blocks[0].insts[1]);
+  expect_true(indirect.successors.size() == 2 && indirect.successors[0].value == 1 &&
+                  indirect.successors[1].value == 2,
+              "computed-goto targets should preserve ordered native block IDs");
+
+  lir::LirModule missing;
+  missing.functions.push_back(make());
+  std::get<lir::LirIndirectBrOp>(missing.functions[0].blocks[0].insts[1])
+      .successors.pop_back();
+  expect_identity_verification_rejected(missing,
+                                        "verifier should reject missing computed-goto target ID");
+  lir::LirModule invalid;
+  invalid.functions.push_back(make());
+  std::get<lir::LirIndirectBrOp>(invalid.functions[0].blocks[0].insts[1])
+      .successors[0] = lir::LirBlockId::invalid();
+  expect_identity_verification_rejected(invalid,
+                                        "verifier should reject invalid computed-goto target ID");
+  lir::LirModule duplicate;
+  duplicate.functions.push_back(make());
+  std::get<lir::LirIndirectBrOp>(duplicate.functions[0].blocks[0].insts[1])
+      .successors[1] = lir::LirBlockId{1};
+  expect_identity_verification_rejected(duplicate,
+                                        "verifier should reject duplicate computed-goto target IDs");
+  lir::LirModule ambiguous;
+  ambiguous.functions.push_back(make());
+  ambiguous.functions[0].blocks[2].id = lir::LirBlockId{1};
+  expect_identity_verification_rejected(ambiguous,
+                                        "verifier should reject ambiguous computed-goto target IDs");
+  lir::LirModule foreign;
+  foreign.functions.push_back(make());
+  std::get<lir::LirIndirectBrOp>(foreign.functions[0].blocks[0].insts[1])
+      .successors[1] = lir::LirBlockId{99};
+  expect_identity_verification_rejected(foreign,
+                                        "verifier should reject foreign computed-goto target IDs");
+  lir::LirModule misleading;
+  misleading.functions.push_back(make());
+  std::get<lir::LirIndirectBrOp>(misleading.functions[0].blocks[0].insts[1])
+      .targets[0] = "second_target";
+  expect_identity_verification_rejected(
+      misleading, "misleading computed-goto label text must not select or repair target IDs");
+
+  lir::LirModule lowered = lower_lir_module_for_target(
+      "int computed(void) { void *target = &&second; goto *target; first: return 1; second: return 2; }",
+      "x86_64-unknown-linux-gnu");
+  const lir::LirFunction& computed = require_function(lowered, "computed");
+  const lir::LirIndirectBrOp* lowered_indirect = nullptr;
+  for (const auto& block : computed.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* op = std::get_if<lir::LirIndirectBrOp>(&inst)) {
+        lowered_indirect = op;
+        break;
+      }
+    }
+    if (lowered_indirect) break;
+  }
+  expect_true(lowered_indirect != nullptr,
+              "computed-goto lowering should publish an active LirIndirectBrOp");
+  expect_true(lowered_indirect->targets.size() == 2 &&
+                  lowered_indirect->successors.size() == lowered_indirect->targets.size(),
+              "computed-goto lowering should preserve the complete ordered target list");
+  for (size_t i = 0; i < lowered_indirect->targets.size(); ++i) {
+    const auto destination = std::find_if(
+        computed.blocks.begin(), computed.blocks.end(), [&](const lir::LirBlock& block) {
+          return block.id == lowered_indirect->successors[i];
+        });
+    expect_true(lowered_indirect->successors[i].valid() &&
+                    destination != computed.blocks.end() &&
+                    lowered_indirect->targets[i] == destination->label,
+                "computed-goto lowering should publish ordered IDs parallel to label mirrors");
+  }
+}
+
 void test_structured_operand_identity_foundation() {
   namespace lir = c4c::codegen::lir;
 
@@ -6345,6 +6446,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_structured_operand_identity_foundation();
   test_direct_branch_successor_identity_contract();
   test_conditional_and_switch_successor_identity_contract();
+  test_indirect_branch_successor_identity_contract();
   test_global_store_identity_contract();
   test_global_load_identity_contract();
   test_return_identity_contract();

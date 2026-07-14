@@ -222,7 +222,9 @@ struct LirInlineAsm {
 
 struct LirIndirectBrOp {
   LirOperand addr;                    // SSA name of ptr to branch to
-  std::vector<std::string> targets;   // label names (e.g. "%ulbl_foo")
+  std::vector<std::string> targets;   // display labels (e.g. "ulbl_foo")
+  // Semantic CFG authority in display order; labels remain mirrors only.
+  std::vector<LirBlockId> successors;
 };
 
 struct LirExtractValueOp {

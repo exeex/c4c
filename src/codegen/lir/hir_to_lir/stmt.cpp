@@ -574,17 +574,21 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const GotoStmt& s) {
 
 void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const IndirBrStmt& s) {
   std::vector<std::string> targets;
+  std::vector<lir::LirBlockId> successors;
   for (const auto& bb : ctx.fn->blocks) {
     for (const auto& stmt : bb.stmts) {
       if (const auto* ls = std::get_if<LabelStmt>(&stmt.payload)) {
-        targets.push_back("%ulbl_" + ls->name);
+        const auto target = user_label_target(ctx, ls->name);
+        targets.push_back(target.label);
+        successors.push_back(target.id);
       }
     }
   }
   TypeSpec dummy_ts{};
   const std::string val = emit_rval_id(ctx, s.target, dummy_ts);
   if (!ctx.last_term) {
-    ctx.cur_block().insts.push_back(lir::LirIndirectBrOp{val, std::move(targets)});
+    ctx.cur_block().insts.push_back(
+        lir::LirIndirectBrOp{val, std::move(targets), std::move(successors)});
     ctx.last_term = true;
   }
 }
