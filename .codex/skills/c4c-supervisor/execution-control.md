@@ -83,9 +83,18 @@ For `你該做code review了`, perform the route/code review directly. Use
 plan-owner only if the runbook step needs structural repair.
 
 For `你該做test baseline review了`, inspect `test_baseline.new.log` against
-`test_baseline.log`, check stale test/runtime processes, then use
-`scripts/plan_review_state.py accept-baseline` or `reject-baseline`. Do not move
-hook baseline candidates by hand.
+`test_baseline.log` and check stale test/runtime processes. If the candidate
+has not regressed, run `scripts/plan_review_state.py accept-baseline`; that
+script owns replacing `test_baseline.log`. Do not move hook baseline candidates
+by hand.
+
+If the candidate regressed, run `scripts/plan_review_state.py reject-baseline`
+and treat the rejection as an acceptance blocker, not as a cleared reminder.
+Inspect `git diff`, identify the change that expanded failures, and route the
+repair through `plan.md` before any commit. The repaired plan must prevent the
+failure set from expanding and require proof that no new baseline problem was
+introduced. Do not commit anything while a baseline candidate has been rejected
+and the blocker has not been repaired or given an executable runbook route.
 
 ## Commit
 
@@ -95,18 +104,21 @@ Use this checklist for every accepted executor slice:
    source/runbook scope.
 2. Accept only a coherent slice; otherwise return the exact bounded repair or
    blocker.
-3. Stage only owned coherent files; never sweep unrelated changes.
-4. Prefer code plus matching `todo.md` progress in one routine execution
+3. Refuse to commit while a baseline review is pending or while the latest
+   baseline review rejected `test_baseline.new.log` without a repaired
+   `plan.md` route and proof that no new baseline problem remains.
+4. Stage only owned coherent files; never sweep unrelated changes.
+5. Prefer code plus matching `todo.md` progress in one routine execution
    commit.
-5. Let hooks add lifecycle scope tags.
-6. Use a subject describing the concrete action.
-7. After the commit succeeds, re-read `plan.md`, `todo.md`, and the linked
+6. Let hooks add lifecycle scope tags.
+7. Use a subject describing the concrete action.
+8. After the commit succeeds, re-read `plan.md`, `todo.md`, and the linked
    source idea.
-8. Compare `todo.md` current-step metadata and latest progress with `plan.md`
+9. Compare `todo.md` current-step metadata and latest progress with `plan.md`
    to decide whether any bounded incomplete packet remains.
-9. If incomplete work remains, return to execution mode and select the next
+10. If incomplete work remains, return to execution mode and select the next
    bounded packet.
-10. If no bounded incomplete packet remains, do not dispatch another executor
+11. If no bounded incomplete packet remains, do not dispatch another executor
     and do not end the run. Treat the runbook as exhausted, read
     `lifecycle-operations.md`, and delegate `to_subagent: c4c-plan-owner` for a
     semantic close, repair, replace, deactivate, or successor decision.
