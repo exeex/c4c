@@ -1,7 +1,8 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (paused after accepted Step 7.21; conditional-branch condition
-authority successor 755 is active before the next receiver repair)
+Status: Open (resumed after accepted Step 7.21 and closed conditional-branch
+condition authority successor 755; the next packet is the bounded typed
+`LirCondBr` Raw-BIR receiver)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
