@@ -38,6 +38,12 @@ Raw-BIR container, importer path, verifier rule, and transactional proof.
   linkage/elision metadata, and direct zero-argument void Call receipt.
 - The previous Step 5.1 direct-void Call is complete (`49ed1b386`). Do not
   repeat it; the first new ordinary receiver work begins at Step 5.2.
+- Step 5.3 accepted the deferred intrinsic `i64 -> i32` truncation result
+  (`031bab915`). The following resolved fixed-void native-floating direct-call
+  importer contract stopped at the shared Raw-BIR `CallSpec` result gate:
+  `FunctionBuilder::append(BlockId, CallSpec)` currently admits result-bearing
+  calls only for integer returns. Repair that typed container/builder/verifier
+  seam before retrying the same importer row; do not add FAdd receipt.
 
 ## Non-Goals
 
@@ -93,16 +99,62 @@ Completion check:
 Goal: receive only the next source row explicitly selected from the idea-744
 handoff after Step 5.2 is accepted.
 
+#### Step 5.3.1 - Admit a native-floating `CallSpec` result
+
+Goal: repair the shared Raw-BIR direct-call result contract which currently
+rejects the selected floating importer row before importer acceptance.
+
+Primary targets:
+
+- `src/backend/bir/core/builder.hpp` and `src/backend/bir/core/builder.cpp`
+- the reachable Raw-BIR verifier and core builder/verifier tests
+
 Actions:
 
-- select the next exact handoff row and record its typed source/destination,
-  verifier, and focused proof contract before implementation
-- retain all unselected and fail-closed rows as unsupported
+- change only the source-backed `CallSpec::source_result_id` contract so a
+  resolved direct, fixed-void native-floating callee (`F32` or `F64`) may
+  define one ordinary current-function result of exactly the callee signature
+  return type; retain the existing void/no-result and integer-result rules
+- preserve source-result uniqueness, owner/epoch checks, instruction-result
+  linkage, result-registry insertion/order, and rollback on every failure; do
+  not create a new floating-call payload or alternate result carrier
+- extend the Raw-BIR verifier so a `Call` instruction with a result accepts
+  exactly native integer or native floating signature return types and requires
+  result type, result definition, source ID, and callee signature coherence
+- add focused core builder/verifier positive coverage for source-backed `F32`
+  and `F64` direct-call results, plus negative coverage for void-with-result,
+  result/type or signature mismatch, duplicate/cross-owner source identity,
+  malformed result linkage, and transactional rollback; retain unsupported
+  variadic, argument-bearing, indirect, aggregate/object, coercion, and other
+  unselected call forms
 
 Completion check:
 
-- execution has one bounded next receiver contract, not a broad ordinary
-  instruction claim.
+- a fresh build and the focused core builder/verifier test selection prove that
+  the Raw-BIR seam admits native-floating results without weakening existing
+  integer/void contracts or publication rollback.
+
+#### Step 5.3.2 - Retry the interrupted floating direct-call importer row
+
+Goal: after Step 5.3.1 is accepted, execute the exact importer packet selected
+in commit `aeecf048c`; this is a return point, not a new call-form selection.
+
+Actions:
+
+- receive only the resolved direct zero-argument fixed-void native-floating
+  `LirCallOp` with a current-function owning `LirValueId` result, direct
+  `LinkNameId` callee, and matching native floating return/signature
+- preserve the result solely for the already checked downstream double `FAdd`
+  source-use chain; do not import `FAdd` or any other scalar binary operation
+- retain the exact importer/verifier and focused proof contract recorded in
+  `todo.md` by `aeecf048c`, including `backend_lir_to_bir_interface` plus
+  `frontend_lir_call_type_ref`
+
+Completion check:
+
+- the same importer row that previously failed at `CallSpec` now imports and
+  rejects neighboring malformed authority transactionally, with no FAdd or
+  broader floating-call receipt.
 
 ### Step 6 - Complete terminators and structured inline-assembly transport
 

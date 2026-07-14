@@ -3,66 +3,56 @@
 Status: Active
 Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 5.3
-Current Step Title: Take subsequent checked ordinary rows one at a time
+Current Step ID: 5.3.1
+Current Step Title: Admit a native-floating CallSpec result
 
 ## Just Finished
 
-- Plan Step 5.3: received the selected deferred i64 intrinsic-result
-  `LirCastOp Trunc` row into a separately tagged Raw-BIR cast payload with an
-  exact `i64 -> i32` edge, the current-function `Cttz`/`Ctlz`/`Ctpop` result
-  as its sole operand, and a source-backed owning result. The builder,
-  importer, and verifier fail closed for every other cast shape, operand
-  authority, result collision, foreign/non-intrinsic source, or malformed
-  Raw-BIR payload; Raw and Canonical receipt/rejection coverage was added.
+- Plan Step 5.3 received the selected deferred i64 intrinsic-result `LirCastOp
+  Trunc` row into a separately tagged Raw-BIR cast payload with an exact
+  `i64 -> i32` edge, a source-backed owning result, and Raw/Canonical
+  receipt-rejection coverage.
+- The next selected fixed-void native-floating direct-call importer packet
+  (contract committed in `aeecf048c`) built but its focused proof failed in
+  `backend_lir_to_bir_interface`: `FunctionBuilder::append(BlockId, CallSpec)`
+  rejects `spec.source_result_id && !integer_type(signature.return_type)` at
+  `src/backend/bir/core/builder.cpp:1088-1091`, before importer acceptance.
+  `frontend_lir_call_type_ref` passed. This durable text preserves the failure
+  details; the matching `test_before.log` remains the prior green baseline.
 
 ## Suggested Next
 
-- Execute only the next ordered Step 5.3 handoff row: a resolved fixed-void
-  native-floating `LirCallOp` whose `result: LirValueId` is owned by the
-  current function, whose direct global `callee: LinkNameId` resolves to one
-  module Function, and whose `return_type` and
-  `callee_signature.return_type_ref` are the same native floating type with an
-  empty fixed-void structured signature. The exact result must be the lhs
-  `LirValueId` of the downstream double `LirBinOp FAdd`; that FAdd establishes
-  the checked source use chain but is not itself a scalar-binary receipt in
-  this packet.
-
-  - Typed Raw-BIR destination intent: receive one tagged resolved-direct-call
-    payload for that zero-argument native-floating Function call, preserving
-    the declaration/callee `LinkNameId`, matching floating return/signature,
-    and one source-backed current-function result-registry definition. Retain
-    the result identity so the later FAdd receiver row can resolve its lhs;
-    do not create a Raw-BIR FAdd payload here.
-  - Import/verifier contract: resolve exactly one module Function by the
-    direct `LinkNameId`; require matching fixed-void signature, native
-    floating return, and one owning unique result definition. The retained LIR
-    source-verifier chain must require that result as the downstream double
-    FAdd lhs with no unknown/cross-function use or type conflict; the Raw-BIR
-    verifier must require tagged call payload/signature/result coherence.
-    Reject transactionally for missing or duplicate declaration/result identity,
-    signature/return/FAdd type conflict, malformed payload, or any alternative
-    carrier.
-  - Focused proof target: extend Raw and Canonical receipt/rejection coverage
-    in `backend_lir_to_bir_interface`, while retaining
-    `test_block_scope_extern_void_prototype_uses_direct_function_entity` in
-    `frontend_lir_call_type_ref` as the producer/verifier source-chain guard.
-    The delegated proof remains `cmake --build --preset default` followed by
-    `ctest --test-dir build -j --output-on-failure -R
-    '^(backend_lir_to_bir_interface|frontend_lir_call_type_ref)$'`.
+- Execute only Plan Step 5.3.1: establish a source-backed native-floating
+  result for the existing direct `CallSpec`, confined to resolved fixed-void
+  `F32`/`F64` callees. Extend builder and reachable verifier coverage together:
+  positive `F32`/`F64` result publication and negative void-with-result,
+  result/signature mismatch, duplicate/cross-owner source identity, malformed
+  result linkage, and rollback. Do not touch importer acceptance, FAdd, or any
+  other floating-call form in this prerequisite.
+- Exact return after acceptance: execute Plan Step 5.3.2, retrying the same
+  `aeecf048c` resolved fixed-void native-floating `LirCallOp` importer packet.
+  Its downstream double `LirBinOp FAdd` remains a source-chain guard only, not
+  a receipt target.
 
 ## Watchouts
 
-- This packet admits only the resolved, direct, zero-argument fixed-void
-  native-floating Function-call subrow and its typed result identity. Indirect,
-  variadic, argument-bearing floating, ABI-expanded, unresolved, nonmatching
-  coercion, aggregate/object, and every other floating-call form remain
-  fail-closed. Scalar FAdd and all other binary/compare/select/abs rows,
-  broader scalar casts, intrinsic alternatives, opaque inline assembly, text
-  recovery, and partial module publication remain outside this packet.
+- This prerequisite changes only the native Raw-BIR `CallSpec` result gate. It
+  does not admit an importer row by itself. Indirect, variadic, argument-
+  bearing, ABI-expanded, unresolved, nonmatching coercion, aggregate/object,
+  and every other floating-call form remain fail-closed. Scalar FAdd and all
+  other binary/compare/select/abs rows, broader scalar casts, intrinsic
+  alternatives, opaque inline assembly, text recovery, and partial module
+  publication remain outside this packet.
 
 ## Proof
 
-- `cmake --build --preset default` followed by
-  `ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_interface|frontend_lir_call_type_ref)$' > test_after.log`
-  passed for this Step 5.3 packet; `test_after.log` is the preserved proof log.
+- Plan Step 5.3.1 delegated proof:
+  `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_lir_to_bir_interface$'`. The added cases in
+  that suite must exercise both the builder and reachable Raw-BIR verifier.
+  The supervisor must first prepare the matching canonical root baseline, then
+  replace `test_after.log` with this prerequisite's matching after-proof.
+- After Step 5.3.1 acceptance, Plan Step 5.3.2 reuses the interrupted proof:
+  `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^(backend_lir_to_bir_interface|frontend_lir_call_type_ref)$'
+  > test_after.log`.
