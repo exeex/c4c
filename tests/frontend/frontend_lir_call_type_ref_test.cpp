@@ -3930,6 +3930,53 @@ int lir_logical_short_circuit_result_authority_loss(int lhs, int rhs) {
   lir::verify_module(lowered);
 }
 
+void test_vaarg_helper_result_authority_loss_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+typedef __builtin_va_list va_list;
+
+int lir_vaarg_helper_result_authority_loss(int count, ...) {
+  va_list ap;
+  __builtin_va_start(ap, count);
+  return __builtin_va_arg(ap, int) + 1;
+}
+)c");
+  hir_module.target_profile = c4c::target_profile_from_triple("x86_64-linux-gnu");
+  lir::LowerOptions options;
+  options.preserve_semantic_va_ops = true;
+  lir::LirModule lowered = lir::lower(hir_module, options);
+  lir::verify_module(lowered);
+
+  lir::LirFunction& function =
+      require_function(lowered, "lir_vaarg_helper_result_authority_loss");
+  std::vector<lir::LirVaArgOp*> va_args;
+  std::vector<lir::LirBinOp*> binary_ops;
+  for (auto& block : function.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* va_arg = std::get_if<lir::LirVaArgOp>(&inst)) va_args.push_back(va_arg);
+      if (auto* binary = std::get_if<lir::LirBinOp>(&inst)) binary_ops.push_back(binary);
+    }
+  }
+
+  expect_true(va_args.size() == 1 && binary_ops.size() == 1,
+              "vaarg helper probe should retain one semantic va_arg and one later use");
+  expect_true(va_args[0]->type_str.kind() == lir::LirTypeKind::Integer &&
+                  va_args[0]->type_str.integer_bit_width() == 32 &&
+                  va_args[0]->ap_ptr.kind() == lir::LirOperandKind::SsaValue,
+              "vaarg helper should retain typed i32 result and an SSA va_list pointer operand");
+  expect_true(binary_ops[0]->opcode.typed() == lir::LirBinaryOpcode::Add &&
+                  binary_ops[0]->type_str.kind() == lir::LirTypeKind::Integer &&
+                  binary_ops[0]->type_str.integer_bit_width() == 32,
+              "vaarg result should have a later typed i32 Add consumer");
+  expect_true(!va_args[0]->result.value_id() && !binary_ops[0]->lhs.value_id(),
+              "vaarg helper result and its later consumer lack LirValueId authority");
+  expect_true(!va_args[0]->result.has_authority() && !binary_ops[0]->lhs.has_authority(),
+              "vaarg helper returns raw result text through emit_lir_op, so no verifier-backed "
+              "malformed-ID proof exists");
+  lir::verify_module(lowered);
+}
+
 void test_scalar_fptrunc_result_use_identity_boundary() {
   namespace lir = c4c::codegen::lir;
 
@@ -7148,6 +7195,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_cast_result_use_identity_boundary();
   test_ternary_coerce_result_authority_loss_boundary();
   test_logical_short_circuit_result_authority_loss_boundary();
+  test_vaarg_helper_result_authority_loss_boundary();
   test_scalar_fptrunc_result_use_identity_boundary();
   test_scalar_fpext_result_use_identity_boundary();
   test_scalar_sitofp_result_use_identity_boundary();
