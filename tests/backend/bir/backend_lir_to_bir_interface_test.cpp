@@ -9036,6 +9036,128 @@ void test_direct_integer_call_receipt_and_rejections() {
            "floating calls must remain fail-closed");
 }
 
+lir::LirFunction direct_native_floating_function(std::string name,
+                                                  bool declaration) {
+  lir::LirFunction function = declaration
+      ? void_declaration(std::move(name))
+      : void_definition(std::move(name), {return_block(0, "entry")});
+  function.return_type = scalar_type(c4c::TB_DOUBLE);
+  function.return_type.inner_rank = -1;
+  function.signature_return_type_ref = lir::LirTypeRef("double");
+  return function;
+}
+
+lir::LirCallOp direct_native_floating_call(c4c::LinkNameId target) {
+  lir::LirCallOp call;
+  call.result = lir::LirOperand::ssa("%misleading-double-result",
+                                     lir::LirValueId{9});
+  call.return_type = lir::LirTypeRef("double");
+  call.callee = lir::LirOperand::raw("%presentation-only-indirect-display");
+  call.direct_callee_link_name_id = target;
+  call.callee_type_suffix = "(i64) presentation-only";
+  call.args_str = "i64 99 presentation-only";
+  lir::LirCallSignature signature;
+  signature.return_type_ref = lir::LirTypeRef("double");
+  signature.has_void_param_list = true;
+  call.callee_signature = std::move(signature);
+  return call;
+}
+
+lir::LirModule direct_native_floating_call_module() {
+  lir::LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const auto caller_link = module.link_names.intern("direct_native_float_caller");
+  const auto target_link = module.link_names.intern("direct_native_float_target");
+
+  auto caller = void_definition("misleading_native_float_caller",
+                                {return_block(0, "entry")});
+  caller.link_name_id = caller_link;
+  caller.blocks[0].insts.push_back(direct_native_floating_call(target_link));
+  module.functions.push_back(std::move(caller));
+
+  auto target = direct_native_floating_function(
+      "misleading_native_float_target", true);
+  target.link_name_id = target_link;
+  module.functions.push_back(std::move(target));
+  return module;
+}
+
+void test_direct_native_floating_call_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto caller_id = view.functions()[0];
+    const auto caller = view.function(caller_id).value();
+    const auto instructions = caller.instructions(caller.blocks()[0]).value();
+    expect(instructions.size() == 1,
+           layer + " must retain one native floating Call without receiving FAdd");
+    const auto call = caller.instruction(instructions[0]).value();
+    const auto result = caller.value(call.results()[0]).value();
+    expect(call.opcode() == bir::Opcode::Call && call.call() &&
+               call.call()->callee == view.functions()[1] &&
+               call.operands().empty() && call.results().size() == 1 &&
+               result.type == bir::Type{bir::TypeKind::F64, 64, "double"} &&
+               result.source_id == bir::SourceValueId{caller_id, 9} &&
+               caller.source_value(*result.source_id).value() == call.results()[0],
+           layer + " must retain the direct native double callee and owning source result");
+  };
+
+  const auto module = direct_native_floating_call_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "resolved direct native double Call must publish verified Raw BIR");
+  inspect(raw.value(), "Raw BIR");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(), "resolved direct native double Call must canonicalize");
+  inspect(canonical.value(), "Canonical BIR");
+
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto candidate = direct_native_floating_call_module();
+    auto& call = std::get<lir::LirCallOp>(candidate.functions[0].blocks[0].insts[0]);
+    mutate(candidate, call);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() && raw_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value() && canonical_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Canonical rollback)");
+  };
+  rejected([](auto&, auto& call) { call.direct_callee_link_name_id = 999; },
+           "missing direct native callee identity must reject");
+  rejected([](auto&, auto& call) { call.result = lir::LirOperand::raw("%raw"); },
+           "presentation-only native call result must reject");
+  rejected([](auto&, auto& call) {
+             call.result = lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+           }, "invalid native call result identity must reject");
+  rejected([](auto& module, auto&) {
+             module.functions[0].blocks[0].insts.push_back(
+                 direct_native_floating_call(module.functions[1].link_name_id));
+           }, "duplicate native call result identity must reject");
+  rejected([](auto&, auto& call) {
+             call.callee_signature->return_type_ref = lir::LirTypeRef("float");
+           }, "native call signature return disagreement must reject");
+  rejected([](auto&, auto& call) { call.return_type = lir::LirTypeRef("float"); },
+           "native call return disagreement must reject");
+  rejected([](auto&, auto& call) { call.callee_signature->is_variadic = true; },
+           "variadic native call carrier must reject");
+  rejected([](auto&, auto& call) {
+             call.callee_signature->fixed_param_types = {"double"};
+             call.callee_signature->fixed_param_type_refs = {lir::LirTypeRef("double")};
+           }, "argument-bearing native call carrier must reject");
+  rejected([](auto& module, auto&) {
+             auto duplicate = direct_native_floating_function(
+                 "conflicting_native_float_target", true);
+             duplicate.link_name_id = module.functions[1].link_name_id;
+             duplicate.return_type = scalar_type(c4c::TB_FLOAT);
+             duplicate.return_type.inner_rank = -1;
+             duplicate.signature_return_type_ref = lir::LirTypeRef("float");
+             module.functions.push_back(std::move(duplicate));
+           }, "duplicate native callee identity with conflicting return must reject");
+}
+
 // Native intrinsics deliberately use a link-name payload rather than CallNode.
 lir::LirCallOp native_intrinsic(c4c::LinkNameId link, lir::LirIntrinsicKind kind,
                                 lir::LirValueId result, lir::LirOperand operand) {
@@ -9272,6 +9394,7 @@ int main() {
   test_native_floating_call_result_builder_contract();
   test_direct_zero_argument_void_call_rejections();
   test_direct_integer_call_receipt_and_rejections();
+  test_direct_native_floating_call_receipt_and_rejections();
   test_native_intrinsic_receipt_and_rejections();
   test_native_intrinsic_i64_trunc_receipt_and_rejections();
   return 0;

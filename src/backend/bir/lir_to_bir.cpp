@@ -438,6 +438,53 @@ bool exact_direct_integer_call(
   return resolved;
 }
 
+std::optional<Type> native_floating_call_type(
+    const LirModule& module, const codegen::lir::LirTypeRef& type) {
+  if (type.kind() != codegen::lir::LirTypeKind::Floating) return std::nullopt;
+  if (type.str() == "float") return Type{TypeKind::F32, 32, "float"};
+  if (type.str() == "double") return Type{TypeKind::F64, 64, "double"};
+  return std::nullopt;
+}
+
+bool exact_direct_native_floating_call(const LirModule& module,
+                                       const LirCallOp& call) {
+  const auto* result = call.result.value_id();
+  if (call.result.kind() != codegen::lir::LirOperandKind::SsaValue || !result ||
+      !result->valid() || call.return_ext_attr != LirExtAttr::None ||
+      call.direct_callee_link_name_id == c4c::kInvalidLinkName ||
+      !call.structured_args.empty() || !call.arg_type_refs.empty() ||
+      !call.callee_signature)
+    return false;
+
+  const auto return_type = native_floating_call_type(module, call.return_type);
+  const auto& signature = *call.callee_signature;
+  if (!return_type || !signature.return_type_ref ||
+      *signature.return_type_ref != call.return_type ||
+      !native_floating_call_type(module, *signature.return_type_ref) ||
+      *native_floating_call_type(module, *signature.return_type_ref) != *return_type ||
+      signature.return_ext_attr != LirExtAttr::None || signature.is_variadic ||
+      signature.has_unspecified_params || !signature.fixed_param_types.empty() ||
+      !signature.fixed_param_type_refs.empty())
+    return false;
+
+  bool resolved = false;
+  for (const auto& target : module.functions) {
+    if (target.link_name_id != call.direct_callee_link_name_id) continue;
+    const auto target_return = lower_signature_type(
+        module, target.return_type, target.signature_return_type_ref);
+    const auto target_params = lower_function_parameter_types(module, target);
+    const auto target_mirror = target.signature_return_type_ref
+                                   ? native_floating_call_type(
+                                         module, *target.signature_return_type_ref)
+                                   : std::nullopt;
+    if (!target_return || !target_mirror || *target_mirror != *return_type ||
+        !target_params || !target_params->empty() || target.signature_is_variadic)
+      return false;
+    resolved = true;
+  }
+  return resolved;
+}
+
 bool exact_integer_intrinsic_call(
     const LirModule& module, const LirCallOp& call,
     const std::unordered_map<std::uint32_t, Type>& source_values) {
@@ -1908,6 +1955,14 @@ Result<void, ImportError> validate_function(const LirModule& module,
           continue;
         }
         if (exact_direct_void_call(module, *call)) continue;
+        if (exact_direct_native_floating_call(module, *call)) {
+          const auto result_type = native_floating_call_type(module, call->return_type);
+          if (!source_values.emplace(call->result.value_id()->value, *result_type).second)
+            return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                              name, block.label,
+                              "duplicate authoritative LirValueId definition");
+          continue;
+        }
         if (!exact_direct_integer_call(module, *call, source_values))
           return fail<void>(
               ImportErrorCode::UnsupportedOrdinaryInstruction, name,
@@ -2223,9 +2278,12 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
   std::unordered_map<c4c::LinkNameId, FunctionId> functions_by_link_name_id;
   for (const auto& function : module.functions) {
     const std::string name = function_link_name(module, function);
-    const Type imported_return_type =
-        *lower_signature_type(module, function.return_type,
-                              function.signature_return_type_ref);
+    const Type imported_return_type = function.signature_return_type_ref
+        ? native_floating_call_type(module, *function.signature_return_type_ref)
+              .value_or(*lower_signature_type(module, function.return_type,
+                                               function.signature_return_type_ref))
+        : *lower_signature_type(module, function.return_type,
+                                function.signature_return_type_ref);
     FunctionSignature signature;
     signature.return_type = imported_return_type;
     signature.parameter_types =
@@ -2252,9 +2310,12 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
        function_index < module.functions.size(); ++function_index) {
     const auto& function = module.functions[function_index];
     const std::string name = function_link_name(module, function);
-    const Type imported_return_type =
-        *lower_signature_type(module, function.return_type,
-                              function.signature_return_type_ref);
+    const Type imported_return_type = function.signature_return_type_ref
+        ? native_floating_call_type(module, *function.signature_return_type_ref)
+              .value_or(*lower_signature_type(module, function.return_type,
+                                               function.signature_return_type_ref))
+        : *lower_signature_type(module, function.return_type,
+                                function.signature_return_type_ref);
     if (function.is_declaration) continue;
 
     std::optional<ImportError> edit_error;
@@ -2626,10 +2687,12 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 }
                 const bool integer_result =
                     call->return_type.kind() == codegen::lir::LirTypeKind::Integer;
+                const bool native_floating_result =
+                    native_floating_call_type(module, call->return_type).has_value();
                 auto appended = function_builder.append(
                     blocks.at(block.label),
                     CallSpec{callee->second, std::move(arguments),
-                             integer_result
+                             (integer_result || native_floating_result)
                                  ? std::optional<std::uint32_t>{call->result.value_id()->value}
                                  : std::nullopt});
                 if (!appended) {
@@ -2638,15 +2701,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                                appended.error());
                   return Result<void, BuildError>::failure(appended.error());
                 }
-                if ((integer_result && appended.value().results.size() != 1) ||
-                    (!integer_result && !appended.value().results.empty())) {
+                if (((integer_result || native_floating_result) &&
+                     appended.value().results.size() != 1) ||
+                    (!integer_result && !native_floating_result &&
+                     !appended.value().results.empty())) {
                   edit_error = ImportError{
                       ImportErrorCode::BuilderFailure, name, block.label,
                       "call builder returned an inconsistent result count"};
                   return Result<void, BuildError>::failure(
                       BuildError::StorageExhausted);
                 }
-                if (integer_result) {
+                if (integer_result || native_floating_result) {
                   const auto registered = source_values.emplace(
                       call->result.value_id()->value, appended.value().results[0]);
                   if (!registered.second) {

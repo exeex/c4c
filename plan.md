@@ -156,6 +156,44 @@ Completion check:
   rejects neighboring malformed authority transactionally, with no FAdd or
   broader floating-call receipt.
 
+#### Step 5.3.3 - Receive the checked downstream double FAdd source chain
+
+Goal: take the next ordered idea-744 receiver row by receiving only the
+already checked `double` `LirBinOp FAdd` whose lhs is the Step 5.3.2 direct
+call result; do not generalize scalar binary receipt.
+
+Primary targets:
+
+- a typed Raw-BIR binary payload, `BinarySpec` builder entry, and result
+  registry path
+- reachable Raw-BIR verification and the LIR-to-Raw-BIR importer dispatch
+
+Actions:
+
+- receive only `LirBinOp{result: current-function LirValueId, opcode: FAdd,
+  type_str: double, lhs: the resolved Step 5.3.2 call-result LirValueId, rhs:
+  current-function double LirValueId}` into a typed Raw-BIR binary instruction
+  with one source-backed `F64` result and two ordered SSA operands
+- map opcode, type, result, and operands directly from typed LIR authority;
+  preserve the call-result use edge and result registry without presentation
+  recovery
+- verify native `F64`/`FAdd` coherence, exactly two current-function `F64`
+  operands, result source-ID ownership/uniqueness, instruction-result linkage,
+  and atomic rollback for malformed authority
+- prove Raw and Canonical positive receipt plus missing, duplicate,
+  cross-owner, wrong-type, non-`FAdd`, non-SSA, and malformed-result rejection
+  through `backend_lir_to_bir_interface` and `frontend_lir_call_type_ref`
+- keep all integer and other floating opcodes, unary, literal,
+  presentation-derived, compound, complex, vector, pointer/object,
+  logical-helper, builtin, cast, compare, select, return, and other unselected
+  binary/use rows unsupported
+
+Completion check:
+
+- a fresh build and the focused two-test selection show one verified,
+  transactional typed Raw-BIR `double FAdd` receipt directly linked to the
+  accepted floating direct-call result, with every neighboring form fail-closed.
+
 ### Step 6 - Complete terminators and structured inline-assembly transport
 
 Goal: receive only structured-authority terminator and inline-assembly rows.

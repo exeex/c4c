@@ -3,38 +3,46 @@
 Status: Active
 Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 5.3.2
-Current Step Title: Retry the resolved fixed-void native-floating Call importer row
+Current Step ID: 5.3.3
+Current Step Title: Receive the checked downstream double FAdd source chain
 
 ## Just Finished
 
-- Plan Step 5.3.1 admitted source-backed direct `CallSpec` results only for
-  native `F32`/`F64` callee returns alongside the existing integer path. The
-  builder preserves void no-result, exact signature type, source-owner/index,
-  instruction-result linkage, and rollback behavior; focused builder coverage
-  proves F32/F64 publication plus void-result and duplicate-source rejection.
+- Plan Step 5.3.2 received the resolved fixed-void native-double `LirCallOp`
+  into one direct Raw-BIR `Call` with its native `F64` result, current-function
+  source identity, and exact resolved `LinkNameId` target. Raw and Canonical
+  receipt plus missing/conflicting callee, result identity, return/signature,
+  and alternate-carrier rollback coverage now pass; scalar `FAdd` remains
+  unimported.
 
 ## Suggested Next
 
-- Execute Plan Step 5.3.2 only: retry the existing `aeecf048c` resolved
-  fixed-void native-floating `LirCallOp` importer packet now that the Raw-BIR
-  CallSpec prerequisite is available. Its downstream double `LirBinOp FAdd`
-  remains a source-chain guard only, not a receipt target.
+- Execute Plan Step 5.3.3 only: receive the exact checked downstream
+  `LirBinOp{result, opcode=FAdd, type_str=double, lhs=<Step 5.3.2 call
+  result>, rhs=<current-function double SSA>}` into one typed Raw-BIR binary
+  instruction/result. Add the Binary builder payload/spec and reachable
+  verifier rule for this source-ID/type/opcode/operand linkage, then prove Raw
+  and Canonical receipt plus transactional rejection of missing, duplicate,
+  cross-owner, wrong-type, non-`FAdd`, non-SSA, or malformed-result authority
+  with `backend_lir_to_bir_interface` and `frontend_lir_call_type_ref`.
 
 ## Watchouts
 
-- This prerequisite changes only the native Raw-BIR `CallSpec` result gate; it
-  does not itself admit an importer row. Indirect, variadic, argument-bearing,
-  ABI-expanded, unresolved, nonmatching coercion, aggregate/object, and every
-  other floating-call form remain fail-closed. Do not import scalar FAdd.
+- This packet admits neither a general binary family nor a new call form: keep
+  every integer, other floating opcode, unary, literal/presentation-derived,
+  compound, complex, vector, pointer/object, logical-helper, builtin, and
+  nonchecked operand/result row fail-closed. Do not infer operands, types, or
+  opcode from text; do not receive casts, compares, selects, returns, or any
+  further downstream use.
 
 ## Proof
 
-- Plan Step 5.3.1 passed:
+- Plan Step 5.3.2 passed:
   `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^backend_lir_to_bir_interface$' > test_after.log`.
-  `test_after.log` is the matching after-proof.
-- Plan Step 5.3.2 proof:
+  --output-on-failure -R '^(backend_lir_to_bir_interface|frontend_lir_call_type_ref)$'
+  > test_after.log`.
+  The matching `test_before.log` is green.
+- Plan Step 5.3.3 proof:
   `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^(backend_lir_to_bir_interface|frontend_lir_call_type_ref)$'
   > test_after.log`.
