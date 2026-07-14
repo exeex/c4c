@@ -8692,6 +8692,142 @@ void test_direct_zero_argument_void_call_builder_contract() {
          "foreign-target rejection must not publish a partial body");
 }
 
+void test_native_floating_call_result_builder_contract() {
+  bir::ModuleBuilder builder;
+  const bir::FunctionSignature void_signature{bir::Type{bir::TypeKind::Void},
+                                               {}, false};
+  const bir::FunctionSignature f32_signature{bir::Type{bir::TypeKind::F32},
+                                              {}, false};
+  const bir::FunctionSignature f64_signature{bir::Type{bir::TypeKind::F64},
+                                              {}, false};
+  const auto f32_target =
+      builder.create_function(f32_signature, "native_f32_target", true);
+  const auto f64_target =
+      builder.create_function(f64_signature, "native_f64_target", true);
+  const auto caller =
+      builder.create_function(void_signature, "native_float_caller", false);
+  const auto sibling_caller = builder.create_function(
+      void_signature, "native_float_sibling_caller", false);
+  expect(f32_target.has_value() && f64_target.has_value() && caller.has_value() &&
+             sibling_caller.has_value(),
+         "native floating Call fixture functions should be created");
+
+  auto edited = builder.with_function(
+      caller.value(), [&](bir::FunctionBuilder& function) {
+        const auto block = function.create_block("entry");
+        if (!block)
+          return bir::Result<void, bir::BuildError>::failure(block.error());
+        const auto f32_call = function.append(
+            block.value(), bir::CallSpec{f32_target.value(), {}, 7});
+        const auto f64_call = function.append(
+            block.value(), bir::CallSpec{f64_target.value(), {}, 8});
+        expect(f32_call.has_value() && f64_call.has_value() &&
+                   f32_call.value().results.size() == 1 &&
+                   f64_call.value().results.size() == 1,
+               "native F32 and F64 Calls must publish one source-backed result");
+        return function.set_terminator(block.value(),
+                                       bir::ReturnTerm{std::nullopt});
+      });
+  expect(edited.has_value(), "native floating Calls should build successfully");
+  auto sibling_edited = builder.with_function(
+      sibling_caller.value(), [&](bir::FunctionBuilder& function) {
+        const auto block = function.create_block("entry");
+        if (!block)
+          return bir::Result<void, bir::BuildError>::failure(block.error());
+        const auto call = function.append(
+            block.value(), bir::CallSpec{f32_target.value(), {}, 7});
+        if (!call)
+          return bir::Result<void, bir::BuildError>::failure(call.error());
+        return function.set_terminator(block.value(),
+                                       bir::ReturnTerm{std::nullopt});
+      });
+  expect(sibling_edited.has_value(),
+         "the same source value number must remain valid in another Call owner");
+  auto raw = std::move(builder).publish();
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "native floating Calls must publish through exact result linkage verification");
+  const auto view = raw.value().view();
+  const auto caller_view = view.function(caller.value()).value();
+  const auto sibling_view = view.function(sibling_caller.value()).value();
+  const auto instructions =
+      caller_view.instructions(caller_view.blocks()[0]).value();
+  expect(instructions.size() == 2,
+         "native floating Call fixture must retain both ordered Calls");
+  for (std::size_t index = 0; index < instructions.size(); ++index) {
+    const auto call = caller_view.instruction(instructions[index]).value();
+    const auto result = caller_view.value(call.results()[0]).value();
+    const auto expected_type = index == 0 ? bir::Type{bir::TypeKind::F32}
+                                          : bir::Type{bir::TypeKind::F64};
+    expect(call.opcode() == bir::Opcode::Call && call.call() &&
+               call.operands().empty() && call.results().size() == 1 &&
+               result.type == expected_type && result.source_id ==
+                   bir::SourceValueId{caller.value(),
+                                      static_cast<std::uint32_t>(7 + index)} &&
+               caller_view.source_value(*result.source_id).value() ==
+                   call.results()[0],
+           "native floating Call result must retain exact signature, owner, source index, and instruction linkage");
+  }
+  const auto sibling_instructions =
+      sibling_view.instructions(sibling_view.blocks()[0]).value();
+  expect(sibling_instructions.size() == 1 &&
+             sibling_view.source_value(
+                 bir::SourceValueId{sibling_caller.value(), 7}).has_value() &&
+             !caller_view.source_value(
+                 bir::SourceValueId{sibling_caller.value(), 7}).has_value(),
+         "same source value numbers must not cross Call owner boundaries");
+
+  bir::ModuleBuilder rejected;
+  const auto void_target =
+      rejected.create_function(void_signature, "void_target", true);
+  const auto rejected_f32_target =
+      rejected.create_function(f32_signature, "rejected_f32_target", true);
+  const auto rejected_f64_target =
+      rejected.create_function(f64_signature, "rejected_f64_target", true);
+  const bir::FunctionSignature generic_float_signature{
+      bir::Type{bir::TypeKind::Floating, 80, "x86_fp80"}, {}, false};
+  const auto generic_float_target = rejected.create_function(
+      generic_float_signature, "generic_float_target", true);
+  const auto rejected_caller =
+      rejected.create_function(void_signature, "rejected_float_caller", false);
+  expect(void_target.has_value() && rejected_f32_target.has_value() &&
+             rejected_f64_target.has_value() && generic_float_target.has_value() &&
+             rejected_caller.has_value(),
+         "native floating Call negative fixture functions should be created");
+  auto rejected_edit = rejected.with_function(
+      rejected_caller.value(), [&](bir::FunctionBuilder& function) {
+        const auto block = function.create_block("entry");
+        if (!block)
+          return bir::Result<void, bir::BuildError>::failure(block.error());
+        const auto void_result = function.append(
+            block.value(), bir::CallSpec{void_target.value(), {}, 11});
+        expect(!void_result.has_value() &&
+                   void_result.error() == bir::BuildError::UnsupportedOpcode,
+               "void Call must reject a source result");
+        const auto f32_call = function.append(
+            block.value(), bir::CallSpec{rejected_f32_target.value(), {}, 11});
+        const auto duplicate = function.append(
+            block.value(), bir::CallSpec{rejected_f64_target.value(), {}, 11});
+        const auto generic_float = function.append(
+            block.value(), bir::CallSpec{generic_float_target.value(), {}, 13});
+        const auto f64_call = function.append(
+            block.value(), bir::CallSpec{rejected_f64_target.value(), {}, 12});
+        expect(f32_call.has_value() && !duplicate.has_value() &&
+                   duplicate.error() == bir::BuildError::DuplicateSourceValue &&
+                   !generic_float.has_value() &&
+                   generic_float.error() == bir::BuildError::UnsupportedOpcode &&
+                   f64_call.has_value(),
+               "unselected floating forms and duplicate sources must reject without rolling back native Calls");
+        return function.set_terminator(block.value(),
+                                       bir::ReturnTerm{std::nullopt});
+      });
+  expect(rejected_edit.has_value(),
+         "rejected Call attempts must leave the native floating builder transaction usable");
+  auto rejected_raw = std::move(rejected).publish();
+  expect(rejected_raw.has_value() &&
+             bir::FoundationVerifier::verify(rejected_raw.value()).ok(),
+         "void-result and duplicate-source rejections must leave no malformed Call linkage");
+}
+
 void test_direct_zero_argument_void_call_rejections() {
   const auto rejected = [](auto mutate, const std::string& message) {
     auto module = direct_void_call_module();
@@ -9133,6 +9269,7 @@ int main() {
   test_inline_asm_shape_rejection();
   test_direct_zero_argument_void_call_receipt();
   test_direct_zero_argument_void_call_builder_contract();
+  test_native_floating_call_result_builder_contract();
   test_direct_zero_argument_void_call_rejections();
   test_direct_integer_call_receipt_and_rejections();
   test_native_intrinsic_receipt_and_rejections();

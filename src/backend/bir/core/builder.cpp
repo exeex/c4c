@@ -1088,7 +1088,9 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
   if (signature.is_variadic ||
       (signature.return_type.kind == TypeKind::Void) !=
           !spec.source_result_id ||
-      (spec.source_result_id && !integer_type(signature.return_type)) ||
+      (spec.source_result_id && !integer_type(signature.return_type) &&
+       signature.return_type.kind != TypeKind::F32 &&
+       signature.return_type.kind != TypeKind::F64) ||
       signature.parameter_types.size() != spec.arguments.size() ||
       (!spec.source_result_id && !signature.parameter_types.empty()))
     return Result<BuildResult, BuildError>::failure(
