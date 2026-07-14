@@ -1,118 +1,101 @@
-# LIR-To-New-BIR Container And Import Completeness Runbook
+# LIR CFG Terminator Block Identity Completion Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Resumed from: closed idea 748 selected memcpy pointer/object authority handoff
-(`6a12cddab`, `dac9c8f81`)
+Source Idea: ideas/open/750_lir_cfg_terminator_block_identity_completion.md
+Activated from: paused idea 734 after accepted Step 7.20 selected memcpy
+Raw-BIR receipt (`1a3adbc58`)
 
 ## Purpose
 
-Resume the bounded target-independent Raw-BIR receiver route at the first
-post-Step-7.19 receiver-ready row. Receive exactly the closed-748 selected
-non-volatile fixed-aggregate byval `LirMemcpyOp`; do not repeat accepted work
-or broaden memory support.
+Establish structured current-function block identity for every active LIR
+terminator successor before any further Raw-BIR CFG receiver work resumes.
 
 ## Goal
 
-Import each structured-authority LIR fact into one verified Raw-BIR module
-without loss or partial publication. Never recover a fact from presentation.
+Publish and verify `LirBlockId` authority for conditional, switch, and
+computed-goto successors without recovering semantics from labels.
 
 ## Core Rule
 
-The selected `LirMemcpyOp::selected_authority` is the sole semantic input:
-destination/source `LirValueId`, i64 immediate size, destination/source
-`LirObjectId`, current-function object owners, and live-at-site facts. Display
-operands remain display-only. The row maps directly to typed Raw-BIR container,
-importer, reachable verifier, and transactional proof.
+Successor labels remain display-only. Every accepted control-flow edge must
+carry a verifier-checked current-function block identity before printing or
+downstream consumption.
 
 ## Read First
 
-- `ideas/open/734_lir_to_new_bir_container_completeness.md`
-- `ideas/closed/748_lir_memcpy_selected_pointer_object_authority_publication.md`
-- `docs/lir_remaining_ordinary_value_identity/authority_matrix.md`
-- existing Raw-BIR memory/container builders, views, verifier, and LIR importer
-
-## Landed Progress
-
-- Steps 1 through 5.3.5 established the coverage foundation and accepted typed
-  module/type/value, metadata, direct-call, and ordinary-value rows through
-  normalized i32 `Mul` (`ea4b63135`).
-- Steps 6.1 through 6.5 accepted selected inline-assembly bindings, direct
-  branch receipt, `SExt`, and `SLT` rows (`ad82d1456`, `37014f013`,
-  `97efe9c38`, `39518d27a`, `03448676f`).
-- Steps 7.1 through 7.19 are accepted historical work, including dispatcher
-  rollback, bounded scalar/intrinsic/cast/binary rows, builtin ffs/ctz/clz,
-  and builtin-popcount receipt (`565be6932`). Do not repeat them.
+- `ideas/open/750_lir_cfg_terminator_block_identity_completion.md`
+- the accepted direct-branch structured-successor route and its verifier
+- active `LirCondBr`, `LirSwitch`, and `LirIndirectBrOp` producers
+- the focused CFG tests and current LIR verifier ownership checks
 
 ## Non-Goals
 
-- no LIR schema/producer edits, presentation-text recovery, target
-  interpretation, allocation, canonicalization, MIR, emission, or legacy-BIR
-  revival
-- no second memcpy row, volatile or dynamic-size memcpy, alias/overlap model,
-  generic pointer/object model, stack/local, globals, parameters outside this
-  fixed byval row, va-list, memset, loads/stores/GEPs, aggregate/vector, CFG,
-  inline-assembly, or other memory/object family
-- no Raw-BIR receipt beyond exactly the closed-748 selected row
+- no Raw-BIR import, canonical BIR, target lowering, MIR, or emission work
+- no PHI incoming authority (idea 751), local/object pointers, memory/va,
+  aggregate/vector identity, or label-text recovery
 
 ## Execution Rules
 
-1. Implement only the closed-748 selected row and retain every other memcpy
-   row's prior unsupported/fail-closed disposition.
-2. Add the typed Raw-BIR receiving container, importer dispatch, reachable
-   Raw-BIR verifier, and positive/negative transactional coverage together.
-3. Require exactly one selected descriptor when the current-function selected
-   pointer carrier exists; preserve pointer/object identity, owner, and live
-   relation without parsing display operands.
-4. Reject missing, duplicate, invalid, cross-function, mismatched, dead,
-   non-i64/nonpositive-size, or otherwise incoherent authority with no partial
-   Raw-BIR module publication.
-5. Keep all producer authority from closed 748 authoritative; do not alter or
-   revalidate producer scope through an LIR change.
+1. Keep `LirBlockId` authoritative and retain strings only as mirrors.
+2. Reject absent, duplicate, ambiguous, invalid, or cross-function successors
+   before any downstream consumer can use them.
+3. Keep each terminator family bounded and prove malformed authority has no
+   rendering-based fallback.
+4. Run a fresh build and focused positive/negative proof for each packet;
+   require the supervisor's broader/full acceptance checkpoint before closure.
 
 ## Ordered Steps
 
-### Step 7.20 - Receive the selected `LirMemcpyOp` authority row
+### Step 1 - Define and verify conditional/switch successor authority
 
-Goal: receive exactly the closed-748 selected fixed-aggregate byval memcpy row
-in typed Raw-BIR, importer dispatch, reachable Raw-BIR verification, and
-transactional positive/negative proof.
-
-Primary targets:
-
-- the smallest typed Raw-BIR memcpy/memory receiving container, builder, and
-  immutable view required for this single row
-- LIR-to-Raw-BIR instruction dispatch and reachable Raw-BIR verifier
-- focused backend receiver coverage plus the closed-748 producer regression
-  neighbor
+Goal: give active `LirCondBr` and `LirSwitch` default/case edges structured
+current-function `LirBlockId` authority.
 
 Actions:
 
-- consume only `LirMemcpyOp::selected_authority` from the selected non-volatile
-  fixed aggregate byval producer in `src/codegen/lir/hir_to_lir/lvalue.cpp`;
-  map its source/destination IDs, i64 positive immediate size, object IDs,
-  current-function owners, and live-at-site facts without using display
-  operands
-- verify exactly one selected descriptor under the selected pointer carrier,
-  current-function pointer/object ownership, distinct source/destination
-  relation, i64-positive size, and live-site coherence; reject missing,
-  duplicate, cross-owner/function, type/kind, object-link, size, and lifetime
-  failures before Raw-BIR publication
-- prove one selected-row success and neighboring malformed authority failures
-  with whole-module rollback; preserve unselected memcpy rows and every other
-  memory/object family as unsupported and fail-closed
+- trace existing producers and introduce the smallest typed successor carrier
+  consistent with the direct-branch route
+- populate conditional true/false and switch default/case targets without
+  deriving IDs from labels
+- extend verification for missing, duplicate/ambiguous, invalid, and
+  cross-function target authority
+- add focused forward-label, conditional, and switch positive/negative tests
 
 Completion check:
 
-- fresh build, focused receiver plus producer-neighbor proof, supervisor-owned
-  matching regression guard, and the required broader checkpoint establish one
-  verified transactional selected memcpy receipt without presentation recovery
-  or scope expansion.
+- fresh build and focused tests establish that misleading label text cannot
+  select or repair a conditional or switch successor.
 
-### Source completion gate (not an executor packet)
+### Step 2 - Publish computed-goto target-list authority
 
-Do not execute this as a placeholder. After Step 7.20, return the runbook to
-plan-owner for an explicit source-completion, repair, replacement, or
-conclusion decision. This source remains open until every valid current-LIR
-row has an evidenced typed receiver disposition and all source acceptance
-criteria are met.
+Goal: give active `LirIndirectBrOp.targets` an equivalent structured ordered
+current-function block-target representation.
+
+Actions:
+
+- preserve target-list order while publishing typed target identities
+- reject missing, invalid, duplicate/ambiguous, or foreign targets
+- add focused computed-goto positive/negative coverage without parsing labels
+
+Completion check:
+
+- fresh build and focused tests prove target-list identity and verifier
+rejection independently of rendered labels.
+
+### Step 3 - Consolidate verifier coverage and hand off
+
+Goal: demonstrate complete active terminator-successor coverage and prepare an
+exact receiver handoff for the paused Raw-BIR source.
+
+Actions:
+
+- verify direct, conditional, switch, and indirect successor ownership using
+  one coherent current-function contract
+- run the supervisor-selected broader/full checkpoint
+- record the exact typed fields, selected receiver-ready row, proof, and
+  fail-closed boundaries for resuming idea 734
+
+Completion check:
+
+- all acceptance criteria for idea 750 are met and its handoff lets
+  plan-owner reactivate 734 for one bounded Raw-BIR CFG receiver packet.

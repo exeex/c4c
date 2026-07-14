@@ -1,7 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (blocked after accepted Step 7.19; awaiting a separately scoped
-pointer/object producer-authority successor)
+Status: Open (paused after accepted Step 7.20; CFG successor-authority
+successor 750 is active before the next receiver repair)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -211,6 +211,36 @@ row in typed Raw-BIR, importer dispatch, reachable verification, and
 transactional positive/negative coverage. All other memory/object, stack,
 va-list, CFG, aggregate/vector, parameter, opaque-inline-asm, and
 presentation-derived rows remain separately scoped and fail-closed.
+
+## Runbook Exhaustion Decision: post-Step 7.20
+
+Close rejected. Accepted Step 7.20 (`1a3adbc58`) received exactly the closed-
+748 selected non-volatile fixed-aggregate byval `LirMemcpyOp` authority into a
+typed Raw-BIR container, importer, reachable verifier, and transactional
+positive/negative coverage. The supervisor acceptance evidence is fresh focused
+backend proof (5/5), a matching non-decreasing before/after regression guard
+(5/5), and the broader full checkpoint (3034/3034). That proves one bounded
+memory/object receiver row; it does not satisfy the source completion gate.
+
+Unmet source criteria are: the checked matrix still has valid current-LIR rows
+without evidenced typed Raw-BIR receiver dispositions, including conditional,
+switch, and indirect CFG successors; PHI incoming value/predecessor identity;
+local/stack/object and general pointer authority; remaining memory/va-list
+rows; aggregate/vector identity; body-parameter identity; and other unreceived
+instruction, terminator, module, type, global, metadata, inline-asm, and call
+families. Consequently the source cannot yet claim every current-LIR semantic
+fact has a lossless typed destination, complete neighboring coverage, or a
+complete explicit dispatcher.
+
+Classification: `separate-blocker`. `ideas/open/750_lir_cfg_terminator_block_identity_completion.md`
+is the first executable successor and owns publication and verification of
+typed active CFG-successor authority. This source is paused after completed
+Steps 1 through 7.20, including the accepted selected memcpy receipt. After
+750 closes with an exact structured handoff, reactivate 734 and repair its
+runbook for the first handoff-authorized bounded Raw-BIR CFG receiver row;
+derive that row from the accepted handoff rather than label text. Do not repeat
+Step 7.20 or absorb PHI, local/object, memory/va, aggregate/vector,
+body-parameter, or other remaining families into successor 750.
 
 ## Why This Exists
 
