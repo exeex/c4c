@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.5
-Current Step Title: Publish representative scalar floating binary result/use authority (complete)
+Current Step ID: 7.6
+Current Step Title: Publish ordinary scalar floating comparison result/use authority
 
 ## Just Finished
 
@@ -21,20 +21,25 @@ Current Step Title: Publish representative scalar floating binary result/use aut
 
 ## Suggested Next
 
-- Select the next bounded Step-7 scalar row from the updated matrix; the
-  ordinary scalar floating comparison route is the nearest analogous candidate.
+- Execute Step 7.6: publish ordinary scalar floating `LirCmpOp` result/use
+  authority.
 
 ## Watchouts
 
-- The Step-7.5 producer test must stay after complex/vector/pointer/logical
-  route exits; do not let the shared `LirBinOp` carrier imply those producers.
-- Floating literal inputs remain monostate because no native floating-immediate
-  carrier exists; do not infer authority from their rendered constants.
-- The authority-scoped verifier permits compatibility operations without a
-  native result but requires floating opcode/type agreement once one is present.
-- Preserve Steps 3 through 7.5 and the four idea-741 neighbors. Keep other
-  comparison/binary producers, CFG/parameters, calls, inline assembly, and BIR
-  outside the next packet unless separately delegated.
+- Own only PB's ordinary nonpointer, nonvector scalar floating comparison
+  branch after complex, vector, pointer, and logical-helper routes have exited.
+- Allocate the comparison result through `fresh_value`, retain the native
+  floating predicate and exact compared `LirTypeRef`, and pass that exact
+  result ID to the existing i1-to-i32 normalization cast operand.
+- Keep floating literal inputs as honest monostate because there is no native
+  floating-immediate carrier; never infer authority from rendered constants.
+- Require authoritative floating mode, floating predicate, and floating type
+  to agree; reject invalid/duplicate results, unknown or cross-function uses,
+  integer predicates/types on the floating claim, and float-mode conflicts.
+- Keep the normalization cast result compatibility-only. Exclude pointer,
+  vector, complex, logical-helper, builtin, vaarg, statement, and other
+  comparison producers, as well as CFG/parameters, calls, inline assembly,
+  aggregate/object work, and BIR.
 
 ## Proof
 
