@@ -1206,10 +1206,14 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
   if (!function_data.blocks_.contains(function_, block))
     return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
   const Type f64{TypeKind::F64, 64, "double"};
+  const Type i32{TypeKind::Integer, 32, "i32"};
   const auto lhs = function_data.values_.get(function_, spec.lhs);
   const auto rhs = function_data.values_.get(function_, spec.rhs);
-  if (spec.opcode != BinaryOpcode::FAdd || spec.type != f64 || !lhs || !rhs ||
-      lhs.value().get().type != f64 || rhs.value().get().type != f64 ||
+  const bool exact_fadd = spec.opcode == BinaryOpcode::FAdd && spec.type == f64 &&
+      lhs && rhs && lhs.value().get().type == f64 && rhs.value().get().type == f64;
+  const bool exact_add = spec.opcode == BinaryOpcode::Add && spec.type == i32 &&
+      lhs && rhs && lhs.value().get().type == i32 && rhs.value().get().type == i32;
+  if ((!exact_fadd && !exact_add) ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   const auto* lhs_def = std::get_if<InstResultDef>(&lhs.value().get().definition);
@@ -1218,8 +1222,21 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
   const auto lhs_producer =
       function_data.insts_.get(function_, lhs_def->instruction);
   if (!lhs_producer ||
-      !std::holds_alternative<CallNode>(lhs_producer.value().get().payload))
+      (exact_fadd && !std::holds_alternative<CallNode>(lhs_producer.value().get().payload)) ||
+      (exact_add && !std::holds_alternative<LoadNode>(lhs_producer.value().get().payload)))
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  if (exact_add) {
+    const auto* rhs_constant = std::get_if<ConstantDef>(&rhs.value().get().definition);
+    if (!rhs_constant) return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+    const auto* integer = rhs_constant->constant.valid() &&
+            rhs_constant->constant.epoch == parent_->data_->epoch_ &&
+            rhs_constant->constant.slot < parent_->data_->constants_.size()
+        ? std::get_if<IntegerConstant>(
+              &parent_->data_->constants_[rhs_constant->constant.slot].payload)
+        : nullptr;
+    if (!integer || integer->value != 1)
+      return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  }
 
   detail::InstData instruction;
   instruction.opcode = Opcode::Binary;

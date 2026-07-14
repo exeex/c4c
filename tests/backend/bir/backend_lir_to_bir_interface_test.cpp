@@ -9255,6 +9255,108 @@ void test_downstream_double_fadd_receipt_and_rejections() {
            "malformed FAdd result authority must reject");
 }
 
+lir::LirModule normalized_i32_add_module() {
+  auto module = direct_global_integer_load_module();
+  auto& function = module.functions[0];
+  function.return_type = scalar_type(c4c::TB_INT);
+  function.return_type.inner_rank = -1;
+  function.signature_return_type_ref = lir::LirTypeRef::integer(32);
+  auto& block = function.blocks[0];
+  block.insts.erase(block.insts.begin() + 1);
+  block.insts.push_back(lir::LirBinOp{
+      lir::LirOperand::ssa("%presentation-add", lir::LirValueId{33}),
+      lir::LirBinaryOpcode::Add, lir::LirTypeRef::integer(32),
+      lir::LirOperand::ssa("%presentation-load", lir::LirValueId{31}),
+      lir::LirOperand::integer("presentation-one", 1)});
+  block.terminator = lir::LirRet{
+      lir::LirOperand::ssa("%presentation-return", lir::LirValueId{33}),
+      lir::LirTypeRef::integer(32)};
+  return module;
+}
+
+void test_normalized_i32_add_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto function_id = view.functions()[0];
+    const auto function = view.function(function_id).value();
+    const auto instructions = function.instructions(function.blocks()[0]).value();
+    const auto load = function.instruction(instructions[0]).value();
+    const auto add = function.instruction(instructions[1]).value();
+    const auto result = function.value(add.results()[0]).value();
+    const auto terminator = function.terminator(function.blocks()[0]).value();
+    const auto* returned = std::get_if<bir::ReturnTerm>(&terminator);
+    expect(instructions.size() == 2 && load.load() && add.binary() &&
+               add.binary()->opcode == bir::BinaryOpcode::Add &&
+               add.binary()->type == bir::Type{bir::TypeKind::I32} &&
+               add.operands().size() == 2 &&
+               add.operands()[0] == load.results()[0] &&
+               add.results().size() == 1 &&
+               result.type == bir::Type{bir::TypeKind::I32} &&
+               result.source_id == bir::SourceValueId{function_id, 33} &&
+               function.source_value(bir::SourceValueId{function_id, 33}).value() ==
+                   add.results()[0] &&
+               returned && returned->value && *returned->value == add.results()[0],
+           layer + " must retain the source-backed Load-plus-one i32 Add and return edge");
+    const auto rhs = function.value(add.operands()[1]).value();
+    const auto* constant = std::get_if<bir::ConstantDef>(&rhs.definition);
+    const auto integer = constant ? view.constant(constant->constant).value() : bir::ConstantDefinition{};
+    const auto* payload = constant ? std::get_if<bir::IntegerConstant>(&integer.payload) : nullptr;
+    expect(rhs.type == bir::Type{bir::TypeKind::I32} && !rhs.source_id && payload &&
+               payload->value == 1,
+           layer + " must materialize only the native Add immediate one as an i32 constant");
+  };
+  const auto module = normalized_i32_add_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "the normalized Load-plus-one i32 Add must publish verified Raw BIR");
+  inspect(raw.value(), "Raw BIR");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(), "the normalized i32 Add route must canonicalize");
+  inspect(canonical.value(), "Canonical BIR");
+
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto candidate = normalized_i32_add_module();
+    auto& add = std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]);
+    mutate(candidate, add);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value(), message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value(), message + " (Canonical rollback)");
+  };
+  rejected([](auto&, auto& add) { add.result = lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid()); },
+           "invalid Add result ID must reject");
+  rejected([](auto&, auto& add) { add.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{31}); },
+           "duplicate Add result ID must reject");
+  rejected([](auto&, auto& add) { add.lhs = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); },
+           "unknown Add lhs must reject");
+  rejected([](auto&, auto& add) { add.rhs = lir::LirOperand::integer("not-one", 2); },
+           "nonselected Add immediate must reject");
+  rejected([](auto&, auto& add) { add.rhs = lir::LirOperand::integer("out-of-range", 1LL << 32); },
+           "out-of-range Add immediate must reject");
+  rejected([](auto&, auto& add) { add.rhs = lir::LirOperand::ssa("%rhs", lir::LirValueId{31}); },
+           "SSA Add rhs must reject");
+  rejected([](auto&, auto& add) { add.opcode = lir::LirBinaryOpcode::Mul; },
+           "non-Add opcode must reject");
+  rejected([](auto&, auto& add) { add.type_str = lir::LirTypeRef::integer(64); },
+           "non-i32 Add type must reject");
+  rejected([](auto&, auto& add) { add.result = lir::LirOperand("%raw"); },
+           "malformed Add result linkage must reject");
+  rejected([](auto& candidate, auto& add) {
+             auto foreign = candidate.functions[0];
+             foreign.name = "foreign_i32_add_owner";
+             auto& foreign_load = std::get<lir::LirLoadOp>(foreign.blocks[0].insts[0]);
+             foreign_load.result = lir::LirOperand::ssa("%foreign-load", lir::LirValueId{77});
+             auto& foreign_add = std::get<lir::LirBinOp>(foreign.blocks[0].insts[1]);
+             foreign_add.lhs = lir::LirOperand::ssa("%foreign-load", lir::LirValueId{77});
+             foreign_add.result = lir::LirOperand::ssa("%foreign-add", lir::LirValueId{78});
+             foreign.blocks[0].terminator = lir::LirRet{
+                 lir::LirOperand::ssa("%foreign-return", lir::LirValueId{78}),
+                 lir::LirTypeRef::integer(32)};
+             candidate.functions.push_back(std::move(foreign));
+             add.lhs = lir::LirOperand::ssa("%cross", lir::LirValueId{77});
+           }, "cross-function Add lhs must reject");
+}
+
 void test_direct_native_floating_call_receipt_and_rejections() {
   const auto inspect = [](const auto& graph, const std::string& layer) {
     const auto view = graph.view();
@@ -9569,6 +9671,7 @@ int main() {
   test_direct_integer_call_receipt_and_rejections();
   test_direct_native_floating_call_receipt_and_rejections();
   test_downstream_double_fadd_receipt_and_rejections();
+  test_normalized_i32_add_receipt_and_rejections();
   test_native_intrinsic_receipt_and_rejections();
   test_native_intrinsic_i64_trunc_receipt_and_rejections();
   return 0;

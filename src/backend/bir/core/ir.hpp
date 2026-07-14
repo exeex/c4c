@@ -171,7 +171,7 @@ struct CallNode {
   FunctionId callee{};
 };
 
-enum class BinaryOpcode : std::uint8_t { FAdd };
+enum class BinaryOpcode : std::uint8_t { FAdd, Add };
 
 struct BinaryNode {
   BinaryOpcode opcode = BinaryOpcode::FAdd;

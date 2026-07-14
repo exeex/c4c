@@ -732,13 +732,15 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
       }
       if (const auto* binary = std::get_if<BinaryNode>(&instruction.payload)) {
         const Type f64{TypeKind::F64, 64, "double"};
-        bool exact = binary->opcode == BinaryOpcode::FAdd &&
-            binary->type == f64 && instruction.operands.size() == 2 &&
+        const Type i32{TypeKind::Integer, 32, "i32"};
+        const bool fadd = binary->opcode == BinaryOpcode::FAdd && binary->type == f64;
+        const bool add = binary->opcode == BinaryOpcode::Add && binary->type == i32;
+        bool exact = (fadd || add) && instruction.operands.size() == 2 &&
             instruction.results.size() == 1;
         if (exact) {
           for (const auto operand_id : instruction.operands) {
             const auto operand = function.values_.get(function_id, operand_id);
-            exact = operand && operand.value().get().type == f64;
+            exact = operand && operand.value().get().type == binary->type;
             if (!exact) break;
           }
         }
@@ -752,20 +754,34 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           } else {
             const auto producer =
                 function.insts_.get(function_id, lhs_def->instruction);
-            exact = producer &&
-                std::holds_alternative<CallNode>(producer.value().get().payload);
+            exact = producer && (fadd
+                ? std::holds_alternative<CallNode>(producer.value().get().payload)
+                : std::holds_alternative<LoadNode>(producer.value().get().payload));
+        }
+        if (exact && add) {
+          const auto rhs = function.values_.get(function_id, instruction.operands[1]);
+          const auto* rhs_constant = rhs
+              ? std::get_if<ConstantDef>(&rhs.value().get().definition)
+              : nullptr;
+          const auto* integer = rhs_constant && rhs_constant->constant.valid() &&
+                  rhs_constant->constant.epoch == module.epoch_ &&
+                  rhs_constant->constant.slot < module.constants_.size()
+              ? std::get_if<IntegerConstant>(
+                    &module.constants_[rhs_constant->constant.slot].payload)
+              : nullptr;
+          exact = integer && integer->value == 1;
           }
         }
         if (exact) {
           const auto result_value =
               function.values_.get(function_id, instruction.results[0]);
-          exact = result_value && result_value.value().get().type == f64 &&
+          exact = result_value && result_value.value().get().type == binary->type &&
               result_value.value().get().source_id.has_value() &&
               result_value.value().get().source_id->owner == function_id;
         }
         if (!exact)
           report(result, VerificationRule::ValueDefinition, function_id, inst_id,
-                 "binary must retain the exact F64 FAdd direct-call-result use, ordered F64 operands, and source-backed result");
+                 "binary must retain an exact admitted typed operand shape and source-backed result");
       }
       if (const auto* call = std::get_if<IntrinsicCallNode>(&instruction.payload)) {
         const bool count_flag = call->kind == IntrinsicKind::Cttz ||
