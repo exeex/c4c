@@ -85,7 +85,8 @@ adjacent families remain separate and fail closed.
 ## Resumption Record: current-function pointer-definition prerequisite
 
 Lifecycle decision: switched to separate blocker
-`ideas/open/749_lir_selected_memcpy_current_function_pointer_object_lifetime_authority.md`.
+`ideas/closed/749_lir_selected_memcpy_current_function_pointer_object_lifetime_authority.md`
+(then open; now closed and accepted).
 This source has no accepted implementation progress and no completed runbook
 step. It was interrupted at Step 1, `Define and populate the selected memcpy
 typed authority`, before any code or focused proof ran.
@@ -109,6 +110,49 @@ Last accepted baseline: root `test_before.log` records
 `ctest --test-dir build -j --output-on-failure -R '^backend_'` passing 4/4.
 Outgoing activation commit: `4adb768ab`. There is no Step 1 proof and no
 implementation commit to preserve.
+
+## Resumption Update: accepted blocker 749 handoff
+
+Lifecycle decision: prerequisite blocker
+`ideas/closed/749_lir_selected_memcpy_current_function_pointer_object_lifetime_authority.md`
+is closed as complete, and this source is resumed at Step 1, `Define and
+populate the selected memcpy typed authority`.
+
+Accepted blocker commits:
+
+- `7e4f8c9d6` - Step 1 Add selected memcpy pointer authority.
+- `457e78757` - Step 2 Populate selected byval memcpy authority.
+
+Accepted blocker proof:
+
+- `cmake --preset default && cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' | tee test_after.log`
+- Result: backend subset 5/5 passed, including
+  `backend_lir_selected_pointer_authority`.
+- Supervisor regression guard passed with `--allow-non-decreasing-passed`
+  against canonical `test_before.log` and `test_after.log`; both logs recorded
+  5/5 with no new failing tests.
+
+Authority contract available to this source:
+
+- `LirFunction::selected_memcpy_pointer_authority` is the sole selected
+  carrier.
+- It contains `byval_parameter` and `destination_alloca`
+  `LirCurrentFunctionPointerDefinition` entries.
+- Each entry carries a valid `LirValueId`, `ptr` `LirTypeRef`, distinct
+  `LirObjectId` allocated via `LirFunction::alloc_object()`, `object_owner`
+  equal to the selected current `LirFunction::link_name_id`, role
+  `ByvalParameter` or `DestinationAlloca`, and
+  `live_at_selected_site=true`.
+- It is populated only by the fixed aggregate byval parameter materialization
+  producer in `src/codegen/lir/hir_to_lir/lvalue.cpp` at the selected memcpy
+  site.
+
+Current return point: execute Step 1 against exactly the selected
+`lvalue.cpp` producer. Populate destination/source pointer, object, and
+lifetime facts for the selected `LirMemcpyOp` only from the accepted 749
+authority contract. This source owns only the selected `LirMemcpyOp`
+schema/publication/verifier boundary; builtin memcpy, Raw-BIR, and other
+memcpy producers remain out of scope.
 
 ## Reviewer Reject Signals
 

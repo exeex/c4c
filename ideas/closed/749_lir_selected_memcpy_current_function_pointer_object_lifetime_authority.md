@@ -1,6 +1,6 @@
 # LIR Selected Memcpy Current-Function Pointer/Object/Lifetime Authority
 
-Status: Open (active prerequisite blocker for idea 748)
+Status: Closed (prerequisite handoff accepted; idea 748 resumed)
 Type: bounded LIR definition/object/lifetime authority repair
 Blocked Consumer: `ideas/open/748_lir_memcpy_selected_pointer_object_authority_publication.md`
 
@@ -76,6 +76,49 @@ only the fixed aggregate byval parameter materialization row at
 `src/codegen/lir/hir_to_lir/lvalue.cpp:279-281`, sourcing its parameter-pointer
 and destination-alloca identities and object/lifetime relations exclusively
 from this handoff. Do not make the blocker itself populate or verify memcpy.
+
+## Closure Record
+
+Lifecycle decision: close accepted as completed prerequisite blocker for idea
+748. Implementation Steps 1 and 2 supplied the exact selected current-function
+definition/object/lifetime authority required by this source, and Plan Step 3
+recorded the durable return to idea 748.
+
+Accepted implementation commits:
+
+- `7e4f8c9d6` - Step 1 Add selected memcpy pointer authority.
+- `457e78757` - Step 2 Populate selected byval memcpy authority.
+
+Accepted proof:
+
+- `cmake --preset default && cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' | tee test_after.log`
+- Result: backend subset 5/5 passed, including
+  `backend_lir_selected_pointer_authority`.
+- Supervisor regression guard passed with `--allow-non-decreasing-passed`
+  against canonical `test_before.log` and `test_after.log`; both logs recorded
+  5/5 with no new failing tests.
+
+Accepted authority contract:
+
+- `LirFunction::selected_memcpy_pointer_authority` is the only selected
+  carrier.
+- It contains `byval_parameter` and `destination_alloca`
+  `LirCurrentFunctionPointerDefinition` entries.
+- Each entry carries a valid `LirValueId`, `ptr` `LirTypeRef`, a distinct
+  `LirObjectId` allocated through `LirFunction::alloc_object()`, `object_owner`
+  equal to the selected current `LirFunction::link_name_id`, role
+  `ByvalParameter` or `DestinationAlloca`, and
+  `live_at_selected_site=true`.
+- The carrier is populated only by the fixed aggregate byval parameter
+  materialization producer in
+  `src/codegen/lir/hir_to_lir/lvalue.cpp` at the selected memcpy site.
+- `LirMemcpyOp` schema/publication/verifier behavior, builtin memcpy,
+  Raw-BIR, and other memcpy producers were not changed.
+
+Return point: idea 748 is resumed at Step 1, `Define and populate the selected
+memcpy typed authority`, to retry exactly the selected
+`src/codegen/lir/hir_to_lir/lvalue.cpp` producer using only this accepted
+authority contract for destination/source pointer/object/lifetime facts.
 
 ## Reviewer Reject Signals
 

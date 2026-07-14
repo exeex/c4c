@@ -1,42 +1,45 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/749_lir_selected_memcpy_current_function_pointer_object_lifetime_authority.md
+Source Idea Path: ideas/open/748_lir_memcpy_selected_pointer_object_authority_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Populate and validate the selected producer authority
+Current Step ID: 1
+Current Step Title: Define and populate the selected memcpy typed authority
 
 ## Just Finished
 
-- Plan Step 2 complete: the fixed aggregate byval parameter materialization
-  producer in `lvalue.cpp` now populates the selected current-function
-  authority with typed byval-parameter and destination-alloca pointer
-  definitions, same-owner `LinkNameId`, distinct local objects, and
-  live-at-selected-site facts. Same-feature coverage exercises the production
-  HIR-to-LIR lowering path plus nearby malformed authority rejection
-  boundaries without using rendered text as semantic authority.
+- Lifecycle handoff from prerequisite idea 749 is complete. Idea 749 is closed
+  as accepted, and its authority contract is recorded in both the closed source
+  and this resumed source.
 
 ## Suggested Next
 
-- Execute Plan Step 3 only: record the accepted proof and hand this
-  prerequisite authority contract back to the blocked memcpy publication route
-  so idea 748 can retry the exact selected `lvalue.cpp` producer without this
-  blocker changing memcpy schema, publication, or Raw-BIR behavior.
+- Execute Step 1 only: retry exactly the selected fixed aggregate byval
+  parameter materialization row in `src/codegen/lir/hir_to_lir/lvalue.cpp`.
+  Populate the selected `LirMemcpyOp` destination/source pointer, object, and
+  lifetime facts only from
+  `LirFunction::selected_memcpy_pointer_authority`.
 
 ## Watchouts
 
-- The selected authority remains the only carrier and is populated only for the
-  fixed aggregate byval parameter materialization producer. `LirMemcpyOp`
-  schema/publication/verifier behavior and other memcpy producers were not
-  touched. A tiny `LirFunction::alloc_object()` cursor was added because Step 2
-  needed distinct selected local object IDs.
+- Idea 749 did not change `LirMemcpyOp` schema/publication/verifier behavior,
+  builtin memcpy, Raw-BIR, or any other memcpy producer. This resumed idea owns
+  the selected memcpy publication and verifier boundary, still with no display
+  text fallback and no scope expansion to additional memory families.
+- The accepted carrier contains only `byval_parameter` and
+  `destination_alloca` current-function pointer definitions, each with a valid
+  value ID, `ptr` type, distinct local object, selected current-function owner,
+  role, and `live_at_selected_site=true`.
 
 ## Proof
 
-- Executor proof passed: `cmake --preset default && cmake --build --preset
-  default && ctest --test-dir build -j --output-on-failure -R '^backend_' |
-  tee test_after.log` passed 5/5 backend tests, including
-  `backend_lir_selected_pointer_authority`; proof log is `test_after.log`.
-  Supervisor regression guard passed with `--allow-non-decreasing-passed`
+- Prerequisite proof accepted for idea 749: `cmake --preset default && cmake
+  --build --preset default && ctest --test-dir build -j --output-on-failure -R
+  '^backend_' | tee test_after.log` passed 5/5 backend tests, including
+  `backend_lir_selected_pointer_authority`.
+- Supervisor regression guard passed with `--allow-non-decreasing-passed`
   against canonical `test_before.log` and `test_after.log`, both 5/5 with no
   new failing tests.
+- After Step 1 implementation in this resumed idea: run a fresh build plus
+  focused selected memcpy producer coverage; supervisor owns matching
+  regression logs and broader checks.
