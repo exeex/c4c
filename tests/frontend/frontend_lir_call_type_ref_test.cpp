@@ -2088,15 +2088,83 @@ int lir_scalar_ordinary_value_chain_identity(void) {
                   binary_ops[1]->type_str.integer_bit_width() == 32,
               "scalar chain should retain native opcode and i32 type facts");
   expect_true(binary_ops[0]->result.kind() == lir::LirOperandKind::SsaValue &&
-                  !binary_ops[0]->result.has_authority() &&
-                  !binary_ops[0]->result.value_id(),
-              "first bad fact: first scalar result is SSA text without a value ID");
-  expect_true(binary_ops[1]->lhs.kind() == lir::LirOperandKind::SsaValue &&
-                  !binary_ops[1]->lhs.has_authority() &&
-                  !binary_ops[1]->lhs.value_id() &&
+                  binary_ops[0]->result.value_id() &&
+                  binary_ops[0]->result.value_id()->valid() &&
+                  binary_ops[1]->lhs.kind() == lir::LirOperandKind::SsaValue &&
+                  binary_ops[1]->lhs.value_id() &&
+                  *binary_ops[1]->lhs.value_id() ==
+                      *binary_ops[0]->result.value_id() &&
                   binary_ops[1]->result.kind() == lir::LirOperandKind::SsaValue &&
-                  !binary_ops[1]->result.has_authority(),
-              "scalar chain loses result/use identity across its second operation");
+                  binary_ops[1]->result.value_id() &&
+                  binary_ops[1]->result.value_id()->valid() &&
+                  *binary_ops[1]->result.value_id() !=
+                      *binary_ops[0]->result.value_id(),
+              "scalar chain should preserve the exact first result ID into the later use");
+  lir::verify_module(lowered);
+
+  const auto require_focused_binary_ops =
+      [](lir::LirModule& module) -> std::vector<lir::LirBinOp*> {
+    lir::LirFunction& focused =
+        require_function(module, "lir_scalar_ordinary_value_chain_identity");
+    std::vector<lir::LirBinOp*> found;
+    for (auto& block : focused.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* binary = std::get_if<lir::LirBinOp>(&inst)) {
+          found.push_back(binary);
+        }
+      }
+    }
+    expect_eq(std::to_string(found.size()), "2",
+              "focused scalar-chain fixture should contain two binary operations");
+    return found;
+  };
+
+  lir::LirModule misleading = lowered;
+  std::vector<lir::LirBinOp*> misleading_ops =
+      require_focused_binary_ops(misleading);
+  misleading_ops[0]->result.str() = "@rendered-not-result";
+  misleading_ops[1]->lhs.str() = "7";
+  lir::verify_module(misleading);
+
+  lir::LirModule invalid_result = lowered;
+  require_focused_binary_ops(invalid_result)[0]->result =
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_result, "verifier should reject invalid scalar binary result ID");
+
+  lir::LirModule duplicate_result = lowered;
+  std::vector<lir::LirBinOp*> duplicate_ops =
+      require_focused_binary_ops(duplicate_result);
+  duplicate_ops[1]->result = lir::LirOperand::ssa(
+      "%duplicate", *duplicate_ops[0]->result.value_id());
+  expect_identity_verification_rejected(
+      duplicate_result, "verifier should reject duplicate scalar binary result ID");
+
+  lir::LirModule unknown_use = lowered;
+  require_focused_binary_ops(unknown_use)[1]->lhs =
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      unknown_use, "verifier should reject unknown scalar binary operand ID");
+
+  lir::LirModule cross_function_use = lowered;
+  cross_function_use.functions.push_back(
+      make_identity_test_function("scalar_binary_owner", lir::LirValueId{99}));
+  require_focused_binary_ops(cross_function_use)[1]->lhs =
+      lir::LirOperand::ssa("%cross", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      cross_function_use,
+      "verifier should reject cross-function scalar binary operand ID");
+
+  lir::LirModule invalid_opcode = lowered;
+  require_focused_binary_ops(invalid_opcode)[0]->opcode =
+      lir::LirBinaryOpcodeRef("not-a-binary-opcode");
+  expect_identity_verification_rejected(
+      invalid_opcode, "verifier should reject invalid scalar binary opcode");
+
+  lir::LirModule missing_type = lowered;
+  require_focused_binary_ops(missing_type)[0]->type_str = lir::LirTypeRef{};
+  expect_identity_verification_rejected(
+      missing_type, "verifier should reject missing scalar binary type authority");
 }
 
 }  // namespace

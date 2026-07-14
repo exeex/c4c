@@ -66,6 +66,8 @@ std::string emit_complex_binary_arith(FnCtx& ctx, BinaryOp op,
                                       const std::string& rv,
                                       const TypeSpec& rts,
                                       const TypeSpec& res_spec);
+LirOperand emit_binary_rval_operand(FnCtx& ctx, const BinaryExpr& b,
+                                    const Expr& e);
 std::string emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const Expr& e);
 std::string emit_logical(FnCtx& ctx, const BinaryExpr& b, const Expr& e);
 

@@ -4,46 +4,49 @@ Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
 Current Step ID: 6
-Current Step Title: Prove a representative non-call scalar result/use chain
+Current Step Title: Prove a representative non-call scalar result/use chain (complete)
 
 ## Just Finished
 
-- Completed Plan Step 5 for the direct void fixed scalar SSA argument.
-- Reused the common `LirOperand` call-argument carrier and preserved the exact
-  CC-LOAD-1 selected-global scalar-load `LirValueId` when the direct fixed
-  integer parameter keeps the same LLVM representation.
-- Added authority-first exact verification for the structured SSA row: exact
-  type refs, no result or extension, and a valid known value ID owned by the
-  current function. Complete native packets ignore misleading text mirrors.
-- Added focused positive and malformed coverage for exact source-ID reuse,
-  missing/wrong/invalid/unknown/cross-function authority, and type, signature,
-  count, and extension conflicts. The selected-global load contract is
-  unchanged.
+- Completed Plan Step 6 for the focused two-operation ordinary scalar integer
+  `LirBinOp` result/use chain.
+- Added an operand-returning binary-expression seam: normalized scalar integer
+  arithmetic allocates results with `fresh_value`, returns the common
+  `LirOperand`, and preserves input authority only across representation-
+  preserving coercion.
+- Preserved exact native Add/Mul and i32 facts and proved that the later Mul lhs
+  carries the exact earlier Add result ID. Other binary branches retain
+  monostate compatibility.
+- Added focused misleading-display acceptance and rejection for invalid or
+  duplicate results, unknown or cross-function uses, invalid opcode, and
+  missing type authority. Updated the matrix with exact shared versus distinct
+  neighboring row classifications.
 
 ## Suggested Next
 
-- Execute Plan Step 6: prove a representative non-call scalar result/use chain.
+- Execute the first coherent Plan Step 7 generic ordinary producer group
+  justified by the updated matrix.
 
 ## Watchouts
 
-- Own only the focused two-operation integer `LirBinOp` chain selected by the
-  Step-1 matrix and probe.
-- Reuse the owning value allocator and common `LirOperand`: allocate
-  authoritative result IDs and preserve the exact first result ID into the
-  later ordinary use in the same function.
-- Preserve native opcode and type facts; do not derive either from rendering.
-- Accept misleading display after native authority is proven; reject invalid
-  or duplicate result IDs and unknown or cross-function uses.
-- Keep CFG/terminators, parameters, pointer/object identity, aggregate/vector,
-  inline assembly, calls, and new-BIR work outside Step 6.
+- Group Step-7 rows only when result allocation, operand propagation, type
+  authority, and verifier rules are identical; use one bounded executor packet
+  per group.
+- Scalar compare, cast, select, and abs can reuse the common allocator/operand
+  mechanism, but each still needs its opcode/predicate/type contract checked
+  before publication.
+- Keep aggregate/vector type/index/mask semantics and pointer/object, CFG,
+  parameter, inline-asm, call, ABI, and BIR families separate.
+- Preserve the closed Step-3 through Step-6 rows and all four idea-741
+  regression neighbors while extending production coverage.
 
 ## Proof
 
-- Fresh `cmake --build --preset default` passed for the Step-5 producer,
-  verifier, and focused tests.
+- Fresh `cmake --build --preset default` passed for the Step-6 producer seam
+  and focused tests.
 - `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure > test_after.log`
   passed 1/1; canonical proof is in `test_after.log`.
-- The supervisor-owned clean-stashed full regression guard passed:
+- The supervisor clean-stashed full regression guard passed:
   `test_before.log` passed 3033/3033, `test_after.log` passed 3033/3033, and
   the monotonic delta was passed=0 and failed=0 with no new failures.
-- `git diff --check` passed for the complete Step-5 slice.
+- `git diff --check` passed for the complete Step-6 slice.

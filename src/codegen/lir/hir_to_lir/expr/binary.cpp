@@ -119,7 +119,9 @@ std::string StmtEmitter::emit_complex_binary_arith(FnCtx& ctx, BinaryOp op,
   return cplx_ty == llvm_ty(res_spec) ? out : coerce(ctx, out, complex_ts, res_spec);
 }
 
-std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const Expr& e) {
+LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
+                                                 const BinaryExpr& b,
+                                                 const Expr& e) {
   if (b.op == BinaryOp::Comma) {
     TypeSpec lts{};
     emit_rval_id(ctx, b.lhs, lts);
@@ -131,9 +133,11 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, cons
   }
 
   TypeSpec lts{};
-  std::string lv = emit_rval_id(ctx, b.lhs, lts);
+  const LirOperand source_lv = emit_rval_operand(ctx, b.lhs, lts);
+  std::string lv = source_lv.str();
   TypeSpec rts{};
-  std::string rv = emit_rval_id(ctx, b.rhs, rts);
+  const LirOperand source_rv = emit_rval_operand(ctx, b.rhs, rts);
+  std::string rv = source_rv.str();
   TypeSpec res_spec =
       (e.type.spec.base != TB_VOID || e.type.spec.ptr_level > 0) ? e.type.spec : lts;
 
@@ -461,6 +465,23 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, cons
         instr = arith_ls ? row.i_s : row.i_u;
       }
       if (!instr) break;
+      const bool authoritative_scalar_integer =
+          l_is_int && r_is_int && is_any_int(lts.base) &&
+          lts.ptr_level == 0 && lts.array_rank == 0 &&
+          !is_vector_value(lts);
+      if (authoritative_scalar_integer) {
+        const LirOperand result = fresh_value(ctx);
+        const LirOperand lhs = source_lv.has_authority() && source_lv.str() == lv
+                                   ? source_lv
+                                   : LirOperand(lv);
+        const LirOperand rhs = source_rv.has_authority() && source_rv.str() == rv
+                                   ? source_rv
+                                   : LirOperand(rv);
+        emit_lir_op(ctx, lir::LirBinOp{result, std::string(instr),
+                                       LirTypeRef(op_ty), lhs, rhs});
+        const std::string coerced = coerce(ctx, result.str(), lts, res_spec);
+        return coerced == result.str() ? result : LirOperand::raw(coerced);
+      }
       const std::string tmp = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirBinOp{tmp, std::string(instr), op_ty, lv, rv});
       return coerce(ctx, tmp, lts, res_spec);
@@ -494,6 +515,11 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, cons
   }
 
   throw std::runtime_error("StmtEmitter: unhandled binary op");
+}
+
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const BinaryExpr& b,
+                                           const Expr& e) {
+  return emit_binary_rval_operand(ctx, b, e).str();
 }
 
 std::string StmtEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Expr& e) {
