@@ -8,9 +8,16 @@ using namespace stmt_emitter_detail;
 
 namespace {
 
+[[deprecated(
+    "no-LirModule fixed AMD64 va_list tag text: no structured name ID is "
+    "available at this runtime-text compatibility boundary")]]
+LirTypeRef no_module_amd64_va_list_tag_type_text(std::string rendered_text) {
+  return LirTypeRef::runtime_text(std::move(rendered_text));
+}
+
 LirTypeRef lir_va_list_tag_type_ref(lir::LirModule* module) {
   constexpr const char* kVaListTagType = "%struct.__va_list_tag_";
-  if (!module) return LirTypeRef(kVaListTagType);
+  if (!module) return no_module_amd64_va_list_tag_type_text(kVaListTagType);
   return LirTypeRef::struct_type(kVaListTagType, module->struct_names.intern(kVaListTagType));
 }
 

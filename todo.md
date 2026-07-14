@@ -8,15 +8,16 @@ Current Step Title: Repair the targeted warning-inventory route
 
 ## Just Finished
 
-- Step 6 targeted warning-inventory repair complete: the pointer-to-integer
-  null-comparison lowering now constructs its closed `ptr` `PtrToInt` source
-  type with `LirBuiltinType::Pointer`. The adjacent predicate and dynamic
-  `ty` construction paths remain unchanged.
+- Step 6 targeted warning-inventory repair complete: both no-`LirModule`
+  fixed `%struct.__va_list_tag_` fallbacks now use searchable deprecated
+  runtime-text boundaries because no structured name ID is available. Their
+  module-present `LirTypeRef::struct_type` paths remain unchanged.
 
 ## Suggested Next
 
-- Step 6: select the next targeted closed-set construction family; preserve
-  dynamic type construction paths and local runtime-text boundaries.
+- Step 6: select the next targeted warning-inventory family; retain
+  compatibility boundaries where source provenance cannot provide a builtin
+  enum or structured name ID.
 
 ## Watchouts
 
@@ -57,5 +58,5 @@ Current Step Title: Repair the targeted warning-inventory route
 
 - `cmake --build --preset default` succeeded; its warnings are deliberate
   local inventory boundaries.
-- `ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$' > test_after.log`
-  passed (1/1); `test_after.log` is the focused proof log.
+- `ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+  passed (5/5); `test_after.log` is the focused proof log.
