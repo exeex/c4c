@@ -29,7 +29,8 @@ Step-7.15 shared ffs zero-comparison result, and Step-7.16 shared ffs cttz call
 result, plus the Step-7.17 builtin-ctz i32/i64 cttz call and i64 narrowing
 result, plus the Step-7.18 builtin-clz i32/i64 ctlz call and i64 narrowing
 result, plus the Step-7.19 builtin-popcount i32/i64 ctpop call and i64
-narrowing result, plus the Step-7.2 integer / Step-7.6 floating ordinary
+narrowing result, plus the Step-7.21 scalar integer output-only inline-asm
+semantic result, plus the Step-7.2 integer / Step-7.6 floating ordinary
 scalar compare branches in `emit_binary_rval_operand`, plus the Step-7.3 scalar builtin-ffs select in
 `emit_builtin_ffs_call` and the Step-7.4 integer builtin-abs result in
 `emit_post_builtin_call_operand`. Other active modern result constructions
@@ -112,7 +113,7 @@ grouped only where they share one producer and disposition.
 | `LirShuffleVectorOp`: `result,vec1,vec2,mask`; `vec_type,mask_type` | Active, PB vector-scalar splat branches | Text-only operands; result `fresh_tmp` | Native types; kind/type only and ownership-ready | `lir_shufflevector_identity.c`; mask needs distinct typed constant/vector carrier; **generic result/use plus distinct vector semantics** |
 | `LirVaArgOp`: `result,ap_ptr`; `type_str` | Active, PV `emit_rval_payload(VaArgExpr)` and `emit_amd64_va_arg` semantic routes | Text-only operands; result `fresh_tmp` | Native type; kind/type only and ownership-ready | `lir_vaarg_identity.c`; **generic result** but pointer/object/ABI use is **separate va-list family** |
 | `LirAllocaOp`: `result,count`; `type_str,align` | Active in PF/PS/PL/PX/PC/PI/PV/`core.cpp` for VLA, locals, temporaries and ABI copies | Result and optional count text-only; result `fresh_tmp` or named stack spelling | Native type/alignment; kind/type only and ownership-ready | Requires stack/local object ownership, dynamic-count use, and hoisted/body ordering; `lir_alloca_object_identity.c`; **separate stack/local family** |
-| `LirInlineAsmOp`: compatibility `result`; semantic `ordinary_inputs/results[].value`; binding type/role/index; original text/clobbers; rendered mirrors; `insn_r` | Active, PS `emit_non_control_flow_stmt(InlineAsmStmt)` | Compatibility result and semantic bindings are text-only; outputs allocated with `fresh_tmp`; assembly/constraint/clobber text remains raw by design | Native binding types/roles/indices and R metadata; verifier checks shape/order/pairing and is ownership-ready for native binding IDs | Ordinary bindings can share generic value publication, but compatibility result is presentation-only and asm text stays opaque; `lir_inline_asm_binding_identity.c`; **generic binding values + presentation/opaque payload** |
+| `LirInlineAsmOp`: compatibility `result`; semantic `ordinary_inputs/results[].value`; binding type/role/index; original text/clobbers; rendered mirrors; `insn_r` | Active, PS `emit_non_control_flow_stmt(InlineAsmStmt)` | Step 7.21 allocates only the scalar integer output-only semantic result through `fresh_value`, keeps the compatibility result authority-free, and preserves the exact binding ID into the later Store. Read/write, memory, multi-output, and other bindings remain compatibility. Assembly/constraint/clobber text remains raw by design | Native binding types/roles/indices and R metadata; verifier checks shape/order/pairing. The focused output-only row requires one exact type/role/index result binding, collects it as a function-owned definition, and requires its Store use type to match | Step 7.21 closes only the scalar integer output-only binding-to-Store edge. Read/write/input/memory/vector/multi-output/explicit-register/`insn_r` semantics and all opaque text remain unclaimed or presentation-only; `lir_inline_asm_binding_identity.c`; **generic binding values + presentation/opaque payload** |
 
 ## Separate adjacent identity families
 
@@ -758,6 +759,28 @@ Steps 7.16-7.18 retain their exact Cttz/Ctlz contracts. Parity and all other
 call/narrowing producers, ABI/variadic work, pointer/vector/aggregate/object
 families, CFG/parameters, inline assembly, and BIR remain outside this packet.
 
+## Step-7.21 scalar inline-asm output binding contract
+
+The claimed row is only PS's scalar integer output-only `LirInlineAsmOp`
+binding. The producer allocates the semantic output through `fresh_value`,
+stores that exact operand in `ordinary_results[0]` with native integer type,
+`Output` role, and output constraint index zero, and passes the same operand
+through representation-preserving coercion to the existing later Store. The
+compatibility `result` retains only the same display and no authority.
+
+Reachable verification requires the nonvoid scalar integer operation to carry
+one exact semantic result binding with matching return type and index. It
+collects authoritative semantic output bindings as function-owned definitions,
+rejects invalid/duplicate/missing/wrong-role/type/index bindings and unknown or
+cross-function uses, and requires a Store consuming that ID to use the binding
+type. Misleading compatibility-result, binding, Store, rendered operand,
+assembly, and constraint displays pass when native facts and IDs are unchanged.
+
+Input, tied/read-write, memory, address, immediate, clobber, explicit-register,
+vector, and multi-output bindings, `insn_r` semantics, opaque text,
+compatibility-result authority, stack/local/body-parameter publication, CFG,
+BIR receipt, and idea-741 contracts remain outside this packet.
+
 ## Mechanical coverage check
 
 Reproducible source-side extraction:
@@ -860,6 +883,10 @@ Current-source spot checks used for this baseline:
   carries the exact call result through a fresh exact i64-to-i32 Trunc and the
   exact trunc result into the Add; both widths publish an exact one-integer-
   parameter signature and no zero-count behavior;
+- representative scalar inline-asm output: PS allocates the output-only i32
+  semantic binding through `fresh_value`, keeps the compatibility result and
+  opaque/rendered text authority-free, and preserves the exact output ID into
+  the later type-matched Store;
 - representative scalar abs: `call/builtin.cpp` routes the existing integer
   abs argument through the common operand/coercion seam, allocates its exact
   i32/i64 result through `fresh_value`, and preserves the result ID into a later

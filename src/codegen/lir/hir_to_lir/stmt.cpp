@@ -338,19 +338,21 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const InlineAsmStmt& s)
     return;
   }
 
-  const std::string result = fresh_tmp(ctx);
-  inline_asm.result = lir::LirOperand(result);
   const bool is_read_write =
       !output_readwrite.empty() && output_readwrite[0];
+  const lir::LirOperand semantic_result =
+      is_read_write ? lir::LirOperand(fresh_tmp(ctx)) : fresh_value(ctx);
+  inline_asm.result = lir::LirOperand(semantic_result.str());
   inline_asm.ordinary_results.push_back(lir::LirInlineAsmValueBinding{
-      lir::LirOperand(result), lir::LirTypeRef(ret_ty),
+      semantic_result, lir::LirTypeRef(ret_ty),
       is_read_write ? lir::LirInlineAsmValueRole::ReadWrite
                     : lir::LirInlineAsmValueRole::Output,
       0});
   emit_lir_op(ctx, std::move(inline_asm));
   TypeSpec out_pointee_ts{};
   const std::string out_ptr = emit_lval(ctx, outputs[0], out_pointee_ts);
-  const std::string coerced = coerce(ctx, result, ret_ts, out_pointee_ts);
+  const lir::LirOperand coerced =
+      coerce_operand(ctx, semantic_result, ret_ts, out_pointee_ts);
   emit_lir_op(ctx, lir::LirStoreOp{llvm_ty(out_pointee_ts), coerced, out_ptr});
 }
 

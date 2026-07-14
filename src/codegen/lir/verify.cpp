@@ -1343,6 +1343,10 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
   if (const auto* op = std::get_if<LirInlineAsmOp>(&inst)) {
     require_operand_kind(op->result, "LirInlineAsmOp.result",
                          {LirOperandKind::SsaValue}, true);
+    if (op->result.has_authority()) {
+      fail_verify("LirInlineAsmOp.result",
+                  "compatibility result must remain presentation-only");
+    }
     require_module_type_ref(mod, op->ret_type, "LirInlineAsmOp.ret_type", true);
     if (op->result.empty() && op->ret_type != "void") {
       fail_verify("LirInlineAsmOp.result",
@@ -1353,17 +1357,25 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
                   "void inline asm must not carry a result operand");
     }
 
+    const bool native_scalar_integer_output_only =
+        !op->result.empty() && op->ret_type.kind() == LirTypeKind::Integer &&
+        op->ordinary_inputs.empty() && op->ordinary_results.size() == 1 &&
+        op->ordinary_results[0].role == LirInlineAsmValueRole::Output &&
+        op->ordinary_results[0].type == op->ret_type &&
+        op->ordinary_results[0].constraint_index == 0;
     const std::size_t semantic_constraint_count =
         count_inline_asm_constraints(op->original_constraint_text);
     if ((!op->ordinary_inputs.empty() || !op->ordinary_results.empty()) &&
-        semantic_constraint_count == 0) {
+        semantic_constraint_count == 0 &&
+        !native_scalar_integer_output_only) {
       fail_verify("LirInlineAsmOp.original_constraint_text",
                   "structured values require original semantic constraints");
     }
 
     const auto verify_bindings =
         [&](const std::vector<LirInlineAsmValueBinding>& bindings,
-            std::string_view field, LirInlineAsmValueRole ordinary_role) {
+            std::string_view field, LirInlineAsmValueRole ordinary_role,
+            bool constraint_count_is_opaque = false) {
           std::optional<std::size_t> previous_constraint;
           for (std::size_t index = 0; index < bindings.size(); ++index) {
             const auto& binding = bindings[index];
@@ -1380,7 +1392,8 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
               fail_verify(item_field + ".role",
                           "does not match the binding list role");
             }
-            if (binding.constraint_index >= semantic_constraint_count) {
+            if (!constraint_count_is_opaque &&
+                binding.constraint_index >= semantic_constraint_count) {
               fail_verify(item_field + ".constraint_index",
                           "is outside the original constraint list");
             }
@@ -1395,7 +1408,26 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     verify_bindings(op->ordinary_inputs, "LirInlineAsmOp.ordinary_inputs",
                     LirInlineAsmValueRole::Input);
     verify_bindings(op->ordinary_results, "LirInlineAsmOp.ordinary_results",
-                    LirInlineAsmValueRole::Output);
+                    LirInlineAsmValueRole::Output,
+                    native_scalar_integer_output_only);
+
+    const bool scalar_integer_result =
+        !op->result.empty() && op->ret_type.kind() == LirTypeKind::Integer;
+    if (scalar_integer_result &&
+        (op->ordinary_results.size() != 1 ||
+         op->ordinary_results[0].type != op->ret_type ||
+         op->ordinary_results[0].constraint_index != 0)) {
+      fail_verify("LirInlineAsmOp.ordinary_results",
+                  "scalar integer result requires one exact type/index binding");
+    }
+    if (scalar_integer_result &&
+        op->ordinary_results[0].role == LirInlineAsmValueRole::Output) {
+      const LirInlineAsmValueBinding& output = op->ordinary_results[0];
+      if (!output.value.value_id() || !output.value.value_id()->valid()) {
+        fail_verify("LirInlineAsmOp.ordinary_results[0]",
+                    "scalar integer output-only binding requires exact result, type, role, and output-index authority");
+      }
+    }
 
     for (std::size_t result_index = 0;
          result_index < op->ordinary_results.size(); ++result_index) {
@@ -1570,8 +1602,8 @@ void verify_function_value_ownership(const LirFunction& function) {
   std::unordered_set<uint32_t> definitions;
   std::unordered_map<uint32_t, const LirInst*> definition_insts;
 
-  const auto collect_definition = [&](const LirInst& inst) {
-    const LirOperand* result = modeled_result_operand(inst);
+  const auto collect_operand_definition =
+      [&](const LirInst& inst, const LirOperand* result) {
     if (!result) return;
     const LirValueId* id = result->value_id();
     if (!id) return;
@@ -1585,6 +1617,16 @@ void verify_function_value_ownership(const LirFunction& function) {
                       std::to_string(id->value));
     }
     definition_insts.emplace(id->value, &inst);
+  };
+
+  const auto collect_definition = [&](const LirInst& inst) {
+    if (const auto* inline_asm = std::get_if<LirInlineAsmOp>(&inst)) {
+      for (const LirInlineAsmValueBinding& result : inline_asm->ordinary_results) {
+        collect_operand_definition(inst, &result.value);
+      }
+      return;
+    }
+    collect_operand_definition(inst, modeled_result_operand(inst));
   };
 
   for (const auto& inst : function.alloca_insts) collect_definition(inst);
@@ -1611,6 +1653,29 @@ void verify_function_value_ownership(const LirFunction& function) {
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
       visit_modeled_value_uses(inst, verify_use);
+      if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+        const LirValueId* value_id = store->val.value_id();
+        if (value_id) {
+          const auto definition = definition_insts.find(value_id->value);
+          if (definition != definition_insts.end()) {
+            if (const auto* inline_asm =
+                    std::get_if<LirInlineAsmOp>(definition->second)) {
+              const auto binding = std::find_if(
+                  inline_asm->ordinary_results.begin(),
+                  inline_asm->ordinary_results.end(),
+                  [&](const LirInlineAsmValueBinding& result) {
+                    return result.value.value_id() &&
+                           *result.value.value_id() == *value_id;
+                  });
+              if (binding != inline_asm->ordinary_results.end() &&
+                  binding->type != store->type_str) {
+                fail_verify("LirStoreOp.type_str",
+                            "inline-asm output use type must match its semantic binding type");
+              }
+            }
+          }
+        }
+      }
       const auto* select = std::get_if<LirSelectOp>(&inst);
       if (!select || select->type_str.kind() != LirTypeKind::Integer) continue;
       const LirValueId* condition_id = select->cond.value_id();

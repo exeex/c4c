@@ -7639,6 +7639,184 @@ int bad_operand(int out, int lhs, int rhs) {
                      ".insn r with a raw register token should diagnose during HIR lowering");
 }
 
+void test_lir_inline_asm_scalar_output_binding_identity() {
+  namespace lir = c4c::codegen::lir;
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+int inline_asm_output_identity(void) {
+  int value;
+  __asm__("mov $7, %0" : "=r"(value));
+  return value + 1;
+}
+)cpp");
+  lir::LirModule lowered = lir::lower(hir_module);
+
+  struct FocusedPair {
+    lir::LirInlineAsmOp* inline_asm = nullptr;
+    lir::LirStoreOp* later_store = nullptr;
+  };
+  const auto require_pair = [](lir::LirModule& module) {
+    auto function = std::find_if(
+        module.functions.begin(), module.functions.end(),
+        [](const lir::LirFunction& fn) {
+          return fn.name == "inline_asm_output_identity";
+        });
+    expect_true(function != module.functions.end(),
+                "focused inline-asm output function should lower to LIR");
+    FocusedPair pair;
+    for (auto& block : function->blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* op = std::get_if<lir::LirInlineAsmOp>(&inst)) {
+          expect_true(pair.inline_asm == nullptr,
+                      "focused fixture should contain one inline-asm op");
+          pair.inline_asm = op;
+        }
+        if (auto* store = std::get_if<lir::LirStoreOp>(&inst)) {
+          if (store->val.value_id()) {
+            expect_true(pair.later_store == nullptr,
+                        "focused fixture should contain one authoritative output store");
+            pair.later_store = store;
+          }
+        }
+      }
+    }
+    expect_true(pair.inline_asm && pair.later_store,
+                "focused fixture should contain its semantic output/store pair");
+    return pair;
+  };
+  const auto expect_rejected = [](const lir::LirModule& module,
+                                  std::string_view message) {
+    bool rejected = false;
+    try {
+      lir::verify_module(module);
+    } catch (const lir::LirVerifyError&) {
+      rejected = true;
+    }
+    expect_true(rejected, std::string(message));
+  };
+
+  FocusedPair pair = require_pair(lowered);
+  expect_true(
+      !pair.inline_asm->result.has_authority() &&
+          pair.inline_asm->ret_type == lir::LirTypeRef::integer(32) &&
+          pair.inline_asm->ordinary_results.size() == 1 &&
+          pair.inline_asm->ordinary_results[0].role ==
+              lir::LirInlineAsmValueRole::Output &&
+          pair.inline_asm->ordinary_results[0].constraint_index == 0 &&
+          pair.inline_asm->ordinary_results[0].type ==
+              lir::LirTypeRef::integer(32) &&
+          pair.inline_asm->ordinary_results[0].value.value_id() &&
+          pair.inline_asm->ordinary_results[0].value.value_id()->valid() &&
+          pair.later_store->type_str == lir::LirTypeRef::integer(32) &&
+          pair.later_store->val.value_id() &&
+          *pair.later_store->val.value_id() ==
+              *pair.inline_asm->ordinary_results[0].value.value_id(),
+      "scalar output-only inline asm should publish one exact semantic result/store edge");
+  lir::verify_module(lowered);
+
+  lir::LirModule misleading = lowered;
+  FocusedPair misleading_pair = require_pair(misleading);
+  misleading_pair.inline_asm->result.str() = "@rendered-not-asm-result";
+  misleading_pair.inline_asm->ordinary_results[0].value.str() =
+      "7";
+  misleading_pair.later_store->val.str() = "%rendered-not-output-use";
+  misleading_pair.inline_asm->asm_text = "rendered replacement";
+  misleading_pair.inline_asm->constraints = "rendered constraints";
+  misleading_pair.inline_asm->args_str = "rendered arguments";
+  misleading_pair.inline_asm->original_asm_text = "opaque replacement";
+  misleading_pair.inline_asm->original_constraint_text.clear();
+  misleading_pair.inline_asm->clobbers = {"opaque-clobber"};
+  lir::verify_module(misleading);
+
+  lir::LirModule compatibility_authority = lowered;
+  FocusedPair compatibility_pair = require_pair(compatibility_authority);
+  compatibility_pair.inline_asm->result = lir::LirOperand::ssa(
+      "%compatibility-authority",
+      *compatibility_pair.inline_asm->ordinary_results[0].value.value_id());
+  expect_rejected(
+      compatibility_authority,
+      "verifier should reject authority on the compatibility inline-asm result");
+
+  lir::LirModule missing_binding = lowered;
+  require_pair(missing_binding).inline_asm->ordinary_results.clear();
+  expect_rejected(missing_binding,
+                  "verifier should reject a missing scalar output binding");
+
+  lir::LirModule missing_binding_authority = lowered;
+  require_pair(missing_binding_authority).inline_asm->ordinary_results[0].value =
+      lir::LirOperand("%missing");
+  expect_rejected(
+      missing_binding_authority,
+      "verifier should reject scalar output binding without result authority");
+
+  lir::LirModule invalid_binding = lowered;
+  require_pair(invalid_binding).inline_asm->ordinary_results[0].value =
+      lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  expect_rejected(invalid_binding,
+                  "verifier should reject invalid inline-asm output authority");
+
+  lir::LirModule duplicate_binding = lowered;
+  FocusedPair duplicate_pair = require_pair(duplicate_binding);
+  duplicate_pair.inline_asm->ordinary_results.push_back(
+      duplicate_pair.inline_asm->ordinary_results[0]);
+  expect_rejected(duplicate_binding,
+                  "verifier should reject duplicate inline-asm output definitions");
+
+  lir::LirModule wrong_type = lowered;
+  require_pair(wrong_type).inline_asm->ordinary_results[0].type =
+      lir::LirTypeRef::integer(64);
+  expect_rejected(wrong_type,
+                  "verifier should reject conflicting output binding type");
+
+  lir::LirModule wrong_role = lowered;
+  require_pair(wrong_role).inline_asm->ordinary_results[0].role =
+      lir::LirInlineAsmValueRole::ReadWrite;
+  expect_rejected(wrong_role,
+                  "verifier should reject conflicting output-only binding role");
+
+  lir::LirModule wrong_index = lowered;
+  require_pair(wrong_index).inline_asm->ordinary_results[0].constraint_index = 1;
+  expect_rejected(wrong_index,
+                  "verifier should reject conflicting output binding index");
+
+  lir::LirModule unknown_final_use = lowered;
+  require_pair(unknown_final_use).later_store->val =
+      lir::LirOperand::ssa("%unknown", lir::LirValueId{99});
+  expect_rejected(unknown_final_use,
+                  "verifier should reject unknown inline-asm output use");
+
+  lir::LirModule cross_function_use = lowered;
+  lir::LirFunction foreign_owner = cross_function_use.functions.front();
+  foreign_owner.name = "inline_asm_foreign_owner";
+  lir::LirInlineAsmOp* foreign_asm = nullptr;
+  lir::LirStoreOp* foreign_store = nullptr;
+  for (auto& block : foreign_owner.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* op = std::get_if<lir::LirInlineAsmOp>(&inst)) foreign_asm = op;
+      if (auto* store = std::get_if<lir::LirStoreOp>(&inst);
+          store && store->val.value_id()) {
+        foreign_store = store;
+      }
+    }
+  }
+  expect_true(foreign_asm && foreign_store,
+              "cross-function fixture should retain its output/store pair");
+  foreign_asm->ordinary_results[0].value =
+      lir::LirOperand::ssa("%foreign", lir::LirValueId{99});
+  foreign_store->val =
+      lir::LirOperand::ssa("%foreign-use", lir::LirValueId{99});
+  cross_function_use.functions.push_back(std::move(foreign_owner));
+  require_pair(cross_function_use).later_store->val =
+      lir::LirOperand::ssa("%cross", lir::LirValueId{99});
+  expect_rejected(cross_function_use,
+                  "verifier should reject cross-function inline-asm output use");
+
+  lir::LirModule wrong_final_type = lowered;
+  require_pair(wrong_final_type).later_store->type_str =
+      lir::LirTypeRef::integer(64);
+  expect_rejected(wrong_final_type,
+                  "verifier should reject conflicting inline-asm output use type");
+}
+
 }  // namespace
 
 int main() {
@@ -7772,6 +7950,7 @@ int main() {
   test_inline_asm_string_literal_plus_folds_to_literal_metadata();
   test_inline_asm_insn_d_string_literal_plus_folds_to_literal_metadata();
   test_inline_asm_insn_r_structured_metadata_and_diagnostics();
+  test_lir_inline_asm_scalar_output_binding_identity();
 
   std::cout << "PASS: frontend_hir_tests\n";
   return 0;
