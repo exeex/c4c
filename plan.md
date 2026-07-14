@@ -8,8 +8,8 @@ Resumed from: closed idea 747 direct-branch successor handoff (`cebc0a3bf`)
 
 Continue the bounded target-independent Raw-BIR receiver route without
 repeating accepted work. Receive exactly one producer-published ordinary
-scalar floating binary result/use chain from native opcode, type, and value
-authority.
+scalar floating comparison result/use boundary from native mode, predicate,
+type, and value authority.
 
 ## Goal
 
@@ -20,7 +20,7 @@ without loss or partial publication. Never recover a fact from presentation.
 
 Every admitted row maps existing typed LIR authority directly to a typed
 Raw-BIR container, importer path, verifier rule, and transactional proof.
-The selected ordinary scalar floating `LirBinOp` native opcode/type,
+The selected ordinary scalar floating `LirCmpOp` native mode/predicate/type,
 current-function argument/result IDs, and later typed use are the sole
 authority. Presentation is display only.
 
@@ -28,7 +28,7 @@ authority. Presentation is display only.
 
 - `ideas/open/734_lir_to_new_bir_container_completeness.md`
 - `docs/lir_remaining_ordinary_value_identity/handoff_to_734.md`
-- `docs/lir_remaining_ordinary_value_identity/authority_matrix.md` (Step-7.5)
+- `docs/lir_remaining_ordinary_value_identity/authority_matrix.md` (Step-7.6)
 - Raw-BIR instruction builders, views, verifier, and LIR importer
 
 ## Landed Progress
@@ -59,6 +59,8 @@ authority. Presentation is display only.
   repeat or generalize this intrinsic-use row.
 - Step 7.4: resolved fixed-void external native-double direct-call result and
   its later typed FAdd use (`2eee4d6dd`). Do not receive FAdd in that packet.
+- Step 7.5: ordinary scalar floating double FAdd-to-FMul receipt
+  (`af00014d7`). Do not generalize floating binary or literal authority.
 
 ## Non-Goals
 
@@ -73,9 +75,9 @@ authority. Presentation is display only.
 1. Implement exactly one handoff row or explicitly shared typed seam per packet.
 2. Add container, importer, reachable Raw-BIR verification, and transactional
    positive/negative proof together.
-3. Resolve the selected floating binary only through its native opcode/type and
-   current-function source IDs; names and rendering are diagnostics only after
-   structured authority exists.
+3. Resolve the selected floating comparison only through its native
+   mode/predicate/type and current-function source IDs; names and rendering
+   are diagnostics only after structured authority exists.
 4. Preserve full-module rollback for every malformed or unsupported form.
 5. Record a separate producer initiative for any required authority gap.
 
@@ -377,6 +379,46 @@ Completion check:
   2/2. The backend coverage demonstrates one verified transactional ordinary
   scalar floating chain; the frontend test remains the producer-authority
   regression neighbor.
+
+Accepted in `af00014d7`: the fresh focused 2/2 backend/producer proof showed
+one verified transactional ordinary scalar double FAdd-to-FMul chain. The
+matching regression guard passed 2/2 before/after, and fresh broader
+`^backend_` proof passed 4/4.
+
+### Step 7.6 - Receive the checked ordinary scalar floating compare result
+
+Goal: receive only the authority-matrix Step-7.6 ordinary scalar floating
+double OLt comparison and its compatibility-result ZExt use. Do not receive
+the ZExt result or widen comparison receipt.
+
+Primary targets:
+
+- typed Raw-BIR floating compare payload, builder/view, and reachable verifier
+- LIR-to-Raw-BIR compare dispatch and current-function source-value registry
+- focused backend receiver coverage plus `frontend_lir_call_type_ref`
+
+Actions:
+
+- map only the producer-verified ordinary, nonpointer, nonvector scalar
+  floating `LirCmpOp` double OLt result, preserving native floating mode,
+  predicate, compared type, result ID, and the exact downstream compatibility
+  ZExt use without receiving that cast result
+- require valid, unique current-function results; resolved operands; coherent
+  floating mode/predicate/type; instruction-result linkage; and full-module
+  rollback for missing, invalid, duplicate, cross-owner, unresolved-use,
+  predicate/mode/type-conflict, or malformed-linkage authority
+- prove the positive comparison boundary plus neighboring transactional
+  failures. Keep floating literal authority, the normalization cast result,
+  integer comparisons, other predicates/types, and all pointer/vector/complex/
+  logical-helper/builtin/vaarg/statement/presentation-derived forms fail-closed
+
+Completion check:
+
+- a fresh build and focused
+  `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof pass
+  2/2. The backend coverage demonstrates one verified transactional ordinary
+  scalar floating comparison boundary; the frontend test remains the
+  producer-authority regression neighbor.
 
 ### Source completion gate (not an executor packet)
 

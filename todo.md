@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 7.5
-Current Step Title: Receive the checked ordinary scalar floating binary result
+Current Step ID: 7.6
+Current Step Title: Receive the checked ordinary scalar floating compare result
 
 ## Just Finished
 
@@ -17,16 +17,18 @@ Current Step Title: Receive the checked ordinary scalar floating binary result
 
 ## Suggested Next
 
-- Supervisor should select the next active-plan packet. Any follow-on receiver
-  must remain bounded to its producer-verified source authority and preserve
-  whole-module rejection; this packet does not authorize general floating
-  binary, literal, comparison, cast, vector, pointer, or call expansion.
+- Execute Step 7.6 as one bounded receiver packet: import only the
+  producer-verified ordinary scalar floating double OLt comparison and its
+  compatibility-result ZExt use through native mode, predicate, type, and
+  current-function IDs. Do not receive the ZExt result or widen compare,
+  literal, complex/vector/pointer/logical-helper/builtin, or text-derived
+  authority.
 
 ## Watchouts
 
 - This is an in-scope runbook repair, not source completion: the coverage
-  matrix still identifies receiver-ready rows. Step 7.5 admits only the
-  checked ordinary floating FAdd-to-FMul chain; unsupported non-scalar and
+  matrix still identifies receiver-ready rows. Step 7.6 admits only the
+  checked floating comparison boundary; unsupported non-scalar and
   presentation-derived forms remain fail-closed.
 
 ## Proof
@@ -34,4 +36,5 @@ Current Step Title: Receive the checked ordinary scalar floating binary result
 - Step 7.5 passed the supervisor-selected proof: `cmake --build --preset
   default && ctest --test-dir build -j --output-on-failure -R
   '^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$'` (2/2);
-  proof log: `test_after.log`.
+  proof log: `test_after.log`. The matching regression guard passed 2/2
+  before/after, and fresh broader `^backend_` proof passed 4/4.
