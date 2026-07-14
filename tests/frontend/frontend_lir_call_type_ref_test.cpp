@@ -953,6 +953,7 @@ void test_indirect_branch_successor_identity_contract() {
         lir::LirStackSaveOp{lir::LirOperand::ssa("%dispatch", lir::LirValueId{1})});
     entry.insts.push_back(lir::LirIndirectBrOp{
         .addr = lir::LirOperand::ssa("%dispatch", lir::LirValueId{1}),
+        .addr_value = lir::LirValueId{1},
         .targets = {"first_target", "second_target"},
         .successors = {lir::LirBlockId{1}, lir::LirBlockId{2}},
     });
@@ -973,6 +974,46 @@ void test_indirect_branch_successor_identity_contract() {
   expect_true(indirect.successors.size() == 2 && indirect.successors[0].value == 1 &&
                   indirect.successors[1].value == 2,
               "computed-goto targets should preserve ordered native block IDs");
+  expect_true(indirect.addr_value.has_value() && indirect.addr_value->value == 1,
+              "computed-goto address should preserve its typed pointer value ID");
+
+  lir::LirModule missing_address;
+  missing_address.functions.push_back(make());
+  std::get<lir::LirIndirectBrOp>(missing_address.functions[0].blocks[0].insts[1])
+      .addr_value.reset();
+  expect_identity_verification_rejected(
+      missing_address, "verifier should reject missing computed-goto address value ID");
+  lir::LirModule invalid_address;
+  invalid_address.functions.push_back(make());
+  std::get<lir::LirIndirectBrOp>(invalid_address.functions[0].blocks[0].insts[1])
+      .addr_value = lir::LirValueId::invalid();
+  expect_identity_verification_rejected(
+      invalid_address, "verifier should reject invalid computed-goto address value ID");
+  lir::LirModule foreign_address;
+  foreign_address.functions.push_back(make());
+  std::get<lir::LirIndirectBrOp>(foreign_address.functions[0].blocks[0].insts[1])
+      .addr_value = lir::LirValueId{99};
+  expect_identity_verification_rejected(
+      foreign_address, "verifier should reject foreign computed-goto address value ID");
+  lir::LirModule nonpointer_address;
+  nonpointer_address.functions.push_back(make());
+  auto& nonpointer_entry = nonpointer_address.functions[0].blocks[0];
+  nonpointer_entry.insts[0] = lir::LirBinOp{
+      .result = lir::LirOperand::ssa("%dispatch", lir::LirValueId{1}),
+      .opcode = "add",
+      .type_str = "i32",
+      .lhs = lir::LirOperand::integer("0", 0),
+      .rhs = lir::LirOperand::integer("0", 0),
+  };
+  expect_identity_verification_rejected(
+      nonpointer_address, "verifier should reject non-pointer computed-goto address value ID");
+  lir::LirModule misleading_address;
+  misleading_address.functions.push_back(make());
+  std::get<lir::LirIndirectBrOp>(misleading_address.functions[0].blocks[0].insts[1])
+      .addr.str() = "%misleading_dispatch";
+  expect_identity_verification_rejected(
+      misleading_address,
+      "misleading computed-goto address text must not select or repair address ID");
 
   lir::LirModule missing;
   missing.functions.push_back(make());
@@ -1026,6 +1067,9 @@ void test_indirect_branch_successor_identity_contract() {
   }
   expect_true(lowered_indirect != nullptr,
               "computed-goto lowering should publish an active LirIndirectBrOp");
+  expect_true(lowered_indirect->addr_value.has_value() && lowered_indirect->addr.value_id() &&
+                  *lowered_indirect->addr.value_id() == *lowered_indirect->addr_value,
+              "computed-goto lowering should publish preserved pointer value identity");
   expect_true(lowered_indirect->targets.size() == 2 &&
                   lowered_indirect->successors.size() == lowered_indirect->targets.size(),
               "computed-goto lowering should preserve the complete ordered target list");

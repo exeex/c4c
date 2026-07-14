@@ -616,10 +616,13 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const IndirBrStmt& s) {
     }
   }
   TypeSpec dummy_ts{};
-  const std::string val = emit_rval_id(ctx, s.target, dummy_ts);
+  const lir::LirOperand addr = emit_rval_operand(ctx, s.target, dummy_ts);
+  const std::optional<lir::LirValueId> addr_value =
+      addr.value_id() ? std::optional<lir::LirValueId>(*addr.value_id()) : std::nullopt;
   if (!ctx.last_term) {
     ctx.cur_block().insts.push_back(
-        lir::LirIndirectBrOp{val, std::move(targets), std::move(successors)});
+        lir::LirIndirectBrOp{addr, addr_value, std::move(targets),
+                             std::move(successors)});
     ctx.last_term = true;
   }
 }

@@ -8,24 +8,22 @@ Current Step Title: Publish computed-goto address authority
 
 ## Just Finished
 
-- Closed prerequisite 758: commit `c8a205218` preserves eligible local and
-  parameter rvalue `LirValueId` authority through the rvalue/operand route.
+- Step 1 complete: `LirIndirectBrOp.addr_value` now carries the preserved
+  current-function pointer `LirValueId`; `addr` is verified only as its display
+  mirror, and missing, invalid, foreign, non-pointer, and misleading-display
+  authority rejects before printing/downstream use.
 
 ## Suggested Next
 
-- Execute Step 1 only: publish and verify `LirIndirectBrOp` address value
-  identity from the preserved rvalue identity.
+- Supervisor: accept this Step 1 slice and route the typed `addr_value` plus
+  ordered `successors` handoff to the bounded idea 734 receiver packet.
 
 ## Watchouts
 
-- Do not change Raw-BIR receipt or computed-goto successor authority, and do
-  not recover an address from `addr`, labels, or printer output. Missing,
-  invalid, foreign, and non-pointer authority must fail closed.
+- Idea 734 may consume `LirIndirectBrOp.addr_value` only after LIR verification;
+  `addr`, labels, and printer output remain non-authoritative display mirrors.
 
 ## Proof
 
-- 758 accepted: fresh build and focused frontend proof passed; matching
-  `^backend_` pre/post baselines passed 5/5, and the full-suite hook candidate
-  was accepted at 3034/3034 pre/post.
-- Executor: run a fresh build and the focused positive/negative producer proof.
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1; detailed focused output: `test_after.log`.
 - Supervisor: select and record broader/full acceptance separately.

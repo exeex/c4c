@@ -1607,6 +1607,15 @@ const LirTypeRef* modeled_scalar_result_type(const LirInst& inst) {
   return nullptr;
 }
 
+bool modeled_pointer_result(const LirInst& inst) {
+  if (const LirTypeRef* type = modeled_scalar_result_type(inst)) {
+    return type->kind() == LirTypeKind::Pointer;
+  }
+  return std::holds_alternative<LirStackSaveOp>(inst) ||
+         std::holds_alternative<LirGepOp>(inst) ||
+         std::holds_alternative<LirAllocaOp>(inst);
+}
+
 template <typename Visitor>
 void visit_modeled_value_uses(const LirInst& inst, Visitor&& visit) {
   if (const auto* op = std::get_if<LirMemcpyOp>(&inst)) {
@@ -1920,12 +1929,42 @@ void verify_function_value_ownership(const LirModule& mod,
                   "display type must match the selector-selected value definition");
     }
   };
+  const auto verify_indirect_br_address = [&](const LirIndirectBrOp& op) {
+    if (!op.addr_value.has_value()) {
+      fail_verify("LirIndirectBrOp.addr_value",
+                  "must carry current-function pointer LirValueId authority");
+    }
+    if (!op.addr_value->valid()) {
+      fail_verify("LirIndirectBrOp.addr_value",
+                  "must carry a valid current-function pointer LirValueId");
+    }
+    const auto definition = definition_insts.find(op.addr_value->value);
+    if (definition == definition_insts.end() || definition->second == nullptr) {
+      fail_verify("LirIndirectBrOp.addr_value",
+                  "must identify a current-function pointer value definition");
+    }
+    const LirOperand* result = modeled_result_operand(*definition->second);
+    if (!result || !result->value_id() || *result->value_id() != *op.addr_value ||
+        !modeled_pointer_result(*definition->second)) {
+      fail_verify("LirIndirectBrOp.addr_value",
+                  "must identify a current-function pointer value definition");
+    }
+    if (op.addr.str() != result->str()) {
+      fail_verify("LirIndirectBrOp.addr",
+                  "display mirror must match the address-selected value definition");
+    }
+  };
   for (const auto& block : function.blocks) {
     if (const auto* branch = std::get_if<LirCondBr>(&block.terminator)) {
       verify_conditional_condition(*branch);
     }
     if (const auto* sw = std::get_if<LirSwitch>(&block.terminator)) {
       verify_switch_selector(*sw);
+    }
+    for (const auto& inst : block.insts) {
+      if (const auto* indirect_br = std::get_if<LirIndirectBrOp>(&inst)) {
+        verify_indirect_br_address(*indirect_br);
+      }
     }
   }
 

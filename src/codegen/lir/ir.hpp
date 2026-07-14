@@ -221,7 +221,8 @@ struct LirInlineAsm {
 
 
 struct LirIndirectBrOp {
-  LirOperand addr;                    // SSA name of ptr to branch to
+  LirOperand addr;                    // checked display mirror of addr_value
+  std::optional<LirValueId> addr_value;  // current-function pointer authority
   std::vector<std::string> targets;   // display labels (e.g. "ulbl_foo")
   // Semantic CFG authority in display order; labels remain mirrors only.
   std::vector<LirBlockId> successors;
