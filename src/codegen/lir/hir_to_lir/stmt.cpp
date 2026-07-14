@@ -365,11 +365,12 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const ReturnStmt& s) {
     const auto& rts = ctx.fn->return_type.spec;
     if (rts.base == TB_VOID && rts.ptr_level == 0 && rts.array_rank == 0 &&
         !rts.is_lvalue_ref && !rts.is_rvalue_ref) {
-      emit_term_ret(ctx, lir::LirTypeRef("void"), std::nullopt);
+      emit_term_ret(ctx, lir::LirTypeRef(lir::LirBuiltinType::Void), std::nullopt);
     } else {
       const std::string ret_ty = llvm_return_ty(mod_, rts);
       if (ret_ty == "ptr") {
-        emit_term_ret(ctx, lir::LirTypeRef("ptr"), lir::LirOperand("null"));
+        emit_term_ret(ctx, lir::LirTypeRef(lir::LirBuiltinType::Pointer),
+                      lir::LirOperand("null"));
       } else if (is_float_base(rts.base) && rts.ptr_level == 0) {
         emit_term_ret(ctx, lir::LirTypeRef(ret_ty), lir::LirOperand("0.0"));
       } else {
@@ -385,7 +386,7 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const ReturnStmt& s) {
   if (function_return.base == TB_VOID && function_return.ptr_level == 0 &&
       function_return.array_rank == 0 && !function_return.is_lvalue_ref &&
       !function_return.is_rvalue_ref) {
-    emit_term_ret(ctx, lir::LirTypeRef("void"), std::nullopt);
+    emit_term_ret(ctx, lir::LirTypeRef(lir::LirBuiltinType::Void), std::nullopt);
     return;
   }
   TypeSpec coerce_target = ctx.fn->return_type.spec;
