@@ -26,7 +26,7 @@ target_include_directories(backend_lir_selected_pointer_authority_test PRIVATE
     "${PROJECT_SOURCE_DIR}"
 )
 target_link_libraries(backend_lir_selected_pointer_authority_test PRIVATE
-    c4c_codegen
+    c4c_backend
 )
 set_target_properties(backend_lir_selected_pointer_authority_test PROPERTIES
     CXX_STANDARD 17

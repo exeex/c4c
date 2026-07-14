@@ -109,6 +109,17 @@ struct SourceValueId {
   }
 };
 
+// A typed reference back to an authoritative function-local source object ID.
+// Source object zero is valid; UINT32_MAX is the invalid sentinel used by LIR.
+struct SourceObjectId {
+  FunctionId owner{};
+  std::uint32_t value = std::numeric_limits<std::uint32_t>::max();
+
+  constexpr bool valid() const noexcept {
+    return owner.valid() && value != std::numeric_limits<std::uint32_t>::max();
+  }
+};
+
 constexpr bool operator==(FunctionId lhs, FunctionId rhs) noexcept {
   return lhs.epoch == rhs.epoch && lhs.slot == rhs.slot &&
          lhs.generation == rhs.generation;

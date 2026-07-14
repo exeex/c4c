@@ -38,6 +38,7 @@ using codegen::lir::LirInlineAsmValueRole;
 using codegen::lir::LirIntrinsicKind;
 using codegen::lir::LirModule;
 using codegen::lir::LirLoadOp;
+using codegen::lir::LirMemcpyOp;
 using codegen::lir::LirRet;
 using codegen::lir::LirSelectOp;
 using codegen::lir::LirStoreOp;
@@ -2232,6 +2233,58 @@ Result<void, ImportError> validate_function(const LirModule& module,
     return fail<void>(ImportErrorCode::UnsupportedAllocaInstructions, name, {},
                       "hoisted allocas require the memory family");
 
+  std::size_t selected_memcpy_count = 0;
+  for (const auto& block : function.blocks) {
+    for (const auto& instruction : block.insts) {
+      const auto* memcpy = std::get_if<LirMemcpyOp>(&instruction);
+      if (!memcpy) continue;
+      ++selected_memcpy_count;
+      const auto* authority = memcpy->selected_authority
+                                  ? &*memcpy->selected_authority
+                                  : nullptr;
+      const auto* pointers = function.selected_memcpy_pointer_authority
+                                 ? &*function.selected_memcpy_pointer_authority
+                                 : nullptr;
+      if (!authority || !pointers || memcpy->is_volatile ||
+          function.link_name_id == c4c::kInvalidLinkName ||
+          authority->destination == authority->source ||
+          !authority->destination.valid() || !authority->source.valid() ||
+          authority->size_type.kind() != codegen::lir::LirTypeKind::Integer ||
+          authority->size_type.integer_bit_width() != std::optional<unsigned>{64} ||
+          authority->size.value <= 0 ||
+          !authority->destination_object.valid() || !authority->source_object.valid() ||
+          authority->destination_object == authority->source_object ||
+          authority->destination_object_owner != function.link_name_id ||
+          authority->source_object_owner != function.link_name_id ||
+          !authority->destination_live_at_site || !authority->source_live_at_site ||
+          pointers->byval_parameter.role !=
+              codegen::lir::LirSelectedMemcpyPointerRole::ByvalParameter ||
+          pointers->destination_alloca.role !=
+              codegen::lir::LirSelectedMemcpyPointerRole::DestinationAlloca ||
+          pointers->byval_parameter.value != authority->source ||
+          pointers->destination_alloca.value != authority->destination ||
+          pointers->byval_parameter.object != authority->source_object ||
+          pointers->destination_alloca.object != authority->destination_object ||
+          pointers->byval_parameter.object_owner != function.link_name_id ||
+          pointers->destination_alloca.object_owner != function.link_name_id ||
+          pointers->byval_parameter.pointer_type.kind() !=
+              codegen::lir::LirTypeKind::Pointer ||
+          pointers->destination_alloca.pointer_type.kind() !=
+              codegen::lir::LirTypeKind::Pointer ||
+          !pointers->byval_parameter.live_at_selected_site ||
+          !pointers->destination_alloca.live_at_selected_site)
+        return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                          block.label,
+                          "memcpy requires the one exact selected current-function authority row");
+    }
+  }
+  if (function.selected_memcpy_pointer_authority && selected_memcpy_count != 1)
+    return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
+                      "selected current-function pointer authority requires exactly one memcpy row");
+  if (selected_memcpy_count > 1)
+    return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
+                      "duplicate selected memcpy authority rows are unsupported");
+
   std::unordered_set<std::string> labels;
   std::unordered_set<std::uint32_t> block_ids;
   std::unordered_map<std::uint32_t, std::string> block_labels_by_id;
@@ -2298,6 +2351,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
                         "LirBlockId values must be unique within a function");
     block_labels_by_id.emplace(block.id.value, block.label);
     for (const auto& instruction : block.insts) {
+      if (std::get_if<LirMemcpyOp>(&instruction)) continue;
       if (const auto* constant = std::get_if<LirConstInt>(&instruction)) {
         const auto type = lower_constant_type(module, constant->type);
         if (!constant->result.valid())
@@ -3288,6 +3342,38 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                                "define floating constant",
                                                defined.error());
                   return defined;
+                }
+                continue;
+              }
+              if (const auto* memcpy = std::get_if<LirMemcpyOp>(&instruction)) {
+                const auto& authority = *memcpy->selected_authority;
+                const auto destination_owner = imported_link_names.find(
+                    authority.destination_object_owner);
+                const auto source_owner = imported_link_names.find(
+                    authority.source_object_owner);
+                if (destination_owner == imported_link_names.end() ||
+                    source_owner == imported_link_names.end()) {
+                  edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                                           name, block.label,
+                                           "selected memcpy owner disappeared from imported name identities"};
+                  return Result<void, BuildError>::failure(BuildError::InvalidNameId);
+                }
+                auto appended = function_builder.append(
+                    blocks.at(block.id.value), SelectedMemcpySpec{
+                        SourceValueId{function_ids[function_index], authority.destination.value},
+                        SourceValueId{function_ids[function_index], authority.source.value},
+                        SourceObjectId{function_ids[function_index], authority.destination_object.value},
+                        SourceObjectId{function_ids[function_index], authority.source_object.value},
+                        destination_owner->second, source_owner->second,
+                        Type{TypeKind::Pointer},
+                        static_cast<std::int64_t>(authority.size.value),
+                        authority.destination_live_at_site,
+                        authority.source_live_at_site});
+                if (!appended) {
+                  edit_error = builder_failure(name, block.label,
+                                               "append selected memcpy authority",
+                                               appended.error());
+                  return Result<void, BuildError>::failure(appended.error());
                 }
                 continue;
               }

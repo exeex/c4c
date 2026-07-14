@@ -206,6 +206,19 @@ struct SelectSpec {
   std::uint32_t source_result_id = 0;
 };
 
+struct SelectedMemcpySpec {
+  SourceValueId destination{};
+  SourceValueId source{};
+  SourceObjectId destination_object{};
+  SourceObjectId source_object{};
+  LinkNameId destination_object_owner{};
+  LinkNameId source_object_owner{};
+  Type pointer_type{TypeKind::Pointer};
+  std::int64_t size_bytes = 0;
+  bool destination_live_at_site = false;
+  bool source_live_at_site = false;
+};
+
 struct IntrinsicCallSpec {
   IntrinsicKind kind = IntrinsicKind::Ctpop;
   LinkNameId callee_link_name{};
@@ -319,6 +332,7 @@ class FunctionBuilder {
   Result<BuildResult, BuildError> append(BlockId block, BinarySpec spec);
   Result<BuildResult, BuildError> append(BlockId block, CompareSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, SelectSpec spec);
+  Result<BuildResult, BuildError> append(BlockId block, SelectedMemcpySpec spec);
   Result<BuildResult, BuildError> append(BlockId block, IntrinsicCallSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, CastSpec spec);
   Result<void, BuildError> set_terminator(BlockId block,

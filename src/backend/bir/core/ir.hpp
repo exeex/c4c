@@ -144,6 +144,7 @@ enum class Opcode : std::uint8_t {
   Binary,
   Compare,
   Select,
+  SelectedMemcpy,
   Cast,
 };
 
@@ -199,6 +200,21 @@ struct SelectNode {
   Type type{};
 };
 
+// Receipt of the one producer-selected fixed-aggregate byval memcpy authority.
+// It deliberately carries source identities rather than presentation operands.
+struct SelectedMemcpyNode {
+  SourceValueId destination{};
+  SourceValueId source{};
+  SourceObjectId destination_object{};
+  SourceObjectId source_object{};
+  LinkNameId destination_object_owner{};
+  LinkNameId source_object_owner{};
+  Type pointer_type{TypeKind::Pointer};
+  std::int64_t size_bytes = 0;
+  bool destination_live_at_site = false;
+  bool source_live_at_site = false;
+};
+
 enum class IntrinsicKind : std::uint8_t { Cttz, Ctlz, Ctpop };
 
 struct IntrinsicCallNode {
@@ -218,7 +234,8 @@ struct CastNode {
 
 using InstPayload =
     std::variant<InlineAsmNode, StoreNode, LoadNode, GetElementPtrNode,
-    AbsNode, CallNode, BinaryNode, CompareNode, SelectNode, IntrinsicCallNode, CastNode>;
+    AbsNode, CallNode, BinaryNode, CompareNode, SelectNode, SelectedMemcpyNode,
+    IntrinsicCallNode, CastNode>;
 
 class BlockView;
 class FunctionView;

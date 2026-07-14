@@ -1,6 +1,7 @@
 #include "src/codegen/lir/ir.hpp"
 #include "src/codegen/lir/hir_to_lir.hpp"
 #include "src/frontend/hir/hir_ir.hpp"
+#include "src/backend/bir/lir_to_bir.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -10,6 +11,7 @@
 
 namespace lir = c4c::codegen::lir;
 namespace hir = c4c::hir;
+namespace bir = c4c::backend::bir;
 
 namespace {
 
@@ -52,6 +54,8 @@ lir::LirModule selected_authority_module() {
           },
       };
   lir::LirBlock block;
+  block.id = lir::LirBlockId{0};
+  block.label = "entry";
   block.insts.push_back(lir::LirMemcpyOp{
       .dst = lir::LirOperand("%selected.dst"),
       .src = lir::LirOperand("%selected.src"),
@@ -69,7 +73,9 @@ lir::LirModule selected_authority_module() {
           .source_live_at_site = true,
       },
   });
+  block.terminator = lir::LirRet{std::nullopt, lir::LirTypeRef("void")};
   function.blocks.push_back(std::move(block));
+  function.entry = lir::LirBlockId{0};
   module.functions.push_back(std::move(function));
   return module;
 }
@@ -396,11 +402,108 @@ void test_selected_current_function_pointer_authority() {
                   "non-live selected parameter definition must reject");
 }
 
+void test_selected_memcpy_raw_bir_receipt_and_rollback() {
+  auto valid = selected_authority_module();
+  auto raw = bir::lower_lir_to_raw_bir(valid);
+  if (!raw) fail("selected memcpy import detail: " + raw.error().detail);
+  expect(raw.has_value(), "selected memcpy authority must publish one Raw-BIR module");
+  const auto module = raw.value().view();
+  const auto functions = module.functions();
+  expect(functions.size() == 1, "selected memcpy receipt must retain its function");
+  const auto function = module.function(functions.front());
+  expect(function.has_value(), "published selected memcpy function must resolve");
+  const auto blocks = function.value().blocks();
+  expect(blocks.size() == 1, "selected memcpy receipt must retain its block");
+  const auto instructions = function.value().instructions(blocks.front());
+  expect(instructions.has_value() && instructions.value().size() == 1,
+         "selected memcpy receipt must retain exactly one Raw-BIR row");
+  const auto instruction = function.value().instruction(instructions.value().front());
+  expect(instruction.has_value(), "selected memcpy Raw-BIR row must resolve");
+  const auto* memcpy = instruction.value().selected_memcpy();
+  expect(memcpy != nullptr && memcpy->destination.value == 42 &&
+             memcpy->source.value == 41 && memcpy->destination_object.value == 8 &&
+             memcpy->source_object.value == 7 && memcpy->size_bytes == 24 &&
+             memcpy->destination_object_owner.valid() &&
+             memcpy->source_object_owner.valid() &&
+             memcpy->destination_object_owner == memcpy->source_object_owner &&
+             memcpy->pointer_type == bir::Type{bir::TypeKind::Pointer} &&
+             memcpy->destination_live_at_site && memcpy->source_live_at_site,
+         "Raw-BIR selected memcpy row must preserve typed value/object/owner/pointer/size/lifetime authority");
+
+  auto malformed = selected_authority_module();
+  for (lir::LirBlock& block : malformed.functions[0].blocks) {
+    for (lir::LirInst& inst : block.insts) {
+      if (auto* row = std::get_if<lir::LirMemcpyOp>(&inst))
+        row->selected_authority->source_object = lir::LirObjectId{999};
+    }
+  }
+  expect(!bir::lower_lir_to_raw_bir(malformed).has_value(),
+         "malformed selected authority must roll back whole Raw-BIR publication");
+
+  auto foreign_owner = selected_authority_module();
+  const c4c::LinkNameId foreign = foreign_owner.link_names.intern("foreign_owner");
+  for (lir::LirBlock& block : foreign_owner.functions[0].blocks) {
+    for (lir::LirInst& inst : block.insts) {
+      if (auto* row = std::get_if<lir::LirMemcpyOp>(&inst))
+        row->selected_authority->source_object_owner = foreign;
+    }
+  }
+  expect(!bir::lower_lir_to_raw_bir(foreign_owner).has_value(),
+         "cross-owner selected authority must roll back whole Raw-BIR publication");
+
+  auto non_i64_size = selected_authority_module();
+  for (lir::LirBlock& block : non_i64_size.functions[0].blocks) {
+    for (lir::LirInst& inst : block.insts) {
+      if (auto* row = std::get_if<lir::LirMemcpyOp>(&inst))
+        row->selected_authority->size_type = lir::LirTypeRef::integer(32);
+    }
+  }
+  expect(!bir::lower_lir_to_raw_bir(non_i64_size).has_value(),
+         "non-i64 selected size must roll back whole Raw-BIR publication");
+
+  auto nonpositive_size = selected_authority_module();
+  for (lir::LirBlock& block : nonpositive_size.functions[0].blocks) {
+    for (lir::LirInst& inst : block.insts) {
+      if (auto* row = std::get_if<lir::LirMemcpyOp>(&inst))
+        row->selected_authority->size = lir::LirIntegerImmediate{0};
+    }
+  }
+  expect(!bir::lower_lir_to_raw_bir(nonpositive_size).has_value(),
+         "nonpositive selected size must roll back whole Raw-BIR publication");
+
+  auto dead = selected_authority_module();
+  for (lir::LirBlock& block : dead.functions[0].blocks) {
+    for (lir::LirInst& inst : block.insts) {
+      if (auto* row = std::get_if<lir::LirMemcpyOp>(&inst))
+        row->selected_authority->destination_live_at_site = false;
+    }
+  }
+  expect(!bir::lower_lir_to_raw_bir(dead).has_value(),
+         "dead selected authority must roll back whole Raw-BIR publication");
+
+  auto duplicate = selected_authority_module();
+  duplicate.functions[0].blocks[0].insts.push_back(
+      duplicate.functions[0].blocks[0].insts.front());
+  expect(!bir::lower_lir_to_raw_bir(duplicate).has_value(),
+         "duplicate selected authority row must roll back whole Raw-BIR publication");
+
+  auto unselected = selected_authority_module();
+  for (lir::LirBlock& block : unselected.functions[0].blocks) {
+    for (lir::LirInst& inst : block.insts) {
+      if (auto* row = std::get_if<lir::LirMemcpyOp>(&inst))
+        row->selected_authority.reset();
+    }
+  }
+  expect(!bir::lower_lir_to_raw_bir(unselected).has_value(),
+         "unselected memcpy must remain unsupported and publish nothing");
+}
+
 }  // namespace
 
 int main() {
   test_selected_current_function_pointer_authority();
   test_selected_byval_materialization_populates_authority();
   test_selected_memcpy_authority_verifier_boundary();
+  test_selected_memcpy_raw_bir_receipt_and_rollback();
   return 0;
 }

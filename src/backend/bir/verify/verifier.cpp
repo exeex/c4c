@@ -82,6 +82,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
       return std::holds_alternative<CompareNode>(instruction.payload);
     case Opcode::Select:
       return std::holds_alternative<SelectNode>(instruction.payload);
+    case Opcode::SelectedMemcpy:
+      return std::holds_alternative<SelectedMemcpyNode>(instruction.payload);
     case Opcode::Cast:
       return std::holds_alternative<CastNode>(instruction.payload);
   }
@@ -669,6 +671,26 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           report(result, VerificationRule::ValueDefinition, function_id,
                  inst_id,
                  "load must have no operands, one source-backed typed integer result, and one exact global source");
+      }
+      if (const auto* memcpy = std::get_if<SelectedMemcpyNode>(&instruction.payload)) {
+        const bool owner_resolves = memcpy->destination_object_owner.valid() &&
+            memcpy->destination_object_owner == memcpy->source_object_owner &&
+            memcpy->destination_object_owner.epoch == module.epoch_ &&
+            memcpy->destination_object_owner.slot < module.link_names_.size();
+        const bool exact = instruction.operands.empty() && instruction.results.empty() &&
+            memcpy->destination.valid() && memcpy->source.valid() &&
+            memcpy->destination.owner == function_id && memcpy->source.owner == function_id &&
+            memcpy->destination.value != memcpy->source.value &&
+            memcpy->destination_object.valid() &&
+            memcpy->source_object.valid() && memcpy->destination_object.owner == function_id &&
+            memcpy->source_object.owner == function_id &&
+            memcpy->destination_object.value != memcpy->source_object.value &&
+            owner_resolves && memcpy->pointer_type == Type{TypeKind::Pointer} &&
+            memcpy->size_bytes > 0 && memcpy->destination_live_at_site &&
+            memcpy->source_live_at_site;
+        if (!exact)
+          report(result, VerificationRule::ValueDefinition, function_id, inst_id,
+                 "selected memcpy must retain exact current-function pointer, object, owner, i64-positive-size, and live-site authority");
       }
       if (const auto* gep =
               std::get_if<GetElementPtrNode>(&instruction.payload)) {

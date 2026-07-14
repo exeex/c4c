@@ -19,6 +19,9 @@ class InstView {
   const StoreNode* store() const noexcept {
     return std::get_if<StoreNode>(&data_->payload);
   }
+  const SelectedMemcpyNode* selected_memcpy() const noexcept {
+    return std::get_if<SelectedMemcpyNode>(&data_->payload);
+  }
   const LoadNode* load() const noexcept {
     return std::get_if<LoadNode>(&data_->payload);
   }
