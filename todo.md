@@ -8,12 +8,12 @@ Current Step Title: Repair the targeted warning-inventory route
 
 ## Just Finished
 
-- Step 6 targeted warning-inventory repair complete: added the deprecated,
-  searchable `LirTypeRef::hir_rendered_aggregate_field_signature_type_text`
-  runtime-text compatibility boundary and used it only for HIR-rendered
-  aggregate, field, and signature fallback type text when structured aggregate
-  identity is unavailable or a field is array-backed. Existing
-  `struct_type`/`union_type` paths remain unchanged.
+- Step 6 targeted warning-inventory repair complete: classified the lvalue
+  indexed-GEP element-type family. Its closed void-pointee `"i8"` fallback now
+  uses `LirBuiltinType::I8`; remaining HIR-rendered element text flows only
+  through the deprecated, searchable local
+  `hir_rendered_indexed_gep_element_type_text` runtime-text helper. Existing
+  structured `struct_type`/`union_type` paths remain unchanged.
 
 ## Suggested Next
 
@@ -45,11 +45,13 @@ Current Step Title: Repair the targeted warning-inventory route
 - HIR aggregate, field, and signature fallback text may lack `StructNameId` or
   represent array-backed fields; preserve it through its dedicated boundary
   without changing structured aggregate paths or the AArch64 vector ABI cast.
+- Indexed-GEP element text is HIR-rendered and may legitimately be array,
+  pointer, vector, or other non-builtin text; retain the local lvalue helper
+  while preserving its structured aggregate path.
 
 ## Proof
 
-- `cmake --build --preset default` succeeded. Its deprecation warnings named
-  only deliberate local inventory boundaries, including the new HIR
-  aggregate/field/signature fallback type-text boundary.
+- `cmake --build --preset default` succeeded. Its warnings named only
+  deliberate local inventory boundaries, including the indexed-GEP helper.
 - `ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_global_type_ref|frontend_lir_function_signature_type_ref)$' > test_after.log`
-  passed; `test_after.log` is the focused proof log.
+  passed (2/2); `test_after.log` is the focused proof log.
