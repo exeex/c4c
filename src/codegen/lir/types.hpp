@@ -112,6 +112,15 @@ class LirTypeRef {
     return runtime_text(std::move(text));
   }
 
+  // Inline-assembly operands and results retain LLVM type text rendered from
+  // HIR TypeSpec. That text is runtime-derived rather than a closed builtin
+  // set, so keep this deprecated inventory boundary local to inline assembly.
+  [[nodiscard, deprecated(
+      "HIR TypeSpec-derived inline-assembly type text: audit this runtime-text compatibility boundary")]]
+  static LirTypeRef hir_inline_asm_type_text(std::string text) {
+    return runtime_text(std::move(text));
+  }
+
   [[nodiscard]] static LirTypeRef vrm_register(unsigned width) {
     LirTypeRef type("c4c.vrm" + std::to_string(width), LirTypeKind::VrmRegister);
     type.vrm_width_ = width;

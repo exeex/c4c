@@ -9,16 +9,15 @@ Current Step Title: Repair the targeted warning-inventory route
 ## Just Finished
 
 - Step 6 targeted warning-inventory repair complete: added the deprecated,
-  searchable `LirTypeRef::stored_extern_declaration_return_text` runtime-text
-  compatibility boundary and used it only for the non-struct path in
-  `LirModule::extern_return_type_ref`. Stored external declaration return text
-  remains dynamic; no builtin enum was guessed and the parsed call boundaries
-  remain unchanged.
+  searchable `LirTypeRef::hir_inline_asm_type_text` runtime-text compatibility
+  boundary and used it only for inline-assembly operand, result, and return
+  type text rendered by `llvm_ty(...)` from HIR `TypeSpec`. No enum authority
+  was guessed; normal return and switch lowering remain unchanged.
 
 ## Suggested Next
 
-- Step 6: classify the `stmt.cpp` lowering-return type-text constructions as
-  the next bounded retained-runtime-text boundary or closed-set enum candidate.
+- Step 6: select the next targeted warning-inventory family; keep each local
+  runtime-text boundary limited to its documented source provenance.
 
 ## Watchouts
 
@@ -39,12 +38,14 @@ Current Step Title: Repair the targeted warning-inventory route
 - Extern declaration return type text is stored/external payload and may be
   dynamic; retain its local compatibility boundary rather than guessing a
   builtin enum.
+- Inline-assembly type text comes from HIR `TypeSpec` through `llvm_ty(...)`;
+  retain its dedicated local boundary rather than extending it to ordinary
+  return or switch lowering.
 
 ## Proof
 
 - `cmake --build --preset default` succeeded. Its deprecation warnings named
-  only deliberate local inventory boundaries: parsed typed-call argument text,
-  parsed typed-call return text, and stored/re-owned extern-declaration return
-  text.
-- `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_extern_decl_type_ref$' > test_after.log`
+  only deliberate local inventory boundaries, including the new HIR
+  `TypeSpec`-derived inline-assembly type-text boundary.
+- `ctest --test-dir build -j --output-on-failure -R '^inline_asm_aarch64_simple$' > test_after.log`
   passed; `test_after.log` is the focused proof log.
