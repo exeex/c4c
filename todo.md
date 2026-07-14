@@ -1,14 +1,14 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/778_lir_logical_rhs_result_authority_publication.md
+Source Idea Path: ideas/open/779_lir_cast_result_authority_contract.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Publish the logical RHS conversion result
+Current Step Title: Define native standalone cast result ownership
 
 ## Just Finished
 
-- None — active runbook created; no execution packet has run.
+- None — blocker runbook activated; no execution packet has run.
 
 ## Suggested Next
 
@@ -16,8 +16,10 @@ Current Step Title: Publish the logical RHS conversion result
 
 ## Watchouts
 
-- Scope is limited to the logical RHS conversion result described in `plan.md`.
+- Keep the contract to standalone `LirCastOp.result` authority; exclude PHI,
+  logical producer lowering, and generic expression-result migration.
+- Do not accept or edit the unaccepted 778 `binary.cpp` diff in this blocker.
 
 ## Proof
 
-- No proof run during lifecycle activation.
+- No proof run during lifecycle switch.

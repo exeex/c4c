@@ -63,3 +63,35 @@ handoff; it does not claim that the logical value reaches a PHI carrier.
   synthetic values, or testcase-specific result creation.
 - Reject Raw-BIR/importer/backend/target-lowering work, malformed-contract
   weakening, expectation downgrades, or baseline edits as capability progress.
+
+## Resumption Record: standalone cast-result authority contract blocker
+
+Last accepted progress: none. No runbook step has been accepted, no accepted
+implementation exists, and there are no accepted proof or commit references.
+
+Interrupted step: Step 1 — `Publish the logical RHS conversion result`.
+
+Interruption: an unaccepted local change in
+`src/codegen/lir/hir_to_lir/expr/binary.cpp` replaces the logical integer RHS
+`zext` result allocation with `fresh_value(ctx)`. It builds, but the focused
+test still has its pre-Step-2 assertion that the RHS result lacks authority and
+therefore fails with `FAIL: logical RHS result, PHI result, and later consumer
+lack LirValueId authority`. This diff is not accepted work and must be cleaned
+up or otherwise dispositioned by the supervisor before a clean reattempt; this
+source does not accept it by record alone.
+
+Blocker: the existing verifier/IR result-ownership collection considers only
+present `result.value_id()` values, and `verify_cast_op_authority` permits an
+absent result ID. Consequently it cannot make missing, invalid, duplicate, and
+foreign standalone `LirCastOp` results fail closed. Raw PHI incoming entries
+remain intentionally outside this source and cannot establish that contract.
+The required verifier/IR authority contract is owned by
+`ideas/open/779_lir_cast_result_authority_contract.md`, not by this logical
+RHS producer source.
+
+Exact return point after 779 closes: restart at Step 1, `Publish the logical
+RHS conversion result`, with a clean reattempt of the producer change; then
+perform Step 2 against the accepted standalone-cast verifier contract and
+complete the Step 3 handoff. Remaining action is not a continuation of the
+unaccepted diff. PHI result/incoming and generic logical migration remain
+excluded.
