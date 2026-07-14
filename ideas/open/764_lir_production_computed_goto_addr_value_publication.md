@@ -1,7 +1,7 @@
 # Production LIR Computed-Goto Address Value Publication
 
-Status: Open (paused blocker for
-`ideas/open/734_lir_to_new_bir_container_completeness.md`)
+Status: Open (active carrier/integration repair route; predecessor of the
+paused `ideas/open/734_lir_to_new_bir_container_completeness.md` return)
 Type: bounded production LIR computed-goto authority repair
 Predecessor: `ideas/open/734_lir_to_new_bir_container_completeness.md`, after accepted Step 7.24
 
@@ -275,3 +275,31 @@ or 734, reopen 765/766/767, derive authority from text, or use testcase-shaped
 logic. After it accepts a generic upstream producer capability, resume 764 at
 Step 1: freshly rerun all five consumers and publish `addr_value` only if
 necessary, then return to 734 for plan-owner disposition.
+
+## Resumption Update — 2026-07-14 Accepted 768 Producer Handoff and Rejected Baseline
+
+- 768 is capability-complete for its bounded upstream producer contract and
+  archived at
+  `ideas/closed/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md`.
+  Accepted prerequisite `9cb82f9cb` retains native direct constants through
+  automatic initializer stores. Accepted 768 Step 5 commit `628b55b9` emits
+  the typed native direct `LabelAddrExpr` rvalue constant; its fresh build,
+  focused `^frontend_lir_label_address_rvalue_probe$`, and
+  `^frontend_lir_` guard passed 7/7. These commits do not claim carrier
+  publication or external integration success.
+- The hook full-suite baseline candidate was rejected, not accepted: the
+  matching suite changed from 0/3034 failures to 5/3037. Exact reruns classify
+  `20040302-1`, `20041214-1`, `920501-4`, and `920501-5` at
+  `LirIndirectBrOp.addr_value: must carry current-function pointer LirValueId`.
+  They are this source's external carrier/integration family. Resume at
+  **Step 1 — Publish and prove production computed-goto address carrier
+  authority**: rerun the preserved five computed-goto consumers (including
+  passing `comp-goto-1` as control), identify the first actual authority-loss
+  owner, and publish the carrier field only from verified pointer authority.
+- `pr70460` instead fails at `LirGepOp.ptr: must not be empty`. It is neither
+  768 producer scope nor this source's `LirIndirectBrOp.addr_value` family;
+  under this idea's explicit out-of-scope rule for unrelated failure families,
+  it requires a distinct open GEP-pointer-authority blocker before any future
+  full-suite candidate can be accepted. Do not absorb it into this carrier
+  repair, weaken a verifier, recover authority from text, or treat the rejected
+  candidate as baseline debt.

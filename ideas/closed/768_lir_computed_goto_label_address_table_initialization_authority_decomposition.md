@@ -1,7 +1,7 @@
 # LIR Computed-Goto Label-Address Table Initialization Authority Decomposition
 
-Status: Open (active blocker for
-`ideas/open/764_lir_production_computed_goto_addr_value_publication.md`)
+Status: Closed capability complete; archived after handoff to
+`ideas/open/764_lir_production_computed_goto_addr_value_publication.md`
 Type: decomposition of upstream computed-goto label-address table producer seams
 Predecessor: 764 Step 1, after accepted 765, 766, and 767 prerequisites
 
@@ -294,3 +294,32 @@ consumption decomposition, not a monolithic integration or carrier route.
   uncommitted Step 5 producer files and focused-probe hunk remain unaccepted;
   rerun and assess that packet on its own merits. Do not redo Steps 1--4 or
   reopen 771, 767, 769, carrier behavior, or automatic-table `DeclRef` decay.
+
+## Completion Record — 2026-07-14 Native Producer Accepted; External Handoff
+
+- Accepted progress: Steps 1--4 retain their accepted records and commit
+  references above. Step 5 is now accepted in `628b55b9`: native direct
+  `LabelAddrExpr` rvalue production emits the typed current-function,
+  target-label, pointer, and produced-value constant without a synthetic
+  bridge. The accepted prerequisite initializer-consumer repair is
+  `9cb82f9cb`. A fresh build, focused
+  `^frontend_lir_label_address_rvalue_probe$`, and `^frontend_lir_` guard
+  passed 7/7.
+- Step 6 is complete: 764 is resumed at **Step 1 — Publish and prove
+  production computed-goto address carrier authority**. The exact return is to
+  rerun its five preserved computed-goto consumers and repair/publish
+  `LirIndirectBrOp.addr_value` only from verified pointer authority if the
+  four shared external failures still stop there.
+- The hook full-suite candidate is rejected, not producer rejection evidence:
+  it regressed from 0/3034 to 5/3037 failures. Four cases (`20040302-1`,
+  `20041214-1`, `920501-4`, and `920501-5`) fail at missing
+  `LirIndirectBrOp.addr_value`, which is outside this source's explicit
+  non-goals and belongs to 764. `pr70460` fails instead at
+  `LirGepOp.ptr: must not be empty`; it is outside both the accepted producer
+  capability and 764's carrier-family scope and requires a separately scoped
+  open GEP-pointer-authority blocker before a future full-suite candidate.
+- No return to 768 is planned. Do not reopen its accepted Steps 1--5 for
+  carrier publication, external integration, automatic-table `DeclRef` decay,
+  or the GEP failure. If future evidence identifies a new unproven native
+  direct-label producer contract, create a separate scoped initiative rather
+  than weakening this completion boundary.
