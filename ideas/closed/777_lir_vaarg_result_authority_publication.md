@@ -1,6 +1,6 @@
 # LIR Vaarg Result Authority Publication
 
-Status: Open
+Status: Closed — vaarg-only capability complete
 Type: one-family typed expression-result producer successor
 Unblocks: `ideas/open/775_lir_phi_producer_helper_result_identity.md`
 Downstream Consumer: `ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md`
@@ -85,6 +85,19 @@ remain blocked and out of scope. This handoff does not authorize generic
 expression migration, nonsemantic vaarg target-lowering work, text recovery,
 result-name maps, side tables, PHI carrier/verifier work, or
 Raw-BIR/importer/backend work.
+
+## Closure Record
+
+Archived capability-complete for the scalar AMD64 semantic vaarg result route
+only. The exact remaining-intent route is open
+`ideas/open/775_lir_phi_producer_helper_result_identity.md`, which may consume
+this vaarg handoff only; ternary/coerce and logical producer authority remain
+unresolved. Keep
+`ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md` blocked
+until 775 has accepted the required producer handoffs, after which 751 may
+resume its PHI-only work. This archive does not activate either idea or broaden
+the vaarg capability into PHI, generic-expression, target-lowering, or backend
+scope.
 
 ## Reviewer Reject Signals
 
