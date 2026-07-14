@@ -620,6 +620,29 @@ struct LirSignatureParam {
   bool is_byval = false;
 };
 
+// The sole pointer/object authority introduced for the selected fixed-aggregate
+// byval materialization.  It is intentionally a pair, rather than a general
+// pointer or object table: all other pointer/object families remain absent.
+enum class LirSelectedMemcpyPointerRole : std::uint8_t {
+  ByvalParameter,
+  DestinationAlloca,
+};
+
+struct LirCurrentFunctionPointerDefinition {
+  LirValueId value = LirValueId::invalid();
+  LirTypeRef pointer_type;
+  LirObjectId object = LirObjectId::invalid();
+  LinkNameId object_owner = kInvalidLinkName;
+  LirSelectedMemcpyPointerRole role =
+      LirSelectedMemcpyPointerRole::ByvalParameter;
+  bool live_at_selected_site = false;
+};
+
+struct LirSelectedMemcpyPointerAuthority {
+  LirCurrentFunctionPointerDefinition byval_parameter;
+  LirCurrentFunctionPointerDefinition destination_alloca;
+};
+
 struct LirFunction {
   std::string name;
   LinkNameId link_name_id = kInvalidLinkName;
@@ -636,6 +659,13 @@ struct LirFunction {
   std::vector<LirBlock> blocks;
   std::vector<LirStackObject> stack_objects;
   LirBlockId entry{};
+
+  // Optional prerequisite authority for exactly the selected byval parameter
+  // materialization.  Containment in this function is the current-function
+  // binding; each definition also carries the owner's stable LinkNameId so
+  // foreign or stale bindings fail closed in the verifier.
+  std::optional<LirSelectedMemcpyPointerAuthority>
+      selected_memcpy_pointer_authority;
 
   // Final LLVM/output spelling for the function header plus legacy
   // no-metadata compatibility payload. Type identity mirrors live in

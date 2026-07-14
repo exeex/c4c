@@ -1677,9 +1677,78 @@ void visit_modeled_value_uses(const LirInst& inst, Visitor&& visit) {
   }
 }
 
-void verify_function_value_ownership(const LirFunction& function) {
+void verify_selected_memcpy_pointer_authority(const LirModule& mod,
+                                              const LirFunction& function,
+                                              std::unordered_set<uint32_t>& definitions,
+                                              std::unordered_map<uint32_t,
+                                                                 const LirInst*>& definition_insts) {
+  if (!function.selected_memcpy_pointer_authority.has_value()) return;
+
+  if (function.link_name_id == kInvalidLinkName ||
+      mod.link_names.spelling(function.link_name_id).empty()) {
+    fail_verify("LirFunction.selected_memcpy_pointer_authority",
+                "selected pointer authority requires a current-function LinkNameId");
+  }
+  const std::size_t owner_count = static_cast<std::size_t>(std::count_if(
+      mod.functions.begin(), mod.functions.end(), [&](const LirFunction& candidate) {
+        return candidate.link_name_id == function.link_name_id;
+      }));
+  if (owner_count != 1) {
+    fail_verify("LirFunction.selected_memcpy_pointer_authority",
+                "selected pointer authority requires one current-function owner");
+  }
+
+  const auto& authority = *function.selected_memcpy_pointer_authority;
+  const auto verify_definition = [&](const LirCurrentFunctionPointerDefinition& definition,
+                                     LirSelectedMemcpyPointerRole expected_role,
+                                     std::string_view field) {
+    if (definition.role != expected_role) {
+      fail_verify(field, "selected pointer definition has the wrong role");
+    }
+    if (!definition.value.valid()) {
+      fail_verify(field, "selected pointer definition has an invalid LirValueId");
+    }
+    if (definition.pointer_type.kind() != LirTypeKind::Pointer) {
+      fail_verify(field, "selected pointer definition requires pointer type authority");
+    }
+    if (!definition.object.valid()) {
+      fail_verify(field, "selected pointer definition has an invalid LirObjectId");
+    }
+    if (definition.object_owner != function.link_name_id) {
+      fail_verify(field, "selected local object is not owned by this LirFunction");
+    }
+    if (!definition.live_at_selected_site) {
+      fail_verify(field, "selected pointer definition is not live at the selected site");
+    }
+    if (!definitions.insert(definition.value.value).second) {
+      fail_verify(field, "duplicate current-function LirValueId definition " +
+                             std::to_string(definition.value.value));
+    }
+    // These carriers are definitions in their own right; no instruction
+    // pointer exists for a byval parameter definition.
+    definition_insts.emplace(definition.value.value, nullptr);
+  };
+
+  verify_definition(authority.byval_parameter,
+                    LirSelectedMemcpyPointerRole::ByvalParameter,
+                    "LirFunction.selected_memcpy_pointer_authority.byval_parameter");
+  verify_definition(authority.destination_alloca,
+                    LirSelectedMemcpyPointerRole::DestinationAlloca,
+                    "LirFunction.selected_memcpy_pointer_authority.destination_alloca");
+  if (authority.byval_parameter.value == authority.destination_alloca.value ||
+      authority.byval_parameter.object == authority.destination_alloca.object) {
+    fail_verify("LirFunction.selected_memcpy_pointer_authority",
+                "selected pointer definitions require distinct values and local objects");
+  }
+}
+
+void verify_function_value_ownership(const LirModule& mod,
+                                     const LirFunction& function) {
   std::unordered_set<uint32_t> definitions;
   std::unordered_map<uint32_t, const LirInst*> definition_insts;
+
+  verify_selected_memcpy_pointer_authority(mod, function, definitions,
+                                           definition_insts);
 
   const auto collect_operand_definition =
       [&](const LirInst& inst, const LirOperand* result) {
@@ -2519,7 +2588,7 @@ void verify_module(const LirModule& mod) {
   verify_global_type_ref_shadows(mod);
   verify_function_signature_type_ref_shadows(mod);
   for (const auto& function : mod.functions) {
-    verify_function_value_ownership(function);
+    verify_function_value_ownership(mod, function);
     for (const auto& inst : function.alloca_insts) verify_inst(mod, inst);
     for (const auto& block : function.blocks) {
       for (const auto& inst : block.insts) verify_inst(mod, inst);

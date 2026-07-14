@@ -19,6 +19,27 @@ set_tests_properties(backend_lir_to_bir_interface PROPERTIES
   LABELS "backend;bir;interface;cpp"
 )
 
+add_executable(backend_lir_selected_pointer_authority_test
+    "${BACKEND_TEST_ROOT}/bir/backend_lir_selected_pointer_authority_test.cpp"
+)
+target_include_directories(backend_lir_selected_pointer_authority_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_lir_selected_pointer_authority_test PRIVATE
+    c4c_codegen
+)
+set_target_properties(backend_lir_selected_pointer_authority_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+add_test(
+  NAME backend_lir_selected_pointer_authority
+  COMMAND $<TARGET_FILE:backend_lir_selected_pointer_authority_test>
+)
+set_tests_properties(backend_lir_selected_pointer_authority PROPERTIES
+  LABELS "backend;lir;authority;cpp"
+)
+
 add_executable(backend_bir_pipeline_identity_test
     "${BACKEND_TEST_ROOT}/bir/backend_bir_pipeline_identity_test.cpp"
 )
