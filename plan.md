@@ -683,6 +683,52 @@ Completion check:
   scalar FPToUI chain; the frontend test remains the producer-authority
   regression neighbor.
 
+Accepted in `9f8194fd0`: the fresh focused 2/2 backend/producer proof showed
+one verified transactional explicit scalar double-to-unsigned-i32 FPToUI chain.
+The matching regression guard passed non-decreasing 2/2, and fresh broader
+`^backend_` proof passed 4/4.
+
+### Step 7.13 - Receive the checked wide builtin-ffs select narrowing
+
+Goal: receive only PI's authority-matrix i64 `__builtin_ffsll`
+`LirSelectOp` result and its required explicit i64-to-i32 `LirCastOp::Trunc`
+edge to the exact later ordinary i32 Add use. Do not generalize select or cast
+receipt.
+
+Primary targets:
+
+- typed Raw-BIR select payload and i64-to-i32 truncation payload, builders,
+  views, and reachable verification
+- LIR-to-Raw-BIR select/cast dispatch and current-function source-value registry
+- focused backend receiver coverage plus `frontend_lir_call_type_ref`
+
+Actions:
+
+- map only the producer-verified PI i64 ffs `LirSelectOp{result: valid
+  current-function LirValueId, type_str: i64}` result through one typed
+  Raw-BIR i64 select container, then map its exact result ID only through
+  `LirCastOp{result: valid current-function LirValueId, operand: that select
+  result ID, kind: Trunc, from_type: i64, to_type: i32}` to one typed
+  Raw-BIR truncation result, preserving the exact later ordinary i32 Add use
+- require valid, unique current-function select/cast results; resolved
+  select-to-trunc and trunc-to-Add edges; exact native i64-to-i32 Trunc kind
+  and strict narrowing; instruction-result linkage; and full-module rollback
+  for missing, invalid, duplicate, cross-owner, unresolved-use,
+  wrong-kind/endpoints/direction, or malformed-linkage authority
+- prove the positive select-to-Trunc-to-Add chain plus neighboring transactional
+  failures. Do not receive the shared ffs add-one false arm, equality-to-zero
+  condition, Cttz call, i32 ffs route, other select/cast producers,
+  pointer/vector/complex/aggregate/object work, implicit coercions, or
+  presentation-derived authority
+
+Completion check:
+
+- a fresh build and focused
+  `^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$` proof pass
+  2/2. The backend coverage demonstrates one verified transactional wide ffs
+  select narrowing chain; the frontend test remains the producer-authority
+  regression neighbor.
+
 ### Source completion gate (not an executor packet)
 
 Do not execute this as a placeholder. This source cannot close until its
