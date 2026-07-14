@@ -325,6 +325,13 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const IndexExpr&, const E
       return tmp;
     }
   }
+  if (const auto* idx = std::get_if<IndexExpr>(&e.payload)) {
+    TypeSpec pts{};
+    const LirOperand ptr = emit_indexed_lval_operand(ctx, *idx, pts);
+    TypeSpec load_ts = resolve_expr_type(ctx, e);
+    if (!has_concrete_type(load_ts)) load_ts = pts;
+    return emit_rval_from_access_ptr(ctx, ptr, pts, load_ts, false).str();
+  }
   TypeSpec pts{};
   const std::string ptr = emit_lval_dispatch(ctx, e, pts);
   return emit_rval_from_access_expr(ctx, e, ptr, pts, false);

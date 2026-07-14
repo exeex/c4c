@@ -82,6 +82,14 @@ c4c::codegen::lir::LirModule lower_lir_module_for_target(
   return lir_module;
 }
 
+c4c::codegen::lir::LirModule lower_unverified_lir_module_for_target(
+    std::string_view source, std::string_view target_triple) {
+  c4c::hir::Module hir_module = lower_hir_module(source);
+  hir_module.target_profile =
+      c4c::target_profile_from_triple(std::string(target_triple));
+  return c4c::codegen::lir::lower(hir_module);
+}
+
 c4c::codegen::lir::LirFunction& require_function(
     c4c::codegen::lir::LirModule& module,
     std::string_view name) {
@@ -1867,6 +1875,79 @@ int *neighbor_address(void) { return lir_identity_array_neighbor; }
               "nearby array extent should retain independent structured GEP facts");
   lir::verify_module(lowered);
 
+  lir::LirModule static_table = lower_unverified_lir_module_for_target(R"c(
+int static_table_element_route(void) {
+  static void *table[] = { &&first, &&second };
+  goto *table[0];
+first:
+  return 1;
+second:
+  return 2;
+}
+)c", "x86_64-linux-gnu");
+  for (auto& block : require_function(static_table, "static_table_element_route").blocks) {
+    block.insts.erase(
+        std::remove_if(block.insts.begin(), block.insts.end(), [](const lir::LirInst& inst) {
+          return std::holds_alternative<lir::LirIndirectBrOp>(inst);
+        }),
+        block.insts.end());
+  }
+  const auto require_static_table_route = [](lir::LirModule& module) {
+    lir::LirFunction& function = require_function(module, "static_table_element_route");
+    lir::LirGepOp* gep = nullptr;
+    lir::LirLoadOp* load = nullptr;
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirGepOp>(&inst);
+            candidate && candidate->ptr.kind() == lir::LirOperandKind::Global) {
+          gep = candidate;
+        }
+      }
+    }
+    expect_true(gep != nullptr, "static table route should retain a global-based GEP");
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirLoadOp>(&inst);
+            candidate && candidate->ptr.value_id() && gep->result.value_id() &&
+            *candidate->ptr.value_id() == *gep->result.value_id()) {
+          load = candidate;
+        }
+      }
+    }
+    expect_true(load != nullptr, "static table route should load through its exact GEP result");
+    return std::pair<lir::LirGepOp*, lir::LirLoadOp*>{gep, load};
+  };
+  {
+    auto [gep, load] = require_static_table_route(static_table);
+    expect_true(gep->ptr.link_name_id() &&
+                    !static_table.link_names.spelling(*gep->ptr.link_name_id()).empty(),
+                "static table GEP should retain its selected global link-name authority");
+    expect_true(gep->result.value_id() && gep->result.value_id()->valid() &&
+                    load->result.value_id() && load->result.value_id()->valid(),
+                "static table GEP and pointer load should retain valid result IDs");
+    expect_true(gep->indices.size() == 1 && gep->indices[0].is_authoritative() &&
+                    gep->indices[0].type_ref() == lir::LirTypeRef::integer(64),
+                "static table GEP should retain one typed i64 element index");
+  }
+  lir::verify_module(static_table);
+  const auto reject_static_table = [&](auto mutate, const std::string& message) {
+    lir::LirModule malformed = static_table;
+    auto [gep, load] = require_static_table_route(malformed);
+    mutate(*gep, *load);
+    expect_identity_verification_rejected(malformed, message);
+  };
+  reject_static_table([](auto& gep, auto&) { gep.ptr = lir::LirOperand::raw("@raw"); },
+                      "static table GEP should reject raw base authority");
+  reject_static_table([](auto& gep, auto&) {
+    gep.ptr = lir::LirOperand::global("@invalid", c4c::kInvalidLinkName);
+  }, "static table GEP should reject invalid global base authority");
+  reject_static_table([](auto& gep, auto&) { gep.indices[0] = lir::LirGepIndex::raw("i64 0"); },
+                      "static table GEP should reject raw index authority");
+  reject_static_table([](auto& gep, auto&) { gep.result = lir::LirOperand::raw("%missing"); },
+                      "static table GEP should reject a missing result ID");
+  reject_static_table([](auto&, auto& load) { load.ptr = lir::LirOperand::ssa("%foreign", lir::LirValueId{99}); },
+                      "static table load should reject a foreign GEP pointer");
+
   lir::LirModule ssa_production = lower_lir_module_for_target(R"c(
 void *ssa_indexed_gep_route(void *base, long index) {
   char *local = base;
@@ -3193,6 +3274,86 @@ int rvalue_parameter_identity(int parameter) {
     require_route_call(module, "rvalue_parameter_identity").structured_args[0].operand =
         lir::LirOperand::ssa("%foreign", lir::LirValueId{99});
   }, "foreign parameter rvalue identity must fail closed");
+
+  lir::LirModule local_table = lower_unverified_lir_module_for_target(R"c(
+int local_table_element_route(void) {
+  void *table[] = { &&first, &&second };
+  goto *table[0];
+first:
+  return 1;
+second:
+  return 2;
+}
+)c", "x86_64-linux-gnu");
+  for (auto& block : require_function(local_table, "local_table_element_route").blocks) {
+    block.insts.erase(
+        std::remove_if(block.insts.begin(), block.insts.end(), [](const lir::LirInst& inst) {
+          return std::holds_alternative<lir::LirIndirectBrOp>(inst);
+        }),
+        block.insts.end());
+  }
+  const auto require_local_table_route = [](lir::LirModule& module) {
+    lir::LirFunction& function = require_function(module, "local_table_element_route");
+    lir::LirGepOp* gep = nullptr;
+    lir::LirLoadOp* load = nullptr;
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirGepOp>(&inst);
+            candidate && candidate->ptr.kind() == lir::LirOperandKind::SsaValue &&
+            candidate->ptr.value_id()) gep = candidate;
+      }
+    }
+    expect_true(gep != nullptr, "local table route should retain an SSA local-base GEP");
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirLoadOp>(&inst);
+            candidate && candidate->ptr.value_id() && gep->result.value_id() &&
+            *candidate->ptr.value_id() == *gep->result.value_id()) load = candidate;
+      }
+    }
+    expect_true(load != nullptr, "local table route should load through its exact GEP result");
+    return std::pair<lir::LirGepOp*, lir::LirLoadOp*>{gep, load};
+  };
+  {
+    auto [gep, load] = require_local_table_route(local_table);
+    const auto alloca = std::find_if(
+        require_function(local_table, "local_table_element_route").alloca_insts.begin(),
+        require_function(local_table, "local_table_element_route").alloca_insts.end(),
+        [&](const lir::LirInst& inst) {
+          const auto* candidate = std::get_if<lir::LirAllocaOp>(&inst);
+          return candidate && candidate->result.value_id() && gep->ptr.value_id() &&
+                 *candidate->result.value_id() == *gep->ptr.value_id();
+        });
+    expect_true(alloca != require_function(local_table, "local_table_element_route").alloca_insts.end(),
+                "local table GEP base should be a current-function alloca authority");
+    expect_true(gep->result.value_id() && gep->result.value_id()->valid() &&
+                    load->result.value_id() && load->result.value_id()->valid() &&
+                    gep->indices.size() == 1 && gep->indices[0].is_authoritative() &&
+                    gep->indices[0].type_ref() == lir::LirTypeRef::integer(64),
+                "local table GEP/load should retain typed i64 and valid result authority");
+  }
+  lir::verify_module(local_table);
+  const auto reject_local_table = [&](auto mutate, const std::string& message) {
+    lir::LirModule malformed = local_table;
+    auto [gep, load] = require_local_table_route(malformed);
+    mutate(*gep, *load);
+    expect_identity_verification_rejected(malformed, message);
+  };
+  reject_local_table([](auto& gep, auto&) { gep.ptr = lir::LirOperand::raw("%raw"); },
+                     "local table GEP should reject raw base authority");
+  reject_local_table([](auto& gep, auto&) {
+    gep.ptr = lir::LirOperand::integer("0", 0);
+  }, "local table GEP should reject non-pointer base authority");
+  reject_local_table([](auto& gep, auto&) { gep.ptr = lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid()); },
+                     "local table GEP should reject invalid base authority");
+  reject_local_table([](auto& gep, auto&) { gep.ptr = lir::LirOperand::ssa("%foreign", lir::LirValueId{99}); },
+                     "local table GEP should reject foreign base authority");
+  reject_local_table([](auto& gep, auto&) { gep.indices[0] = lir::LirGepIndex::raw("i64 0"); },
+                     "local table GEP should reject raw index authority");
+  reject_local_table([](auto& gep, auto&) { gep.result = lir::LirOperand::raw("%missing"); },
+                     "local table GEP should reject a missing result ID");
+  reject_local_table([](auto&, auto& load) { load.ptr = lir::LirOperand::ssa("%foreign", lir::LirValueId{99}); },
+                     "local table load should reject a nonmatching GEP pointer");
 }
 
 void test_member_bitfield_rvalue_identity_route() {

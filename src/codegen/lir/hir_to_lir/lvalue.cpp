@@ -299,7 +299,86 @@ LirOperand StmtEmitter::emit_lval_operand(FnCtx& ctx, ExprId id,
         emitted_link_name(mod_, selected->link_name_id, selected->name));
     return LirOperand::global(display, selected->link_name_id);
   }
+  if (const auto* idx = std::get_if<IndexExpr>(&e.payload)) {
+    return emit_indexed_lval_operand(ctx, *idx, pointee_ts);
+  }
   return LirOperand::raw(emit_lval_dispatch(ctx, e, pointee_ts));
+}
+
+LirOperand StmtEmitter::emit_structured_lvalue_base_operand(FnCtx& ctx, ExprId id,
+                                                            TypeSpec& pointee_ts) {
+  const Expr& e = get_expr(id);
+  if (const auto* ref = std::get_if<DeclRef>(&e.payload)) {
+    if (ref->global) return emit_lval_operand(ctx, id, pointee_ts);
+    if (ref->local) {
+      pointee_ts = ctx.local_types.at(ref->local->value);
+      const std::string& slot = ctx.local_slots.at(ref->local->value);
+      for (lir::LirInst& inst : ctx.alloca_insts) {
+        auto* alloca = std::get_if<lir::LirAllocaOp>(&inst);
+        if (!alloca || alloca->result.str() != slot) continue;
+        if (!alloca->result.value_id()) {
+          const LirOperand authority = fresh_value(ctx);
+          alloca->result = LirOperand::ssa(slot, *authority.value_id());
+        }
+        return alloca->result;
+      }
+    }
+  }
+  return LirOperand::raw(emit_lval(ctx, id, pointee_ts));
+}
+
+LirOperand StmtEmitter::emit_indexed_lval_operand(FnCtx& ctx, const IndexExpr& idx,
+                                                   TypeSpec& pts) {
+  TypeSpec base_ts{};
+  LirOperand base;
+  const TypeSpec resolved_base_ts = resolve_expr_type(ctx, idx.base);
+  const Expr& base_expr = get_expr(idx.base);
+  auto base_is_array_object_lvalue = [&]() -> bool {
+    if (outer_array_rank(resolved_base_ts) <= 0) return false;
+    if (std::holds_alternative<MemberExpr>(base_expr.payload) ||
+        std::holds_alternative<IndexExpr>(base_expr.payload)) return true;
+    if (const auto* u = std::get_if<UnaryExpr>(&base_expr.payload)) {
+      return u->op == UnaryOp::Deref;
+    }
+    if (const auto* r = std::get_if<DeclRef>(&base_expr.payload)) {
+      if (r->param_index.has_value()) return false;
+      if (r->local) {
+        const auto type_it = ctx.local_types.find(r->local->value);
+        if (type_it == ctx.local_types.end()) return false;
+        const auto vla_it = ctx.local_is_vla.find(r->local->value);
+        if (vla_it != ctx.local_is_vla.end() && vla_it->second) return false;
+        return outer_array_rank(type_it->second) > 0 &&
+               llvm_alloca_ty(mod_, type_it->second) != "ptr";
+      }
+      return r->global.has_value();
+    }
+    return false;
+  };
+  if (is_vector_value(resolved_base_ts) || base_is_array_object_lvalue()) {
+    TypeSpec obj_ts{};
+    base = emit_structured_lvalue_base_operand(ctx, idx.base, obj_ts);
+    base_ts = obj_ts;
+  } else {
+    base = LirOperand::raw(emit_rval_id(ctx, idx.base, base_ts));
+  }
+  TypeSpec ix_ts{};
+  LirOperand ix = emit_rval_operand(ctx, idx.index, ix_ts);
+  TypeSpec i64_ts{};
+  i64_ts.base = TB_LONGLONG;
+  ix = coerce_operand(ctx, ix, ix_ts, i64_ts);
+  pts = base_ts;
+  if (is_vector_value(pts)) {
+    pts.is_vector = false;
+    pts.vector_lanes = 0;
+    pts.vector_bytes = 0;
+    const std::string tmp = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirGepOp{tmp, llvm_ty(pts), base.str(), false,
+                                   {"i64 " + ix.str()}});
+    return LirOperand::raw(tmp);
+  }
+  pts = resolve_indexed_gep_pointee_type(pts);
+  return emit_indexed_gep(ctx, base, base_ts, ix,
+                          indexed_gep_structured_name_id(mod_, module_, llvm_ty(pts), pts));
 }
 
 std::string StmtEmitter::emit_va_list_obj_ptr(FnCtx& ctx, ExprId id, TypeSpec& ts) {
@@ -406,58 +485,7 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
     }
   }
   if (const auto* idx = std::get_if<IndexExpr>(&e.payload)) {
-    TypeSpec base_ts{};
-    std::string base;
-    const TypeSpec resolved_base_ts = resolve_expr_type(ctx, idx->base);
-    const Expr& base_expr = get_expr(idx->base);
-    auto base_is_array_object_lvalue = [&]() -> bool {
-      if (outer_array_rank(resolved_base_ts) <= 0) return false;
-      if (std::holds_alternative<MemberExpr>(base_expr.payload) ||
-          std::holds_alternative<IndexExpr>(base_expr.payload)) {
-        return true;
-      }
-      if (const auto* u = std::get_if<UnaryExpr>(&base_expr.payload)) {
-        return u->op == UnaryOp::Deref;
-      }
-      if (const auto* r = std::get_if<DeclRef>(&base_expr.payload)) {
-        if (r->param_index.has_value()) return false;
-        if (r->local) {
-          const auto type_it = ctx.local_types.find(r->local->value);
-          if (type_it == ctx.local_types.end()) return false;
-          const auto vla_it = ctx.local_is_vla.find(r->local->value);
-          if (vla_it != ctx.local_is_vla.end() && vla_it->second) return false;
-          return outer_array_rank(type_it->second) > 0 &&
-                 llvm_alloca_ty(mod_, type_it->second) != "ptr";
-        }
-        return r->global.has_value();
-      }
-      return false;
-    };
-    if (is_vector_value(resolved_base_ts) || base_is_array_object_lvalue()) {
-      TypeSpec obj_ts{};
-      base = emit_lval(ctx, idx->base, obj_ts);
-      base_ts = obj_ts;
-    } else {
-      base = emit_rval_id(ctx, idx->base, base_ts);
-    }
-    TypeSpec ix_ts{};
-    const std::string ix = emit_rval_id(ctx, idx->index, ix_ts);
-    TypeSpec i64_ts{};
-    i64_ts.base = TB_LONGLONG;
-    const std::string ix64 = coerce(ctx, ix, ix_ts, i64_ts);
-    pts = base_ts;
-    if (is_vector_value(pts)) {
-      pts.is_vector = false;
-      pts.vector_lanes = 0;
-      pts.vector_bytes = 0;
-      const std::string tmp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirGepOp{tmp, llvm_ty(pts), base, false, {"i64 " + ix64}});
-      return tmp;
-    } else {
-      pts = resolve_indexed_gep_pointee_type(pts);
-      return emit_indexed_gep(ctx, base, base_ts, ix64,
-                              indexed_gep_structured_name_id(mod_, module_, llvm_ty(pts), pts));
-    }
+    return emit_indexed_lval_operand(ctx, *idx, pts).str();
   }
   if (const auto* m = std::get_if<MemberExpr>(&e.payload)) {
     return emit_member_lval(ctx, *m, pts);
@@ -925,10 +953,13 @@ std::string StmtEmitter::emit_indexed_gep(FnCtx& ctx, const std::string& base_pt
 LirOperand StmtEmitter::emit_indexed_gep(FnCtx& ctx, const LirOperand& base_ptr,
                                          const TypeSpec& base_ts, const LirOperand& idx,
                                          StructNameId elem_structured_name_id) {
-  const bool ssa_base = base_ptr.kind() == LirOperandKind::SsaValue &&
-                        base_ptr.value_id() && base_ptr.value_id()->valid();
+  const bool supported_base =
+      (base_ptr.kind() == LirOperandKind::SsaValue && base_ptr.value_id() &&
+       base_ptr.value_id()->valid()) ||
+      (base_ptr.kind() == LirOperandKind::Global && base_ptr.link_name_id() &&
+       *base_ptr.link_name_id() != kInvalidLinkName);
   const bool typed_index = idx.value_id() || idx.integer_immediate();
-  if (!ssa_base || !typed_index) {
+  if (!supported_base || !typed_index) {
     return LirOperand::raw(
         emit_indexed_gep(ctx, base_ptr.str(), base_ts, idx.str(), elem_structured_name_id));
   }
@@ -962,6 +993,21 @@ std::string StmtEmitter::emit_rval_from_access_ptr(FnCtx& ctx, const std::string
   const std::string tmp = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirLoadOp{tmp, ty, LirOperand::raw(ptr)});
   return tmp;
+}
+
+LirOperand StmtEmitter::emit_rval_from_access_ptr(FnCtx& ctx, const LirOperand& ptr,
+                                                   const TypeSpec& access_ts,
+                                                   const TypeSpec& load_ts,
+                                                   bool decay_from_array_object) {
+  if (outer_array_rank(access_ts) > 0 || !ptr.has_authority()) {
+    return LirOperand::raw(
+        emit_rval_from_access_ptr(ctx, ptr.str(), access_ts, load_ts, decay_from_array_object));
+  }
+  const std::string ty = llvm_value_ty(mod_, load_ts);
+  if (ty == "void") return LirOperand::raw("");
+  const LirOperand result = fresh_value(ctx);
+  emit_lir_op(ctx, lir::LirLoadOp{result, LirTypeRef(ty), ptr});
+  return result;
 }
 
 std::string StmtEmitter::emit_rval_from_access_expr(FnCtx& ctx, const Expr& e,

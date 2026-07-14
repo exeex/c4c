@@ -127,6 +127,26 @@ Completion check:
   or names a precise separately scoped blocker; it does not yet claim positive
   capability success or return to 764.
 
+Selected seam and handoff:
+
+- Selected: one generic structured table-element access route, from supported
+  global or current-function-local lvalue base through typed indexed GEP to an
+  exact pointer-load result. Both source forms reach
+  `StmtEmitter::emit_lval_dispatch(IndexExpr)` and then the same string
+  `emit_indexed_gep`/`emit_rval_from_access_ptr` boundary; the static-local
+  form starts global and the local form starts in a current-function slot, but
+  neither distinction survives that boundary today.
+- `emit_rval_payload(IndexExpr)` independently confirms the shared owner by
+  dispatching the lvalue then loading the returned string pointer. The
+  structured GEP overload already accepted for 766's SSA-base route remains
+  intact; this packet must not rework it.
+- Step 5 may touch only `src/codegen/lir/hir_to_lir/lowering.hpp`,
+  `src/codegen/lir/hir_to_lir/lvalue.cpp`,
+  `src/codegen/lir/hir_to_lir/expr/misc.cpp`, and the two existing contract
+  locations in `tests/frontend/frontend_lir_call_type_ref_test.cpp`, absent a
+  new evidence-backed blocker. Its proof is a fresh build followed by
+  `ctest --test-dir build -j --output-on-failure -R '^frontend_cxx_'`.
+
 ### Step 5 - Implement and prove the selected table-element authority seam
 
 Goal: after Step 4 selects the generic owner, implement only that bounded
@@ -134,18 +154,25 @@ producer/result contract and activate the recorded focused harnesses.
 
 Actions:
 
-- make the code and directly relevant frontend-LIR test changes authorized by
-  the selected Step 4 seam; do not combine unrelated table/pointer work
-- convert the recorded positive and malformed contracts into passing focused
-  proof only after the producer/result authority exists
-- run a fresh build and the selected direct frontend-LIR proof; retain the
-  external four as later integration probes
+- implement the generic structured table-element access route only in
+  `lowering.hpp`, `lvalue.cpp`, and `expr/misc.cpp`: retain supported global
+  or current-function-local base authority, form a typed indexed GEP with a
+  valid result ID, and load through that exact GEP operand into a valid pointer
+  result ID; do not change the accepted 766 SSA-specific GEP path
+- activate the recorded static-local contract in
+  `test_global_array_gep_identity_contract` and local contract alongside
+  `test_local_and_parameter_rvalue_identity_route`, each with its focused
+  positive and malformed cases; do not substitute external testcase matching
+- run a fresh `cmake --build --preset default`, then exactly
+  `ctest --test-dir build -j --output-on-failure -R '^frontend_cxx_'`; retain
+  the external four as later integration probes
 
 Completion check:
 
 - the selected generic seam and its focused positive/malformed proof pass
   without expectation downgrade, testcase-shaped logic, verifier relaxation,
-  or a generic `IndirBr` publication claim.
+  textual recovery, Raw-BIR/importer work, a generic `IndirBr` publication
+  claim, or broad pointer/table redesign.
 
 ### Step 6 - Hand off the resolved capability to 764
 

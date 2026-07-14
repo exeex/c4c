@@ -496,6 +496,10 @@ class StmtEmitter {
                                     TypeSpec& pointee_ts);
   std::string emit_va_list_obj_ptr(FnCtx& ctx, ExprId id, TypeSpec& ts);
   std::string emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec& pts);
+  lir::LirOperand emit_indexed_lval_operand(FnCtx& ctx, const IndexExpr& idx,
+                                            TypeSpec& pts);
+  lir::LirOperand emit_structured_lvalue_base_operand(FnCtx& ctx, ExprId id,
+                                                       TypeSpec& pointee_ts);
   TypeSpec resolve_member_base_type(FnCtx& ctx, ExprId base_id, bool is_arrow);
   MemberFieldAccess resolve_member_field_access(FnCtx& ctx, const MemberExpr& m);
   std::string emit_member_base_ptr(FnCtx& ctx, const MemberExpr& m, TypeSpec& base_ts);
@@ -540,6 +544,10 @@ class StmtEmitter {
   std::string emit_rval_from_access_ptr(FnCtx& ctx, const std::string& ptr,
                                         const TypeSpec& access_ts, const TypeSpec& load_ts,
                                         bool decay_from_array_object);
+  lir::LirOperand emit_rval_from_access_ptr(FnCtx& ctx, const lir::LirOperand& ptr,
+                                            const TypeSpec& access_ts,
+                                            const TypeSpec& load_ts,
+                                            bool decay_from_array_object);
   // ── Call subdomain ───────────────────────────────────────────────────────
   //
   // Member declarations are indexed from `hir_to_lir/call/call.hpp` so call
