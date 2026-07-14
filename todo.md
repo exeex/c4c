@@ -8,17 +8,17 @@ Current Step Title: Repair the targeted warning-inventory route
 
 ## Just Finished
 
-- Step 5 validation complete: accepted slices `a1d6fd79a`, `c4c021559`, and
-  `896779447` retain their focused passing proofs; a final fresh build plus
-  `^(frontend_lir_|backend_lir_)` passed 6/6, and the accepted full baseline
-  was 3034/3034 passing. Closure was rejected because the source's targeted
-  warning-inventory criterion remains unmet.
+- Step 6 first narrow repair packet complete: added the deprecated,
+  searchable `LirTypeRef::parsed_typed_call_argument_text` compatibility
+  boundary for parsed/re-owned typed-call argument text. Its only selected
+  warning sites are `own_lir_typed_call_args` and the empty-mirror fallback in
+  `lir_call_arg_type_refs`; both document that dynamic aggregate, vector,
+  struct, and function spellings remain runtime-text compatibility paths.
 
 ## Suggested Next
 
-- Step 6: establish and prove a narrowly scoped targeted deprecation-warning
-  inventory boundary for one remaining construction category, without
-  restoring the rejected global `const char*` annotation.
+- Step 6: inspect the two warned parsed/re-owned typed-call sites and select
+  the next bounded closed-set migration or retained compatibility boundary.
 
 ## Watchouts
 
@@ -31,9 +31,14 @@ Current Step Title: Repair the targeted warning-inventory route
 - Do not weaken verifier behavior, tests, or expected output.
 - Do not retry a globally deprecated `const char*` constructor: it produces
   broad warning noise despite source-compatible compilation.
+- The parsed typed-call boundary intentionally covers text supplied by the
+  parser and its legacy string-mirror fallback; do not treat it as evidence
+  that the generic `LirTypeRef` constructors should be deprecated.
 
 ## Proof
 
-- Accepted Step 5 evidence: fresh `cmake --build --preset default` and
-  `ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|backend_lir_)'`
-  passed 6/6; the accepted full baseline was 3034/3034 passing.
+- `cmake --build --preset default` succeeded and emitted only the scoped
+  `parsed_typed_call_argument_text` deprecation warnings for the two selected
+  parsed/re-owned typed-call sites.
+- `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log`
+  passed; `test_after.log` is the focused proof log.

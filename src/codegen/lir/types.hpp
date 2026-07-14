@@ -84,6 +84,16 @@ class LirTypeRef {
     return LirTypeRef(std::move(text));
   }
 
+  // Parsed LIR call argument types are compatibility text re-owned from input,
+  // not a closed set of builtins. Keep this deprecated boundary local so builds
+  // inventory the remaining parser/runtime-text constructions without warning
+  // on unrelated LirTypeRef users.
+  [[nodiscard, deprecated(
+      "parsed/re-owned LIR typed-call argument text: audit this compatibility boundary")]]
+  static LirTypeRef parsed_typed_call_argument_text(std::string text) {
+    return runtime_text(std::move(text));
+  }
+
   [[nodiscard]] static LirTypeRef vrm_register(unsigned width) {
     LirTypeRef type("c4c.vrm" + std::to_string(width), LirTypeKind::VrmRegister);
     type.vrm_width_ = width;
