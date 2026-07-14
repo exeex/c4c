@@ -164,7 +164,7 @@ struct LoadSpec {
 };
 
 struct GetElementPtrSpec {
-  GlobalObjectId base{};
+  GetElementPtrBase base{};
   Type element_type{};
   bool inbounds = false;
   std::vector<ValueId> indices;

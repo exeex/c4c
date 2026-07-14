@@ -170,8 +170,30 @@ struct LoadNode {
   Type loaded_type{};
 };
 
+// A GEP base is deliberately narrower than a general pointer value.  The
+// label-address alternative can only name the exact current-function constant
+// ValueId that defines a LabelAddressConstant; it is not an SSA operand.
+struct LabelAddressGepBase {
+  ValueId value{};
+};
+
+using GetElementPtrBaseAuthority =
+    std::variant<GlobalObjectId, LabelAddressGepBase>;
+
+// Keep the legacy GlobalObjectId projection available to the still-global-only
+// Raw-BIR consumers.  Step 2 switches those consumers to authority; a
+// label-address base deliberately has an invalid global projection and thus
+// cannot be mistaken for a global object.
+struct GetElementPtrBase : GlobalObjectId {
+  GetElementPtrBaseAuthority authority = GlobalObjectId{};
+
+  GetElementPtrBase() = default;
+  GetElementPtrBase(GlobalObjectId global) : GlobalObjectId(global), authority(global) {}
+  GetElementPtrBase(LabelAddressGepBase label) : authority(label) {}
+};
+
 struct GetElementPtrNode {
-  GlobalObjectId base{};
+  GetElementPtrBase base{};
   Type element_type{};
   bool inbounds = false;
 };

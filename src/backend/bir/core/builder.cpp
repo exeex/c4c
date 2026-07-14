@@ -1022,16 +1022,49 @@ Result<BuildResult, BuildError> FunctionBuilder::append(
   if (function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(
         BuildError::DuplicateSourceValue);
-  if (!spec.base.valid() || spec.base.epoch != parent_->data_->epoch_ ||
-      spec.base.slot >= parent_->data_->globals_.size())
-    return Result<BuildResult, BuildError>::failure(
-        BuildError::InvalidGlobalObject);
-  const auto& global = parent_->data_->globals_[spec.base.slot];
   if (!is_well_formed(spec.element_type) ||
-      spec.element_type.kind != TypeKind::Array ||
-      global.object_type != spec.element_type)
-    return Result<BuildResult, BuildError>::failure(
-        BuildError::InvalidValueType);
+      spec.element_type.kind != TypeKind::Array)
+    return Result<BuildResult, BuildError>::failure(BuildError::InvalidValueType);
+  if (const auto* global =
+          std::get_if<GlobalObjectId>(&spec.base.authority)) {
+    if (!global->valid() || global->epoch != parent_->data_->epoch_ ||
+        global->slot >= parent_->data_->globals_.size())
+      return Result<BuildResult, BuildError>::failure(
+          BuildError::InvalidGlobalObject);
+    if (parent_->data_->globals_[global->slot].object_type !=
+        spec.element_type)
+      return Result<BuildResult, BuildError>::failure(
+          BuildError::InvalidValueType);
+  } else if (const auto* label =
+                 std::get_if<LabelAddressGepBase>(&spec.base.authority)) {
+    if (!same_owner(function_, label->value))
+      return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
+    const auto value = function_data.values_.get(function_, label->value);
+    if (!value)
+      return Result<BuildResult, BuildError>::failure(BuildError::InvalidValue);
+    const auto& definition = value.value().get();
+    if (definition.kind != ValueKind::Ordinary ||
+        definition.type.kind != TypeKind::Pointer)
+      return Result<BuildResult, BuildError>::failure(
+          BuildError::DefinitionTypeMismatch);
+    const auto* constant = std::get_if<ConstantDef>(&definition.definition);
+    if (!constant || !constant->constant.valid() ||
+        constant->constant.epoch != parent_->data_->epoch_ ||
+        constant->constant.slot >= parent_->data_->constants_.size())
+      return Result<BuildResult, BuildError>::failure(
+          BuildError::DefinitionTypeMismatch);
+    const auto* label_constant = std::get_if<LabelAddressConstant>(
+        &parent_->data_->constants_[constant->constant.slot].payload);
+    if (!label_constant)
+      return Result<BuildResult, BuildError>::failure(
+          BuildError::DefinitionTypeMismatch);
+    if (!same_owner(function_, label_constant->target))
+      return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
+    if (!function_data.blocks_.contains(function_, label_constant->target))
+      return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
+  } else {
+    return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  }
   if (spec.indices.empty())
     return Result<BuildResult, BuildError>::failure(
         BuildError::UnsupportedOpcode);

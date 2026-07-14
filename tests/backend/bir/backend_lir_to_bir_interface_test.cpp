@@ -4078,6 +4078,107 @@ void test_selected_global_array_gep_builder_contract() {
          "FoundationVerifier must prevent an unresolved GEP index graph from publishing Raw BIR");
 }
 
+void test_label_address_gep_base_builder_contract() {
+  bir::ModuleBuilder builder;
+  const auto array_type = builder_i32_array_type(2);
+  bir::FunctionSignature signature;
+  signature.return_type = bir::Type{bir::TypeKind::Void};
+  const auto function = builder.create_function(signature, "label_gep", false);
+  const auto foreign_function =
+      builder.create_function(signature, "foreign_label_gep", false);
+  expect(function.has_value() && foreign_function.has_value(),
+         "label-address GEP fixture should create its typed owners");
+
+  bir::ValueId foreign_label{};
+  const auto foreign_edited = builder.with_function(
+      foreign_function.value(), [&](bir::FunctionBuilder& function_builder) {
+        const auto target = function_builder.create_block("foreign_target");
+        const auto label = function_builder.reserve_value(
+            bir::Type{bir::TypeKind::Pointer});
+        if (!target || !label)
+          return bir::Result<void, bir::BuildError>::failure(
+              bir::BuildError::StorageExhausted);
+        const auto defined = function_builder.define_label_address_constant(
+            label.value(), target.value());
+        if (!defined) return defined;
+        foreign_label = label.value();
+        return bir::Result<void, bir::BuildError>::success();
+      });
+  expect(foreign_edited.has_value(),
+         "foreign label-address fixture should define its constant");
+
+  const auto edited = builder.with_function(
+      function.value(), [&](bir::FunctionBuilder& function_builder) {
+        const auto target = function_builder.create_block("target");
+        const auto entry = function_builder.create_block("entry");
+        const auto label = function_builder.reserve_value(
+            bir::Type{bir::TypeKind::Pointer});
+        const auto index = function_builder.reserve_value(
+            bir::Type{bir::TypeKind::I64});
+        const auto non_label = function_builder.reserve_value(
+            bir::Type{bir::TypeKind::I64});
+        const auto missing_label = function_builder.reserve_value(
+            bir::Type{bir::TypeKind::Pointer});
+        if (!target || !entry || !label || !index || !non_label || !missing_label)
+          return bir::Result<void, bir::BuildError>::failure(
+              bir::BuildError::StorageExhausted);
+        auto defined = function_builder.define_label_address_constant(
+            label.value(), target.value());
+        if (!defined) return defined;
+        defined = function_builder.define_int_constant(index.value(), 0);
+        if (!defined) return defined;
+        defined = function_builder.define_int_constant(non_label.value(), 0);
+        if (!defined) return defined;
+
+        const bir::GetElementPtrBase structured_base{
+            bir::LabelAddressGepBase{label.value()}};
+        const auto* structured_label = std::get_if<bir::LabelAddressGepBase>(
+            &structured_base.authority);
+        expect(structured_label && structured_label->value == label.value(),
+               "GEP schema must retain the exact label-address identity as its dedicated base alternative");
+
+        const auto invalid = function_builder.append(
+            entry.value(), bir::GetElementPtrSpec{
+                               bir::LabelAddressGepBase{bir::ValueId{
+                                   function.value(), bir::ValueKind::Ordinary,
+                                   999, 0}},
+                               array_type, true, {index.value()}, 80});
+        expect(!invalid.has_value() &&
+                   invalid.error() == bir::BuildError::InvalidValue,
+               "GEP builder must reject a missing label-address identity before staging state");
+        const auto foreign = function_builder.append(
+            entry.value(), bir::GetElementPtrSpec{
+                               bir::LabelAddressGepBase{foreign_label}, array_type,
+                               true, {index.value()}, 80});
+        expect(!foreign.has_value() &&
+                   foreign.error() == bir::BuildError::ForeignOwner,
+               "GEP builder must reject a foreign label-address identity before staging state");
+        const auto non_label_value = function_builder.append(
+            entry.value(), bir::GetElementPtrSpec{
+                               bir::LabelAddressGepBase{non_label.value()}, array_type,
+                               true, {index.value()}, 80});
+        expect(!non_label_value.has_value() &&
+                   non_label_value.error() == bir::BuildError::DefinitionTypeMismatch,
+               "GEP builder must reject a non-label constant identity before staging state");
+        const auto missing = function_builder.append(
+            entry.value(), bir::GetElementPtrSpec{
+                               bir::LabelAddressGepBase{missing_label.value()},
+                               array_type, true, {index.value()}, 80});
+        expect(!missing.has_value() &&
+                   missing.error() == bir::BuildError::DefinitionTypeMismatch,
+               "GEP builder must reject an undefined label-address identity before staging state");
+        const auto accepted = function_builder.append(
+            entry.value(), bir::GetElementPtrSpec{
+                               bir::LabelAddressGepBase{label.value()}, array_type,
+                               true, {index.value()}, 80});
+        expect(accepted.has_value(),
+               "GEP builder must retain the exact current-function label-address identity");
+        return bir::Result<void, bir::BuildError>::success();
+      });
+  expect(edited.has_value(),
+         "label-address GEP builder fixture should retain only the accepted structured base");
+}
+
 void test_selected_global_array_gep_rejections() {
   const auto rejected = [](lir::LirModule candidate,
                            bir::ImportErrorCode expected,
@@ -11760,6 +11861,7 @@ int main() {
   test_conditional_branch_terminator_receipt_and_rejections();
   test_selected_global_array_gep_ssa_index_receipt();
   test_selected_global_array_gep_builder_contract();
+  test_label_address_gep_base_builder_contract();
   test_selected_global_array_gep_rejections();
   test_scalar_integer_return_receipt();
   test_scalar_integer_ssa_return_receipt();
