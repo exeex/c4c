@@ -3,6 +3,7 @@
 #include <atomic>
 #include <limits>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 
 namespace c4c::backend::bir {
@@ -1847,6 +1848,24 @@ Result<void, BuildError> FunctionBuilder::set_terminator(
           if (!function.blocks_.contains(function_, term.true_target) ||
               !function.blocks_.contains(function_, term.false_target))
             return Result<void, BuildError>::failure(BuildError::InvalidBlock);
+        } else if constexpr (std::is_same_v<Term, IndirectJumpTerm>) {
+          if (!same_owner(function_, term.address))
+            return Result<void, BuildError>::failure(BuildError::ForeignOwner);
+          const auto address = function.values_.get(function_, term.address);
+          if (!address)
+            return Result<void, BuildError>::failure(BuildError::InvalidValue);
+          if (address.value().get().type.kind != TypeKind::Pointer)
+            return Result<void, BuildError>::failure(BuildError::InvalidValueType);
+          if (term.targets.empty())
+            return Result<void, BuildError>::failure(BuildError::InvalidBlock);
+          std::unordered_set<std::uint32_t> targets;
+          for (const auto target : term.targets) {
+            if (!same_owner(function_, target))
+              return Result<void, BuildError>::failure(BuildError::ForeignOwner);
+            if (!function.blocks_.contains(function_, target) ||
+                !targets.insert(target.slot).second)
+              return Result<void, BuildError>::failure(BuildError::InvalidBlock);
+          }
         } else if constexpr (std::is_same_v<Term, ReturnTerm>) {
           const bool returns_void =
               function.signature_.return_type.kind == TypeKind::Void;

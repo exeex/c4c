@@ -262,6 +262,11 @@ struct CondJumpTerm {
   BlockId false_target{};
 };
 
+struct IndirectJumpTerm {
+  ValueId address{};
+  std::vector<BlockId> targets;
+};
+
 struct ReturnTerm {
   std::optional<ValueId> value;
 };
@@ -269,7 +274,8 @@ struct ReturnTerm {
 struct UnreachableTerm {};
 
 using Terminator =
-    std::variant<JumpTerm, CondJumpTerm, ReturnTerm, UnreachableTerm>;
+    std::variant<JumpTerm, CondJumpTerm, IndirectJumpTerm, ReturnTerm,
+                 UnreachableTerm>;
 
 struct FunctionSignature {
   Type return_type{};

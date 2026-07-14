@@ -1283,6 +1283,25 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                 report(result, VerificationRule::Terminator, function_id,
                        block_id,
                        "conditional jump targets must resolve in their owner");
+            } else if constexpr (std::is_same_v<Term, IndirectJumpTerm>) {
+              const auto address = function.values_.get(function_id, term.address);
+              if (term.address.owner != function_id || !address ||
+                  address.value().get().type.kind != TypeKind::Pointer)
+                report(result, VerificationRule::Terminator, function_id,
+                       block_id,
+                       "indirect jump address must resolve to a local pointer");
+              if (term.targets.empty())
+                report(result, VerificationRule::Terminator, function_id,
+                       block_id, "indirect jump must have at least one target");
+              std::unordered_set<std::uint32_t> targets;
+              for (const auto target : term.targets) {
+                if (target.owner != function_id ||
+                    !function.blocks_.contains(function_id, target) ||
+                    !targets.insert(target.slot).second)
+                  report(result, VerificationRule::Terminator, function_id,
+                         block_id,
+                         "indirect jump targets must be unique and resolve in their owner");
+              }
             } else if constexpr (std::is_same_v<Term, ReturnTerm>) {
               const bool returns_void =
                   function.signature_.return_type.kind == TypeKind::Void;

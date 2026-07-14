@@ -3384,6 +3384,87 @@ void test_selected_global_array_gep_receipt() {
          "Canonical BIR must preserve neighboring GEP results and source lookup");
 }
 
+void test_indirect_branch_terminator_receipt_and_rejections() {
+  auto indirect_branch_module = [] {
+    auto module = selected_global_array_gep_module();
+    auto& function = module.functions.front();
+    function.blocks[0].terminator = lir::LirIndirectBr{
+        lir::LirValueId{61}, {lir::LirBlockId{2}, lir::LirBlockId{1}}};
+    function.blocks.push_back(return_block(1, "first_target"));
+    function.blocks.push_back(return_block(2, "second_target"));
+    return module;
+  };
+
+  const auto module = indirect_branch_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "typed legacy indirect branch must publish verified Raw BIR");
+  const auto function = raw.value().view().function(raw.value().view().functions()[0]).value();
+  const auto blocks = function.blocks();
+  const auto terminator = function.terminator(blocks[0]);
+  const auto* indirect = terminator.has_value()
+                             ? std::get_if<bir::IndirectJumpTerm>(&terminator.value())
+                             : nullptr;
+  expect(indirect && indirect->address ==
+                         function.source_value(
+                             bir::SourceValueId{raw.value().view().functions()[0], 61})
+                             .value() &&
+             indirect->targets == std::vector<bir::BlockId>({blocks[2], blocks[1]}) &&
+             function.successors(blocks[0]).value() == indirect->targets,
+         "indirect branch must preserve typed address and ordered target identities without labels");
+  expect(bir::lower_lir_to_canonical_bir(module).has_value(),
+         "typed legacy indirect branch must canonicalize");
+
+  const auto rejected = [&](auto mutate, bir::ImportErrorCode expected,
+                            const std::string& message) {
+    auto candidate = indirect_branch_module();
+    mutate(candidate);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() && raw_rejected.error().code == expected,
+           message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value() && canonical_rejected.error().code == expected,
+           message + " (Canonical rollback)");
+  };
+  rejected([](lir::LirModule& candidate) {
+    std::get<lir::LirIndirectBr>(candidate.functions[0].blocks[0].terminator).addr =
+        lir::LirValueId::invalid();
+  }, bir::ImportErrorCode::UnsupportedTerminator,
+  "missing indirect address authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    std::get<lir::LirIndirectBr>(candidate.functions[0].blocks[0].terminator).addr =
+        lir::LirValueId{999};
+  }, bir::ImportErrorCode::UnsupportedTerminator,
+  "unresolved indirect address authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    std::get<lir::LirIndirectBr>(candidate.functions[0].blocks[0].terminator).targets.clear();
+  }, bir::ImportErrorCode::MissingBranchTarget,
+  "missing indirect target authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    std::get<lir::LirIndirectBr>(candidate.functions[0].blocks[0].terminator).targets =
+        {lir::LirBlockId{2}, lir::LirBlockId{2}};
+  }, bir::ImportErrorCode::MissingBranchTarget,
+  "duplicate indirect target authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    std::get<lir::LirIndirectBr>(candidate.functions[0].blocks[0].terminator).targets =
+        {lir::LirBlockId{999}};
+  }, bir::ImportErrorCode::MissingBranchTarget,
+  "invalid indirect target authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    candidate.functions[0].blocks[2].id = lir::LirBlockId{1};
+  }, bir::ImportErrorCode::DuplicateBlockId,
+  "ambiguous current-function indirect target ownership must reject transactionally");
+
+  auto foreign = indirect_branch_module();
+  foreign.functions[0].blocks.pop_back();
+  foreign.functions.push_back(void_definition("foreign_owner", {return_block(2, "foreign_target")}));
+  const auto foreign_raw = bir::lower_lir_to_raw_bir(foreign);
+  expect(!foreign_raw.has_value() &&
+             foreign_raw.error().code == bir::ImportErrorCode::MissingBranchTarget &&
+             !bir::lower_lir_to_canonical_bir(foreign).has_value(),
+         "foreign indirect target authority must publish neither Raw nor Canonical BIR");
+}
+
 void test_selected_global_array_gep_ssa_index_receipt() {
   auto module = selected_global_array_gep_module();
   const auto index_link = module.link_names.intern("gep_index_global");
@@ -11232,6 +11313,7 @@ int main() {
   test_direct_global_integer_load_builder_contract();
   test_direct_global_integer_load_rejections();
   test_selected_global_array_gep_receipt();
+  test_indirect_branch_terminator_receipt_and_rejections();
   test_selected_global_array_gep_ssa_index_receipt();
   test_selected_global_array_gep_builder_contract();
   test_selected_global_array_gep_rejections();

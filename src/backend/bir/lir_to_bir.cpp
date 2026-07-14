@@ -3014,8 +3014,29 @@ Result<void, ImportError> validate_function(const LirModule& module,
             return fail<void>(ImportErrorCode::UnsupportedTerminator, name,
                               block.label, "switch");
           } else if constexpr (std::is_same_v<Term, LirIndirectBr>) {
-            return fail<void>(ImportErrorCode::UnsupportedTerminator, name,
-                              block.label, "indirect branch");
+            const auto address = terminator.addr.valid()
+                                     ? source_values.find(terminator.addr.value)
+                                     : source_values.end();
+            if (address == source_values.end() ||
+                address->second.kind != TypeKind::Pointer)
+              return fail<void>(ImportErrorCode::UnsupportedTerminator, name,
+                                block.label,
+                                "LirIndirectBr.addr must resolve to a current-function pointer value");
+            if (terminator.targets.empty())
+              return fail<void>(ImportErrorCode::MissingBranchTarget, name,
+                                block.label,
+                                "LirIndirectBr.targets must not be empty");
+            std::unordered_set<std::uint32_t> targets;
+            for (const auto target_id : terminator.targets) {
+              const auto target = target_id.valid()
+                                      ? block_labels_by_id.find(target_id.value)
+                                      : block_labels_by_id.end();
+              if (target == block_labels_by_id.end() ||
+                  !targets.insert(target_id.value).second)
+                return fail<void>(ImportErrorCode::MissingBranchTarget, name,
+                                  block.label,
+                                  "LirIndirectBr.targets must resolve uniquely in its current function");
+            }
           }
           return Result<void, ImportError>::success();
         },
@@ -3096,8 +3117,27 @@ Result<Terminator, ImportError> lower_terminator(
                                   function, block, "switch");
         } else {
           static_assert(std::is_same_v<Term, LirIndirectBr>);
-          return fail<Terminator>(ImportErrorCode::UnsupportedTerminator,
-                                  function, block, "indirect branch");
+          const auto address = lir_terminator.addr.valid()
+                                   ? source_values.find(lir_terminator.addr.value)
+                                   : source_values.end();
+          if (address == source_values.end())
+            return fail<Terminator>(ImportErrorCode::UnsupportedTerminator,
+                                    function, block,
+                                    "validated indirect branch address disappeared from the current-function registry");
+          std::vector<BlockId> targets;
+          targets.reserve(lir_terminator.targets.size());
+          for (const auto source_target : lir_terminator.targets) {
+            const auto target = source_target.valid()
+                                    ? blocks.find(source_target.value)
+                                    : blocks.end();
+            if (target == blocks.end())
+              return fail<Terminator>(ImportErrorCode::MissingBranchTarget,
+                                      function, block,
+                                      "validated indirect branch target disappeared from the current-function registry");
+            targets.push_back(target->second);
+          }
+          return Result<Terminator, ImportError>::success(
+              IndirectJumpTerm{address->second, std::move(targets)});
         }
       },
       terminator);

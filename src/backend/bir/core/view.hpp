@@ -153,6 +153,8 @@ class FunctionView {
             return {term.target};
           } else if constexpr (std::is_same_v<Term, CondJumpTerm>) {
             return {term.true_target, term.false_target};
+          } else if constexpr (std::is_same_v<Term, IndirectJumpTerm>) {
+            return term.targets;
           } else {
             return {};
           }
