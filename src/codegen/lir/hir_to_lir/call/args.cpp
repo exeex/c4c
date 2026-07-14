@@ -161,6 +161,7 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
 
   TypeSpec arg_ts{};
   std::string arg;
+  LirOperand source_operand;
   const bool is_fixed_byval_aggregate =
       fixed_param_ts && amd64_fixed_aggregate_byval(mod_, *fixed_param_ts);
   const bool is_fixed_aarch64_hfa = is_aarch64_fixed_hfa_arg(mod_, fixed_param_ts);
@@ -182,7 +183,8 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
       arg = emit_rval_id(ctx, call.args[arg_index], arg_ts);
     }
   } else {
-    arg = emit_rval_id(ctx, call.args[arg_index], arg_ts);
+    source_operand = emit_rval_operand(ctx, call.args[arg_index], arg_ts);
+    arg = source_operand.str();
   }
 
   TypeSpec out_arg_ts = arg_ts;
@@ -358,10 +360,24 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
   }
 
   const std::string out_llvm_ty = llvm_value_ty(mod_, out_arg_ts);
+  const bool authoritative_fixed_integer_immediate =
+      call_target.ret_ty == "void" &&
+      call_target.callee_link_name_id != kInvalidLinkName && target_fn &&
+      !target_fn->attrs.variadic && target_fn->params.size() == 1 &&
+      fixed_param_ts && !is_variadic_arg &&
+      out_arg_ts.ptr_level == 0 && out_arg_ts.array_rank == 0 &&
+      is_any_int(out_arg_ts.base) && source_operand.integer_immediate() &&
+      llvm_value_ty(mod_, arg_ts) == out_llvm_ty;
+  LirOperand call_operand = authoritative_fixed_integer_immediate
+                                ? source_operand
+                                : LirOperand(arg);
+  call_operand.str() = arg;
   PreparedCallArg out_arg{
       {{.type = out_llvm_ty,
-        .operand = arg,
-        .type_ref = lir_call_type_ref(out_llvm_ty, module_, mod_, out_arg_ts),
+        .operand = std::move(call_operand),
+        .type_ref = authoritative_fixed_integer_immediate
+                        ? LirTypeRef(out_llvm_ty)
+                        : lir_call_type_ref(out_llvm_ty, module_, mod_, out_arg_ts),
         .ext_attr = is_variadic_arg ? rv64_integer_ext_attr_for_abi_type(mod_, out_arg_ts)
                                     : LirExtAttr::None}},
       false};

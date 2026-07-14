@@ -289,7 +289,46 @@ void verify_call_arg_type_ref_mirror(const LirModule& mod,
   }
 }
 
-void verify_call_callee_signature(const LirModule& mod, const LirCallOp& call) {
+bool is_direct_void_fixed_integer_signature_claim(const LirCallOp& call) {
+  if (call.return_type.kind() != LirTypeKind::Void ||
+      call.direct_callee_link_name_id == kInvalidLinkName ||
+      !call.callee_signature.has_value()) {
+    return false;
+  }
+  const LirCallSignature& signature = *call.callee_signature;
+  return !signature.is_variadic && !signature.has_unspecified_params &&
+         !signature.has_void_param_list &&
+         signature.fixed_param_type_refs.size() == 1 &&
+         signature.fixed_param_type_refs[0].kind() == LirTypeKind::Integer;
+}
+
+bool is_direct_void_fixed_integer_immediate_claim(const LirCallOp& call) {
+  return is_direct_void_fixed_integer_signature_claim(call) &&
+         !call.structured_args.empty() &&
+         call.structured_args[0].operand.kind() == LirOperandKind::Immediate &&
+         call.structured_args[0].type_ref.kind() == LirTypeKind::Integer &&
+         call.arg_type_refs.size() == 1 &&
+         call.arg_type_refs[0].kind() == LirTypeKind::Integer;
+}
+
+bool has_complete_direct_void_integer_immediate_authority(
+    const LirCallOp& call) {
+  if (!is_direct_void_fixed_integer_immediate_claim(call)) return false;
+  const LirCallSignature& signature = *call.callee_signature;
+  return signature.return_type_ref.has_value() &&
+         *signature.return_type_ref == call.return_type &&
+         signature.fixed_param_types.size() == 1 &&
+         call.structured_args.size() == 1 && call.arg_type_refs.size() == 1 &&
+         call.structured_args[0].type_ref ==
+             signature.fixed_param_type_refs[0] &&
+         call.arg_type_refs[0] == signature.fixed_param_type_refs[0] &&
+         call.structured_args[0].operand.integer_immediate() &&
+         call.structured_args[0].ext_attr == LirExtAttr::None &&
+         call.result.empty() && !call.result.has_authority();
+}
+
+void verify_call_callee_signature(const LirModule& mod, const LirCallOp& call,
+                                  bool structured_authority_complete) {
   if (!call.callee_signature.has_value()) return;
 
   const LirCallSignature& sig = *call.callee_signature;
@@ -324,12 +363,14 @@ void verify_call_callee_signature(const LirModule& mod, const LirCallOp& call) {
                 "fixed parameter type mirrors must match fixed parameter count");
   }
 
-  for (size_t index = 0; index < sig.fixed_param_type_refs.size(); ++index) {
-    verify_call_arg_type_ref_mirror(
-        mod, sig.fixed_param_type_refs[index], sig.fixed_param_types[index], index);
+  if (!structured_authority_complete) {
+    for (size_t index = 0; index < sig.fixed_param_type_refs.size(); ++index) {
+      verify_call_arg_type_ref_mirror(
+          mod, sig.fixed_param_type_refs[index], sig.fixed_param_types[index], index);
+    }
   }
 
-  if (!sig.has_unspecified_params) {
+  if (!sig.has_unspecified_params && !structured_authority_complete) {
     const auto parsed = parse_lir_typed_call_or_infer_params(call);
     if (!parsed.has_value()) {
       fail_verify("LirCallOp.callee_signature",
@@ -371,6 +412,67 @@ bool integer_immediate_representable(long long value, unsigned bit_width) {
   }
   const unsigned long long maximum = (1ULL << bit_width) - 1ULL;
   return static_cast<unsigned long long>(value) <= maximum;
+}
+
+void verify_direct_void_fixed_integer_immediate_call(const LirModule& mod,
+                                                     const LirCallOp& call) {
+  if (!is_direct_void_fixed_integer_signature_claim(call)) return;
+
+  if (call.structured_args.size() == 1) {
+    const LirOperand& operand = call.structured_args[0].operand;
+    if (operand.has_authority() && !operand.integer_immediate() &&
+        !operand.value_id()) {
+      fail_verify("LirCallOp.structured_args.operand",
+                  "fixed integer argument has the wrong authority alternative");
+    }
+  }
+  if (!is_direct_void_fixed_integer_immediate_claim(call)) return;
+
+  const LirCallSignature& signature = *call.callee_signature;
+  if (!signature.return_type_ref.has_value() ||
+      signature.return_type_ref->kind() != LirTypeKind::Void ||
+      *signature.return_type_ref != call.return_type) {
+    fail_verify("LirCallOp.callee_signature.return_type_ref",
+                "direct void immediate call requires exact void return type authority");
+  }
+  if (signature.fixed_param_types.size() != 1) {
+    fail_verify("LirCallOp.callee_signature.fixed_param_types",
+                "direct void immediate call requires one fixed parameter");
+  }
+  if (call.structured_args.size() != 1 || call.arg_type_refs.size() != 1) {
+    fail_verify("LirCallOp.structured_args",
+                "direct void immediate call requires one typed structured argument");
+  }
+
+  const LirTypeRef& parameter_type = signature.fixed_param_type_refs[0];
+  const LirCallArg& argument = call.structured_args[0];
+  require_module_type_ref(mod, parameter_type,
+                          "LirCallOp.callee_signature.fixed_param_type_refs");
+  require_module_type_ref(mod, argument.type_ref,
+                          "LirCallOp.structured_args.type_ref");
+  require_module_type_ref(mod, call.arg_type_refs[0],
+                          "LirCallOp.arg_type_refs");
+  if (argument.type_ref != parameter_type ||
+      call.arg_type_refs[0] != parameter_type) {
+    fail_verify("LirCallOp.structured_args.type_ref",
+                "structured argument type must match fixed parameter type");
+  }
+  require_operand_kind(argument.operand, "LirCallOp.structured_args.operand",
+                       {LirOperandKind::Immediate});
+  const LirIntegerImmediate* immediate = argument.operand.integer_immediate();
+  if (!immediate) {
+    fail_verify("LirCallOp.structured_args.operand",
+                "fixed integer immediate requires native payload authority");
+  }
+  const std::optional<unsigned> width = parameter_type.integer_bit_width();
+  if (!width || !integer_immediate_representable(immediate->value, *width)) {
+    fail_verify("LirCallOp.structured_args.operand",
+                "integer immediate is not representable by fixed parameter type");
+  }
+  if (argument.ext_attr != LirExtAttr::None) {
+    fail_verify("LirCallOp.structured_args.ext_attr",
+                "fixed nonvariadic immediate must not carry an extension attribute");
+  }
 }
 
 void verify_global_pointer_owner(const LirModule& mod,
@@ -597,12 +699,14 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     return;
   }
   if (const auto* op = std::get_if<LirCallOp>(&inst)) {
+    const bool structured_authority_complete =
+        has_complete_direct_void_integer_immediate_authority(*op);
     require_operand_kind(op->result, "LirCallOp.result",
                          {LirOperandKind::SsaValue}, true);
     verify_call_return_type_ref_mirror(mod, op->return_type);
     verify_pointer_operand(op->callee, "LirCallOp.callee");
-    verify_call_callee_signature(mod, *op);
-    if (!op->arg_type_refs.empty()) {
+    verify_call_callee_signature(mod, *op, structured_authority_complete);
+    if (!op->arg_type_refs.empty() && !structured_authority_complete) {
       auto parsed = parse_lir_typed_call_or_infer_params(*op);
       if (!parsed.has_value()) {
         const auto param_types = parse_lir_call_param_types(op->callee_type_suffix);
@@ -638,6 +742,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
             mod, op->arg_type_refs[index], parsed->args[index].type, index);
       }
     }
+    verify_direct_void_fixed_integer_immediate_call(mod, *op);
     if (op->result.empty() && op->return_type != "void") {
       fail_verify("LirCallOp.result",
                   "must hold an SSA result for non-void calls");

@@ -1789,13 +1789,122 @@ void lir_direct_void_immediate_arg_identity(void) {
                   !call.callee_signature->is_variadic &&
                   !call.callee_signature->has_unspecified_params,
               "void immediate call should retain one fixed native i32 parameter");
-  expect_true(call.structured_args.size() == 1 &&
-                  call.structured_args[0].type_ref.empty(),
-              "current scalar argument carrier should expose no duplicate type authority");
+  expect_true(call.arg_type_refs.size() == 1 &&
+                  call.arg_type_refs[0].kind() == lir::LirTypeKind::Integer &&
+                  call.arg_type_refs[0].integer_bit_width() == 32 &&
+                  call.structured_args.size() == 1 &&
+                  call.structured_args[0].type_ref == call.arg_type_refs[0] &&
+                  call.structured_args[0].type_ref ==
+                      call.callee_signature->fixed_param_type_refs[0],
+              "fixed immediate argument should retain exact native i32 type authority");
   const lir::LirOperand& argument = call.structured_args[0].operand;
   expect_true(argument.kind() == lir::LirOperandKind::Immediate &&
-                  !argument.has_authority() && !argument.integer_immediate(),
-              "first bad fact: immediate call argument is classified text without payload authority");
+                  argument.integer_immediate() &&
+                  argument.integer_immediate()->value == 7 &&
+                  call.structured_args[0].ext_attr == lir::LirExtAttr::None &&
+                  call.result.empty() && !call.result.has_authority(),
+              "fixed immediate call should retain payload authority without a result or extension");
+
+  const auto require_focused_call = [](lir::LirModule& module) -> lir::LirCallOp& {
+    lir::LirFunction& function =
+        require_function(module, "lir_direct_void_immediate_arg_identity");
+    lir::LirCallOp* found = nullptr;
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirCallOp>(&inst)) {
+          expect_true(found == nullptr,
+                      "focused immediate fixture should contain only one call");
+          found = candidate;
+        }
+      }
+    }
+    expect_true(found != nullptr,
+                "focused immediate fixture should contain a structured call");
+    return *found;
+  };
+
+  lir::LirModule misleading = lowered;
+  lir::LirCallOp& misleading_call = require_focused_call(misleading);
+  misleading_call.args_str = "rendered arguments are not authority";
+  misleading_call.callee_type_suffix = "(rendered type is not authority)";
+  misleading_call.structured_args[0].type = "rendered-arg-type";
+  misleading_call.structured_args[0].operand.str() = "@rendered-not-immediate";
+  misleading_call.callee_signature->fixed_param_types[0] = "rendered-param-type";
+  lir::verify_module(misleading);
+
+  lir::LirModule missing_payload = lowered;
+  require_focused_call(missing_payload).structured_args[0].operand =
+      lir::LirOperand("7");
+  expect_identity_verification_rejected(
+      missing_payload, "verifier should reject fixed immediate without payload authority");
+
+  lir::LirModule wrong_alternative = lowered;
+  require_focused_call(wrong_alternative).structured_args[0].operand =
+      lir::LirOperand::global("7", c4c::LinkNameId{9});
+  expect_identity_verification_rejected(
+      wrong_alternative, "verifier should reject fixed immediate with global authority");
+
+  lir::LirModule invalid_authority = lowered;
+  require_focused_call(invalid_authority).structured_args[0].operand =
+      lir::LirOperand::ssa("7", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_authority, "verifier should reject invalid argument value authority");
+
+  lir::LirModule out_of_range = lowered;
+  require_focused_call(out_of_range).structured_args[0].operand =
+      lir::LirOperand::integer("7", 1LL << 40);
+  expect_identity_verification_rejected(
+      out_of_range, "verifier should reject immediate outside fixed parameter range");
+
+  lir::LirModule type_conflict = lowered;
+  require_focused_call(type_conflict).structured_args[0].type_ref =
+      lir::LirTypeRef::integer(64);
+  expect_identity_verification_rejected(
+      type_conflict, "verifier should reject structured argument type conflict");
+
+  lir::LirModule signature_conflict = lowered;
+  require_focused_call(signature_conflict)
+      .callee_signature->fixed_param_type_refs[0] = lir::LirTypeRef::integer(64);
+  expect_identity_verification_rejected(
+      signature_conflict, "verifier should reject fixed signature type conflict");
+
+  lir::LirModule count_conflict = lowered;
+  lir::LirCallOp& count_call = require_focused_call(count_conflict);
+  count_call.structured_args.push_back(count_call.structured_args[0]);
+  expect_identity_verification_rejected(
+      count_conflict, "verifier should reject extra structured immediate argument");
+
+  lir::LirModule extension_conflict = lowered;
+  require_focused_call(extension_conflict).structured_args[0].ext_attr =
+      lir::LirExtAttr::SignExt;
+  expect_identity_verification_rejected(
+      extension_conflict, "verifier should reject extension on fixed immediate argument");
+
+  lir::LirModule character_compatibility = lower_lir_module_for_target(R"c(
+void lir_direct_void_character_compatibility_target(int value);
+void lir_direct_void_character_compatibility(void) {
+  lir_direct_void_character_compatibility_target('a');
+}
+)c", "x86_64-linux-gnu");
+  lir::LirFunction& character_caller = require_function(
+      character_compatibility, "lir_direct_void_character_compatibility");
+  lir::LirCallOp* character_call = nullptr;
+  for (auto& block : character_caller.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* candidate = std::get_if<lir::LirCallOp>(&inst)) {
+        expect_true(character_call == nullptr,
+                    "character compatibility fixture should contain one call");
+        character_call = candidate;
+      }
+    }
+  }
+  expect_true(character_call && character_call->structured_args.size() == 1 &&
+                  character_call->structured_args[0].operand.kind() ==
+                      lir::LirOperandKind::Immediate &&
+                  !character_call->structured_args[0].operand.has_authority() &&
+                  character_call->structured_args[0].type_ref.empty() &&
+                  character_call->arg_type_refs.empty(),
+              "integer-looking character compatibility text must not enter the native immediate claim");
 }
 
 void test_direct_void_ssa_arg_identity_boundary() {

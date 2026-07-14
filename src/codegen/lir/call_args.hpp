@@ -44,7 +44,7 @@ struct LirTypedCallArgView {
 
 struct OwnedLirTypedCallArg {
   std::string type;
-  std::string operand;
+  LirOperand operand;
   LirTypeRef type_ref;
   std::size_t aarch64_hfa_lane_count = 0;
   std::size_t aarch64_hfa_lane_index = 0;
@@ -334,7 +334,7 @@ inline std::string format_lir_typed_call_arg(const OwnedLirTypedCallArg& arg) {
       formatted_type.find(" alignstack(") == std::string::npos) {
     formatted_type += " alignstack(" + std::to_string(arg.aarch64_stack_align_bytes) + ")";
   }
-  return format_lir_typed_call_arg(formatted_type, arg.operand);
+  return format_lir_typed_call_arg(formatted_type, arg.operand.str());
 }
 
 inline std::string format_lir_typed_call_args(
@@ -356,7 +356,7 @@ inline std::vector<OwnedLirTypedCallArg> own_lir_typed_call_args(
   for (const auto& arg : parsed.args) {
     owned_args.push_back(
         {.type = std::string(arg.type),
-         .operand = std::string(arg.operand),
+         .operand = LirOperand(std::string(arg.operand)),
          .type_ref = LirTypeRef(std::string(arg.type))});
   }
   return owned_args;
@@ -372,7 +372,7 @@ inline ParsedLirTypedCallView borrow_lir_typed_call(
   }
   borrowed.args.reserve(args.size());
   for (const auto& arg : args) {
-    borrowed.args.push_back({arg.type, arg.operand});
+    borrowed.args.push_back({arg.type, arg.operand.str()});
   }
   return borrowed;
 }
