@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/744_lir_remaining_ordinary_value_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Prove a representative non-call scalar result/use chain (complete)
+Current Step ID: 7
+Current Step Title: Complete bounded generic ordinary producer seams
 
 ## Just Finished
 
