@@ -9587,6 +9587,84 @@ void test_scalar_float_to_double_fpext_receipt_and_rejections() {
   rejected([](auto& candidate, auto&, auto&) { candidate.functions[0].blocks[0].insts.pop_back(); }, "missing downstream double FMul use must reject atomically");
 }
 
+lir::LirModule normalized_i32_add_module();
+
+lir::LirModule scalar_signed_i32_to_double_sitofp_module() {
+  auto module = normalized_i32_add_module();
+  auto& block = module.functions[0].blocks[0];
+  block.insts.push_back(lir::LirConstFloat{
+      lir::LirValueId{34}, scalar_type(c4c::TB_DOUBLE), 2.5});
+  block.insts.push_back(lir::LirCastOp{
+      .result = lir::LirOperand::ssa("%presentation-only-sitofp-result", lir::LirValueId{35}),
+      .kind = lir::LirCastKind::SIToFP,
+      .from_type = lir::LirTypeRef::integer(32),
+      .operand = lir::LirOperand::ssa("%presentation-only-signed-add", lir::LirValueId{33}),
+      .to_type = lir::LirTypeRef("double"),
+  });
+  block.insts.push_back(lir::LirBinOp{
+      lir::LirOperand::ssa("%presentation-only-sitofp-fmul", lir::LirValueId{36}),
+      lir::LirBinaryOpcode::FMul, lir::LirTypeRef("double"),
+      lir::LirOperand::ssa("%presentation-only-sitofp-use", lir::LirValueId{35}),
+      lir::LirOperand::ssa("%presentation-only-double-rhs", lir::LirValueId{34})});
+  return module;
+}
+
+void test_scalar_signed_i32_to_double_sitofp_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto caller_id = view.functions()[0];
+    const auto caller = view.function(caller_id).value();
+    const auto insts = caller.instructions(caller.blocks()[0]).value();
+    expect(insts.size() == 4, layer + " must retain the signed i32 Add, SIToFP, and double FMul");
+    const auto add = caller.instruction(insts[1]).value();
+    const auto sitofp = caller.instruction(insts[2]).value();
+    const auto fmul = caller.instruction(insts[3]).value();
+    expect(add.binary() && add.binary()->opcode == bir::BinaryOpcode::Add &&
+               add.binary()->type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+               sitofp.opcode() == bir::Opcode::Cast && sitofp.cast() &&
+               sitofp.cast()->kind == bir::CastKind::SIToFP &&
+               sitofp.cast()->from_type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+               sitofp.cast()->to_type == bir::Type{bir::TypeKind::F64, 64, "double"} &&
+               sitofp.operands() == std::vector<bir::ValueId>{add.results()[0]} &&
+               sitofp.results().size() == 1 &&
+               caller.value(sitofp.results()[0]).value().source_id == bir::SourceValueId{caller_id, 35} &&
+               fmul.binary() && fmul.binary()->opcode == bir::BinaryOpcode::FMul &&
+               fmul.binary()->type == bir::Type{bir::TypeKind::F64, 64, "double"} &&
+               fmul.operands().size() == 2 && fmul.operands()[0] == sitofp.results()[0] &&
+               fmul.results().size() == 1 &&
+               caller.value(fmul.results()[0]).value().source_id == bir::SourceValueId{caller_id, 36},
+           layer + " must preserve the native signed i32-to-double SIToFP and exact double FMul use");
+  };
+  const auto module = scalar_signed_i32_to_double_sitofp_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "scalar SIToFP must publish verified Raw BIR" +
+             (raw.has_value() ? std::string{} : ": " + raw.error().detail));
+  inspect(raw.value(), "Raw BIR");
+
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto candidate = scalar_signed_i32_to_double_sitofp_module();
+    auto& cast = std::get<lir::LirCastOp>(candidate.functions[0].blocks[0].insts[3]);
+    auto& use = std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[4]);
+    mutate(candidate, cast, use);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() && raw_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Raw rollback)");
+  };
+  rejected([](auto&, auto& cast, auto&) { cast.result = lir::LirOperand::raw("%missing"); }, "missing cast result authority must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.operand = lir::LirOperand::integer("bad", 0); }, "non-SSA cast source must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.operand = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); }, "unresolved or cross-owner cast source must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{33}); }, "duplicate cast result must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.kind = lir::LirCastKind::UIToFP; }, "unsigned native kind must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.from_type = lir::LirTypeRef::integer(64); }, "wrong cast source endpoint must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.to_type = lir::LirTypeRef("float"); }, "wrong cast destination endpoint must reject atomically");
+  rejected([](auto&, auto&, auto& use) { use.lhs = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); }, "unresolved downstream double FMul use must reject atomically");
+  rejected([](auto&, auto&, auto& use) { use.opcode = lir::LirBinaryOpcode::FAdd; }, "non-FMul downstream use must reject atomically");
+  rejected([](auto&, auto&, auto& use) { use.type_str = lir::LirTypeRef("float"); }, "wrong downstream double FMul type must reject atomically");
+  rejected([](auto& candidate, auto&, auto&) { candidate.functions[0].blocks[0].insts.pop_back(); }, "missing downstream double FMul use must reject atomically");
+}
+
 lir::LirModule normalized_i32_add_module() {
   auto module = direct_global_integer_load_module();
   auto& function = module.functions[0];
@@ -10595,6 +10673,7 @@ int main() {
   test_downstream_double_olt_compare_receipt_and_rejections();
   test_scalar_double_to_float_fptrunc_receipt_and_rejections();
   test_scalar_float_to_double_fpext_receipt_and_rejections();
+  test_scalar_signed_i32_to_double_sitofp_receipt_and_rejections();
   test_normalized_i32_add_receipt_and_rejections();
   test_normalized_i32_mul_receipt_and_rejections();
   test_native_intrinsic_receipt_and_rejections();

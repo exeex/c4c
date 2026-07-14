@@ -638,6 +638,46 @@ bool exact_float_to_double_fpext(
   return found != source_values.end() && found->second == f32;
 }
 
+bool exact_signed_i32_to_double_sitofp(
+    const LirModule& module, const LirCastOp& cast,
+    const std::unordered_map<std::uint32_t, Type>& source_values) {
+  using codegen::lir::LirOperandKind;
+  const Type i32{TypeKind::Integer, 32, "i32"};
+  const Type f64{TypeKind::F64, 64, "double"};
+  const auto* result = cast.result.value_id();
+  const auto* operand = cast.operand.value_id();
+  const auto from = lower_lir_type(module, cast.from_type);
+  const auto to = lower_lir_type(module, cast.to_type);
+  const auto found = operand ? source_values.find(operand->value) : source_values.end();
+  return cast.kind == codegen::lir::LirCastKind::SIToFP &&
+      cast.result.kind() == LirOperandKind::SsaValue && result && result->valid() &&
+      cast.operand.kind() == LirOperandKind::SsaValue && operand && operand->valid() &&
+      cast.from_type.kind() == codegen::lir::LirTypeKind::Integer &&
+      cast.to_type.kind() == codegen::lir::LirTypeKind::Floating && from && to &&
+      *from == i32 && *to == f64 && found != source_values.end() && found->second == i32;
+}
+
+bool exact_downstream_double_sitofp_fmul(
+    const LirBinOp& bin,
+    const std::unordered_map<std::uint32_t, Type>& source_values,
+    const std::unordered_set<std::uint32_t>& scalar_sitofp_results) {
+  const Type f64{TypeKind::F64, 64, "double"};
+  const auto* result = bin.result.value_id();
+  const auto* lhs = bin.lhs.value_id();
+  const auto* rhs = bin.rhs.value_id();
+  if (bin.result.kind() != codegen::lir::LirOperandKind::SsaValue || !result ||
+      !result->valid() || bin.opcode.typed() != std::optional{codegen::lir::LirBinaryOpcode::FMul} ||
+      bin.type_str.kind() != codegen::lir::LirTypeKind::Floating || bin.type_str.str() != "double" ||
+      bin.lhs.kind() != codegen::lir::LirOperandKind::SsaValue || !lhs || !lhs->valid() ||
+      bin.rhs.kind() != codegen::lir::LirOperandKind::SsaValue || !rhs || !rhs->valid() ||
+      scalar_sitofp_results.count(lhs->value) != 1)
+    return false;
+  const auto lhs_value = source_values.find(lhs->value);
+  const auto rhs_value = source_values.find(rhs->value);
+  return lhs_value != source_values.end() && rhs_value != source_values.end() &&
+      lhs_value->second == f64 && rhs_value->second == f64;
+}
+
 bool exact_downstream_double_fpext_fmul(
     const LirBinOp& bin,
     const std::unordered_map<std::uint32_t, Type>& source_values,
@@ -2015,6 +2055,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_map<std::uint32_t, std::size_t> scalar_fptrunc_fmul_uses;
   std::unordered_set<std::uint32_t> scalar_fpext_results;
   std::unordered_map<std::uint32_t, std::size_t> scalar_fpext_fmul_uses;
+  std::unordered_set<std::uint32_t> scalar_sitofp_results;
+  std::unordered_map<std::uint32_t, std::size_t> scalar_sitofp_fmul_uses;
   std::unordered_set<std::uint32_t> downstream_double_olt_compare_results;
   std::unordered_map<std::uint32_t, std::size_t> downstream_double_olt_zext_uses;
   std::unordered_set<std::uint32_t> selected_global_i32_load_results;
@@ -2292,6 +2334,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
             *bin, source_values, scalar_fptrunc_results);
         const bool fpext_fmul = exact_downstream_double_fpext_fmul(
             *bin, source_values, scalar_fpext_results);
+        const bool sitofp_fmul = exact_downstream_double_sitofp_fmul(
+            *bin, source_values, scalar_sitofp_results);
         const bool add = exact_normalized_i32_add(
             *bin, source_values, selected_global_i32_load_results) ||
             exact_native_i32_cttz_add(
@@ -2306,11 +2350,11 @@ Result<void, ImportError> validate_function(const LirModule& module,
             *bin, source_values, normalized_i32_add_results);
         const bool sext_add = exact_downstream_i64_sext_add(
             *bin, source_values, scalar_sext_results);
-        const Type result_type = (fadd || fmul || fpext_fmul) ? Type{TypeKind::F64, 64, "double"}
+        const Type result_type = (fadd || fmul || fpext_fmul || sitofp_fmul) ? Type{TypeKind::F64, 64, "double"}
             : float_fmul ? Type{TypeKind::F32, 32, "float"}
             : sext_add ? Type{TypeKind::Integer, 64, "i64"}
                        : Type{TypeKind::Integer, 32, "i32"};
-        if ((!fadd && !fmul && !fpext_fmul && !float_fmul && !add && !mul && !sext_add) ||
+        if ((!fadd && !fmul && !fpext_fmul && !sitofp_fmul && !float_fmul && !add && !mul && !sext_add) ||
             !source_values.emplace(bin->result.value_id()->value, result_type).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
@@ -2322,6 +2366,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
           ++scalar_fptrunc_fmul_uses[bin->lhs.value_id()->value];
         }
         if (fpext_fmul) ++scalar_fpext_fmul_uses[bin->lhs.value_id()->value];
+        if (sitofp_fmul) ++scalar_sitofp_fmul_uses[bin->lhs.value_id()->value];
         continue;
       }
       if (const auto* abs = std::get_if<LirAbsOp>(&instruction)) {
@@ -2361,11 +2406,13 @@ Result<void, ImportError> validate_function(const LirModule& module,
         const bool scalar_fptrunc = exact_double_to_float_fptrunc(
             *cast, source_values, downstream_double_fmul_results);
         const bool scalar_fpext = exact_float_to_double_fpext(*cast, source_values);
-        if ((!intrinsic_trunc && !scalar_sext && !scalar_fptrunc && !scalar_fpext) ||
+        const bool scalar_sitofp = exact_signed_i32_to_double_sitofp(module, *cast, source_values);
+        if ((!intrinsic_trunc && !scalar_sext && !scalar_fptrunc && !scalar_fpext && !scalar_sitofp) ||
             !source_values.emplace(cast->result.value_id()->value,
                                    scalar_sext ? Type{TypeKind::Integer, 64, "i64"}
                                    : scalar_fptrunc ? Type{TypeKind::F32, 32, "float"}
                                    : scalar_fpext ? Type{TypeKind::F64, 64, "double"}
+                                   : scalar_sitofp ? Type{TypeKind::F64, 64, "double"}
                                                     : Type{TypeKind::Integer, 32, "i32"}).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
@@ -2373,6 +2420,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
         if (scalar_sext) scalar_sext_results.insert(cast->result.value_id()->value);
         if (scalar_fptrunc) scalar_fptrunc_results.insert(cast->result.value_id()->value);
         if (scalar_fpext) scalar_fpext_results.insert(cast->result.value_id()->value);
+        if (scalar_sitofp) scalar_sitofp_results.insert(cast->result.value_id()->value);
         continue;
       }
       const auto* inline_asm = std::get_if<LirInlineAsmOp>(&instruction);
@@ -2402,6 +2450,11 @@ Result<void, ImportError> validate_function(const LirModule& module,
     if (scalar_fpext_fmul_uses[result] != 1)
       return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
                         "scalar FPExt result lacks its one exact double FMul use");
+  }
+  for (const auto result : scalar_sitofp_results) {
+    if (scalar_sitofp_fmul_uses[result] != 1)
+      return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
+                        "scalar SIToFP result lacks its one exact double FMul use");
   }
 
   for (const auto result : inline_asm_results) {
@@ -2750,6 +2803,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
           std::unordered_set<std::uint32_t> downstream_double_fmul_results;
           std::unordered_set<std::uint32_t> scalar_fptrunc_results;
           std::unordered_set<std::uint32_t> scalar_fpext_results;
+          std::unordered_set<std::uint32_t> scalar_sitofp_results;
           std::unordered_set<std::uint32_t> downstream_double_olt_compare_results;
           std::unordered_set<std::uint32_t> native_i32_cttz_results;
           std::unordered_set<std::uint32_t> selected_global_i32_abs_results;
@@ -3187,6 +3241,9 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 const bool fpext_fmul = bin->opcode.typed() ==
                     std::optional{codegen::lir::LirBinaryOpcode::FMul} &&
                     scalar_fpext_results.count(bin->lhs.value_id()->value) == 1;
+                const bool sitofp_fmul = bin->opcode.typed() ==
+                    std::optional{codegen::lir::LirBinaryOpcode::FMul} &&
+                    scalar_sitofp_results.count(bin->lhs.value_id()->value) == 1;
                 const bool add = bin->opcode.typed() ==
                     std::optional{codegen::lir::LirBinaryOpcode::Add};
                 const bool abs_add = add &&
@@ -3199,7 +3256,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 if (lhs == source_values.end() ||
                     (fadd && native_floating_call_results.count(
                         bin->lhs.value_id()->value) == 0) ||
-                    (!fadd && !fmul && !fpext_fmul && !float_fmul && !sext_add && !abs_add && !cttz_add && !add && normalized_i32_add_results.count(
+                    (!fadd && !fmul && !fpext_fmul && !sitofp_fmul && !float_fmul && !sext_add && !abs_add && !cttz_add && !add && normalized_i32_add_results.count(
                         bin->lhs.value_id()->value) == 0)) {
                   edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
                                            name, block.label,
@@ -3207,7 +3264,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   return Result<void, BuildError>::failure(BuildError::InvalidValue);
                 }
                 ValueId rhs_value{};
-                if (fadd || fmul || fpext_fmul || float_fmul) {
+                if (fadd || fmul || fpext_fmul || sitofp_fmul || float_fmul) {
                   const auto rhs = source_values.find(bin->rhs.value_id()->value);
                   if (rhs == source_values.end()) {
                     edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
@@ -3243,11 +3300,12 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 auto appended = function_builder.append(
                     blocks.at(block.id.value),
                     BinarySpec{fadd ? BinaryOpcode::FAdd
-                                    : (fmul || fpext_fmul || float_fmul) ? BinaryOpcode::FMul
+                                    : (fmul || fpext_fmul || sitofp_fmul || float_fmul) ? BinaryOpcode::FMul
                                     : add ? BinaryOpcode::Add : BinaryOpcode::Mul,
                                fadd ? Type{TypeKind::F64, 64, "double"}
                                     : fmul ? Type{TypeKind::F64, 64, "double"}
                                     : fpext_fmul ? Type{TypeKind::F64, 64, "double"}
+                                    : sitofp_fmul ? Type{TypeKind::F64, 64, "double"}
                                     : float_fmul ? Type{TypeKind::F32, 32, "float"}
                                     : sext_add ? Type{TypeKind::Integer, 64, "i64"}
                                                : Type{TypeKind::Integer, 32, "i32"},
@@ -3258,6 +3316,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                                fadd ? "append double FAdd"
                                                     : fmul ? "append double FMul"
                                                     : fpext_fmul ? "append FPExt double FMul"
+                                                    : sitofp_fmul ? "append SIToFP double FMul"
                                                     : float_fmul ? "append float FMul"
                                                     : add ? sext_add ? "append SExt i64 Add"
                                                                      : "append normalized i32 Add"
@@ -3383,7 +3442,9 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                  : cast->kind == codegen::lir::LirCastKind::FPTrunc
                                      ? CastKind::FPTrunc
                                      : cast->kind == codegen::lir::LirCastKind::FPExt
-                                         ? CastKind::FPExt : CastKind::Trunc,
+                                         ? CastKind::FPExt
+                                         : cast->kind == codegen::lir::LirCastKind::SIToFP
+                                             ? CastKind::SIToFP : CastKind::Trunc,
                              *lower_lir_type(module, cast->from_type),
                              *lower_lir_type(module, cast->to_type), operand->second,
                              cast->result.value_id()->value});
@@ -3391,6 +3452,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   edit_error = builder_failure(name, block.label,
                                                cast->kind == codegen::lir::LirCastKind::FPExt
                                                    ? "append scalar FPExt cast"
+                                                   : cast->kind == codegen::lir::LirCastKind::SIToFP
+                                                       ? "append scalar SIToFP cast"
                                                    : cast->kind == codegen::lir::LirCastKind::FPTrunc
                                                    ? "append scalar FPTrunc cast"
                                                    : cast->kind == codegen::lir::LirCastKind::SExt
@@ -3413,6 +3476,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   scalar_fptrunc_results.insert(cast->result.value_id()->value);
                 if (cast->kind == codegen::lir::LirCastKind::FPExt)
                   scalar_fpext_results.insert(cast->result.value_id()->value);
+                if (cast->kind == codegen::lir::LirCastKind::SIToFP)
+                  scalar_sitofp_results.insert(cast->result.value_id()->value);
                 continue;
               }
               const auto& inline_asm = std::get<LirInlineAsmOp>(instruction);
