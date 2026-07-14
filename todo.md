@@ -8,13 +8,11 @@ Current Step Title: Repair the targeted warning-inventory route
 
 ## Just Finished
 
-- Step 6 targeted warning-inventory repair complete: classified call-target
-  type construction. HIR-rendered fallback and HFA lane text now flow only
-  through the deprecated, searchable local
-  `hir_rendered_call_target_type_text` runtime-text helper; aggregate
-  `struct_type`/`union_type` authority and call signatures remain unchanged.
-  `emit_void_call` now constructs its closed void type with
-  `LirBuiltinType::Void`.
+- Step 6 targeted warning-inventory repair complete: the AArch64 fixed-vector
+  ABI bitcast now uses `LirBuiltinType::I32` for its closed target and the
+  HIR-rendered vector source value type only through the deprecated,
+  searchable `hir_rendered_aarch64_vector_abi_source_type_text` local helper.
+  The ABI conversion remains unchanged; HFA GEP/store text was not touched.
 
 ## Suggested Next
 
@@ -52,10 +50,14 @@ Current Step Title: Repair the targeted warning-inventory route
 - Indexed-GEP element text is HIR-rendered and may legitimately be array,
   pointer, vector, or other non-builtin text; retain the local lvalue helper
   while preserving its structured aggregate path.
+- The AArch64 fixed-vector parameter ABI bitcast has a closed `i32` target and
+  a HIR-rendered vector source; retain the source-only local boundary without
+  widening it to HFA GEP/store text.
 
 ## Proof
 
-- `cmake --build --preset default` succeeded. Its warnings named only
-  deliberate local inventory boundaries, including the indexed-GEP helper.
-- `ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_global_type_ref|frontend_lir_function_signature_type_ref)$' > test_after.log`
-  passed (2/2); `test_after.log` is the focused proof log.
+- `cmake --build --preset default` succeeded; its warnings are deliberate
+  local inventory boundaries, including the new AArch64 vector ABI source
+  helper.
+- `ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|backend_lir_)' > test_after.log`
+  passed (6/6); `test_after.log` is the focused proof log.

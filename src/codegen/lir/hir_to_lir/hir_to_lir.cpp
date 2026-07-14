@@ -39,6 +39,14 @@ LirTypeRef lir_signature_type_ref(const std::string& rendered_text,
                                   const c4c::hir::Module& mod,
                                   const TypeSpec& type);
 
+[[deprecated(
+    "HIR-rendered AArch64 vector ABI source type text: audit this runtime-text "
+    "compatibility boundary")]]
+LirTypeRef hir_rendered_aarch64_vector_abi_source_type_text(
+    std::string rendered_text) {
+  return LirTypeRef::runtime_text(std::move(rendered_text));
+}
+
 bool is_aarch64_fixed_hfa_param(const c4c::hir::Module& mod, const TypeSpec& ts) {
   using namespace c4c::codegen::llvm_helpers;
   return llvm_target_is_aarch64(mod.target_profile) &&
@@ -1292,8 +1300,9 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
       }
     } else if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
       ctx.alloca_insts.push_back(
-          LirCastOp{pname, LirCastKind::Bitcast, LirTypeRef("i32"), pname + ".abi",
-                    LirTypeRef(stmt_emitter_detail::llvm_value_ty(mod, param_ts))});
+          LirCastOp{pname, LirCastKind::Bitcast, LirTypeRef(LirBuiltinType::I32),
+                    pname + ".abi", hir_rendered_aarch64_vector_abi_source_type_text(
+                                            stmt_emitter_detail::llvm_value_ty(mod, param_ts))});
     }
   }
 
