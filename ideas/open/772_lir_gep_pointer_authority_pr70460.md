@@ -106,3 +106,27 @@ full-suite candidate from clearing the rejected baseline.
   build --output-on-failure -R '^llvm_gcc_c_torture_src_pr70460_c$'`; it failed
   as expected at empty `LirGepOp.ptr`. Canonical baseline logs retain that
   baseline. Accepted implementation proof and commit references: none.
+
+## Resumption Update: accepted 773 handoff
+
+The separately scoped direct-label-address GEP contract blocker is closed as
+capability complete at
+`ideas/closed/773_lir_gep_direct_label_address_constant_contract.md`.
+
+- Accepted blocker contract commits: `a4415f99c` (verifier), `c64b78c48` and
+  `97121c359` (typed Raw-BIR prerequisite), and `0d0f0725b` (table-backed
+  printer and typed lowering).
+- Accepted blocker proof: the Step 2 fresh build passed; exact
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'` passed 5/5;
+  matching before/after monotonic guard passed with the allowed
+  non-decreasing count.
+- Current return point: resume Step 1, `Trace and repair the production GEP
+  pointer authority loss`, at the already evidenced
+  `StmtEmitter::emit_indexed_gep(FnCtx&, const LirOperand&, ...)` forwarding
+  seam. Forward the typed direct constant structurally through the now
+  supported GEP base contract; do not repeat the mapping or alter 773's
+  verifier/printer/lowering boundary.
+- Remaining action: add nearby production and malformed-authority coverage,
+  fresh-build and make `llvm_gcc_c_torture_src_pr70460_c` pass, then provide a
+  supervisor-owned fresh full-suite candidate handoff. The rejected baseline
+  stays rejected and must not be evaluated anew before this Step 1 result.

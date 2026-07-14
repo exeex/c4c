@@ -1,7 +1,6 @@
 # Typed Direct Label-Address Constant Contract for LIR GEP Pointers
 
-Status: Open (resumed at Step 2; active blocker for
-`ideas/open/772_lir_gep_pointer_authority_pr70460.md`)
+Status: Closed — capability complete; parent 772 resumed at Step 1
 Type: bounded LIR verifier/printer/backend contract transition
 Blocked parent: `ideas/open/772_lir_gep_pointer_authority_pr70460.md`, Step 1
 
@@ -115,7 +114,40 @@ Status: Resumed after separately scoped blocker
   `^backend_` before/after guards passed 5/5. Its rejected 3037/1
   `test_baseline.new.log` remains an out-of-scope 772 pr70460 boundary, not an
   accepted or repaired baseline.
-- Remaining acceptance: printer and backend/lowering proof for this typed
-  form, followed by Step 3 fresh focused proof and the precise handoff to 772.
-  The rejected baseline remains rejected until those steps complete and 772
-  repairs its forwarding seam so `llvm_gcc_c_torture_src_pr70460_c` passes.
+- Remaining acceptance at that resumption checkpoint: printer and
+  backend/lowering proof for this typed form, followed by Step 3 fresh focused
+  proof and the precise handoff to 772. The completion notes below record that
+  those items were subsequently accepted; the rejected baseline remains
+  rejected until 772 repairs its forwarding seam so
+  `llvm_gcc_c_torture_src_pr70460_c` passes.
+
+## Completion Notes
+
+Lifecycle decision: close accepted — capability complete.
+
+- Step 1 verifier admission is accepted in `a4415f99c` (`lir: verify direct
+  label constants as GEP bases`).
+- The structured Raw-BIR prerequisite is accepted in `c64b78c48` and
+  `97121c359`; it supplies the typed `LabelAddressGepBase` receipt required
+  for this idea's lowering boundary.
+- Step 2 is accepted in `0d0f0725b` (`lir: lower direct label GEP bases`). It
+  keeps the printer's direct GEP base table-backed and lowers the validated
+  `DirectConstant(LirValueId)` through typed `LabelAddressGepBase` authority.
+  The accepted scope review found nearby positive and malformed coverage, with
+  no RawText recovery, fabricated SSA/global, parent forwarding edit, or
+  baseline change.
+- Supervisor-accepted proof for the completed transition: fresh
+  `cmake --build --preset default`; exact
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'` passed 5/5;
+  the matching before/after monotonic guard passed under its allowed
+  non-decreasing-count rule.
+
+Parent handoff: resume
+`ideas/open/772_lir_gep_pointer_authority_pr70460.md` at its preserved Step 1,
+`Trace and repair the production GEP pointer authority loss`. Repair only the
+structured `StmtEmitter::emit_indexed_gep` direct-constant forwarding seam to
+retain this newly supported typed authority, add nearby production and
+malformed-authority coverage, and make
+`llvm_gcc_c_torture_src_pr70460_c` pass before any new baseline evaluation.
+
+Closed after the accepted 773-to-772 lifecycle handoff.

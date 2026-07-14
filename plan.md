@@ -1,118 +1,85 @@
-# Typed Direct Label-Address Constant GEP Contract Runbook
+# Production LIR GEP Pointer Authority Runbook for pr70460
 
 Status: Active
-Source Idea: ideas/open/773_lir_gep_direct_label_address_constant_contract.md
-Resumed from: preserved 773 Step 2 after completed blocker 774
+Source Idea: ideas/open/772_lir_gep_pointer_authority_pr70460.md
+Resumed from: closed 773 direct-label-address GEP contract blocker
 
 ## Purpose
 
-Enable only a verified current-function direct label-address constant to serve
-as a typed `LirGepOp.ptr`, so the parent production seam can later retain its
-authority without text recovery or SSA fabrication.
+Repair only the remaining known `pr70460` production GEP-pointer authority
+failure that prevents a future full-suite candidate from clearing the rejected
+baseline.
 
 ## Goal
 
-Transition verifier, printer, and backend/lowering contracts for the narrow
-`DirectConstant(LirValueId)` direct-label-address GEP base form.
+Publish the verified current-function direct-label-address constant into
+`LirGepOp.ptr` at the first evidenced production authority-loss seam.
 
 ## Core Rule
 
-Direct constants remain function-owned typed authority. Admit them only after
-form-specific validation proves current-function direct-label-address identity;
-neither display text nor synthetic SSA is authority.
-
-## Accepted Progress
-
-- Step 1 is accepted in `a4415f99c` (`lir: verify direct label constants as
-  GEP bases`): verifier admission plus nearby interface coverage for the typed
-  `DirectConstant(LirValueId)` GEP base. Fresh build and
-  `^backend_lir_to_bir_interface$` proof passed.
-- The separately scoped Raw-BIR representation blocker completed in
-  `c64b78c48` and `97121c359`. Its fresh build and
-  `^backend_lir_to_bir_interface$` proof passed; matched `^backend_`
-  before/after guards passed 5/5. This is Step 2 input, not Step 2 completion.
+`ptr` is semantic authority. Forward the verified typed direct constant only
+through structured operands; display operands, labels, printer output,
+rendered LLVM, and testcase names are never authority sources.
 
 ## Read First
 
-- `ideas/open/773_lir_gep_direct_label_address_constant_contract.md`
-- `ideas/closed/774_raw_bir_gep_function_label_address_base.md`
-- `ideas/open/772_lir_gep_pointer_authority_pr70460.md` (resumption record)
-- existing direct-label-address constant verifier/printer/backend contracts
-- existing `LirGepOp` verification, printing, and lowering paths
+- `ideas/open/772_lir_gep_pointer_authority_pr70460.md`
+- `ideas/closed/773_lir_gep_direct_label_address_constant_contract.md`
+- the `pr70460` production lowering route and existing `LirGepOp` verifier
+  checks
+
+## Landed Prerequisites
+
+- 764 Step 1 (`9680b15b9`) is closed and accepted: its five computed-goto
+  consumers pass 5/5 and are not this route's target.
+- 773 is closed and accepted: `a4415f99c`, `c64b78c48`, `97121c359`, and
+  `0d0f0725b` authorize this exact typed direct-label-address GEP base through
+  verifier, printer, and lowering. Do not reopen those boundaries here.
 
 ## Non-Goals
 
-- no `pr70460` `emit_indexed_gep` forwarding-seam edit
-- no generic GEP pointer-model redesign or unrelated pointer operand widening
-- no synthetic SSA or text/RawText recovery
-- no computed-goto carrier, Raw-BIR/importer, or 734 work
+- no Raw-BIR/importer changes or re-execution of 734 Step 7.24
+- no 764 computed-goto carrier rework, verifier/printer/lowering contract
+  changes, partial/raw authority, display-text recovery, failure exclusion,
+  expectation downgrade, or baseline exception
+- no broad rvalue, table, CFG, PHI, local/object, memory/va,
+  aggregate/vector, target-lowering, MIR, or emission-family redesign
 
 ## Execution Rules
 
-1. Preserve fail-closed rejection for all operand forms other than the exact
-   validated current-function direct label-address constant.
-2. Keep verifier, printer, and lowering behavior aligned; do not make one
-   layer accept an operand another layer cannot represent or lower.
-3. Use 774's typed Raw-BIR authority directly; no text recovery, global
-   coercion, or fabricated SSA/global is permitted.
-4. Add nearby positive and malformed contract coverage; testcase names and
-   rendered text are never selectors or authority sources.
-5. Do not refresh or accept the rejected 3037/1 baseline candidate: 772 must
-   first repair structured forwarding and make `pr70460` pass.
+1. Start at the already evidenced `StmtEmitter::emit_indexed_gep` structured
+   direct-constant forwarding seam; do not repeat the mapping or alter 773.
+2. Repair only that seam by retaining the verified typed direct constant into
+   `LirGepOp.ptr`, preserving all fail-closed checks.
+3. Add nearby production-path and malformed-authority coverage; do not turn
+   the failure into an allowed or text-derived case.
+4. Fresh-build and make `llvm_gcc_c_torture_src_pr70460_c` pass before any
+   new baseline evaluation. Focused proof is not full-baseline acceptance.
 
 ## Ordered Steps
 
-### Step 1 - Specify and verify the typed direct-label-address GEP base
+### Step 1 - Trace and repair the production GEP pointer authority loss
 
-Status: Complete (`a4415f99c`).
-
-Goal: make `LirGepOp.ptr` admit exactly the valid function-owned direct
-label-address `DirectConstant(LirValueId)` form.
-
-Completion check: verifier tests show the exact allowed form passes and the
-relevant malformed forms fail closed. Accepted proof: fresh build plus
-`^backend_lir_to_bir_interface$` passed.
-
-### Step 2 - Carry the validated form through printer and backend/lowering
-
-Goal: represent and lower the verified typed direct constant as a GEP base.
+Goal: minimally repair the first evidenced forwarding seam that leaves
+`LirGepOp.ptr` empty for `pr70460`.
 
 Primary targets:
 
-- LIR GEP printer operand handling
-- backend/lowering GEP base dispatch
-- focused printer/lowering contract tests
+- `StmtEmitter::emit_indexed_gep(FnCtx&, const LirOperand&, ...)`
+- nearby `LirGepOp` production-path and malformed-authority coverage
 
 Actions:
 
-- add the exact validated direct-label-address branch where SSA/global is
-  currently assumed
-- use typed direct-constant resolution and 774's structured Raw-BIR authority,
-  never display text or a fabricated SSA/global value
-- retain fail-closed behavior for unverified or unsupported constants
-- prove printer and lowering agree with verifier admission, with nearby
-  positive and malformed coverage
-- do not edit 772 forwarding, pr70460, or baseline artifacts
+- forward the already validated typed direct constant structurally rather than
+  calling the string overload that creates `RawText(\"\")`
+- preserve current-function ownership and the 773 verifier/printer/lowering
+  contract; do not fabricate an SSA/global value
+- add or extend nearby production-path and malformed-authority coverage
+- fresh-build, prove `llvm_gcc_c_torture_src_pr70460_c`, and report the
+  producer seam, typed field, proof, and next baseline action to supervisor
 
 Completion check:
 
-- focused printer/lowering coverage exercises the allowed typed operand and
-  rejects unsupported forms without changing the parent forwarding seam.
-
-### Step 3 - Prove the bounded contract and hand it back to 772
-
-Goal: deliver an accepted contract transition with a precise parent return.
-
-Actions:
-
-- run a fresh build and the selected focused verifier/printer/lowering subset
-- inspect that tests cover positive and malformed boundaries rather than a
-  single named case
-- report changed contracts, exact proof, and the handoff to resume 772 Step 1
-- state that 772 must repair structured `emit_indexed_gep` forwarding and make
-  `llvm_gcc_c_torture_src_pr70460_c` pass before any new baseline evaluation
-
-Completion check:
-
-- fresh build and narrow proof pass, acceptance evidence is ready for the
-  supervisor, and the parent return action is unambiguous.
+- `pr70460` no longer fails at empty `LirGepOp.ptr`; fresh build and focused
+  positive/malformed proof pass with contracts intact; the supervisor has an
+  exact fresh-full-suite candidate handoff.
