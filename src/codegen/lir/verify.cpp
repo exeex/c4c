@@ -440,11 +440,11 @@ void verify_cast_op_authority(const LirCastOp& op) {
   }
 
   if (!op.result.value_id()) return;
-  if (op.kind == LirCastKind::FPTrunc) {
+  if (op.kind == LirCastKind::FPTrunc || op.kind == LirCastKind::FPExt) {
     if (op.from_type.kind() != LirTypeKind::Floating ||
         op.to_type.kind() != LirTypeKind::Floating) {
       fail_verify("LirCastOp.from_type",
-                  "authoritative FPTrunc requires floating endpoint type refs");
+                  "authoritative floating cast requires floating endpoint type refs");
     }
     const auto floating_width = [](const LirTypeRef& type)
         -> std::optional<unsigned> {
@@ -459,11 +459,15 @@ void verify_cast_op_authority(const LirCastOp& op) {
     const std::optional<unsigned> to_width = floating_width(op.to_type);
     if (!from_width || !to_width) {
       fail_verify("LirCastOp.from_type",
-                  "authoritative FPTrunc requires exact floating endpoints");
+                  "authoritative floating cast requires exact floating endpoints");
     }
-    if (*to_width >= *from_width) {
+    if (op.kind == LirCastKind::FPTrunc && *to_width >= *from_width) {
       fail_verify("LirCastOp.to_type",
                   "FPTrunc requires a narrower floating destination type");
+    }
+    if (op.kind == LirCastKind::FPExt && *to_width <= *from_width) {
+      fail_verify("LirCastOp.to_type",
+                  "FPExt requires a wider floating destination type");
     }
     return;
   }

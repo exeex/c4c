@@ -1763,19 +1763,25 @@ LirOperand StmtEmitter::coerce_operand(FnCtx& ctx, const LirOperand& val,
     if (type == "fp128") return 128;
     return 0;
   };
-  const bool authoritative_scalar_floating_trunc =
+  const int from_floating_width = floating_width(from_type);
+  const int to_floating_width = floating_width(to_type);
+  const bool authoritative_scalar_floating_cast =
       val.value_id() && from_ts.ptr_level == 0 && from_ts.array_rank == 0 &&
       to_ts.ptr_level == 0 && to_ts.array_rank == 0 &&
       !is_vector_value(from_ts) && !is_vector_value(to_ts) &&
       is_float_base(from_ts.base) && is_float_base(to_ts.base) &&
-      floating_width(to_type) < floating_width(from_type);
-  if (!scalar_integer_cast && !authoritative_scalar_floating_trunc) {
+      from_floating_width > 0 && to_floating_width > 0 &&
+      from_floating_width != to_floating_width;
+  if (!scalar_integer_cast && !authoritative_scalar_floating_cast) {
     return LirOperand::raw(coerce(ctx, val.str(), from_ts, to_ts));
   }
 
-  if (authoritative_scalar_floating_trunc) {
+  if (authoritative_scalar_floating_cast) {
     const LirOperand result = fresh_value(ctx);
-    emit_lir_op(ctx, LirCastOp{result, LirCastKind::FPTrunc,
+    const LirCastKind kind = to_floating_width < from_floating_width
+                                 ? LirCastKind::FPTrunc
+                                 : LirCastKind::FPExt;
+    emit_lir_op(ctx, LirCastOp{result, kind,
                                LirTypeRef(from_type), val,
                                LirTypeRef(to_type)});
     return result;
