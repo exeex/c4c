@@ -9441,6 +9441,78 @@ void test_downstream_double_olt_compare_receipt_and_rejections() {
            "missing compatibility use must reject");
 }
 
+lir::LirModule scalar_double_to_float_fptrunc_module() {
+  auto module = downstream_double_fadd_module();
+  auto& block = module.functions[0].blocks[0];
+  block.insts.push_back(lir::LirConstFloat{
+      lir::LirValueId{13}, scalar_type(c4c::TB_FLOAT), 1.5});
+  block.insts.push_back(lir::LirCastOp{
+      .result = lir::LirOperand::ssa("%presentation-only-fptrunc-result", lir::LirValueId{14}),
+      .kind = lir::LirCastKind::FPTrunc,
+      .from_type = lir::LirTypeRef("double"),
+      .operand = lir::LirOperand::ssa("%presentation-only-double-fmul", lir::LirValueId{12}),
+      .to_type = lir::LirTypeRef("float"),
+  });
+  block.insts.push_back(lir::LirBinOp{
+      lir::LirOperand::ssa("%presentation-only-float-fmul", lir::LirValueId{15}),
+      lir::LirBinaryOpcode::FMul, lir::LirTypeRef("float"),
+      lir::LirOperand::ssa("%presentation-only-fptrunc-use", lir::LirValueId{14}),
+      lir::LirOperand::ssa("%presentation-only-float-rhs", lir::LirValueId{13})});
+  return module;
+}
+
+void test_scalar_double_to_float_fptrunc_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto caller_id = view.functions()[0];
+    const auto caller = view.function(caller_id).value();
+    const auto insts = caller.instructions(caller.blocks()[0]).value();
+    expect(insts.size() == 5, layer + " must retain the scalar FPTrunc and float FMul");
+    const auto fptrunc = caller.instruction(insts[3]).value();
+    const auto fmul = caller.instruction(insts[4]).value();
+    expect(fptrunc.opcode() == bir::Opcode::Cast && fptrunc.cast() &&
+               fptrunc.cast()->kind == bir::CastKind::FPTrunc &&
+               fptrunc.cast()->from_type == bir::Type{bir::TypeKind::F64, 64, "double"} &&
+               fptrunc.cast()->to_type == bir::Type{bir::TypeKind::F32, 32, "float"} &&
+               fptrunc.operands() == std::vector<bir::ValueId>{caller.instruction(insts[2]).value().results()[0]} &&
+               fptrunc.results().size() == 1 &&
+               caller.value(fptrunc.results()[0]).value().source_id == bir::SourceValueId{caller_id, 14} &&
+               fmul.binary() && fmul.binary()->opcode == bir::BinaryOpcode::FMul &&
+               fmul.binary()->type == bir::Type{bir::TypeKind::F32, 32, "float"} &&
+               fmul.operands().size() == 2 && fmul.operands()[0] == fptrunc.results()[0] &&
+               fmul.results().size() == 1 &&
+               caller.value(fmul.results()[0]).value().source_id == bir::SourceValueId{caller_id, 15},
+           layer + " must preserve the native double-to-float FPTrunc and exact float FMul use");
+  };
+  const auto module = scalar_double_to_float_fptrunc_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "scalar FPTrunc must publish verified Raw BIR");
+  inspect(raw.value(), "Raw BIR");
+
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto candidate = scalar_double_to_float_fptrunc_module();
+    auto& cast = std::get<lir::LirCastOp>(candidate.functions[0].blocks[0].insts[5]);
+    auto& use = std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[6]);
+    mutate(candidate, cast, use);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() && raw_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Raw rollback)");
+  };
+  rejected([](auto&, auto& cast, auto&) { cast.result = lir::LirOperand::raw("%missing"); }, "missing cast result authority must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.operand = lir::LirOperand::integer("bad", 0); }, "non-SSA cast source must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.operand = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); }, "unresolved or cross-owner cast source must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{12}); }, "duplicate cast result must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.kind = lir::LirCastKind::FPExt; }, "other floating casts must remain fail-closed");
+  rejected([](auto&, auto& cast, auto&) { cast.from_type = lir::LirTypeRef("float"); }, "wrong cast source endpoint must reject atomically");
+  rejected([](auto&, auto& cast, auto&) { cast.to_type = lir::LirTypeRef("double"); }, "wrong cast destination endpoint must reject atomically");
+  rejected([](auto&, auto&, auto& use) { use.lhs = lir::LirOperand::ssa("%unknown", lir::LirValueId{77}); }, "unresolved downstream float FMul use must reject atomically");
+  rejected([](auto&, auto&, auto& use) { use.opcode = lir::LirBinaryOpcode::FAdd; }, "non-FMul downstream use must reject atomically");
+  rejected([](auto&, auto&, auto& use) { use.type_str = lir::LirTypeRef("double"); }, "wrong downstream float FMul type must reject atomically");
+  rejected([](auto& candidate, auto&, auto&) { candidate.functions[0].blocks[0].insts.pop_back(); }, "missing downstream float FMul use must reject atomically");
+}
+
 lir::LirModule normalized_i32_add_module() {
   auto module = direct_global_integer_load_module();
   auto& function = module.functions[0];
@@ -10447,6 +10519,7 @@ int main() {
   test_direct_native_floating_call_receipt_and_rejections();
   test_downstream_double_fadd_receipt_and_rejections();
   test_downstream_double_olt_compare_receipt_and_rejections();
+  test_scalar_double_to_float_fptrunc_receipt_and_rejections();
   test_normalized_i32_add_receipt_and_rejections();
   test_normalized_i32_mul_receipt_and_rejections();
   test_native_intrinsic_receipt_and_rejections();

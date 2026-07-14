@@ -1269,6 +1269,7 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
   if (!function_data.blocks_.contains(function_, block))
     return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
   const Type f64{TypeKind::F64, 64, "double"};
+  const Type f32{TypeKind::F32, 32, "float"};
   const Type i32{TypeKind::Integer, 32, "i32"};
   const Type i64{TypeKind::Integer, 64, "i64"};
   const auto lhs = function_data.values_.get(function_, spec.lhs);
@@ -1277,6 +1278,8 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       lhs && rhs && lhs.value().get().type == f64 && rhs.value().get().type == f64;
   const bool exact_fmul = spec.opcode == BinaryOpcode::FMul && spec.type == f64 &&
       lhs && rhs && lhs.value().get().type == f64 && rhs.value().get().type == f64;
+  const bool exact_float_fmul = spec.opcode == BinaryOpcode::FMul && spec.type == f32 &&
+      lhs && rhs && lhs.value().get().type == f32 && rhs.value().get().type == f32;
   const bool exact_add = spec.opcode == BinaryOpcode::Add && spec.type == i32 &&
       lhs && rhs && lhs.value().get().type == i32 && rhs.value().get().type == i32;
   const bool exact_sext_add = spec.opcode == BinaryOpcode::Add && spec.type == i64 &&
@@ -1293,7 +1296,7 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
     const auto* intrinsic = std::get_if<IntrinsicCallNode>(&lhs_producer.value().get().payload);
     return intrinsic && intrinsic->kind == IntrinsicKind::Cttz && intrinsic->type == i32;
   }();
-  if ((!exact_fadd && !exact_fmul && !exact_add && !exact_sext_add && !exact_mul) ||
+  if ((!exact_fadd && !exact_fmul && !exact_float_fmul && !exact_add && !exact_sext_add && !exact_mul) ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   if (!lhs_def)
@@ -1303,6 +1306,11 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       (exact_fmul && [&] {
         const auto* binary = std::get_if<BinaryNode>(&lhs_producer.value().get().payload);
         return !binary || binary->opcode != BinaryOpcode::FAdd || binary->type != f64;
+      }()) ||
+      (exact_float_fmul && [&] {
+        const auto* cast = std::get_if<CastNode>(&lhs_producer.value().get().payload);
+        return !cast || cast->kind != CastKind::FPTrunc || cast->from_type != f64 ||
+            cast->to_type != f32;
       }()) ||
       (exact_add && !std::holds_alternative<LoadNode>(lhs_producer.value().get().payload) &&
        !std::holds_alternative<AbsNode>(lhs_producer.value().get().payload) &&
@@ -1548,12 +1556,16 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, CastSpec 
     return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
   const Type i64{TypeKind::Integer, 64, "i64"};
   const Type i32{TypeKind::Integer, 32, "i32"};
+  const Type f64{TypeKind::F64, 64, "double"};
+  const Type f32{TypeKind::F32, 32, "float"};
   auto operand = function_data.values_.get(function_, spec.operand);
   const bool intrinsic_trunc =
       spec.kind == CastKind::Trunc && spec.from_type == i64 && spec.to_type == i32;
   const bool scalar_sext =
       spec.kind == CastKind::SExt && spec.from_type == i32 && spec.to_type == i64;
-  if ((!intrinsic_trunc && !scalar_sext) || !operand ||
+  const bool scalar_fptrunc =
+      spec.kind == CastKind::FPTrunc && spec.from_type == f64 && spec.to_type == f32;
+  if ((!intrinsic_trunc && !scalar_sext && !scalar_fptrunc) || !operand ||
       operand.value().get().type != spec.from_type ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
@@ -1563,6 +1575,14 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, CastSpec 
   if (intrinsic_trunc) {
     const auto producer = function_data.insts_.get(function_, operand_def->instruction);
     if (!producer || !std::holds_alternative<IntrinsicCallNode>(producer.value().get().payload))
+      return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  }
+  if (scalar_fptrunc) {
+    const auto producer = function_data.insts_.get(function_, operand_def->instruction);
+    const auto* binary = producer
+        ? std::get_if<BinaryNode>(&producer.value().get().payload)
+        : nullptr;
+    if (!binary || binary->opcode != BinaryOpcode::FMul || binary->type != f64)
       return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   }
   detail::InstData instruction;

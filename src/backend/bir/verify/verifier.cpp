@@ -768,10 +768,12 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         const Type i64{TypeKind::Integer, 64, "i64"};
         const bool fadd = binary->opcode == BinaryOpcode::FAdd && binary->type == f64;
         const bool fmul = binary->opcode == BinaryOpcode::FMul && binary->type == f64;
+        const bool float_fmul = binary->opcode == BinaryOpcode::FMul &&
+            binary->type == Type{TypeKind::F32, 32, "float"};
         const bool add = binary->opcode == BinaryOpcode::Add && binary->type == i32;
         const bool sext_add = binary->opcode == BinaryOpcode::Add && binary->type == i64;
         const bool mul = binary->opcode == BinaryOpcode::Mul && binary->type == i32;
-        bool exact = (fadd || fmul || add || sext_add || mul) && instruction.operands.size() == 2 &&
+        bool exact = (fadd || fmul || float_fmul || add || sext_add || mul) && instruction.operands.size() == 2 &&
             instruction.results.size() == 1;
         if (exact) {
           for (const auto operand_id : instruction.operands) {
@@ -804,6 +806,12 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                     return producer_binary &&
                         producer_binary->opcode == BinaryOpcode::FAdd &&
                         producer_binary->type == f64;
+                  }()
+                : float_fmul ? [&] {
+                    const auto* cast = std::get_if<CastNode>(&producer.value().get().payload);
+                    return cast && cast->kind == CastKind::FPTrunc &&
+                        cast->from_type == Type{TypeKind::F64, 64, "double"} &&
+                        cast->to_type == Type{TypeKind::F32, 32, "float"};
                   }()
                 : add ? (std::holds_alternative<LoadNode>(producer.value().get().payload) ||
                          std::holds_alternative<AbsNode>(producer.value().get().payload) ||
@@ -915,11 +923,15 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
       if (const auto* cast = std::get_if<CastNode>(&instruction.payload)) {
         const Type i64{TypeKind::Integer, 64, "i64"};
         const Type i32{TypeKind::Integer, 32, "i32"};
+        const Type f64{TypeKind::F64, 64, "double"};
+        const Type f32{TypeKind::F32, 32, "float"};
         const bool intrinsic_trunc = cast->kind == CastKind::Trunc &&
             cast->from_type == i64 && cast->to_type == i32;
         const bool scalar_sext = cast->kind == CastKind::SExt &&
             cast->from_type == i32 && cast->to_type == i64;
-        bool exact = (intrinsic_trunc || scalar_sext) &&
+        const bool scalar_fptrunc = cast->kind == CastKind::FPTrunc &&
+            cast->from_type == f64 && cast->to_type == f32;
+        bool exact = (intrinsic_trunc || scalar_sext || scalar_fptrunc) &&
             instruction.operands.size() == 1 && instruction.results.size() == 1;
         if (exact) {
           const auto operand = function.values_.get(function_id, instruction.operands[0]);
@@ -929,6 +941,13 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           if (exact && intrinsic_trunc) {
             const auto producer = function.insts_.get(function_id, def->instruction);
             exact = producer && std::holds_alternative<IntrinsicCallNode>(producer.value().get().payload);
+          }
+          if (exact && scalar_fptrunc) {
+            const auto producer = function.insts_.get(function_id, def->instruction);
+            const auto* binary = producer
+                ? std::get_if<BinaryNode>(&producer.value().get().payload)
+                : nullptr;
+            exact = binary && binary->opcode == BinaryOpcode::FMul && binary->type == f64;
           }
         }
         if (exact) { const auto result_value = function.values_.get(function_id, instruction.results[0]); exact = result_value && result_value.value().get().type == cast->to_type && result_value.value().get().source_id.has_value() && result_value.value().get().source_id->owner == function_id; }

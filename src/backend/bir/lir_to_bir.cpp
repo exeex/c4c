@@ -577,6 +577,49 @@ bool exact_double_olt_zext_use(
       double_olt_compare_results.count(operand->value) == 1;
 }
 
+bool exact_double_to_float_fptrunc(
+    const LirCastOp& cast,
+    const std::unordered_map<std::uint32_t, Type>& source_values,
+    const std::unordered_set<std::uint32_t>& downstream_double_fmul_results) {
+  using codegen::lir::LirOperandKind;
+  const Type f64{TypeKind::F64, 64, "double"};
+  const auto* result = cast.result.value_id();
+  const auto* operand = cast.operand.value_id();
+  if (cast.kind != codegen::lir::LirCastKind::FPTrunc ||
+      cast.result.kind() != LirOperandKind::SsaValue || !result || !result->valid() ||
+      cast.operand.kind() != LirOperandKind::SsaValue || !operand || !operand->valid() ||
+      cast.from_type.kind() != codegen::lir::LirTypeKind::Floating ||
+      cast.to_type.kind() != codegen::lir::LirTypeKind::Floating ||
+      cast.from_type.str() != "double" || cast.to_type.str() != "float" ||
+      downstream_double_fmul_results.count(operand->value) != 1)
+    return false;
+  const auto found = source_values.find(operand->value);
+  return found != source_values.end() && found->second == f64;
+}
+
+bool exact_downstream_float_fmul(
+    const LirBinOp& bin,
+    const std::unordered_map<std::uint32_t, Type>& source_values,
+    const std::unordered_set<std::uint32_t>& scalar_fptrunc_results) {
+  const Type f32{TypeKind::F32, 32, "float"};
+  const auto* result = bin.result.value_id();
+  const auto* lhs = bin.lhs.value_id();
+  const auto* rhs = bin.rhs.value_id();
+  if (bin.result.kind() != codegen::lir::LirOperandKind::SsaValue || !result ||
+      !result->valid() || !bin.opcode.typed() ||
+      *bin.opcode.typed() != codegen::lir::LirBinaryOpcode::FMul ||
+      bin.type_str.kind() != codegen::lir::LirTypeKind::Floating ||
+      bin.type_str.str() != "float" ||
+      bin.lhs.kind() != codegen::lir::LirOperandKind::SsaValue || !lhs || !lhs->valid() ||
+      bin.rhs.kind() != codegen::lir::LirOperandKind::SsaValue || !rhs || !rhs->valid() ||
+      scalar_fptrunc_results.count(lhs->value) != 1)
+    return false;
+  const auto lhs_value = source_values.find(lhs->value);
+  const auto rhs_value = source_values.find(rhs->value);
+  return lhs_value != source_values.end() && rhs_value != source_values.end() &&
+      lhs_value->second == f32 && rhs_value->second == f32;
+}
+
 bool exact_normalized_i32_add(
     const LirBinOp& bin,
     const std::unordered_map<std::uint32_t, Type>& source_values,
@@ -1929,6 +1972,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_set<std::uint32_t> native_floating_call_results;
   std::unordered_set<std::uint32_t> downstream_double_fadd_results;
   std::unordered_set<std::uint32_t> downstream_double_fmul_results;
+  std::unordered_set<std::uint32_t> scalar_fptrunc_results;
+  std::unordered_map<std::uint32_t, std::size_t> scalar_fptrunc_fmul_uses;
   std::unordered_set<std::uint32_t> downstream_double_olt_compare_results;
   std::unordered_map<std::uint32_t, std::size_t> downstream_double_olt_zext_uses;
   std::unordered_set<std::uint32_t> selected_global_i32_load_results;
@@ -2202,6 +2247,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
             *bin, source_values, native_floating_call_results);
         const bool fmul = exact_downstream_double_fmul(
             *bin, source_values, downstream_double_fadd_results);
+        const bool float_fmul = exact_downstream_float_fmul(
+            *bin, source_values, scalar_fptrunc_results);
         const bool add = exact_normalized_i32_add(
             *bin, source_values, selected_global_i32_load_results) ||
             exact_native_i32_cttz_add(
@@ -2217,9 +2264,10 @@ Result<void, ImportError> validate_function(const LirModule& module,
         const bool sext_add = exact_downstream_i64_sext_add(
             *bin, source_values, scalar_sext_results);
         const Type result_type = (fadd || fmul) ? Type{TypeKind::F64, 64, "double"}
+            : float_fmul ? Type{TypeKind::F32, 32, "float"}
             : sext_add ? Type{TypeKind::Integer, 64, "i64"}
                        : Type{TypeKind::Integer, 32, "i32"};
-        if ((!fadd && !fmul && !add && !mul && !sext_add) ||
+        if ((!fadd && !fmul && !float_fmul && !add && !mul && !sext_add) ||
             !source_values.emplace(bin->result.value_id()->value, result_type).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
@@ -2227,6 +2275,9 @@ Result<void, ImportError> validate_function(const LirModule& module,
         if (add) normalized_i32_add_results.insert(bin->result.value_id()->value);
         if (fadd) downstream_double_fadd_results.insert(bin->result.value_id()->value);
         if (fmul) downstream_double_fmul_results.insert(bin->result.value_id()->value);
+        if (float_fmul) {
+          ++scalar_fptrunc_fmul_uses[bin->lhs.value_id()->value];
+        }
         continue;
       }
       if (const auto* abs = std::get_if<LirAbsOp>(&instruction)) {
@@ -2263,14 +2314,18 @@ Result<void, ImportError> validate_function(const LirModule& module,
             module, *cast, source_values, intrinsic_results);
         const bool scalar_sext = exact_scalar_i32_to_i64_sext(
             module, *cast, source_values);
-        if ((!intrinsic_trunc && !scalar_sext) ||
+        const bool scalar_fptrunc = exact_double_to_float_fptrunc(
+            *cast, source_values, downstream_double_fmul_results);
+        if ((!intrinsic_trunc && !scalar_sext && !scalar_fptrunc) ||
             !source_values.emplace(cast->result.value_id()->value,
                                    scalar_sext ? Type{TypeKind::Integer, 64, "i64"}
-                                               : Type{TypeKind::Integer, 32, "i32"}).second)
+                                   : scalar_fptrunc ? Type{TypeKind::F32, 32, "float"}
+                                                    : Type{TypeKind::Integer, 32, "i32"}).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
                             "cast requires an exact admitted current-function typed receipt");
         if (scalar_sext) scalar_sext_results.insert(cast->result.value_id()->value);
+        if (scalar_fptrunc) scalar_fptrunc_results.insert(cast->result.value_id()->value);
         continue;
       }
       const auto* inline_asm = std::get_if<LirInlineAsmOp>(&instruction);
@@ -2289,6 +2344,12 @@ Result<void, ImportError> validate_function(const LirModule& module,
     if (downstream_double_olt_zext_uses[result] != 1)
       return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
                         "double OLt result lacks its one exact compatibility ZExt use");
+  }
+
+  for (const auto result : scalar_fptrunc_results) {
+    if (scalar_fptrunc_fmul_uses[result] != 1)
+      return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
+                        "scalar FPTrunc result lacks its one exact float FMul use");
   }
 
   for (const auto result : inline_asm_results) {
@@ -2635,6 +2696,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
           std::unordered_set<std::uint32_t> native_floating_call_results;
           std::unordered_set<std::uint32_t> downstream_double_fadd_results;
           std::unordered_set<std::uint32_t> downstream_double_fmul_results;
+          std::unordered_set<std::uint32_t> scalar_fptrunc_results;
           std::unordered_set<std::uint32_t> downstream_double_olt_compare_results;
           std::unordered_set<std::uint32_t> native_i32_cttz_results;
           std::unordered_set<std::uint32_t> selected_global_i32_abs_results;
@@ -3064,7 +3126,11 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 const bool fadd = bin->opcode.typed() ==
                     std::optional{codegen::lir::LirBinaryOpcode::FAdd};
                 const bool fmul = bin->opcode.typed() ==
-                    std::optional{codegen::lir::LirBinaryOpcode::FMul};
+                    std::optional{codegen::lir::LirBinaryOpcode::FMul} &&
+                    downstream_double_fadd_results.count(bin->lhs.value_id()->value) == 1;
+                const bool float_fmul = bin->opcode.typed() ==
+                    std::optional{codegen::lir::LirBinaryOpcode::FMul} &&
+                    scalar_fptrunc_results.count(bin->lhs.value_id()->value) == 1;
                 const bool add = bin->opcode.typed() ==
                     std::optional{codegen::lir::LirBinaryOpcode::Add};
                 const bool abs_add = add &&
@@ -3077,9 +3143,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 if (lhs == source_values.end() ||
                     (fadd && native_floating_call_results.count(
                         bin->lhs.value_id()->value) == 0) ||
-                    (fmul && downstream_double_fadd_results.count(
-                        bin->lhs.value_id()->value) == 0) ||
-                    (!fadd && !fmul && !sext_add && !abs_add && !cttz_add && !add && normalized_i32_add_results.count(
+                    (!fadd && !fmul && !float_fmul && !sext_add && !abs_add && !cttz_add && !add && normalized_i32_add_results.count(
                         bin->lhs.value_id()->value) == 0)) {
                   edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
                                            name, block.label,
@@ -3087,7 +3151,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   return Result<void, BuildError>::failure(BuildError::InvalidValue);
                 }
                 ValueId rhs_value{};
-                if (fadd || fmul) {
+                if (fadd || fmul || float_fmul) {
                   const auto rhs = source_values.find(bin->rhs.value_id()->value);
                   if (rhs == source_values.end()) {
                     edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
@@ -3123,10 +3187,11 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 auto appended = function_builder.append(
                     blocks.at(block.id.value),
                     BinarySpec{fadd ? BinaryOpcode::FAdd
-                                    : fmul ? BinaryOpcode::FMul
+                                    : (fmul || float_fmul) ? BinaryOpcode::FMul
                                     : add ? BinaryOpcode::Add : BinaryOpcode::Mul,
                                fadd ? Type{TypeKind::F64, 64, "double"}
                                     : fmul ? Type{TypeKind::F64, 64, "double"}
+                                    : float_fmul ? Type{TypeKind::F32, 32, "float"}
                                     : sext_add ? Type{TypeKind::Integer, 64, "i64"}
                                                : Type{TypeKind::Integer, 32, "i32"},
                                lhs->second, rhs_value,
@@ -3135,6 +3200,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   edit_error = builder_failure(name, block.label,
                                                fadd ? "append double FAdd"
                                                     : fmul ? "append double FMul"
+                                                    : float_fmul ? "append float FMul"
                                                     : add ? sext_add ? "append SExt i64 Add"
                                                                      : "append normalized i32 Add"
                                                           : "append normalized i32 Mul",
@@ -3255,13 +3321,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 auto appended = function_builder.append(
                     blocks.at(block.id.value),
                     CastSpec{cast->kind == codegen::lir::LirCastKind::SExt
-                                 ? CastKind::SExt : CastKind::Trunc,
+                                 ? CastKind::SExt
+                                 : cast->kind == codegen::lir::LirCastKind::FPTrunc
+                                     ? CastKind::FPTrunc : CastKind::Trunc,
                              *lower_lir_type(module, cast->from_type),
                              *lower_lir_type(module, cast->to_type), operand->second,
                              cast->result.value_id()->value});
                 if (!appended) {
                   edit_error = builder_failure(name, block.label,
-                                               cast->kind == codegen::lir::LirCastKind::SExt
+                                               cast->kind == codegen::lir::LirCastKind::FPTrunc
+                                                   ? "append scalar FPTrunc cast"
+                                                   : cast->kind == codegen::lir::LirCastKind::SExt
                                                    ? "append scalar SExt cast"
                                                    : "append intrinsic trunc cast",
                                                appended.error());
@@ -3277,6 +3347,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 }
                 if (cast->kind == codegen::lir::LirCastKind::SExt)
                   scalar_sext_results.insert(cast->result.value_id()->value);
+                if (cast->kind == codegen::lir::LirCastKind::FPTrunc)
+                  scalar_fptrunc_results.insert(cast->result.value_id()->value);
                 continue;
               }
               const auto& inline_asm = std::get<LirInlineAsmOp>(instruction);
