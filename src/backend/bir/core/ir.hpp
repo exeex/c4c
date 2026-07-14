@@ -139,6 +139,7 @@ enum class Opcode : std::uint8_t {
   Store,
   Load,
   GetElementPtr,
+  Abs,
   Call,
   Binary,
   Compare,
@@ -166,6 +167,10 @@ struct GetElementPtrNode {
   GlobalObjectId base{};
   Type element_type{};
   bool inbounds = false;
+};
+
+struct AbsNode {
+  Type type{};
 };
 
 struct CallNode {
@@ -205,7 +210,7 @@ struct CastNode {
 
 using InstPayload =
     std::variant<InlineAsmNode, StoreNode, LoadNode, GetElementPtrNode,
-                 CallNode, BinaryNode, CompareNode, IntrinsicCallNode, CastNode>;
+    AbsNode, CallNode, BinaryNode, CompareNode, IntrinsicCallNode, CastNode>;
 
 class BlockView;
 class FunctionView;

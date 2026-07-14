@@ -18,6 +18,7 @@ namespace {
 
 using codegen::lir::LirBlock;
 using codegen::lir::LirBinOp;
+using codegen::lir::LirAbsOp;
 using codegen::lir::LirBr;
 using codegen::lir::LirCallOp;
 using codegen::lir::LirCastOp;
@@ -530,6 +531,24 @@ bool exact_normalized_i32_add(
     return false;
   const auto lhs_value = source_values.find(lhs->value);
   return lhs_value != source_values.end() && lhs_value->second == i32;
+}
+
+bool exact_selected_global_i32_abs(
+    const LirAbsOp& abs,
+    const std::unordered_map<std::uint32_t, Type>& source_values,
+    const std::unordered_set<std::uint32_t>& selected_global_i32_load_results) {
+  const Type i32{TypeKind::Integer, 32, "i32"};
+  const auto* result = abs.result.value_id();
+  const auto* argument = abs.arg.value_id();
+  if (abs.result.kind() != codegen::lir::LirOperandKind::SsaValue || !result ||
+      !result->valid() || abs.arg.kind() != codegen::lir::LirOperandKind::SsaValue ||
+      !argument || !argument->valid() ||
+      abs.int_type.kind() != codegen::lir::LirTypeKind::Integer ||
+      abs.int_type != codegen::lir::LirTypeRef::integer(32) ||
+      selected_global_i32_load_results.count(argument->value) != 1)
+    return false;
+  const auto argument_value = source_values.find(argument->value);
+  return argument_value != source_values.end() && argument_value->second == i32;
 }
 
 bool exact_normalized_i32_mul(
@@ -1836,6 +1855,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_set<std::uint32_t> intrinsic_results;
   std::unordered_set<std::uint32_t> native_floating_call_results;
   std::unordered_set<std::uint32_t> selected_global_i32_load_results;
+  std::unordered_set<std::uint32_t> selected_global_i32_abs_results;
   std::unordered_set<std::uint32_t> normalized_i32_add_results;
   std::unordered_set<std::uint32_t> scalar_sext_results;
   labels.reserve(function.blocks.size());
@@ -2101,7 +2121,13 @@ Result<void, ImportError> validate_function(const LirModule& module,
         const bool fadd = exact_downstream_double_fadd(
             *bin, source_values, native_floating_call_results);
         const bool add = exact_normalized_i32_add(
-            *bin, source_values, selected_global_i32_load_results);
+            *bin, source_values, selected_global_i32_load_results) ||
+            [&] {
+              const auto* lhs = bin->lhs.value_id();
+              return lhs && selected_global_i32_abs_results.count(lhs->value) == 1 &&
+                  exact_normalized_i32_add(*bin, source_values,
+                      selected_global_i32_abs_results);
+            }();
         const bool mul = exact_normalized_i32_mul(
             *bin, source_values, normalized_i32_add_results);
         const bool sext_add = exact_downstream_i64_sext_add(
@@ -2115,6 +2141,17 @@ Result<void, ImportError> validate_function(const LirModule& module,
                             name, block.label,
                             "binary requires one exact admitted source-authorized operand shape");
         if (add) normalized_i32_add_results.insert(bin->result.value_id()->value);
+        continue;
+      }
+      if (const auto* abs = std::get_if<LirAbsOp>(&instruction)) {
+        if (!exact_selected_global_i32_abs(
+                *abs, source_values, selected_global_i32_load_results) ||
+            !source_values.emplace(abs->result.value_id()->value,
+                                   Type{TypeKind::Integer, 32, "i32"}).second)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "abs requires one exact selected-global i32 Load source and a current-function i32 result");
+        selected_global_i32_abs_results.insert(abs->result.value_id()->value);
         continue;
       }
       if (const auto* compare = std::get_if<LirCmpOp>(&instruction)) {
@@ -2496,6 +2533,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
           std::unordered_map<std::string, std::pair<ValueId, Type>> ordinary_values;
           std::unordered_map<std::uint32_t, ValueId> source_values;
           std::unordered_set<std::uint32_t> native_floating_call_results;
+          std::unordered_set<std::uint32_t> selected_global_i32_abs_results;
           std::unordered_set<std::uint32_t> normalized_i32_add_results;
           std::unordered_set<std::uint32_t> scalar_sext_results;
           blocks.reserve(function.blocks.size());
@@ -2919,13 +2957,15 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                     std::optional{codegen::lir::LirBinaryOpcode::FAdd};
                 const bool add = bin->opcode.typed() ==
                     std::optional{codegen::lir::LirBinaryOpcode::Add};
+                const bool abs_add = add &&
+                    selected_global_i32_abs_results.count(bin->lhs.value_id()->value) == 1;
                 const bool sext_add = add &&
                     scalar_sext_results.count(bin->lhs.value_id()->value) == 1;
                 const auto lhs = source_values.find(bin->lhs.value_id()->value);
                 if (lhs == source_values.end() ||
                     (fadd && native_floating_call_results.count(
                         bin->lhs.value_id()->value) == 0) ||
-                    (!fadd && !sext_add && !add && normalized_i32_add_results.count(
+                    (!fadd && !sext_add && !abs_add && !add && normalized_i32_add_results.count(
                         bin->lhs.value_id()->value) == 0)) {
                   edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
                                            name, block.label,
@@ -2995,6 +3035,34 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 }
                 if (add && !sext_add)
                   normalized_i32_add_results.insert(bin->result.value_id()->value);
+                continue;
+              }
+              if (const auto* abs = std::get_if<LirAbsOp>(&instruction)) {
+                const auto operand = source_values.find(abs->arg.value_id()->value);
+                if (operand == source_values.end()) {
+                  edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                                           name, block.label,
+                                           "validated Abs source disappeared from the current-function registry"};
+                  return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                }
+                auto appended = function_builder.append(
+                    blocks.at(block.id.value),
+                    AbsSpec{Type{TypeKind::Integer, 32, "i32"}, operand->second,
+                            abs->result.value_id()->value});
+                if (!appended) {
+                  edit_error = builder_failure(name, block.label, "append i32 Abs",
+                                               appended.error());
+                  return Result<void, BuildError>::failure(appended.error());
+                }
+                if (appended.value().results.size() != 1 ||
+                    !source_values.emplace(abs->result.value_id()->value,
+                                           appended.value().results[0]).second) {
+                  edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                                           name, block.label,
+                                           "Abs result registration failed"};
+                  return Result<void, BuildError>::failure(BuildError::DuplicateSourceValue);
+                }
+                selected_global_i32_abs_results.insert(abs->result.value_id()->value);
                 continue;
               }
               if (const auto* compare = std::get_if<LirCmpOp>(&instruction)) {

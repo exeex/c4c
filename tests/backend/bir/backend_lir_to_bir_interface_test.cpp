@@ -9973,6 +9973,92 @@ void test_selected_global_i32_slt_compare_receipt_and_rejections() {
          "the following monostate ZExt must remain unsupported transactionally (Canonical rollback)");
 }
 
+lir::LirModule selected_global_i32_abs_module() {
+  auto module = normalized_i32_add_module();
+  auto& block = module.functions[0].blocks[0];
+  block.insts.insert(block.insts.begin() + 1, lir::LirAbsOp{
+      lir::LirOperand::ssa("%presentation-abs", lir::LirValueId{32}),
+      lir::LirOperand::ssa("%presentation-load", lir::LirValueId{31}),
+      lir::LirTypeRef::integer(32)});
+  auto& add = std::get<lir::LirBinOp>(block.insts[2]);
+  add.lhs = lir::LirOperand::ssa("%presentation-abs-use", lir::LirValueId{32});
+  return module;
+}
+
+void test_selected_global_i32_abs_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto function_id = view.functions()[0];
+    const auto function = view.function(function_id).value();
+    const auto instructions = function.instructions(function.blocks()[0]).value();
+    const auto load = function.instruction(instructions[0]).value();
+    const auto abs = function.instruction(instructions[1]).value();
+    const auto add = function.instruction(instructions[2]).value();
+    const auto result = function.value(abs.results()[0]).value();
+    expect(instructions.size() == 3 && load.load() && abs.opcode() == bir::Opcode::Abs &&
+               abs.abs() && abs.abs()->type == bir::Type{bir::TypeKind::I32} &&
+               abs.operands() == std::vector<bir::ValueId>{load.results()[0]} &&
+               abs.results().size() == 1 && result.type == bir::Type{bir::TypeKind::I32} &&
+               result.source_id == bir::SourceValueId{function_id, 32} &&
+               function.source_value(*result.source_id).value() == abs.results()[0] &&
+               add.binary() && add.binary()->opcode == bir::BinaryOpcode::Add &&
+               add.operands()[0] == abs.results()[0],
+           layer + " must retain the typed selected-load i32 Abs and its admitted later Add use");
+  };
+
+  const auto module = selected_global_i32_abs_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "selected-global i32 Abs must publish verified Raw BIR");
+  inspect(raw.value(), "Raw BIR");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(), "selected-global i32 Abs must canonicalize");
+  inspect(canonical.value(), "Canonical BIR");
+
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto candidate = selected_global_i32_abs_module();
+    auto& abs = std::get<lir::LirAbsOp>(candidate.functions[0].blocks[0].insts[1]);
+    mutate(candidate, abs);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() && raw_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value() && canonical_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Canonical rollback)");
+  };
+  rejected([](auto&, auto& abs) { abs.result = lir::LirOperand::ssa("%invalid", lir::LirValueId{}); },
+           "invalid Abs result must reject atomically");
+  rejected([](auto&, auto& abs) { abs.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{31}); },
+           "duplicate Abs result must reject atomically");
+  rejected([](auto&, auto& abs) { abs.arg = lir::LirOperand::ssa("%unresolved", lir::LirValueId{77}); },
+           "unresolved Abs argument must reject atomically");
+  rejected([](auto&, auto& abs) { abs.arg = lir::LirOperand::integer("immediate", 1); },
+           "immediate Abs argument must reject atomically");
+  rejected([](auto&, auto& abs) { abs.int_type = lir::LirTypeRef::integer(64); },
+           "non-i32 Abs must reject atomically");
+  rejected([](auto&, auto& abs) {
+             abs.int_type = lir::LirTypeRef("i32", lir::LirTypeKind::RawText);
+           },
+           "presentation-derived Abs type must reject atomically");
+  rejected([](auto& candidate, auto& abs) {
+             auto& local_load = std::get<lir::LirLoadOp>(
+                 candidate.functions[0].blocks[0].insts[0]);
+             local_load.result = lir::LirOperand::ssa("%local-other", lir::LirValueId{99});
+             lir::LirFunction foreign = candidate.functions[0];
+             foreign.name = "foreign_abs_owner";
+             foreign.blocks[0].insts.erase(foreign.blocks[0].insts.begin() + 1,
+                                           foreign.blocks[0].insts.end());
+             candidate.functions.push_back(std::move(foreign));
+             abs.arg = lir::LirOperand::ssa("%foreign-load", lir::LirValueId{31});
+           }, "cross-owner Abs argument must reject atomically");
+  rejected([](auto& candidate, auto&) {
+             auto& load = std::get<lir::LirLoadOp>(candidate.functions[0].blocks[0].insts[0]);
+             load.ptr = lir::LirOperand::global("@missing", c4c::LinkNameId{999});
+           }, "malformed selected-load linkage must reject atomically");
+}
+
 lir::LirModule mixed_accepted_row_dispatcher_module() {
   auto module = normalized_i32_add_module();
   auto& function = module.functions[0];
@@ -10124,6 +10210,7 @@ int main() {
   test_native_intrinsic_i64_trunc_receipt_and_rejections();
   test_scalar_i32_to_i64_sext_receipt_and_rejections();
   test_selected_global_i32_slt_compare_receipt_and_rejections();
+  test_selected_global_i32_abs_receipt_and_rejections();
   test_mixed_accepted_row_dispatcher_transactionality();
   return 0;
 }

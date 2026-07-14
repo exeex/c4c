@@ -8,27 +8,22 @@ Current Step Title: Receive the checked i32 integer Abs result
 
 ## Just Finished
 
-- Step 7.1 complete: added one mixed source-order fixture for the existing
-  selected-global i32 Load, normalized i32 Add, explicit i32-to-i64 SExt, and
-  selected i32 SLT dispatcher branches. It proves typed current-function
-  result/use authority and that changing only the final compare predicate
-  rejects the entire module without Raw-BIR publication.
+- Step 7.2 complete: received only the authority-matrix i32 `LirAbsOp` row as
+  a tagged Raw-BIR Abs opcode/payload/spec/view. The importer accepts exactly
+  a current-function i32 result from the admitted selected-global i32 Load,
+  keeps its ordered value identity, and permits the existing i32 Add use.
 
 ## Suggested Next
 
-- Executor packet: receive only the authority-matrix Step-7.4 i32
-  `LirAbsOp` subrow whose selected-global i32 Load argument and later i32 Add
-  use already have admitted typed authority. Add its Raw-BIR container,
-  importer, reachable verifier, and focused positive/transactional-negative
-  coverage; do not generalize to `labs`, `llabs`, immediate inputs, other
-  builtins/calls, or noninteger/vector/aggregate forms.
+- Supervisor packet selection required: choose the next source-idea row after
+  the completed selected-load i32 Abs receipt.
 
 ## Watchouts
 
-- Step 7.2 is one new, tagged Abs receipt family, not a general call or
-  intrinsic route. The existing comparison normalization `ZExt`, `labs`/
-  `llabs`, immediate-argument variants, all noninteger/aggregate/vector forms,
-  and every other unsupported instruction family remain fail-closed.
+- Abs is one tagged i32 receipt family, not a call or intrinsic route.
+  `labs`/`llabs`, immediate inputs, non-i32/vector/aggregate forms, malformed
+  typed linkage, presentation-derived recovery, and other builtin/call forms
+  remain fail-closed.
 
 ## Proof
 
@@ -40,3 +35,7 @@ Current Step Title: Receive the checked i32 integer Abs result
   -j --output-on-failure -R
   '^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$'` (2/2);
   no test log was changed by this packet.
+- Step 7.2 passed: `cmake --build --preset default && ctest --test-dir build
+  -j --output-on-failure -R
+  '^backend_lir_to_bir_interface$|^frontend_lir_call_type_ref$'` (2/2);
+  proof log: `test_after.log`.

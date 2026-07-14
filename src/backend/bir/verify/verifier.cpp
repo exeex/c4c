@@ -71,6 +71,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
       return std::holds_alternative<LoadNode>(instruction.payload);
     case Opcode::GetElementPtr:
       return std::holds_alternative<GetElementPtrNode>(instruction.payload);
+    case Opcode::Abs:
+      return std::holds_alternative<AbsNode>(instruction.payload);
     case Opcode::Call:
       return std::holds_alternative<CallNode>(instruction.payload) ||
              std::holds_alternative<IntrinsicCallNode>(instruction.payload);
@@ -699,6 +701,34 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                  inst_id,
                  "getelementptr must have one exact global array base, nonempty ordered integer indices, and one source-backed pointer result");
       }
+      if (const auto* abs = std::get_if<AbsNode>(&instruction.payload)) {
+        const Type i32{TypeKind::Integer, 32, "i32"};
+        bool exact = abs->type == i32 && instruction.operands.size() == 1 &&
+            instruction.results.size() == 1;
+        const auto operand = exact
+            ? function.values_.get(function_id, instruction.operands[0])
+            : Result<std::reference_wrapper<const ValueDef>, ResolveError>::failure(
+                  ResolveError::OutOfRange);
+        exact = exact && operand && operand.value().get().type == i32;
+        const auto* operand_def = exact
+            ? std::get_if<InstResultDef>(&operand.value().get().definition) : nullptr;
+        const auto producer = operand_def
+            ? function.insts_.get(function_id, operand_def->instruction)
+            : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(
+                  ResolveError::OutOfRange);
+        exact = exact && producer &&
+            std::holds_alternative<LoadNode>(producer.value().get().payload);
+        const auto result_value = exact
+            ? function.values_.get(function_id, instruction.results[0])
+            : Result<std::reference_wrapper<const ValueDef>, ResolveError>::failure(
+                  ResolveError::OutOfRange);
+        exact = exact && result_value && result_value.value().get().type == i32 &&
+            result_value.value().get().source_id.has_value() &&
+            result_value.value().get().source_id->owner == function_id;
+        if (!exact)
+          report(result, VerificationRule::ValueDefinition, function_id, inst_id,
+                 "abs must retain one selected-load i32 operand and one source-backed i32 result");
+      }
       if (const auto* call = std::get_if<CallNode>(&instruction.payload)) {
         const auto callee =
             module.functions_.get(module.epoch_, call->callee);
@@ -761,7 +791,8 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                 function.insts_.get(function_id, lhs_def->instruction);
             exact = producer && (fadd
                 ? std::holds_alternative<CallNode>(producer.value().get().payload)
-                : add ? std::holds_alternative<LoadNode>(producer.value().get().payload)
+                : add ? (std::holds_alternative<LoadNode>(producer.value().get().payload) ||
+                         std::holds_alternative<AbsNode>(producer.value().get().payload))
                       : sext_add ? [&] {
                           const auto* cast = std::get_if<CastNode>(
                               &producer.value().get().payload);

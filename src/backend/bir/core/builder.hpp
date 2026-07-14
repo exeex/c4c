@@ -171,6 +171,12 @@ struct GetElementPtrSpec {
   std::uint32_t source_result_id = 0;
 };
 
+struct AbsSpec {
+  Type type{};
+  ValueId operand{};
+  std::uint32_t source_result_id = 0;
+};
+
 struct CallSpec {
   FunctionId callee{};
   std::vector<ValueId> arguments;
@@ -301,6 +307,7 @@ class FunctionBuilder {
   Result<BuildResult, BuildError> append(BlockId block, LoadSpec spec);
   Result<BuildResult, BuildError> append(BlockId block,
                                          GetElementPtrSpec spec);
+  Result<BuildResult, BuildError> append(BlockId block, AbsSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, CallSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, BinarySpec spec);
   Result<BuildResult, BuildError> append(BlockId block, CompareSpec spec);

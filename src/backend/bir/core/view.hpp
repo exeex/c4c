@@ -25,6 +25,9 @@ class InstView {
   const GetElementPtrNode* get_element_ptr() const noexcept {
     return std::get_if<GetElementPtrNode>(&data_->payload);
   }
+  const AbsNode* abs() const noexcept {
+    return std::get_if<AbsNode>(&data_->payload);
+  }
   const CallNode* call() const noexcept {
     return std::get_if<CallNode>(&data_->payload);
   }
