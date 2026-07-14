@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/750_lir_cfg_terminator_block_identity_completion.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish computed-goto target-list authority
+Current Step ID: 3
+Current Step Title: Consolidate verifier coverage and hand off
 
 ## Just Finished
 
