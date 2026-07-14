@@ -1592,6 +1592,21 @@ const LirOperand* modeled_result_operand(const LirInst& inst) {
       inst);
 }
 
+const LirTypeRef* modeled_scalar_result_type(const LirInst& inst) {
+  if (const auto* op = std::get_if<LirLoadOp>(&inst)) return &op->type_str;
+  if (const auto* op = std::get_if<LirCastOp>(&inst)) return &op->to_type;
+  if (const auto* op = std::get_if<LirCallOp>(&inst)) return &op->return_type;
+  if (const auto* op = std::get_if<LirBinOp>(&inst)) return &op->type_str;
+  if (std::get_if<LirCmpOp>(&inst)) {
+    static const LirTypeRef kBooleanType = LirTypeRef::integer(1);
+    return &kBooleanType;
+  }
+  if (const auto* op = std::get_if<LirPhiOp>(&inst)) return &op->type_str;
+  if (const auto* op = std::get_if<LirSelectOp>(&inst)) return &op->type_str;
+  if (const auto* op = std::get_if<LirVaArgOp>(&inst)) return &op->type_str;
+  return nullptr;
+}
+
 template <typename Visitor>
 void visit_modeled_value_uses(const LirInst& inst, Visitor&& visit) {
   if (const auto* op = std::get_if<LirMemcpyOp>(&inst)) {
@@ -1879,9 +1894,38 @@ void verify_function_value_ownership(const LirModule& mod,
                   "display name must match the condition-selected value definition");
     }
   };
+  const auto verify_switch_selector = [&](const LirSwitch& sw) {
+    if (!sw.selector.valid()) {
+      fail_verify("LirSwitch.selector",
+                  "must carry a valid current-function LirValueId");
+    }
+    const auto definition = definition_insts.find(sw.selector.value);
+    if (definition == definition_insts.end() || definition->second == nullptr) {
+      fail_verify("LirSwitch.selector",
+                  "must identify a current-function integer value definition");
+    }
+    const LirOperand* result = modeled_result_operand(*definition->second);
+    const LirTypeRef* type = modeled_scalar_result_type(*definition->second);
+    if (!result || !result->value_id() || *result->value_id() != sw.selector ||
+        !type || type->kind() != LirTypeKind::Integer) {
+      fail_verify("LirSwitch.selector",
+                  "must identify a current-function integer value definition");
+    }
+    if (sw.selector_name != result->str()) {
+      fail_verify("LirSwitch.selector_name",
+                  "display name must match the selector-selected value definition");
+    }
+    if (sw.selector_type != type->str()) {
+      fail_verify("LirSwitch.selector_type",
+                  "display type must match the selector-selected value definition");
+    }
+  };
   for (const auto& block : function.blocks) {
     if (const auto* branch = std::get_if<LirCondBr>(&block.terminator)) {
       verify_conditional_condition(*branch);
+    }
+    if (const auto* sw = std::get_if<LirSwitch>(&block.terminator)) {
+      verify_switch_selector(*sw);
     }
   }
 

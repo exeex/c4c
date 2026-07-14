@@ -586,6 +586,9 @@ struct LirSwitch {
   // Semantic CFG authority for default and case entries, in case order.
   LirBlockId default_successor = LirBlockId::invalid();
   std::vector<LirBlockId> case_successors;
+  // Semantic selector authority; selector_name and selector_type are checked
+  // display mirrors only. Kept last for aggregate-producer field order.
+  LirValueId selector = LirValueId::invalid();
 };
 
 struct LirIndirectBr {

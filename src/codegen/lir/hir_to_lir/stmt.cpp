@@ -503,13 +503,27 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const DoWhileStmt& s) {
 
 void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const SwitchStmt& s) {
   TypeSpec ts{};
-  std::string val = emit_rval_id(ctx, s.cond, ts);
+  lir::LirOperand selector = emit_rval_operand(ctx, s.cond, ts);
+  std::string val = selector.str();
   if (ts.ptr_level == 0 && ts.array_rank == 0 && is_any_int(ts.base)) {
     TypeBase promoted = integer_promote(ts.base);
     if (promoted != ts.base) {
       TypeSpec promoted_ts{};
       promoted_ts.base = promoted;
-      val = coerce(ctx, val, ts, promoted_ts);
+      if (selector.value_id()) {
+        const lir::LirOperand promoted_selector = fresh_value(ctx);
+        const lir::LirCastKind kind = is_signed_int(ts.base)
+                                          ? lir::LirCastKind::SExt
+                                          : lir::LirCastKind::ZExt;
+        emit_lir_op(ctx, lir::LirCastOp{promoted_selector, kind,
+                                        lir::LirTypeRef(llvm_ty(ts)), selector,
+                                        lir::LirTypeRef(llvm_ty(promoted_ts))});
+        selector = promoted_selector;
+        val = selector.str();
+      } else {
+        val = coerce(ctx, val, ts, promoted_ts);
+        selector = lir::LirOperand::raw(val);
+      }
       ts = promoted_ts;
     }
   }
@@ -560,7 +574,17 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const SwitchStmt& s) {
       }
     }
   }
-  emit_term_switch(ctx, val, ty, default_target, std::move(sw_cases));
+  if (!selector.value_id()) {
+    // A legacy/raw expression has no reusable value carrier. Materialize one
+    // here rather than letting switch authority depend on its display text.
+    const lir::LirOperand materialized_selector = fresh_value(ctx);
+    emit_lir_op(ctx, lir::LirBinOp{materialized_selector, "add",
+                                   lir::LirTypeRef(ty),
+                                   lir::LirOperand::raw(val),
+                                   lir::LirOperand::integer("0", 0)});
+    selector = materialized_selector;
+  }
+  emit_term_switch(ctx, selector, ty, default_target, std::move(sw_cases));
 }
 
 void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const GotoStmt& s) {

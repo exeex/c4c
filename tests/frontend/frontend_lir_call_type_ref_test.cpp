@@ -710,13 +710,21 @@ void test_conditional_and_switch_successor_identity_contract() {
     fn.name = "switch_ok";
     fn.signature_text = "define void @switch_ok() {";
     fn.blocks = make_blocks();
+    fn.blocks[0].insts.push_back(lir::LirBinOp{
+        .result = lir::LirOperand::ssa("%switch.selector", lir::LirValueId{7}),
+        .opcode = "add",
+        .type_str = "i32",
+        .lhs = "0",
+        .rhs = "0",
+    });
     fn.blocks[0].terminator = lir::LirSwitch{
-        .selector_name = "0",
+        .selector_name = "%switch.selector",
         .selector_type = "i32",
         .default_label = "default_target",
         .cases = {{1, "true_target"}, {2, "false_target"}},
         .default_successor = lir::LirBlockId{3},
         .case_successors = {lir::LirBlockId{1}, lir::LirBlockId{2}},
+        .selector = lir::LirValueId{7},
     };
     return fn;
   };
@@ -737,6 +745,8 @@ void test_conditional_and_switch_successor_identity_contract() {
   expect_true(sw.default_successor.value == 3 && sw.case_successors.size() == 2 &&
                   sw.case_successors[0].value == 1 && sw.case_successors[1].value == 2,
               "switch default and case targets should carry native block IDs");
+  expect_true(sw.selector.value == 7,
+              "switch selector should carry its native value ID");
 
   lir::LirModule missing_conditional;
   missing_conditional.functions.push_back(make_conditional());
@@ -822,6 +832,47 @@ void test_conditional_and_switch_successor_identity_contract() {
       .default_successor = lir::LirBlockId{99};
   expect_identity_verification_rejected(foreign_switch,
                                         "verifier should reject foreign switch default ID");
+  lir::LirModule missing_switch_selector;
+  missing_switch_selector.functions.push_back(make_switch());
+  std::get<lir::LirSwitch>(missing_switch_selector.functions[0].blocks[0].terminator)
+      .selector = lir::LirValueId::invalid();
+  expect_identity_verification_rejected(
+      missing_switch_selector, "verifier should reject a missing switch selector ID");
+  lir::LirModule foreign_switch_selector;
+  foreign_switch_selector.functions.push_back(make_switch());
+  std::get<lir::LirSwitch>(foreign_switch_selector.functions[0].blocks[0].terminator)
+      .selector = lir::LirValueId{99};
+  expect_identity_verification_rejected(
+      foreign_switch_selector, "verifier should reject a foreign switch selector ID");
+  lir::LirModule misleading_switch_selector;
+  misleading_switch_selector.functions.push_back(make_switch());
+  std::get<lir::LirSwitch>(misleading_switch_selector.functions[0].blocks[0].terminator)
+      .selector_name = "%misleading.selector.display";
+  expect_identity_verification_rejected(
+      misleading_switch_selector,
+      "misleading switch selector display text must not select or repair a selector ID");
+  lir::LirModule misleading_switch_selector_type;
+  misleading_switch_selector_type.functions.push_back(make_switch());
+  std::get<lir::LirSwitch>(
+      misleading_switch_selector_type.functions[0].blocks[0].terminator)
+      .selector_type = "i64";
+  expect_identity_verification_rejected(
+      misleading_switch_selector_type,
+      "misleading switch selector type text must not select or repair a selector ID");
+  lir::LirModule noninteger_switch_selector;
+  noninteger_switch_selector.functions.push_back(make_switch());
+  auto& noninteger_switch_entry = noninteger_switch_selector.functions[0].blocks[0];
+  noninteger_switch_entry.insts.clear();
+  noninteger_switch_entry.insts.push_back(lir::LirBinOp{
+      .result = lir::LirOperand::ssa("%switch.selector", lir::LirValueId{7}),
+      .opcode = "fadd",
+      .type_str = "double",
+      .lhs = "0.0",
+      .rhs = "0.0",
+  });
+  expect_identity_verification_rejected(
+      noninteger_switch_selector,
+      "verifier should reject a non-integer switch selector authority");
 
   const lir::LirModule lowered = lower_lir_module_for_target(
       "int f(int x) { if (x) return 1; switch (x) { case 2: return 2; default: return 3; } }",
@@ -837,9 +888,9 @@ void test_conditional_and_switch_successor_identity_contract() {
     }
     if (const auto* lowered_sw = std::get_if<lir::LirSwitch>(&block.terminator)) {
       saw_switch = true;
-      expect_true(lowered_sw->default_successor.valid() &&
+      expect_true(lowered_sw->selector.valid() && lowered_sw->default_successor.valid() &&
                       lowered_sw->case_successors.size() == lowered_sw->cases.size(),
-                  "lowering should publish switch successor IDs before verification");
+                  "lowering should publish switch selector and successor IDs before verification");
     }
   }
   expect_true(saw_conditional && saw_switch,

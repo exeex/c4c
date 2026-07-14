@@ -376,7 +376,7 @@ class StmtEmitter {
                         const c4c::codegen::LirDirectBranchTarget& false_target);
   void emit_term_ret(FnCtx& ctx, lir::LirTypeRef type_str,
                      std::optional<lir::LirOperand> value_str);
-  void emit_term_switch(FnCtx& ctx, const std::string& sel_name,
+  void emit_term_switch(FnCtx& ctx, const lir::LirOperand& selector,
                         const std::string& sel_type,
                         const c4c::codegen::LirDirectBranchTarget& default_target,
                         std::vector<std::pair<long long, c4c::codegen::LirDirectBranchTarget>> cases);

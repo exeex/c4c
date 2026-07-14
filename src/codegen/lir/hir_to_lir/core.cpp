@@ -1379,11 +1379,11 @@ void StmtEmitter::emit_term_ret(FnCtx& ctx, lir::LirTypeRef type_str,
 }
 
 void StmtEmitter::emit_term_switch(
-    FnCtx& ctx, const std::string& sel_name, const std::string& sel_type,
+    FnCtx& ctx, const lir::LirOperand& selector, const std::string& sel_type,
     const c4c::codegen::LirDirectBranchTarget& default_target,
     std::vector<std::pair<long long, c4c::codegen::LirDirectBranchTarget>> cases) {
   lir::LirSwitch sw;
-  sw.selector_name = sel_name;
+  sw.selector_name = selector.str();
   sw.selector_type = sel_type;
   sw.default_label = default_target.label;
   sw.default_successor = default_target.id;
@@ -1391,6 +1391,8 @@ void StmtEmitter::emit_term_switch(
     sw.cases.emplace_back(value, target.label);
     sw.case_successors.push_back(target.id);
   }
+  sw.selector = selector.value_id() ? *selector.value_id()
+                                   : lir::LirValueId::invalid();
   (void)set_terminator_if_open(ctx, std::move(sw));
 }
 
