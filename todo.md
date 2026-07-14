@@ -1,36 +1,40 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/770_lir_to_bir_native_label_address_constant_contract.md
+Source Idea Path: ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove owned contract and return
+Current Step ID: 5
+Current Step Title: Repair and prove native direct LabelAddrExpr rvalue production
 
 ## Just Finished
 
-- Step 3 proved the owned native label-address constant contract with the
-  existing focused interface fixture: a direct function-owned constant lowers
-  to a verified Raw-BIR source value consumed by `IndirectJumpTerm`, while
-  invalid/missing/duplicate produced identities, nonpointer type,
-  invalid/foreign authority, and mismatched direct-use/address cases reject.
-  No duplicate-only test edit was needed, and no 768 producer recovery was
-  performed.
+- 770 completed the bounded native direct-constant dependency
+  (`e8a0f70b4`; proof-state `6803f8c25`) with a fresh build and passing
+  `^backend_lir_to_bir_interface$` proof. That contract preserves a direct
+  label-address constant through Raw-BIR source-value and `IndirectJumpTerm`
+  consumption. 768 Steps 1--4 remain accepted; its prior synthetic
+  `LirLabelAddrOp` bridge remains rejected.
 
 ## Suggested Next
 
-- Supervisor to return 768 to its preserved Step 5 direct producer recovery
-  packet using this accepted native contract.
+- Step 5: repair direct frontend-LIR `LabelAddrExpr` rvalue production using
+  770's completed native direct-constant contract. Preserve typed current
+  function, target-label, and produced-value authority and run the focused
+  frontend-LIR positive/malformed proof. Do not touch the carrier, 767, 769,
+  or automatic-table `DeclRef` decay.
 
 ## Watchouts
 
-- LLVM 19 does not accept `%x = blockaddress(...)` as an instruction. The
-  accepted route remains a function-owned constant; do not broaden this
-  completed contract into synthetic bridges, producer recovery, legacy BIR,
-  preparation/MIR/codegen, or carrier publication.
+- No `select`, `gep`, `bitcast`, or other synthetic materialization is an
+  acceptable label-address identity bridge. Do not add a carrier change,
+  raw-text recovery, testcase-shaped routing, or reopen accepted 767/769
+  contracts. The automatic local-table `DeclRef` decay-to-`LirGepOp`
+  local-slot/two-index authority contract is not in this packet.
 
 ## Proof
 
-- Passed: `cmake --build --preset default`; then `ctest --test-dir build -j
-  --output-on-failure -R '^backend_lir_to_bir_interface$' > test_after.log`.
-  The focused proof is sufficient for this bounded packet; log:
-  `test_after.log`.
+- Accepted evidence retained for the rejected slice: fresh targeted build and
+  focused `frontend_lir_label_address_rvalue_probe` proof passed; the matching
+  regression guard passed with `allow-non-decreasing`; and
+  `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_'` was 7/7
+  green. None overrides the no-synthetic-bridge scope gate.

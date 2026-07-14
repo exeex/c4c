@@ -172,3 +172,20 @@ consumption decomposition, not a monolithic integration or carrier route.
   focused positive/malformed proof, then perform Step 6 handoff to 764. Do not
   redo Steps 1--4, change carrier behavior, implement automatic-table decay,
   or reopen 767/769.
+
+## Resumption Update — 2026-07-14 Native Constant Contract Complete
+
+- 770 is capability-complete and archived at
+  `ideas/closed/770_lir_to_bir_native_label_address_constant_contract.md`.
+  Its implementation commit is `e8a0f70b4`; proof-state commit `6803f8c25`
+  records the accepted direct constant-to-Raw-BIR-source-value-to-
+  `IndirectJumpTerm` fixture and its malformed rejection coverage. A fresh
+  `cmake --build --preset default` and
+  `ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$'`
+  passed.
+- Exact return: Steps 1--4 stay complete. Resume at Step 5 — Repair and
+  prove native direct `LabelAddrExpr` rvalue production. Replace only the
+  rejected synthetic bridge using 770's completed native direct-constant
+  contract; retain the focused frontend-LIR positive/malformed proof
+  obligation. Do not claim carrier publication, external integration, or
+  automatic-table `DeclRef` decay.

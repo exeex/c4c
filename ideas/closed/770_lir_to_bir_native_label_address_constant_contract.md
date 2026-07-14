@@ -1,6 +1,6 @@
 # LIR-to-BIR Native Label-Address Constant Contract
 
-Status: Open (active blocker for
+Status: Complete (closed blocker for
 `ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md`
 Step 5)
 Type: focused LIR-to-BIR/native label-address constant representation and lowering contract
@@ -96,3 +96,28 @@ here.
 - Reject a representation that loses the current function, target label, or
   produced-value identity, or a lowering route that cannot directly feed the
   specified indirect-jump consumption contract.
+
+## Closure Record — 2026-07-14
+
+Disposition: capability complete for this bounded native LIR-to-BIR contract.
+
+- Implementation commit `e8a0f70b4` establishes the function-owned,
+  non-instruction direct label-address constant, its direct-operand printing
+  contract, the minimal Raw-BIR/importer passage, verifier checks, and existing
+  `IndirectJumpTerm` consumption.
+- Proof-state commit `6803f8c25` records the accepted direct fixture:
+  native constant to Raw-BIR source value to `IndirectJumpTerm`, plus malformed
+  rejection for invalid, missing, duplicate, or foreign authority/value forms,
+  non-pointer type, and mismatched direct use/address.
+- Supervisor acceptance evidence is a fresh
+  `cmake --build --preset default` followed by
+  `ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$'`,
+  both passing.
+- No producer recovery, frontend carrier publication, external integration,
+  automatic-table decay, or other downstream capability is claimed here.
+
+Return: resume
+`ideas/open/768_lir_computed_goto_label_address_table_initialization_authority_decomposition.md`
+at Step 5 — Repair and prove native direct `LabelAddrExpr` rvalue production.
+Its Steps 1--4 remain accepted; replace only the rejected synthetic bridge
+using this completed native direct-constant contract.
