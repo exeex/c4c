@@ -9357,6 +9357,115 @@ void test_normalized_i32_add_receipt_and_rejections() {
            }, "cross-function Add lhs must reject");
 }
 
+lir::LirModule normalized_i32_mul_module() {
+  auto module = normalized_i32_add_module();
+  auto& block = module.functions[0].blocks[0];
+  block.insts.push_back(lir::LirBinOp{
+      lir::LirOperand::ssa("%presentation-mul", lir::LirValueId{34}),
+      lir::LirBinaryOpcode::Mul, lir::LirTypeRef::integer(32),
+      lir::LirOperand::ssa("%presentation-add", lir::LirValueId{33}),
+      lir::LirOperand::integer("presentation-two", 2)});
+  block.terminator = lir::LirRet{
+      lir::LirOperand::ssa("%presentation-return", lir::LirValueId{34}),
+      lir::LirTypeRef::integer(32)};
+  return module;
+}
+
+void test_normalized_i32_mul_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto function_id = view.functions()[0];
+    const auto function = view.function(function_id).value();
+    const auto instructions = function.instructions(function.blocks()[0]).value();
+    const auto load = function.instruction(instructions[0]).value();
+    const auto add = function.instruction(instructions[1]).value();
+    const auto mul = function.instruction(instructions[2]).value();
+    const auto result = function.value(mul.results()[0]).value();
+    const auto terminator = function.terminator(function.blocks()[0]).value();
+    const auto* returned = std::get_if<bir::ReturnTerm>(&terminator);
+    expect(instructions.size() == 3 && load.load() && add.binary() && mul.binary() &&
+               add.binary()->opcode == bir::BinaryOpcode::Add &&
+               mul.binary()->opcode == bir::BinaryOpcode::Mul &&
+               mul.binary()->type == bir::Type{bir::TypeKind::I32} &&
+               add.operands()[0] == load.results()[0] &&
+               mul.operands().size() == 2 && mul.operands()[0] == add.results()[0] &&
+               result.source_id == bir::SourceValueId{function_id, 34} &&
+               function.source_value(bir::SourceValueId{function_id, 34}).value() ==
+                   mul.results()[0] &&
+               returned && returned->value && *returned->value == mul.results()[0],
+           layer + " must retain Load -> Add(one) -> Mul(two) and its source-backed return");
+    const auto rhs = function.value(mul.operands()[1]).value();
+    const auto* constant = std::get_if<bir::ConstantDef>(&rhs.definition);
+    const auto integer = constant ? view.constant(constant->constant).value() : bir::ConstantDefinition{};
+    const auto* payload = constant ? std::get_if<bir::IntegerConstant>(&integer.payload) : nullptr;
+    expect(rhs.type == bir::Type{bir::TypeKind::I32} && !rhs.source_id && payload &&
+               payload->value == 2,
+           layer + " must materialize only the native Mul immediate two as an i32 constant");
+  };
+  const auto module = normalized_i32_mul_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "the normalized Load-plus-one-plus-two i32 chain must publish verified Raw BIR");
+  inspect(raw.value(), "Raw BIR");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(), "the normalized i32 Mul route must canonicalize");
+  inspect(canonical.value(), "Canonical BIR");
+
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto candidate = normalized_i32_mul_module();
+    auto& mul = std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[2]);
+    mutate(candidate, mul);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value(), message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value(), message + " (Canonical rollback)");
+  };
+  rejected([](auto&, auto& mul) { mul.result = lir::LirOperand::raw("%raw"); },
+           "missing Mul result identity must reject");
+  rejected([](auto&, auto& mul) {
+             mul.result = lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+           }, "invalid Mul result ID must reject");
+  rejected([](auto&, auto& mul) {
+             mul.result = lir::LirOperand::ssa("%duplicate", lir::LirValueId{33});
+           }, "duplicate Mul result ID must reject");
+  rejected([](auto&, auto& mul) {
+             mul.lhs = lir::LirOperand::ssa("%unknown", lir::LirValueId{77});
+           }, "unknown Mul lhs must reject");
+  rejected([](auto&, auto& mul) {
+             mul.lhs = lir::LirOperand::ssa("%load", lir::LirValueId{31});
+           }, "non-Add Mul lhs must reject");
+  rejected([](auto&, auto& mul) { mul.rhs = lir::LirOperand::integer("not-two", 1); },
+           "non-two Mul immediate must reject");
+  rejected([](auto&, auto& mul) {
+             mul.rhs = lir::LirOperand::integer("out-of-range", 1LL << 32);
+           }, "out-of-range Mul immediate must reject");
+  rejected([](auto&, auto& mul) {
+             mul.rhs = lir::LirOperand::ssa("%rhs", lir::LirValueId{33});
+           }, "SSA Mul rhs must reject");
+  rejected([](auto&, auto& mul) { mul.opcode = lir::LirBinaryOpcode::Add; },
+           "non-Mul opcode must reject");
+  rejected([](auto&, auto& mul) { mul.type_str = lir::LirTypeRef::integer(64); },
+           "non-i32 Mul type must reject");
+  rejected([](auto& candidate, auto& mul) {
+             auto foreign = candidate.functions[0];
+             foreign.name = "foreign_i32_mul_owner";
+             foreign.link_name_id = candidate.link_names.intern("foreign_i32_mul_owner");
+             auto& foreign_load = std::get<lir::LirLoadOp>(foreign.blocks[0].insts[0]);
+             foreign_load.result = lir::LirOperand::ssa("%foreign-load", lir::LirValueId{77});
+             auto& foreign_add = std::get<lir::LirBinOp>(foreign.blocks[0].insts[1]);
+             foreign_add.lhs = lir::LirOperand::ssa("%foreign-load", lir::LirValueId{77});
+             foreign_add.result = lir::LirOperand::ssa("%foreign-add", lir::LirValueId{78});
+             auto& foreign_mul = std::get<lir::LirBinOp>(foreign.blocks[0].insts[2]);
+             foreign_mul.lhs = lir::LirOperand::ssa("%foreign-add", lir::LirValueId{78});
+             foreign_mul.result = lir::LirOperand::ssa("%foreign-mul", lir::LirValueId{79});
+             foreign.blocks[0].terminator = lir::LirRet{
+                 lir::LirOperand::ssa("%foreign-return", lir::LirValueId{79}),
+                 lir::LirTypeRef::integer(32)};
+             candidate.functions.push_back(std::move(foreign));
+             mul.lhs = lir::LirOperand::ssa("%cross", lir::LirValueId{78});
+           }, "cross-function Mul lhs must reject");
+}
+
 void test_direct_native_floating_call_receipt_and_rejections() {
   const auto inspect = [](const auto& graph, const std::string& layer) {
     const auto view = graph.view();
@@ -9672,6 +9781,7 @@ int main() {
   test_direct_native_floating_call_receipt_and_rejections();
   test_downstream_double_fadd_receipt_and_rejections();
   test_normalized_i32_add_receipt_and_rejections();
+  test_normalized_i32_mul_receipt_and_rejections();
   test_native_intrinsic_receipt_and_rejections();
   test_native_intrinsic_i64_trunc_receipt_and_rejections();
   return 0;

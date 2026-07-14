@@ -735,7 +735,8 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         const Type i32{TypeKind::Integer, 32, "i32"};
         const bool fadd = binary->opcode == BinaryOpcode::FAdd && binary->type == f64;
         const bool add = binary->opcode == BinaryOpcode::Add && binary->type == i32;
-        bool exact = (fadd || add) && instruction.operands.size() == 2 &&
+        const bool mul = binary->opcode == BinaryOpcode::Mul && binary->type == i32;
+        bool exact = (fadd || add || mul) && instruction.operands.size() == 2 &&
             instruction.results.size() == 1;
         if (exact) {
           for (const auto operand_id : instruction.operands) {
@@ -756,9 +757,16 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                 function.insts_.get(function_id, lhs_def->instruction);
             exact = producer && (fadd
                 ? std::holds_alternative<CallNode>(producer.value().get().payload)
-                : std::holds_alternative<LoadNode>(producer.value().get().payload));
+                : add ? std::holds_alternative<LoadNode>(producer.value().get().payload)
+                      : [&] {
+                          const auto* producer_binary = std::get_if<BinaryNode>(
+                              &producer.value().get().payload);
+                          return producer_binary &&
+                              producer_binary->opcode == BinaryOpcode::Add &&
+                              producer_binary->type == i32;
+                        }());
         }
-        if (exact && add) {
+        if (exact && (add || mul)) {
           const auto rhs = function.values_.get(function_id, instruction.operands[1]);
           const auto* rhs_constant = rhs
               ? std::get_if<ConstantDef>(&rhs.value().get().definition)
@@ -769,7 +777,7 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
               ? std::get_if<IntegerConstant>(
                     &module.constants_[rhs_constant->constant.slot].payload)
               : nullptr;
-          exact = integer && integer->value == 1;
+          exact = integer && integer->value == (add ? 1 : 2);
           }
         }
         if (exact) {

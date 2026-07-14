@@ -1213,7 +1213,9 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       lhs && rhs && lhs.value().get().type == f64 && rhs.value().get().type == f64;
   const bool exact_add = spec.opcode == BinaryOpcode::Add && spec.type == i32 &&
       lhs && rhs && lhs.value().get().type == i32 && rhs.value().get().type == i32;
-  if ((!exact_fadd && !exact_add) ||
+  const bool exact_mul = spec.opcode == BinaryOpcode::Mul && spec.type == i32 &&
+      lhs && rhs && lhs.value().get().type == i32 && rhs.value().get().type == i32;
+  if ((!exact_fadd && !exact_add && !exact_mul) ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   const auto* lhs_def = std::get_if<InstResultDef>(&lhs.value().get().definition);
@@ -1223,9 +1225,13 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       function_data.insts_.get(function_, lhs_def->instruction);
   if (!lhs_producer ||
       (exact_fadd && !std::holds_alternative<CallNode>(lhs_producer.value().get().payload)) ||
-      (exact_add && !std::holds_alternative<LoadNode>(lhs_producer.value().get().payload)))
+      (exact_add && !std::holds_alternative<LoadNode>(lhs_producer.value().get().payload)) ||
+      (exact_mul && [&] {
+        const auto* binary = std::get_if<BinaryNode>(&lhs_producer.value().get().payload);
+        return !binary || binary->opcode != BinaryOpcode::Add || binary->type != i32;
+      }()))
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
-  if (exact_add) {
+  if (exact_add || exact_mul) {
     const auto* rhs_constant = std::get_if<ConstantDef>(&rhs.value().get().definition);
     if (!rhs_constant) return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
     const auto* integer = rhs_constant->constant.valid() &&
@@ -1234,7 +1240,7 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
         ? std::get_if<IntegerConstant>(
               &parent_->data_->constants_[rhs_constant->constant.slot].payload)
         : nullptr;
-    if (!integer || integer->value != 1)
+    if (!integer || integer->value != (exact_add ? 1 : 2))
       return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   }
 

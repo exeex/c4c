@@ -531,6 +531,27 @@ bool exact_normalized_i32_add(
   return lhs_value != source_values.end() && lhs_value->second == i32;
 }
 
+bool exact_normalized_i32_mul(
+    const LirBinOp& bin,
+    const std::unordered_map<std::uint32_t, Type>& source_values,
+    const std::unordered_set<std::uint32_t>& normalized_i32_add_results) {
+  const Type i32{TypeKind::Integer, 32, "i32"};
+  const auto* result = bin.result.value_id();
+  const auto* lhs = bin.lhs.value_id();
+  const auto* rhs = bin.rhs.integer_immediate();
+  if (bin.result.kind() != codegen::lir::LirOperandKind::SsaValue || !result ||
+      !result->valid() || !bin.opcode.typed() ||
+      *bin.opcode.typed() != codegen::lir::LirBinaryOpcode::Mul ||
+      bin.type_str != codegen::lir::LirTypeRef::integer(32) ||
+      bin.lhs.kind() != codegen::lir::LirOperandKind::SsaValue || !lhs ||
+      !lhs->valid() || bin.rhs.kind() != codegen::lir::LirOperandKind::Immediate ||
+      !rhs || rhs->value != 2 ||
+      normalized_i32_add_results.count(lhs->value) == 0)
+    return false;
+  const auto lhs_value = source_values.find(lhs->value);
+  return lhs_value != source_values.end() && lhs_value->second == i32;
+}
+
 bool exact_integer_intrinsic_call(
     const LirModule& module, const LirCallOp& call,
     const std::unordered_map<std::uint32_t, Type>& source_values) {
@@ -1756,6 +1777,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_set<std::uint32_t> intrinsic_results;
   std::unordered_set<std::uint32_t> native_floating_call_results;
   std::unordered_set<std::uint32_t> selected_global_i32_load_results;
+  std::unordered_set<std::uint32_t> normalized_i32_add_results;
   labels.reserve(function.blocks.size());
   block_ids.reserve(function.blocks.size());
   for (const auto& block : function.blocks) {
@@ -2018,13 +2040,16 @@ Result<void, ImportError> validate_function(const LirModule& module,
             *bin, source_values, native_floating_call_results);
         const bool add = exact_normalized_i32_add(
             *bin, source_values, selected_global_i32_load_results);
+        const bool mul = exact_normalized_i32_mul(
+            *bin, source_values, normalized_i32_add_results);
         const Type result_type = fadd ? Type{TypeKind::F64, 64, "double"}
                                       : Type{TypeKind::Integer, 32, "i32"};
-        if ((!fadd && !add) ||
+        if ((!fadd && !add && !mul) ||
             !source_values.emplace(bin->result.value_id()->value, result_type).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
                             "binary requires one exact admitted source-authorized operand shape");
+        if (add) normalized_i32_add_results.insert(bin->result.value_id()->value);
         continue;
       }
       if (const auto* cast = std::get_if<LirCastOp>(&instruction)) {
@@ -2384,6 +2409,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
           std::unordered_map<std::string, std::pair<ValueId, Type>> ordinary_values;
           std::unordered_map<std::uint32_t, ValueId> source_values;
           std::unordered_set<std::uint32_t> native_floating_call_results;
+          std::unordered_set<std::uint32_t> normalized_i32_add_results;
           blocks.reserve(function.blocks.size());
           for (const LirBlock& block : function.blocks) {
             auto created_block = function_builder.create_block(block.label);
@@ -2803,9 +2829,13 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
               if (const auto* bin = std::get_if<LirBinOp>(&instruction)) {
                 const bool fadd = bin->opcode.typed() ==
                     std::optional{codegen::lir::LirBinaryOpcode::FAdd};
+                const bool add = bin->opcode.typed() ==
+                    std::optional{codegen::lir::LirBinaryOpcode::Add};
                 const auto lhs = source_values.find(bin->lhs.value_id()->value);
                 if (lhs == source_values.end() ||
                     (fadd && native_floating_call_results.count(
+                        bin->lhs.value_id()->value) == 0) ||
+                    (!fadd && !add && normalized_i32_add_results.count(
                         bin->lhs.value_id()->value) == 0)) {
                   edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
                                            name, block.label,
@@ -2827,14 +2857,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                       Type{TypeKind::Integer, 32, "i32"});
                   if (!reserved) {
                     edit_error = builder_failure(name, block.label,
-                                                 "reserve normalized Add immediate",
+                                                 add ? "reserve normalized Add immediate"
+                                                     : "reserve normalized Mul immediate",
                                                  reserved.error());
                     return Result<void, BuildError>::failure(reserved.error());
                   }
-                  auto defined = function_builder.define_int_constant(reserved.value(), 1);
+                  auto defined = function_builder.define_int_constant(
+                      reserved.value(), add ? 1 : 2);
                   if (!defined) {
                     edit_error = builder_failure(name, block.label,
-                                                 "define normalized Add immediate",
+                                                 add ? "define normalized Add immediate"
+                                                     : "define normalized Mul immediate",
                                                  defined.error());
                     return Result<void, BuildError>::failure(defined.error());
                   }
@@ -2842,14 +2875,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 }
                 auto appended = function_builder.append(
                     blocks.at(block.label),
-                    BinarySpec{fadd ? BinaryOpcode::FAdd : BinaryOpcode::Add,
+                    BinarySpec{fadd ? BinaryOpcode::FAdd
+                                    : add ? BinaryOpcode::Add : BinaryOpcode::Mul,
                                fadd ? Type{TypeKind::F64, 64, "double"}
                                     : Type{TypeKind::Integer, 32, "i32"},
                                lhs->second, rhs_value,
                                bin->result.value_id()->value});
                 if (!appended) {
                   edit_error = builder_failure(name, block.label,
-                                               fadd ? "append double FAdd" : "append normalized i32 Add",
+                                               fadd ? "append double FAdd"
+                                                    : add ? "append normalized i32 Add"
+                                                          : "append normalized i32 Mul",
                                                appended.error());
                   return Result<void, BuildError>::failure(appended.error());
                 }
@@ -2862,6 +2898,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   return Result<void, BuildError>::failure(
                       BuildError::DuplicateSourceValue);
                 }
+                if (add)
+                  normalized_i32_add_results.insert(bin->result.value_id()->value);
                 continue;
               }
               if (const auto* cast = std::get_if<LirCastOp>(&instruction)) {
