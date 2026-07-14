@@ -1846,7 +1846,8 @@ Result<void, BuildError> FunctionBuilder::set_terminator(
             return Result<void, BuildError>::failure(
                 BuildError::InvalidConditionType);
           if (!function.blocks_.contains(function_, term.true_target) ||
-              !function.blocks_.contains(function_, term.false_target))
+              !function.blocks_.contains(function_, term.false_target) ||
+              term.true_target == term.false_target)
             return Result<void, BuildError>::failure(BuildError::InvalidBlock);
         } else if constexpr (std::is_same_v<Term, IndirectJumpTerm>) {
           if (!same_owner(function_, term.address))

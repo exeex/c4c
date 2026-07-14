@@ -3465,6 +3465,98 @@ void test_indirect_branch_terminator_receipt_and_rejections() {
          "foreign indirect target authority must publish neither Raw nor Canonical BIR");
 }
 
+lir::LirModule selected_global_i32_slt_compare_module();
+
+void test_conditional_branch_terminator_receipt_and_rejections() {
+  auto conditional_branch_module = [] {
+    auto module = selected_global_i32_slt_compare_module();
+    auto& function = module.functions[0];
+    function.blocks[0].terminator = lir::LirCondBr{
+        "%presentation-only-slt-result", "true-display", "false-display",
+        lir::LirBlockId{1}, lir::LirBlockId{2}, lir::LirValueId{33}};
+    function.blocks.push_back(return_block(1, "true-display"));
+    function.blocks.push_back(return_block(2, "false-display"));
+    return module;
+  };
+
+  const auto module = conditional_branch_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "typed conditional branch must publish verified Raw BIR");
+  const auto view = raw.value().view();
+  const auto function_id = view.functions()[0];
+  const auto function = view.function(function_id).value();
+  const auto blocks = function.blocks();
+  const auto terminator = function.terminator(blocks[0]);
+  const auto* conditional = terminator.has_value()
+                                ? std::get_if<bir::CondJumpTerm>(&terminator.value())
+                                : nullptr;
+  expect(conditional && conditional->condition ==
+                            function.source_value(bir::SourceValueId{function_id, 33}).value() &&
+             conditional->true_target == blocks[1] &&
+             conditional->false_target == blocks[2] &&
+             function.successors(blocks[0]).value() ==
+                 std::vector<bir::BlockId>({blocks[1], blocks[2]}),
+         "conditional branch must preserve typed condition and ordered successors without display recovery");
+  expect(bir::lower_lir_to_canonical_bir(module).has_value(),
+         "typed conditional branch must canonicalize");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = conditional_branch_module();
+    mutate(candidate);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value(), message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value(), message + " (Canonical rollback)");
+  };
+  rejected([](lir::LirModule& candidate) {
+    std::get<lir::LirCondBr>(candidate.functions[0].blocks[0].terminator).condition =
+        lir::LirValueId::invalid();
+  }, "missing conditional condition authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    std::get<lir::LirCondBr>(candidate.functions[0].blocks[0].terminator).condition =
+        lir::LirValueId{999};
+  }, "invalid conditional condition authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    std::get<lir::LirCondBr>(candidate.functions[0].blocks[0].terminator).condition =
+        lir::LirValueId{31};
+  }, "non-boolean conditional condition authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    auto& branch = std::get<lir::LirCondBr>(candidate.functions[0].blocks[0].terminator);
+    branch.true_successor = lir::LirBlockId::invalid();
+  }, "missing conditional successor authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    auto& branch = std::get<lir::LirCondBr>(candidate.functions[0].blocks[0].terminator);
+    branch.false_successor = lir::LirBlockId{999};
+  }, "invalid conditional successor authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    auto& branch = std::get<lir::LirCondBr>(candidate.functions[0].blocks[0].terminator);
+    branch.false_successor = branch.true_successor;
+  }, "duplicate conditional successor authority must reject transactionally");
+  rejected([](lir::LirModule& candidate) {
+    candidate.functions[0].blocks[2].id = lir::LirBlockId{1};
+  }, "ambiguous conditional successor authority must reject transactionally");
+
+  auto foreign = conditional_branch_module();
+  foreign.functions.push_back(void_definition(
+      "foreign_owner", {return_block(3, "foreign-display")}));
+  std::get<lir::LirCondBr>(foreign.functions[0].blocks[0].terminator)
+      .false_successor = lir::LirBlockId{3};
+  expect(!bir::lower_lir_to_raw_bir(foreign).has_value() &&
+             !bir::lower_lir_to_canonical_bir(foreign).has_value(),
+         "foreign conditional successor authority must publish neither Raw nor Canonical BIR");
+
+  auto presentation_incoherent = conditional_branch_module();
+  auto& presentation_branch =
+      std::get<lir::LirCondBr>(presentation_incoherent.functions[0].blocks[0].terminator);
+  presentation_branch.cond_name = "%incoherent-display";
+  presentation_branch.true_label = "incoherent-true-display";
+  presentation_branch.false_label = "incoherent-false-display";
+  expect(bir::lower_lir_to_raw_bir(presentation_incoherent).has_value() &&
+             bir::lower_lir_to_canonical_bir(presentation_incoherent).has_value(),
+         "conditional branch reception must ignore incoherent presentation shadows");
+}
+
 void test_selected_global_array_gep_ssa_index_receipt() {
   auto module = selected_global_array_gep_module();
   const auto index_link = module.link_names.intern("gep_index_global");
@@ -11314,6 +11406,7 @@ int main() {
   test_direct_global_integer_load_rejections();
   test_selected_global_array_gep_receipt();
   test_indirect_branch_terminator_receipt_and_rejections();
+  test_conditional_branch_terminator_receipt_and_rejections();
   test_selected_global_array_gep_ssa_index_receipt();
   test_selected_global_array_gep_builder_contract();
   test_selected_global_array_gep_rejections();

@@ -3008,8 +3008,29 @@ Result<void, ImportError> validate_function(const LirModule& module,
           } else if constexpr (std::is_same_v<Term, LirUnreachable>) {
             // Supported directly.
           } else if constexpr (std::is_same_v<Term, LirCondBr>) {
-            return fail<void>(ImportErrorCode::UnsupportedTerminator, name,
-                              block.label, "conditional branch");
+            const auto condition = terminator.condition.valid()
+                                       ? source_values.find(
+                                             terminator.condition.value)
+                                       : source_values.end();
+            if (condition == source_values.end() ||
+                condition->second != Type{TypeKind::I1})
+              return fail<void>(ImportErrorCode::UnsupportedTerminator, name,
+                                block.label,
+                                "LirCondBr.condition must resolve to a current-function boolean value");
+            const auto true_target = terminator.true_successor.valid()
+                                         ? block_labels_by_id.find(
+                                               terminator.true_successor.value)
+                                         : block_labels_by_id.end();
+            const auto false_target = terminator.false_successor.valid()
+                                          ? block_labels_by_id.find(
+                                                terminator.false_successor.value)
+                                          : block_labels_by_id.end();
+            if (true_target == block_labels_by_id.end() ||
+                false_target == block_labels_by_id.end() ||
+                terminator.true_successor == terminator.false_successor)
+              return fail<void>(ImportErrorCode::MissingBranchTarget, name,
+                                block.label,
+                                "LirCondBr successors must be distinct and resolve exactly once in their current function");
           } else if constexpr (std::is_same_v<Term, LirSwitch>) {
             return fail<void>(ImportErrorCode::UnsupportedTerminator, name,
                               block.label, "switch");
@@ -3110,8 +3131,28 @@ Result<Terminator, ImportError> lower_terminator(
         } else if constexpr (std::is_same_v<Term, LirUnreachable>) {
           return Result<Terminator, ImportError>::success(UnreachableTerm{});
         } else if constexpr (std::is_same_v<Term, LirCondBr>) {
-          return fail<Terminator>(ImportErrorCode::UnsupportedTerminator,
-                                  function, block, "conditional branch");
+          const auto condition = lir_terminator.condition.valid()
+                                     ? source_values.find(
+                                           lir_terminator.condition.value)
+                                     : source_values.end();
+          if (condition == source_values.end())
+            return fail<Terminator>(ImportErrorCode::UnsupportedTerminator,
+                                    function, block,
+                                    "validated conditional branch condition disappeared from the current-function boolean registry");
+          const auto true_target = lir_terminator.true_successor.valid()
+                                       ? blocks.find(
+                                             lir_terminator.true_successor.value)
+                                       : blocks.end();
+          const auto false_target = lir_terminator.false_successor.valid()
+                                        ? blocks.find(
+                                              lir_terminator.false_successor.value)
+                                        : blocks.end();
+          if (true_target == blocks.end() || false_target == blocks.end())
+            return fail<Terminator>(ImportErrorCode::MissingBranchTarget,
+                                    function, block,
+                                    "validated conditional branch successor disappeared from the current-function registry");
+          return Result<Terminator, ImportError>::success(CondJumpTerm{
+              condition->second, true_target->second, false_target->second});
         } else if constexpr (std::is_same_v<Term, LirSwitch>) {
           return fail<Terminator>(ImportErrorCode::UnsupportedTerminator,
                                   function, block, "switch");

@@ -1279,10 +1279,11 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
               if (term.true_target.owner != function_id ||
                   !function.blocks_.contains(function_id, term.true_target) ||
                   term.false_target.owner != function_id ||
-                  !function.blocks_.contains(function_id, term.false_target))
+                  !function.blocks_.contains(function_id, term.false_target) ||
+                  term.true_target == term.false_target)
                 report(result, VerificationRule::Terminator, function_id,
                        block_id,
-                       "conditional jump targets must resolve in their owner");
+                       "conditional jump targets must be distinct and resolve in their owner");
             } else if constexpr (std::is_same_v<Term, IndirectJumpTerm>) {
               const auto address = function.values_.get(function_id, term.address);
               if (term.address.owner != function_id || !address ||
