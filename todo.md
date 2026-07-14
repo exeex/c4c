@@ -8,22 +8,26 @@ Current Step Title: Extract direct frontend-LIR producer probes
 
 ## Just Finished
 
-- Lifecycle switch: 769's bounded structured global-initializer contract is
-  complete; resume 768 at its preserved Step 3.
+- Plan Step 3: added the focused `frontend_lir_label_address_rvalue_probe`
+  diagnostic for an automatic local scalar initialized directly by `&&label`.
+  The harness fixes the immediate structured `LirStoreOp` pointer-store seam;
+  producer authority remains incomplete and is not accepted by this probe.
 
 ## Suggested Next
 
-- Begin Step 3 from the accepted static structured initializer representation,
-  then extract the remaining focused producer probes. Do not modify carrier or
-  Raw-BIR/importer routes.
+- Select and implement a producer capability only after preserving the probe's
+  required contract: typed pointer operand with valid current-function authority,
+  plus nearby malformed invalid, foreign, and non-pointer rejection coverage.
 
 ## Watchouts
 
 - The four-case missing-`addr_value` family predates 769 and is 768 producer
   evidence, not a global-initializer regression or a Raw-BIR/importer boundary.
+- Do not reinterpret the raw direct label-address operand observed by this probe
+  as semantic authority. The probe intentionally leaves that producer boundary
+  unasserted until a typed authority capability is selected.
 
 ## Proof
 
-- Preserved acceptance evidence: `56d86556a` focused `frontend_lir` 5/5;
-  fresh exact four-case reproduction remains 4/4 failing only at missing
-  `LirIndirectBrOp.addr_value`, as recorded before 769 in 768 and 764.
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_' > test_after.log`
+  (fresh build plus the supervisor-selected frontend-LIR subset; log: `test_after.log`).
