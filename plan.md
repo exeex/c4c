@@ -54,8 +54,28 @@ text recovery or raw fallback.
 Goal: carry the selected aggregate producer IDs natively to downstream uses
 and validate ownership/type coherence.
 
-Completion check: local-load and constructed-insertvalue aggregate uses retain
-checked current-function authority; unrelated producer families fail closed.
+Actions:
+
+- first restore the rejected 803-specific implementation hunks before the next
+  attempt; do not build further work on them and do not disturb preserved
+  unaccepted 801/802 changes in shared files;
+- gate the generalized producer verification on an explicit selected
+  `extract.requires_native_result_authority` contract, so legacy SSA extracts
+  such as `backend_lir_to_bir_interface` retain their existing route;
+- publish native result IDs only for the selected aggregate local loads and
+  terminal constructed insertvalues, preserving their operands through the
+  immediate unary extract path;
+- add a dedicated aggregate producer-type carrier for those opt-in producers
+  and compare it with `extract.agg_type`; leave the local-object raw pointee
+  and `LirAllocaOp.local_object_authority` equality contract unchanged;
+- verify only selected extracts against current-function producer ID, allowed
+  opted-in Call/Load/Insert kind, aggregate carrier/type equality, and exact
+  display mirror. All other kinds fail closed for selected extracts.
+
+Completion check: selected local-load and constructed-insertvalue aggregate
+uses retain checked current-function authority; legacy extracts remain
+ungated, local-object raw-pointee authority is unchanged, and unrelated
+producer families fail closed.
 
 ### Step 3 - Prove and publish the 754 handoff
 
