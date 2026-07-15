@@ -116,6 +116,8 @@ std::string emit_post_builtin_call(FnCtx& ctx, const CallExpr& call,
                                    const CallTargetInfo& call_target);
 LirOperand emit_post_builtin_call_operand(FnCtx& ctx, const CallExpr& call,
                                           const CallTargetInfo& call_target);
+std::optional<std::pair<lir::LirOperand, lir::LirMemoryVaPointerAuthority>>
+native_direct_local_va_pointer(FnCtx& ctx, ExprId arg);
 
 // Call and va_arg expression payload entry points.
 std::string emit_rval_payload(FnCtx& ctx, const CallExpr& call, const Expr& e);

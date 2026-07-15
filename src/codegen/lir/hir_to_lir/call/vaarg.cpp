@@ -309,12 +309,20 @@ LirOperand StmtEmitter::emit_vaarg_rval_operand(FnCtx& ctx, const VaArgExpr& v,
          res_ts.base == TB_LONGDOUBLE)));
   if (module_ != nullptr && module_->prefer_semantic_va_ops &&
       llvm_target_is_amd64_sysv(mod_.target_profile) && is_scalar_or_pointer_payload) {
-    TypeSpec ap_ts{};
-    const std::string ap_ptr = emit_va_list_obj_ptr(ctx, v.ap, ap_ts);
-    const LirOperand result = fresh_value(ctx);
-    emit_lir_op(ctx, lir::LirVaArgOp{result, LirOperand(ap_ptr),
-                                     lir::LirTypeRef(llvm_ty(res_ts))});
-    return result;
+    if (const auto ap_authority = native_direct_local_va_pointer(ctx, v.ap)) {
+      const LirOperand result = fresh_value(ctx);
+      const lir::LirTypeRef result_type(llvm_ty(res_ts));
+      emit_lir_op(ctx, lir::LirVaArgOp{
+                           .result = result,
+                           .ap_ptr = ap_authority->first,
+                           .type_str = result_type,
+                           .requires_native_memory_va_authority = true,
+                           .ap_authority = ap_authority->second,
+                           .result_authority = *result.value_id(),
+                           .result_type_authority = result_type,
+                       });
+      return result;
+    }
   }
   return LirOperand::raw(emit_rval_payload(ctx, v, e));
 }

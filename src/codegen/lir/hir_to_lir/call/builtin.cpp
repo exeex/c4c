@@ -458,6 +458,31 @@ LirOperand StmtEmitter::emit_rval_call_operand(FnCtx& ctx,
   return LirOperand::raw(emit_rval_payload(ctx, call, e));
 }
 
+std::optional<std::pair<lir::LirOperand, lir::LirMemoryVaPointerAuthority>>
+StmtEmitter::native_direct_local_va_pointer(FnCtx& ctx, ExprId arg) {
+  const Expr& argument = get_expr(arg);
+  const auto* reference = std::get_if<DeclRef>(&argument.payload);
+  if (!reference || !reference->local || !ctx.lir_function) return std::nullopt;
+  const auto local_type = ctx.local_types.find(reference->local->value);
+  const auto authority = ctx.local_object_authorities.find(reference->local->value);
+  const auto slot = ctx.local_slots.find(reference->local->value);
+  if (local_type == ctx.local_types.end() ||
+      local_type->second.base != TB_VA_LIST || local_type->second.ptr_level != 0 ||
+      local_type->second.array_rank != 0 ||
+      authority == ctx.local_object_authorities.end() || slot == ctx.local_slots.end()) {
+    return std::nullopt;
+  }
+  const auto& pointer = authority->second;
+  if (!pointer.pointer_definition.valid() || !pointer.object.valid() ||
+      pointer.owner != ctx.lir_function->link_name_id ||
+      pointer.pointer_type.kind() != lir::LirTypeKind::Pointer || !pointer.live) {
+    return std::nullopt;
+  }
+  return std::make_pair(
+      lir::LirOperand::ssa(slot->second, pointer.pointer_definition),
+      lir::LirMemoryVaPointerAuthority{pointer});
+}
+
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, const Expr& e) {
   const CallTargetInfo call_target = resolve_call_target_info(ctx, call, e);
   const BuiltinId builtin_id = call_target.builtin_id;
@@ -467,22 +492,6 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
   }
 
   if (call_target.builtin_special) {
-    const auto native_direct_local_va_pointer = [&](ExprId arg)
-        -> std::optional<std::pair<lir::LirOperand,
-                                  lir::LirMemoryVaPointerAuthority>> {
-      const Expr& argument = get_expr(arg);
-      const auto* reference = std::get_if<DeclRef>(&argument.payload);
-      if (!reference || !reference->local) return std::nullopt;
-      const auto authority = ctx.local_object_authorities.find(reference->local->value);
-      const auto slot = ctx.local_slots.find(reference->local->value);
-      if (authority == ctx.local_object_authorities.end() ||
-          slot == ctx.local_slots.end()) {
-        return std::nullopt;
-      }
-      return std::make_pair(
-          lir::LirOperand::ssa(slot->second, authority->second.pointer_definition),
-          lir::LirMemoryVaPointerAuthority{authority->second});
-    };
     if (builtin_id == BuiltinId::Memcpy && call.args.size() >= 3) {
       TypeSpec dst_ts{};
       TypeSpec src_ts{};
@@ -499,7 +508,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
     }
     if (builtin_id == BuiltinId::VaStart && call.args.size() >= 1) {
       module_->need_va_start = true;
-      if (const auto authority = native_direct_local_va_pointer(call.args[0])) {
+      if (const auto authority = native_direct_local_va_pointer(ctx, call.args[0])) {
         emit_lir_op(ctx, lir::LirVaStartOp{
                              .ap_ptr = authority->first,
                              .requires_native_memory_va_authority = true,
@@ -514,7 +523,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
     }
     if (builtin_id == BuiltinId::VaEnd && call.args.size() >= 1) {
       module_->need_va_end = true;
-      if (const auto authority = native_direct_local_va_pointer(call.args[0])) {
+      if (const auto authority = native_direct_local_va_pointer(ctx, call.args[0])) {
         emit_lir_op(ctx, lir::LirVaEndOp{
                              .ap_ptr = authority->first,
                              .requires_native_memory_va_authority = true,
@@ -529,8 +538,8 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
     }
     if (builtin_id == BuiltinId::VaCopy && call.args.size() >= 2) {
       module_->need_va_copy = true;
-      if (const auto dst_authority = native_direct_local_va_pointer(call.args[0])) {
-        if (const auto src_authority = native_direct_local_va_pointer(call.args[1])) {
+      if (const auto dst_authority = native_direct_local_va_pointer(ctx, call.args[0])) {
+        if (const auto src_authority = native_direct_local_va_pointer(ctx, call.args[1])) {
           emit_lir_op(ctx, lir::LirVaCopyOp{
                                .dst_ptr = dst_authority->first,
                                .src_ptr = src_authority->first,

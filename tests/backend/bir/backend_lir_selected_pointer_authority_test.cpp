@@ -213,6 +213,48 @@ void test_native_memory_va_authority_verifier_boundary() {
   expect_rejected(std::move(dead_va_copy),
                   "selected va_copy must reject dead pointer authority");
 
+  auto selected_va_arg = native_memset_authority_module();
+  selected_va_arg.functions[0].blocks[0].insts.push_back(lir::LirVaArgOp{
+      .result = lir::LirOperand::ssa("%va", lir::LirValueId{2}),
+      .ap_ptr = lir::LirOperand::ssa("%slot", lir::LirValueId{1}),
+      .type_str = lir::LirTypeRef::integer(32),
+      .requires_native_memory_va_authority = true,
+      .ap_authority = va_binding,
+      .result_authority = lir::LirValueId{2},
+      .result_type_authority = lir::LirTypeRef::integer(32),
+  });
+  lir::verify_module(selected_va_arg);
+  auto missing_va_arg = selected_va_arg;
+  std::get<lir::LirVaArgOp>(missing_va_arg.functions[0].blocks[0].insts.back())
+      .ap_authority.reset();
+  expect_rejected(std::move(missing_va_arg),
+                  "selected va_arg must reject incomplete pointer authority");
+
+  auto foreign_va_arg = selected_va_arg;
+  const auto foreign_va_arg_owner = foreign_va_arg.link_names.intern("foreign_va_arg_owner");
+  std::get<lir::LirVaArgOp>(foreign_va_arg.functions[0].blocks[0].insts.back())
+      .ap_authority->local_pointer.owner = foreign_va_arg_owner;
+  expect_rejected(std::move(foreign_va_arg),
+                  "selected va_arg must reject foreign pointer authority");
+
+  auto dead_va_arg = selected_va_arg;
+  std::get<lir::LirVaArgOp>(dead_va_arg.functions[0].blocks[0].insts.back())
+      .ap_authority->local_pointer.live = false;
+  expect_rejected(std::move(dead_va_arg),
+                  "selected va_arg must reject dead pointer authority");
+
+  auto mismatched_va_arg_result = selected_va_arg;
+  std::get<lir::LirVaArgOp>(mismatched_va_arg_result.functions[0].blocks[0].insts.back())
+      .result_authority = lir::LirValueId{3};
+  expect_rejected(std::move(mismatched_va_arg_result),
+                  "selected va_arg must reject result authority mismatch");
+
+  auto mismatched_va_arg_type = selected_va_arg;
+  std::get<lir::LirVaArgOp>(mismatched_va_arg_type.functions[0].blocks[0].insts.back())
+      .result_type_authority = lir::LirTypeRef::integer(64);
+  expect_rejected(std::move(mismatched_va_arg_type),
+                  "selected va_arg must reject result type authority mismatch");
+
   auto wrong_size = native_memset_authority_module();
   std::get<lir::LirMemsetOp>(wrong_size.functions[0].blocks[0].insts[0])
       .size_authority->value = lir::LirIntegerImmediate{8};
@@ -371,6 +413,10 @@ hir::Module direct_local_va_lifecycle_module() {
   void_type.base = c4c::TB_VOID;
   void_type.enum_underlying_base = c4c::TB_VOID;
   void_type.array_size = -1;
+  c4c::TypeSpec int_type{};
+  int_type.base = c4c::TB_INT;
+  int_type.enum_underlying_base = c4c::TB_VOID;
+  int_type.array_size = -1;
 
   hir::LocalDecl local;
   local.id = module.alloc_local_id();
@@ -423,6 +469,11 @@ hir::Module direct_local_va_lifecycle_module() {
       .callee = va_copy_callee.id,
       .args = {copy_ap_ref.id, ap_ref.id},
       .builtin_id = c4c::BuiltinId::VaCopy};
+  hir::Expr va_arg;
+  va_arg.id = module.alloc_expr_id();
+  va_arg.type.spec = int_type;
+  va_arg.type.category = hir::ValueCategory::RValue;
+  va_arg.payload = hir::VaArgExpr{.ap = ap_ref.id};
 
   hir::Function function;
   function.id = module.alloc_function_id();
@@ -436,6 +487,7 @@ hir::Module direct_local_va_lifecycle_module() {
   entry.stmts.push_back(hir::Stmt{.payload = copy_local});
   entry.stmts.push_back(hir::Stmt{.payload = hir::ExprStmt{va_start.id}});
   entry.stmts.push_back(hir::Stmt{.payload = hir::ExprStmt{va_copy.id}});
+  entry.stmts.push_back(hir::Stmt{.payload = hir::ExprStmt{va_arg.id}});
   entry.stmts.push_back(hir::Stmt{.payload = hir::ExprStmt{va_end.id}});
   function.blocks.push_back(std::move(entry));
   module.expr_pool.push_back(std::move(ap_ref));
@@ -446,24 +498,28 @@ hir::Module direct_local_va_lifecycle_module() {
   module.expr_pool.push_back(std::move(va_start));
   module.expr_pool.push_back(std::move(va_end));
   module.expr_pool.push_back(std::move(va_copy));
+  module.expr_pool.push_back(std::move(va_arg));
   module.index_function_decl(function);
   module.functions.push_back(std::move(function));
   return module;
 }
 
 void test_direct_local_va_lifecycle_populates_authority() {
-  const lir::LirModule module = lir::lower(direct_local_va_lifecycle_module());
+  const lir::LirModule module = lir::lower(
+      direct_local_va_lifecycle_module(), lir::LowerOptions{.preserve_semantic_va_ops = true});
   const auto& function = module.functions.front();
   const lir::LirVaStartOp* va_start = nullptr;
   const lir::LirVaEndOp* va_end = nullptr;
   const lir::LirVaCopyOp* va_copy = nullptr;
+  const lir::LirVaArgOp* va_arg = nullptr;
   for (const auto& block : function.blocks) for (const auto& inst : block.insts) {
     if (const auto* candidate = std::get_if<lir::LirVaStartOp>(&inst)) va_start = candidate;
     if (const auto* candidate = std::get_if<lir::LirVaEndOp>(&inst)) va_end = candidate;
     if (const auto* candidate = std::get_if<lir::LirVaCopyOp>(&inst)) va_copy = candidate;
+    if (const auto* candidate = std::get_if<lir::LirVaArgOp>(&inst)) va_arg = candidate;
   }
-  expect(va_start && va_end && va_copy,
-         "direct local va-list lowering must emit va_start, va_copy, and va_end");
+  expect(va_start && va_end && va_copy && va_arg,
+         "direct local va-list lowering must emit va_start, va_copy, va_arg, and va_end");
   const auto check = [&](const auto& op, const char* message) {
     expect(op->requires_native_memory_va_authority && op->ap_authority &&
                op->ap_ptr.value_id() &&
@@ -490,6 +546,17 @@ void test_direct_local_va_lifecycle_populates_authority() {
              va_copy->dst_authority->local_pointer.live &&
              va_copy->src_authority->local_pointer.live,
          "direct local va_copy must retain both native pointer authorities");
+  expect(va_arg->requires_native_memory_va_authority && va_arg->ap_authority &&
+             va_arg->ap_ptr.value_id() && va_arg->result.value_id() &&
+             va_arg->result_authority && va_arg->result_type_authority &&
+             *va_arg->ap_ptr.value_id() ==
+                 va_arg->ap_authority->local_pointer.pointer_definition &&
+             *va_arg->result.value_id() == *va_arg->result_authority &&
+             va_arg->type_str == *va_arg->result_type_authority &&
+             va_arg->ap_authority->local_pointer.owner == function.link_name_id &&
+             va_arg->ap_authority->local_pointer.object.valid() &&
+             va_arg->ap_authority->local_pointer.live,
+         "direct local scalar va_arg must retain pointer and result/type authority");
   lir::verify_module(module);
 }
 
