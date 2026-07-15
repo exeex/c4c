@@ -1,6 +1,6 @@
 # BIR NodeKind Tag Algebra and Phase Vocabulary Lowering Contract
 
-Status: Draft (awaiting user review)
+Status: Open (active)
 Type: Architecture contract prerequisite with bounded schema proof
 Extends: `ideas/closed/746_bir_node_kind_centric_storage_pass_contract.md`
 Required Consumer: `ideas/open/732_bir_stage_document_convergence_umbrella.md`
@@ -300,9 +300,8 @@ B-through-F lowering pipelines.
 
 ## Lifecycle Handoff
 
-This draft is parked until the user approves the whole contract. Approval may
-promote this same file to `ideas/open/` but must not activate it in the same
-operation. After this prerequisite is accepted and closed, a separate
-user-authorized lifecycle revision should update idea 732's stale post-734
-parking language, cite the published tag/vocabulary artifact as normative
-input, and then decide whether to reactivate 732.
+The user approved and activated this contract as the sole active plan. After
+this prerequisite is accepted and closed, a separate user-authorized lifecycle
+revision should update idea 732's stale post-734 parking language, cite the
+published tag/vocabulary artifact as normative input, and then decide whether
+to reactivate 732.
