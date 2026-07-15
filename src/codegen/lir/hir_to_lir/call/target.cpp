@@ -319,12 +319,18 @@ void StmtEmitter::emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
 
 LirOperand StmtEmitter::emit_call_with_result(
     FnCtx& ctx, const CallTargetInfo& call_target,
-    const std::vector<OwnedLirTypedCallArg>& args) {
+    const std::vector<OwnedLirTypedCallArg>& args,
+    bool require_direct_aggregate_ssa) {
   std::optional<LirCallSignature> callee_signature =
       structured_callee_signature(mod_, module_, call_target);
   LirTypeRef return_type =
       lir_call_type_ref(call_target.ret_ty, module_, mod_, call_target.ret_spec);
-  const bool authoritative_direct_result =
+  const bool aggregate_result_for_selected_extract =
+      require_direct_aggregate_ssa && call_target.callee_link_name_id != kInvalidLinkName &&
+      callee_signature.has_value() &&
+      (return_type.kind() == LirTypeKind::Struct || return_type.kind() == LirTypeKind::Array ||
+       return_type.kind() == LirTypeKind::Vector);
+  const bool authoritative_direct_result = aggregate_result_for_selected_extract ||
       call_target.callee_link_name_id != kInvalidLinkName &&
       callee_signature.has_value() &&
       (return_type.kind() == LirTypeKind::Integer ||

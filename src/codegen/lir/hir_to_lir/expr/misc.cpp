@@ -14,7 +14,8 @@ std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
 
 }  // namespace
 
-std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const Expr& e) {
+LirOperand StmtEmitter::emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u,
+                                                 const Expr& e) {
   if (u.op == UnaryOp::AddrOf) {
     TypeSpec pts{};
     try {
@@ -34,7 +35,13 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const
   TypeSpec op_ts{};
   const bool skip_rval = (u.op == UnaryOp::PreInc || u.op == UnaryOp::PreDec ||
                           u.op == UnaryOp::PostInc || u.op == UnaryOp::PostDec);
-  const std::string val = skip_rval ? "" : emit_rval_id(ctx, u.operand, op_ts);
+  const TypeSpec operand_ts = resolve_expr_type(ctx, u.operand);
+  const bool preserve_aggregate_ssa =
+      !skip_rval && is_complex_base(operand_ts.base) &&
+      (u.op == UnaryOp::BitNot || u.op == UnaryOp::RealPart ||
+       u.op == UnaryOp::ImagPart);
+  const LirOperand val = skip_rval ? LirOperand{} :
+      emit_rval_operand(ctx, u.operand, op_ts, preserve_aggregate_ssa);
   if (skip_rval) op_ts = resolve_expr_type(ctx, u.operand);
   if (!has_concrete_type(et)) et = op_ts;
   const std::string ty = llvm_ty(et);
@@ -184,6 +191,10 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const
     }
   }
   return "0";
+}
+
+std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const Expr& e) {
+  return emit_unary_rval_operand(ctx, u, e).str();
 }
 
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, const Expr&) {

@@ -77,7 +77,8 @@ std::vector<OwnedLirTypedCallArg> prepare_call_args(FnCtx& ctx, const CallExpr& 
 void emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
                     const std::vector<OwnedLirTypedCallArg>& args);
 LirOperand emit_call_with_result(FnCtx& ctx, const CallTargetInfo& call_target,
-                                 const std::vector<OwnedLirTypedCallArg>& args);
+                                 const std::vector<OwnedLirTypedCallArg>& args,
+                                 bool require_direct_aggregate_ssa = false);
 CallTargetInfo resolve_call_target_info(FnCtx& ctx, const CallExpr& call, const Expr& e);
 
 // Builtin-call lowering helpers.

@@ -46,7 +46,8 @@ template <typename T>
 TypeSpec resolve_payload_type(FnCtx&, const T&);
 
 // Rvalue expression coordination.
-LirOperand emit_rval_operand(FnCtx& ctx, ExprId id, TypeSpec& out_ts);
+LirOperand emit_rval_operand(FnCtx& ctx, ExprId id, TypeSpec& out_ts,
+                             bool require_direct_aggregate_ssa = false);
 std::string emit_rval_id(FnCtx& ctx, ExprId id, TypeSpec& out_ts);
 LirOperand emit_rval_expr(FnCtx& ctx, const Expr& e);
 
@@ -73,6 +74,7 @@ std::string emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const Expr& e);
 std::string emit_logical(FnCtx& ctx, const BinaryExpr& b, const Expr& e);
 
 // Miscellaneous expression payloads.
+LirOperand emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u, const Expr& e);
 std::string emit_rval_payload(FnCtx& ctx, const UnaryExpr& u, const Expr& e);
 std::string emit_rval_payload(FnCtx& ctx, const AssignExpr& a, const Expr& e);
 LirOperand emit_cast_rval_operand(FnCtx& ctx, const CastExpr& c);

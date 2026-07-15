@@ -442,7 +442,8 @@ TypeSpec StmtEmitter::resolve_payload_type(FnCtx&, const T&) {
 }
 
 LirOperand StmtEmitter::emit_rval_operand(FnCtx& ctx, ExprId id,
-                                          TypeSpec& out_ts) {
+                                          TypeSpec& out_ts,
+                                          bool require_direct_aggregate_ssa) {
   const Expr& e = get_expr(id);
   out_ts = e.type.spec;
   if (const auto* b = std::get_if<BinaryExpr>(&e.payload)) {
@@ -517,7 +518,12 @@ LirOperand StmtEmitter::emit_rval_operand(FnCtx& ctx, ExprId id,
     }
   }
   if (const auto* call = std::get_if<CallExpr>(&e.payload)) {
-    return emit_rval_call_operand(ctx, *call, e);
+    if (!require_direct_aggregate_ssa) return emit_rval_call_operand(ctx, *call, e);
+    const CallTargetInfo call_target = resolve_call_target_info(ctx, *call, e);
+    if (call_target.builtin_special) return emit_rval_call_operand(ctx, *call, e);
+    const auto args = prepare_call_args(ctx, *call, call_target);
+    if (call_target.ret_ty == "void") return {};
+    return emit_call_with_result(ctx, call_target, args, true);
   }
   if (const auto* binary = std::get_if<BinaryExpr>(&e.payload)) {
     LirOperand result = emit_binary_rval_operand(ctx, *binary, e);
@@ -529,6 +535,9 @@ LirOperand StmtEmitter::emit_rval_operand(FnCtx& ctx, ExprId id,
   }
   if (const auto* va_arg = std::get_if<VaArgExpr>(&e.payload)) {
     return emit_vaarg_rval_operand(ctx, *va_arg, e);
+  }
+  if (const auto* unary = std::get_if<UnaryExpr>(&e.payload)) {
+    return emit_unary_rval_operand(ctx, *unary, e);
   }
   return emit_rval_expr(ctx, e);
 }

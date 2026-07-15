@@ -2801,6 +2801,30 @@ void verify_function_value_ownership(const LirModule& mod,
                       "direct constant GEP base must match a current-function pointer label address");
         }
       }
+      if (const auto* extract = std::get_if<LirExtractValueOp>(&inst);
+          extract && extract->agg.kind() == LirOperandKind::SsaValue) {
+        const LirValueId* aggregate_id = extract->agg.value_id();
+        if (!aggregate_id || !aggregate_id->valid()) {
+          fail_verify("LirExtractValueOp.agg",
+                      "aggregate SSA operand requires valid LirValueId authority");
+        }
+        const auto definition = definition_insts.find(aggregate_id->value);
+        if (definition == definition_insts.end() || !definition->second) {
+          fail_verify("LirExtractValueOp.agg",
+                      "aggregate SSA authority must identify a current-function definition");
+        }
+        const auto* call = std::get_if<LirCallOp>(definition->second);
+        if (!call || !call->result.value_id() ||
+            *call->result.value_id() != *aggregate_id ||
+            call->return_type != extract->agg_type) {
+          fail_verify("LirExtractValueOp.agg",
+                      "aggregate SSA authority must select a matching current-function call result type");
+        }
+        if (extract->agg.str() != call->result.str()) {
+          fail_verify("LirExtractValueOp.agg",
+                      "aggregate SSA display must mirror its selected call result");
+        }
+      }
       if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
         const LirValueId* value_id = store->val.value_id();
         if (store->val.kind() == LirOperandKind::DirectConstant) {
