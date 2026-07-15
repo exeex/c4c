@@ -158,6 +158,7 @@ enum class Opcode : std::uint8_t {
   Compare,
   Select,
   SelectedMemcpy,
+  Amd64SysVOverflowAggregateMemcpy,
   Cast,
   Phi,
   AllocaAuthority,
@@ -288,6 +289,24 @@ struct SelectedMemcpyNode {
   bool source_live_at_site = false;
 };
 
+// Receipt of the one producer-verified AMD64 SysV aggregate va_arg overflow
+// copy.  The overflow source is derived storage, so it deliberately retains
+// the checked field/load chain instead of inventing a source local object.
+struct Amd64SysVOverflowAggregateMemcpyNode {
+  SourceValueId va_list_pointer{};
+  SourceObjectId va_list_object{};
+  LinkNameId owner{};
+  SourceValueId overflow_field_address{};
+  SourceValueId overflow_pointer_load{};
+  SourceValueId destination{};
+  SourceObjectId destination_object{};
+  SourceValueId final_load{};
+  Type payload_type{};
+  std::int64_t size_bytes = 0;
+  bool va_list_live = false;
+  bool destination_live = false;
+};
+
 enum class IntrinsicKind : std::uint8_t { Cttz, Ctlz, Ctpop };
 
 struct IntrinsicCallNode {
@@ -362,6 +381,7 @@ struct StackRestoreAuthorityNode {
 using InstPayload =
     std::variant<InlineAsmNode, StoreNode, LoadNode, GetElementPtrNode,
     AbsNode, CallNode, BinaryNode, CompareNode, SelectNode, SelectedMemcpyNode,
+    Amd64SysVOverflowAggregateMemcpyNode,
     IntrinsicCallNode, CastNode, PhiNode, AllocaAuthorityNode,
     LocalLoadAuthorityNode, LocalStoreAuthorityNode, LocalArrayGepAuthorityNode,
     StackSaveAuthorityNode, StackRestoreAuthorityNode>;

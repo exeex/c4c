@@ -8,18 +8,22 @@ Current Step Title: Receive selected AMD64 aggregate VA-arg overflow authority
 
 ## Just Finished
 
-- None; plan resumed from closed 753's accepted receiver-ready handoff.
+- Step 7.32: imported the one selected non-volatile AMD64 SysV aggregate
+  overflow `va_arg` memcpy carrier into a typed Raw-BIR receipt, with exact
+  local/derived-source, payload type, and positive i64-size checks.
 
 ## Suggested Next
 
-- Execute Step 7.32 only.
+- Supervisor: inspect this coherent Step 7.32 packet and choose the next
+  in-scope receiver packet.
 
 ## Watchouts
 
-- Consume only closed 753's selected native handoff. Keep every other
-  memory/VA and later-family row outside this packet and fail closed.
+- All other memcpy and memory/VA rows remain fail-closed. The receipt does not
+  lower to target code or generalize the producer contract.
 
 ## Proof
 
-- Fresh build, focused selected-row receiver proof, then supervisor-selected
-  broader proof.
+- `cmake --build --preset default` and
+  `ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$'`
+  passed; `test_after.log` preserves the output.

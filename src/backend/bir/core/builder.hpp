@@ -251,6 +251,21 @@ struct SelectedMemcpySpec {
   bool source_live_at_site = false;
 };
 
+struct Amd64SysVOverflowAggregateMemcpySpec {
+  SourceValueId va_list_pointer{};
+  SourceObjectId va_list_object{};
+  LinkNameId owner{};
+  SourceValueId overflow_field_address{};
+  SourceValueId overflow_pointer_load{};
+  SourceValueId destination{};
+  SourceObjectId destination_object{};
+  SourceValueId final_load{};
+  Type payload_type{};
+  std::int64_t size_bytes = 0;
+  bool va_list_live = false;
+  bool destination_live = false;
+};
+
 struct IntrinsicCallSpec {
   IntrinsicKind kind = IntrinsicKind::Ctpop;
   LinkNameId callee_link_name{};
@@ -417,6 +432,8 @@ class FunctionBuilder {
   Result<BuildResult, BuildError> append(BlockId block, CompareSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, SelectSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, SelectedMemcpySpec spec);
+  Result<BuildResult, BuildError> append(
+      BlockId block, Amd64SysVOverflowAggregateMemcpySpec spec);
   Result<BuildResult, BuildError> append(BlockId block, IntrinsicCallSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, CastSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, PhiSpec spec);

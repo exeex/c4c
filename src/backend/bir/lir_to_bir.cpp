@@ -2270,26 +2270,68 @@ Result<void, ImportError> validate_function(const LirModule& module,
   if (!function.stack_objects.empty())
     return fail<void>(ImportErrorCode::UnsupportedStackObjects, name, {},
                       "stack objects require the memory family");
-  if (!function.alloca_insts.empty()) {
-    if (function.alloca_insts.size() != 1)
-      return fail<void>(ImportErrorCode::UnsupportedAllocaInstructions, name, {},
-                        "only one selected hoisted alloca authority row is receivable");
-    const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
-    const auto* authority = alloca && alloca->local_object_authority
-        ? &*alloca->local_object_authority : nullptr;
-    const auto pointee = alloca ? lower_lir_type(module, alloca->type_str) : std::optional<Type>{};
-    const auto pointer = authority ? lower_lir_type(module, authority->pointer_type) : std::optional<Type>{};
-    const auto authority_pointee = authority ? lower_lir_type(module, authority->pointee_type) : std::optional<Type>{};
-    const auto* result = alloca ? alloca->result.value_id() : nullptr;
-    if (!alloca || !authority || !alloca->count.str().empty() ||
-        alloca->result.kind() != codegen::lir::LirOperandKind::SsaValue || !result || !result->valid() ||
-        authority->pointer_definition != *result || !authority->object.valid() ||
-        function.link_name_id == c4c::kInvalidLinkName || authority->owner != function.link_name_id ||
-        !pointer || pointer->kind != TypeKind::Pointer || !pointee || !authority_pointee ||
-        *pointee != *authority_pointee || !authority->live)
-      return fail<void>(ImportErrorCode::UnsupportedAllocaInstructions, name, {},
-                        "alloca requires one live typed current-function pointer/object authority binding");
+  const LirMemcpyOp* overflow_memcpy = nullptr;
+  const codegen::lir::LirAmd64SysVOverflowAggregateCarrier* overflow_carrier = nullptr;
+  for (const auto& block : function.blocks) for (const auto& instruction : block.insts) {
+    const auto* memcpy = std::get_if<LirMemcpyOp>(&instruction);
+    if (!memcpy || !memcpy->amd64_sysv_overflow_aggregate_carrier) continue;
+    if (overflow_memcpy)
+      return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                        "current function may publish exactly one selected AMD64 SysV overflow aggregate memcpy");
+    overflow_memcpy = memcpy;
+    overflow_carrier = &*memcpy->amd64_sysv_overflow_aggregate_carrier;
   }
+  const bool has_overflow_carrier = overflow_carrier != nullptr;
+
+  if (!function.alloca_insts.empty()) {
+    if (function.alloca_insts.size() != (has_overflow_carrier ? 2u : 1u))
+      return fail<void>(ImportErrorCode::UnsupportedAllocaInstructions, name, {},
+                        "only the selected hoisted alloca authority rows are receivable");
+    bool saw_overflow_va_list = false;
+    bool saw_overflow_destination = false;
+    for (const auto& instruction : function.alloca_insts) {
+      const auto* alloca = std::get_if<LirAllocaOp>(&instruction);
+      const auto* authority = alloca && alloca->local_object_authority
+          ? &*alloca->local_object_authority : nullptr;
+      const auto pointee = alloca ? lower_lir_type(module, alloca->type_str) : std::optional<Type>{};
+      const auto pointer = authority ? lower_lir_type(module, authority->pointer_type) : std::optional<Type>{};
+      const auto authority_pointee = authority ? lower_lir_type(module, authority->pointee_type) : std::optional<Type>{};
+      const auto* result = alloca ? alloca->result.value_id() : nullptr;
+      const bool matches_overflow_local = has_overflow_carrier && authority && result &&
+          *result == overflow_carrier->va_list_object.pointer_definition &&
+          authority->object == overflow_carrier->va_list_object.object &&
+          authority->owner == overflow_carrier->va_list_object.owner &&
+          authority->pointer_type == overflow_carrier->va_list_object.pointer_type &&
+          authority->pointee_type == overflow_carrier->va_list_object.pointee_type &&
+          authority->live == overflow_carrier->va_list_object.live;
+      const bool matches_destination_local = has_overflow_carrier && authority && result &&
+          *result == overflow_carrier->destination.pointer_definition &&
+          authority->object == overflow_carrier->destination.object &&
+          authority->owner == overflow_carrier->destination.owner &&
+          authority->pointer_type == overflow_carrier->destination.pointer_type &&
+          authority->pointee_type == overflow_carrier->destination.pointee_type &&
+          authority->live == overflow_carrier->destination.live;
+      const bool selected_overflow_local =
+          matches_overflow_local || matches_destination_local;
+      if (!alloca || !authority || !alloca->count.str().empty() ||
+          alloca->result.kind() != codegen::lir::LirOperandKind::SsaValue || !result || !result->valid() ||
+          authority->pointer_definition != *result || !authority->object.valid() ||
+          function.link_name_id == c4c::kInvalidLinkName || authority->owner != function.link_name_id ||
+          !pointer || pointer->kind != TypeKind::Pointer || !pointee || !authority_pointee ||
+          *pointee != *authority_pointee || !authority->live ||
+          (has_overflow_carrier && !selected_overflow_local))
+        return fail<void>(ImportErrorCode::UnsupportedAllocaInstructions, name, {},
+                          "alloca requires the selected live typed current-function authority binding");
+      saw_overflow_va_list = saw_overflow_va_list || matches_overflow_local;
+      saw_overflow_destination = saw_overflow_destination || matches_destination_local;
+    }
+    if (has_overflow_carrier && (!saw_overflow_va_list || !saw_overflow_destination))
+      return fail<void>(ImportErrorCode::UnsupportedAllocaInstructions, name, {},
+                        "AMD64 SysV overflow aggregate receipt requires both exact local authorities");
+  }
+  if (has_overflow_carrier && function.alloca_insts.empty())
+    return fail<void>(ImportErrorCode::UnsupportedAllocaInstructions, name, {},
+                      "AMD64 SysV overflow aggregate receipt requires both local authorities");
 
   std::size_t selected_stack_save_count = 0;
   std::size_t selected_stack_restore_count = 0;
@@ -2318,6 +2360,26 @@ Result<void, ImportError> validate_function(const LirModule& module,
       const auto* memcpy = std::get_if<LirMemcpyOp>(&instruction);
       if (!memcpy) continue;
       ++selected_memcpy_count;
+      if (memcpy->amd64_sysv_overflow_aggregate_carrier) {
+        const auto& carrier = *memcpy->amd64_sysv_overflow_aggregate_carrier;
+        const auto payload_type = lower_lir_type(module, carrier.payload_type);
+        if (memcpy != overflow_memcpy || !memcpy->requires_native_memory_va_authority ||
+            memcpy->is_volatile || memcpy->selected_authority || memcpy->dst_authority ||
+            memcpy->src_authority || memcpy->size_authority || !payload_type ||
+            payload_type->kind != TypeKind::Struct ||
+            carrier.payload_size_type != codegen::lir::LirTypeRef::integer(64) ||
+            carrier.payload_size.value <= 0 || !memcpy->dst.value_id() ||
+            !memcpy->src.value_id() || !memcpy->size.integer_immediate() ||
+            *memcpy->dst.value_id() != carrier.destination.pointer_definition ||
+            *memcpy->src.value_id() != carrier.overflow_pointer_load ||
+            memcpy->size.integer_immediate()->value != carrier.payload_size.value ||
+            carrier.va_list_object.owner != function.link_name_id ||
+            carrier.destination.owner != function.link_name_id ||
+            !carrier.va_list_object.live || !carrier.destination.live)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                            "memcpy requires the exact selected AMD64 SysV aggregate overflow authority row");
+        continue;
+      }
       const auto* authority = memcpy->selected_authority
                                   ? &*memcpy->selected_authority
                                   : nullptr;
@@ -2369,8 +2431,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_map<std::uint32_t, std::string> block_labels_by_id;
   std::unordered_map<std::string, Type> ordinary_values;
   std::unordered_map<std::uint32_t, Type> source_values;
-  if (!function.alloca_insts.empty()) {
-    const auto& alloca = std::get<LirAllocaOp>(function.alloca_insts.front());
+  for (const auto& instruction : function.alloca_insts) {
+    const auto& alloca = std::get<LirAllocaOp>(instruction);
     if (!source_values.emplace(alloca.result.value_id()->value,
                                Type{TypeKind::Pointer}).second)
       return fail<void>(ImportErrorCode::UnsupportedAllocaInstructions, name, {},
@@ -2619,6 +2681,27 @@ Result<void, ImportError> validate_function(const LirModule& module,
       if (const auto* load = std::get_if<LirLoadOp>(&instruction)) {
         const auto type = lower_lir_type(module, load->type_str);
         const auto* result = load->result.value_id();
+        const bool overflow_source_load = has_overflow_carrier && result &&
+            *result == overflow_carrier->overflow_pointer_load;
+        const bool overflow_final_load = has_overflow_carrier && result &&
+            *result == overflow_carrier->final_load;
+        if (overflow_source_load || overflow_final_load) {
+          const auto expected_type = overflow_source_load
+              ? std::optional<Type>{Type{TypeKind::Pointer}}
+              : lower_lir_type(module, overflow_carrier->payload_type);
+          const auto expected_pointer = overflow_source_load
+              ? overflow_carrier->overflow_field_address
+              : overflow_carrier->destination.pointer_definition;
+          if (!type || !expected_type || *type != *expected_type ||
+              load->result.kind() != codegen::lir::LirOperandKind::SsaValue ||
+              !result->valid() || load->ptr.kind() != codegen::lir::LirOperandKind::SsaValue ||
+              !load->ptr.value_id() || *load->ptr.value_id() != expected_pointer ||
+              load->local_object_authority || load->requires_native_result_authority ||
+              !source_values.emplace(result->value, *type).second)
+            return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                              "AMD64 SysV overflow aggregate loads require their exact selected native chain");
+          continue;
+        }
         const auto* source = load->ptr.link_name_id();
         const auto* pointer = load->ptr.value_id();
         const auto* authority = load->local_object_authority
@@ -2743,6 +2826,30 @@ Result<void, ImportError> validate_function(const LirModule& module,
         continue;
       }
       if (const auto* gep = std::get_if<LirGepOp>(&instruction)) {
+        const auto* overflow_result = gep->result.value_id();
+        if (has_overflow_carrier && overflow_result &&
+            *overflow_result == overflow_carrier->overflow_field_address) {
+          const auto typed_index = [](const codegen::lir::LirGepIndex& index,
+                                      long long expected) {
+            return index.is_authoritative() &&
+                index.type_ref() == codegen::lir::LirTypeRef::integer(32) &&
+                index.value().integer_immediate() &&
+                index.value().integer_immediate()->value == expected;
+          };
+          if (gep->element_type.kind() != codegen::lir::LirTypeKind::Struct ||
+              gep->result.kind() != codegen::lir::LirOperandKind::SsaValue ||
+              !overflow_result->valid() || gep->ptr.kind() != codegen::lir::LirOperandKind::SsaValue ||
+              !gep->ptr.value_id() ||
+              *gep->ptr.value_id() != overflow_carrier->va_list_object.pointer_definition ||
+              gep->indices.size() != 2 || !typed_index(gep->indices[0], 0) ||
+              !typed_index(gep->indices[1], 2) || gep->local_object_authority ||
+              gep->requires_native_local_gep_authority || gep->requires_native_result_authority ||
+              source_values.count(overflow_carrier->va_list_object.pointer_definition.value) != 1 ||
+              !source_values.emplace(overflow_result->value, Type{TypeKind::Pointer}).second)
+            return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                              "AMD64 SysV overflow aggregate field address requires the direct typed field-2 chain");
+          continue;
+        }
         if (gep->requires_native_local_gep_authority) {
           const auto* authority = gep->local_object_authority
               ? &*gep->local_object_authority : nullptr;
@@ -3734,6 +3841,14 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                 function.signature_return_type_ref);
     if (function.is_declaration) continue;
 
+    const codegen::lir::LirAmd64SysVOverflowAggregateCarrier* overflow_carrier = nullptr;
+    for (const auto& block : function.blocks) for (const auto& instruction : block.insts) {
+      const auto* memcpy = std::get_if<LirMemcpyOp>(&instruction);
+      if (memcpy && memcpy->amd64_sysv_overflow_aggregate_carrier)
+        overflow_carrier = &*memcpy->amd64_sysv_overflow_aggregate_carrier;
+    }
+    const bool has_overflow_carrier = overflow_carrier != nullptr;
+
     std::optional<ImportError> edit_error;
     auto edited = builder.with_function(
         function_ids[function_index], [&](FunctionBuilder& function_builder) {
@@ -3823,8 +3938,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
             }
           }
 
-          if (!function.alloca_insts.empty()) {
-            const auto& alloca = std::get<LirAllocaOp>(function.alloca_insts.front());
+          for (const auto& instruction : function.alloca_insts) {
+            const auto& alloca = std::get<LirAllocaOp>(instruction);
             const auto& authority = *alloca.local_object_authority;
             const auto result_id = alloca.result.value_id()->value;
             auto reserved = function_builder.reserve_source_value(
@@ -3969,6 +4084,36 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
               }
               if (std::get_if<LirIndirectBrOp>(&instruction)) continue;
               if (const auto* memcpy = std::get_if<LirMemcpyOp>(&instruction)) {
+                if (memcpy->amd64_sysv_overflow_aggregate_carrier) {
+                  const auto& carrier = *memcpy->amd64_sysv_overflow_aggregate_carrier;
+                  const auto owner = imported_link_names.find(carrier.va_list_object.owner);
+                  if (owner == imported_link_names.end()) {
+                    edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                                             name, block.label,
+                                             "AMD64 SysV overflow aggregate owner disappeared from imported name identities"};
+                    return Result<void, BuildError>::failure(BuildError::InvalidNameId);
+                  }
+                  auto appended = function_builder.append(
+                      blocks.at(block.id.value), Amd64SysVOverflowAggregateMemcpySpec{
+                          SourceValueId{function_ids[function_index], carrier.va_list_object.pointer_definition.value},
+                          SourceObjectId{function_ids[function_index], carrier.va_list_object.object.value},
+                          owner->second,
+                          SourceValueId{function_ids[function_index], carrier.overflow_field_address.value},
+                          SourceValueId{function_ids[function_index], carrier.overflow_pointer_load.value},
+                          SourceValueId{function_ids[function_index], carrier.destination.pointer_definition.value},
+                          SourceObjectId{function_ids[function_index], carrier.destination.object.value},
+                          SourceValueId{function_ids[function_index], carrier.final_load.value},
+                          *lower_lir_type(module, carrier.payload_type),
+                          static_cast<std::int64_t>(carrier.payload_size.value),
+                          carrier.va_list_object.live, carrier.destination.live});
+                  if (!appended) {
+                    edit_error = builder_failure(name, block.label,
+                                                 "append AMD64 SysV overflow aggregate memcpy authority",
+                                                 appended.error());
+                    return Result<void, BuildError>::failure(appended.error());
+                  }
+                  continue;
+                }
                 const auto& authority = *memcpy->selected_authority;
                 const auto destination_owner = imported_link_names.find(
                     authority.destination_object_owner);
@@ -4069,6 +4214,10 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 continue;
               }
               if (const auto* load = std::get_if<LirLoadOp>(&instruction)) {
+                if (has_overflow_carrier && load->result.value_id() &&
+                    (*load->result.value_id() == overflow_carrier->overflow_pointer_load ||
+                     *load->result.value_id() == overflow_carrier->final_load))
+                  continue;
                 const Type type = *lower_lir_type(module, load->type_str);
                 if (load->local_object_authority) {
                   const auto& authority = *load->local_object_authority;
@@ -4199,6 +4348,9 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 continue;
               }
               if (const auto* gep = std::get_if<LirGepOp>(&instruction)) {
+                if (has_overflow_carrier && gep->result.value_id() &&
+                    *gep->result.value_id() == overflow_carrier->overflow_field_address)
+                  continue;
                 if (gep->requires_native_local_gep_authority) {
                   const auto& authority = *gep->local_object_authority;
                   const auto base = source_values.find(authority.pointer_definition.value);

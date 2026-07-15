@@ -91,6 +91,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
       return std::holds_alternative<SelectNode>(instruction.payload);
     case Opcode::SelectedMemcpy:
       return std::holds_alternative<SelectedMemcpyNode>(instruction.payload);
+    case Opcode::Amd64SysVOverflowAggregateMemcpy:
+      return std::holds_alternative<Amd64SysVOverflowAggregateMemcpyNode>(instruction.payload);
     case Opcode::Cast:
       return std::holds_alternative<CastNode>(instruction.payload);
     case Opcode::Phi:
@@ -845,6 +847,30 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         if (!exact)
           report(result, VerificationRule::ValueDefinition, function_id, inst_id,
                  "selected memcpy must retain exact current-function pointer, object, owner, i64-positive-size, and live-site authority");
+      }
+      if (const auto* memcpy =
+              std::get_if<Amd64SysVOverflowAggregateMemcpyNode>(&instruction.payload)) {
+        const bool owner_resolves = memcpy->owner.valid() &&
+            memcpy->owner.epoch == module.epoch_ &&
+            memcpy->owner.slot < module.link_names_.size();
+        const bool exact = instruction.operands.empty() && instruction.results.empty() &&
+            memcpy->va_list_pointer.valid() && memcpy->va_list_object.valid() &&
+            memcpy->overflow_field_address.valid() && memcpy->overflow_pointer_load.valid() &&
+            memcpy->destination.valid() && memcpy->destination_object.valid() &&
+            memcpy->final_load.valid() && memcpy->va_list_pointer.owner == function_id &&
+            memcpy->va_list_object.owner == function_id &&
+            memcpy->overflow_field_address.owner == function_id &&
+            memcpy->overflow_pointer_load.owner == function_id &&
+            memcpy->destination.owner == function_id &&
+            memcpy->destination_object.owner == function_id &&
+            memcpy->final_load.owner == function_id &&
+            memcpy->va_list_pointer.value != memcpy->destination.value &&
+            memcpy->va_list_object.value != memcpy->destination_object.value &&
+            owner_resolves && memcpy->payload_type.kind == TypeKind::Struct &&
+            memcpy->size_bytes > 0 && memcpy->va_list_live && memcpy->destination_live;
+        if (!exact)
+          report(result, VerificationRule::ValueDefinition, function_id, inst_id,
+                 "AMD64 SysV overflow aggregate memcpy must retain the exact typed local/derived-storage receipt");
       }
       if (const auto* gep =
               std::get_if<GetElementPtrNode>(&instruction.payload)) {

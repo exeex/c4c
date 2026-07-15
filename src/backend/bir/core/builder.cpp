@@ -2006,6 +2006,46 @@ Result<BuildResult, BuildError> FunctionBuilder::append(
   return Result<BuildResult, BuildError>::success(BuildResult{instruction_id, {}});
 }
 
+Result<BuildResult, BuildError> FunctionBuilder::append(
+    BlockId block, Amd64SysVOverflowAggregateMemcpySpec spec) {
+  auto function = mutable_function();
+  if (!function) return Result<BuildResult, BuildError>::failure(function.error());
+  if (!same_owner(function_, block) || !spec.va_list_pointer.valid() ||
+      !spec.va_list_object.valid() || !spec.owner.valid() ||
+      !spec.overflow_field_address.valid() || !spec.overflow_pointer_load.valid() ||
+      !spec.destination.valid() || !spec.destination_object.valid() ||
+      !spec.final_load.valid() || spec.va_list_pointer.owner != function_ ||
+      spec.va_list_object.owner != function_ || spec.overflow_field_address.owner != function_ ||
+      spec.overflow_pointer_load.owner != function_ || spec.destination.owner != function_ ||
+      spec.destination_object.owner != function_ || spec.final_load.owner != function_ ||
+      spec.va_list_pointer.value == spec.destination.value ||
+      spec.va_list_object.value == spec.destination_object.value ||
+      spec.owner.epoch != parent_->data_->epoch_ ||
+      spec.owner.slot >= parent_->data_->link_names_.size() ||
+      spec.payload_type.kind != TypeKind::Struct || spec.size_bytes <= 0 ||
+      !spec.va_list_live || !spec.destination_live)
+    return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  auto& function_data = function.value().get();
+  if (!function_data.blocks_.contains(function_, block))
+    return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
+  detail::InstData instruction;
+  instruction.opcode = Opcode::Amd64SysVOverflowAggregateMemcpy;
+  instruction.payload = Amd64SysVOverflowAggregateMemcpyNode{
+      spec.va_list_pointer, spec.va_list_object, spec.owner,
+      spec.overflow_field_address, spec.overflow_pointer_load, spec.destination,
+      spec.destination_object, spec.final_load, spec.payload_type, spec.size_bytes,
+      spec.va_list_live, spec.destination_live};
+  auto inserted = function_data.insts_.emplace(function_, std::move(instruction));
+  if (!inserted) return Result<BuildResult, BuildError>::failure(storage_error(inserted.error()));
+  const auto instruction_id = inserted.value();
+  auto block_data = function_data.blocks_.get_mut(function_, block);
+  if (!block_data || !block_data.value().get().instruction_order_.append(instruction_id)) {
+    function_data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  return Result<BuildResult, BuildError>::success(BuildResult{instruction_id, {}});
+}
+
 Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, CastSpec spec) {
   auto function = mutable_function();
   if (!function) return Result<BuildResult, BuildError>::failure(function.error());

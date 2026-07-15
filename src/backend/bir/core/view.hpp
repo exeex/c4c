@@ -22,6 +22,10 @@ class InstView {
   const SelectedMemcpyNode* selected_memcpy() const noexcept {
     return std::get_if<SelectedMemcpyNode>(&data_->payload);
   }
+  const Amd64SysVOverflowAggregateMemcpyNode*
+  amd64_sysv_overflow_aggregate_memcpy() const noexcept {
+    return std::get_if<Amd64SysVOverflowAggregateMemcpyNode>(&data_->payload);
+  }
   const LoadNode* load() const noexcept {
     return std::get_if<LoadNode>(&data_->payload);
   }

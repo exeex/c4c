@@ -11979,6 +11979,98 @@ void test_selected_hoisted_alloca_authority_receipt_and_rejections() {
          "repeated alloca authority record must reject transactionally");
 }
 
+lir::LirModule amd64_sysv_overflow_aggregate_memcpy_module() {
+  lir::LirModule module;
+  auto texts = std::make_shared<c4c::TextTable>();
+  module.link_name_texts = texts;
+  module.link_names.attach_text_table(texts.get());
+  const auto owner = module.link_names.intern("amd64_overflow_aggregate_owner");
+  const lir::LirTypeRef va_list_type("{ i32, i32, ptr, ptr }");
+  const lir::LirTypeRef payload_type("{ i64, i64, i64 }");
+  const lir::LirCurrentFunctionLocalObjectPointer va_list{
+      lir::LirValueId{41}, lir::LirObjectId{7}, owner,
+      lir::LirTypeRef(lir::LirBuiltinType::Pointer), va_list_type, true};
+  const lir::LirCurrentFunctionLocalObjectPointer destination{
+      lir::LirValueId{42}, lir::LirObjectId{8}, owner,
+      lir::LirTypeRef(lir::LirBuiltinType::Pointer), payload_type, true};
+  lir::LirBlock entry = return_block(0, "entry");
+  entry.insts.push_back(lir::LirGepOp{
+      lir::LirOperand::ssa("%overflow.field", lir::LirValueId{43}), va_list_type,
+      lir::LirOperand::ssa("%va", lir::LirValueId{41}), false,
+      {lir::LirGepIndex::typed(lir::LirTypeRef::integer(32), lir::LirOperand::integer("zero", 0)),
+       lir::LirGepIndex::typed(lir::LirTypeRef::integer(32), lir::LirOperand::integer("two", 2))}});
+  entry.insts.push_back(lir::LirLoadOp{
+      lir::LirOperand::ssa("%overflow.source", lir::LirValueId{44}),
+      lir::LirTypeRef(lir::LirBuiltinType::Pointer),
+      lir::LirOperand::ssa("%overflow.field", lir::LirValueId{43})});
+  lir::LirMemcpyOp copy{
+      lir::LirOperand::ssa("%payload.destination", lir::LirValueId{42}),
+      lir::LirOperand::ssa("%overflow.source", lir::LirValueId{44}),
+      lir::LirOperand::integer("payload.bytes", 24), false};
+  copy.requires_native_memory_va_authority = true;
+  copy.amd64_sysv_overflow_aggregate_carrier =
+      lir::LirAmd64SysVOverflowAggregateCarrier{
+          va_list, lir::LirValueId{43}, lir::LirValueId{44},
+          lir::LirAmd64SysVOverflowStorage::Amd64SysVOverflowArgArea,
+          destination, lir::LirValueId{45}, payload_type,
+          lir::LirTypeRef::integer(64), lir::LirIntegerImmediate{24}};
+  entry.insts.push_back(std::move(copy));
+  entry.insts.push_back(lir::LirLoadOp{
+      lir::LirOperand::ssa("%payload.result", lir::LirValueId{45}), payload_type,
+      lir::LirOperand::ssa("%payload.destination", lir::LirValueId{42})});
+  lir::LirFunction function = void_definition("amd64_overflow_aggregate_owner", {entry});
+  function.link_name_id = owner;
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      lir::LirOperand::ssa("%va", lir::LirValueId{41}), va_list_type, {}, 0, va_list});
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      lir::LirOperand::ssa("%payload.destination", lir::LirValueId{42}), payload_type, {}, 0,
+      destination});
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+void test_amd64_sysv_overflow_aggregate_memcpy_receipt_and_rejections() {
+  const auto module = amd64_sysv_overflow_aggregate_memcpy_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "selected AMD64 SysV aggregate overflow memcpy must publish verified Raw BIR");
+  const auto view = raw.value().view();
+  const auto function = view.function(view.functions()[0]).value();
+  const auto instructions = function.instructions(function.blocks()[0]).value();
+  const auto* copy = function.instruction(instructions[2]).value()
+      .amd64_sysv_overflow_aggregate_memcpy();
+  expect(copy && copy->va_list_pointer == bir::SourceValueId{function.id(), 41} &&
+             copy->overflow_field_address == bir::SourceValueId{function.id(), 43} &&
+             copy->overflow_pointer_load == bir::SourceValueId{function.id(), 44} &&
+             copy->destination == bir::SourceValueId{function.id(), 42} &&
+             copy->final_load == bir::SourceValueId{function.id(), 45} &&
+             copy->payload_type.kind == bir::TypeKind::Struct && copy->size_bytes == 24,
+         "Raw BIR receipt must retain the typed local and derived-overflow identities");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = module;
+    auto& copy = std::get<lir::LirMemcpyOp>(candidate.functions[0].blocks[0].insts[2]);
+    mutate(candidate, copy);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value(), message);
+  };
+  rejected([](auto&, auto& copy) { copy.requires_native_memory_va_authority = false; },
+           "unselected overflow aggregate carrier must reject transactionally");
+  rejected([](auto&, auto& copy) { copy.is_volatile = true; },
+           "volatile overflow aggregate carrier must reject transactionally");
+  rejected([](auto&, auto& copy) { copy.amd64_sysv_overflow_aggregate_carrier->overflow_pointer_load = lir::LirValueId{99}; },
+           "non-derived overflow source must reject transactionally");
+  rejected([](auto& candidate, auto& copy) {
+             copy.amd64_sysv_overflow_aggregate_carrier->va_list_object.owner =
+                 candidate.link_names.intern("foreign_overflow_owner");
+           }, "foreign overflow local must reject transactionally");
+  rejected([](auto&, auto& copy) { copy.amd64_sysv_overflow_aggregate_carrier->destination.live = false; },
+           "dead overflow destination must reject transactionally");
+  rejected([](auto&, auto& copy) { copy.dst = lir::LirOperand::ssa("%wrong", lir::LirValueId{41}); },
+           "destination-disagreeing overflow memcpy must reject transactionally");
+  rejected([](auto&, auto& copy) { copy.amd64_sysv_overflow_aggregate_carrier->payload_size = lir::LirIntegerImmediate{8}; },
+           "size-disagreeing overflow carrier must reject transactionally");
+}
+
 void test_selected_local_scalar_load_authority_receipt_and_rejections() {
   lir::LirModule module;
   auto texts = std::make_shared<c4c::TextTable>();
@@ -12536,6 +12628,7 @@ int main() {
   test_selected_global_i32_abs_receipt_and_rejections();
   test_mixed_accepted_row_dispatcher_transactionality();
   test_selected_hoisted_alloca_authority_receipt_and_rejections();
+  test_amd64_sysv_overflow_aggregate_memcpy_receipt_and_rejections();
   test_selected_local_scalar_load_authority_receipt_and_rejections();
   test_typed_phi_edge_authority_receipt_and_rejections();
   test_typed_phi_loop_and_parallel_edge_occurrences();
