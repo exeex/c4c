@@ -1,6 +1,6 @@
 # LIR Next Body-Parameter Authority Handoff
 
-Status: Open (active)
+Status: Closed (capability complete)
 Type: bounded LIR producer/schema/verifier authority publication
 Predecessor: `ideas/open/734_lir_to_new_bir_container_completeness.md` post-Step 7.36
 Consumer: `ideas/open/734_lir_to_new_bir_container_completeness.md`
@@ -58,3 +58,32 @@ authority handoff needed before 734 can resume.
   edits, or a combined body-parameter sweep claimed as one row.
 - Reject expectation downgrades, weaker verifier/test contracts, named-case
   shortcuts, or retaining the old unstructured failure behind a renamed carrier.
+
+## Closure Record
+
+Disposition: capability complete for this bounded producer/schema/verifier
+handoff. The accepted implementation is `fac485148`.
+
+The selected and only authorized receiver row is an optional
+`LirRet.return_value_parameter_authority` for an unchanged current-function
+DirectScalar parameter returned through the exact SSA return operand. The
+carrier contains the value identity, parameter index, `LirTypeRef`, owning
+`LinkNameId`, `LirNativeBodyParameterAbi::DirectScalar`, and `ReturnValue`
+role. Verification requires exactly one matching native definition and rejects
+missing carrier for the selected form, malformed, foreign, duplicate,
+owner/index/type/ABI/role-incoherent authority, return-operand mismatch, and
+signature-return mismatch transactionally. Nonselected return forms synthesize
+no carrier and remain outside this row.
+
+Accepted proof: fresh
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+passed 6/6, and the matching before/after regression guard passed 6/6 on both
+sides without regression.
+
+Exact consumer return point: reactivate
+`ideas/open/734_lir_to_new_bir_container_completeness.md` at **Step 7.37 -
+Receive the one 824-authorized DirectScalar return-value parameter authority
+row**. Add only this tuple's typed Raw-BIR return destination, importer
+dispatch, reachable verification, and transactional positive/malformed-
+authority coverage. No Raw-BIR/importer/receiver work landed in 824; do not
+repeat Steps 1 through 7.36 or receive another parameter form.

@@ -1380,3 +1380,32 @@ only that matching typed Raw-BIR receiver row. Do not repeat Step 7.36 or
 receive another parameter, memory/VA, aggregate/vector, module/type/global,
 instruction/terminator, or inline-assembly form without its separately scoped
 first-owner handoff.
+
+## Resumption Record: closed 824 DirectScalar return-value authority
+
+Closed idea 824 is capability-complete for one distinct producer/schema/
+verifier handoff in `fac485148`. It publishes only optional
+`LirRet.return_value_parameter_authority` for an unchanged current-function
+DirectScalar parameter returned through the exact SSA return operand. The
+authoritative tuple is value identity, parameter index, `LirTypeRef`, owning
+`LinkNameId`, `LirNativeBodyParameterAbi::DirectScalar`, and `ReturnValue`
+role. It must agree with exactly one native definition, the return operand,
+and signature return. Missing carrier for the selected form and malformed,
+foreign, duplicate, owner/index/type/ABI/role, return-operand, or
+signature-return mismatch reject transactionally. Nonselected return forms
+synthesize no carrier and remain outside this row. No Raw-BIR/importer/
+receiver work landed in 824.
+
+Accepted proof is a fresh
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+pass (6/6), with a matching before/after non-regression guard passing 6/6 on
+both sides.
+
+Exact return action: resume only at **Step 7.37 - Receive the one
+824-authorized DirectScalar return-value parameter authority row**. Add only
+that tuple's typed Raw-BIR return destination, importer dispatch, reachable
+verifier path, and transactional positive/malformed-authority coverage. Do not
+repeat accepted Steps 1 through 7.36 (including `c87976453`), receive another
+parameter form, or recover authority from text, signatures, names, rendered
+operands, diagnostics, or `monostate`. Reapply this source's completion gate
+after the one receipt.
