@@ -517,7 +517,7 @@ class StmtEmitter {
                                     const lir::LirOperand& rhs,
                                     const TypeSpec& rhs_ts);
   std::string emit_compound_assign_value(FnCtx& ctx, const AssignableLValue& lhs,
-                                         AssignOp op, const std::string& rhs,
+                                         AssignOp op, const lir::LirOperand& rhs,
                                          const TypeSpec& rhs_ts);
   static TypeSpec resolve_compound_assign_op_type(BinaryOp op, const TypeSpec& lhs_ts,
                                                   const TypeSpec& rhs_ts);

@@ -229,7 +229,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const AssignExpr& a, cons
   const LirOperand rhs = emit_rval_operand(ctx, a.rhs, rhs_ts);
   const AssignableLValue lhs = emit_assignable_lval(ctx, a.lhs);
   if (a.op == AssignOp::Set) return emit_set_assign_value(ctx, lhs, rhs, rhs_ts);
-  return emit_compound_assign_value(ctx, lhs, a.op, rhs.str(), rhs_ts);
+  return emit_compound_assign_value(ctx, lhs, a.op, rhs, rhs_ts);
 }
 
 LirOperand StmtEmitter::emit_cast_rval_operand(FnCtx& ctx, const CastExpr& c) {

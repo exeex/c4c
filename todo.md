@@ -8,23 +8,26 @@ Current Step Title: Repair the selected GEP result-authority handoff
 
 ## Just Finished
 
-810 Step 1 accepted in `f1cb9c510`: the focused command reproduced
-`c_testsuite_src_00173_c`'s missing `LirGepOp.result` authority and the trace
-selected native pointer postfix increment/decrement plus adjacent pointer
-compound add/sub as one evidenced direct GEP-construction family. Evidence:
-`review/810_step1_gep_producer_trace.md`; no repair was made.
+810 Step 2 completed the selected native pointer postfix increment/decrement
+and pointer compound add/sub GEP producer handoff: their direct GEPs now carry
+native result, base, and typed i64-index authority. Compound assignment keeps
+the RHS as `LirOperand` through the pointer GEP path; nearby frontend coverage
+checks all four producers and malformed-result rejection.
 
 ## Suggested Next
 
-Repair only the selected pointer postfix increment/decrement and adjacent
-pointer compound add/sub GEP result-authority handoff. Do not group other
-partial-log GEP failures without an independent producer trace.
+Supervisor should select the next scoped Step 2 follow-up or acceptance packet;
+do not group other partial-log GEP failures without an independent producer
+trace.
 
 ## Watchouts
 
-The partial root full-baseline log is diagnostic only, not a regression guard.
-PHI residual failures belong to 804/806.
+`test_before.log` failed before this packet on the unrelated structured call
+signature mismatch. The temporary variable-RHS test shape exposed an existing
+non-native parameter-index route, so coverage uses native integer-immediate
+compound RHS authority and does not widen this packet. PHI residual failures
+belong to 804/806.
 
 ## Proof
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_src_00173_c$'` — build was up to date; the one-test subset failed as reproduced with `LirGepOp.result: authoritative GEP requires LirValueId result authority`.  The command does not write a root proof log; existing partial `test_after.log` was intentionally left untouched by this trace-only packet.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log` — passed (1/1); `test_after.log` is the proof log. The matching `test_before.log` failed (0/1) on the pre-existing `LirCallOp.callee_signature` structured-signature mismatch.

@@ -517,7 +517,7 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
     if (assign->op == AssignOp::Set) {
       (void)emit_set_assign_value(ctx, lhs, rhs, rhs_ts);
     } else {
-      (void)emit_compound_assign_value(ctx, lhs, assign->op, rhs.str(), rhs_ts);
+      (void)emit_compound_assign_value(ctx, lhs, assign->op, rhs, rhs_ts);
     }
     pts = lhs.pointee_ts;
     return lhs.ptr;
@@ -642,11 +642,14 @@ lir::LirOperand StmtEmitter::emit_assignable_incdec_value(FnCtx& ctx,
   const LoadedAssignableValue loaded = emit_load_assignable_value(ctx, lhs);
   const std::string pty = llvm_ty(loaded.value_ts);
 
-  const std::string new_val = fresh_tmp(ctx);
+  const LirOperand new_val = pty == "ptr" ? fresh_value(ctx) : LirOperand(fresh_tmp(ctx));
   if (pty == "ptr") {
-    const std::string delta = increment ? "1" : "-1";
-    emit_lir_op(ctx, lir::LirGepOp{new_val, indexed_gep_elem_ty(lhs.pointee_ts), loaded.value,
-                                   false, {"i64 " + delta}});
+    const long long delta = increment ? 1 : -1;
+    emit_lir_op(ctx, lir::LirGepOp{
+                         new_val, indexed_gep_elem_ty(lhs.pointee_ts), loaded.value, false,
+                         {lir::LirGepIndex::typed(lir::LirTypeRef::integer(64),
+                                                  LirOperand::integer(std::to_string(delta), delta))},
+                         true});
   } else if (is_float_base(loaded.value_ts.base)) {
     const std::string delta = increment ? "1.0" : "-1.0";
     emit_lir_op(ctx, lir::LirBinOp{new_val, "fadd", pty, loaded.value, delta});
@@ -655,7 +658,7 @@ lir::LirOperand StmtEmitter::emit_assignable_incdec_value(FnCtx& ctx,
     emit_lir_op(ctx, lir::LirBinOp{new_val, "add", pty, loaded.value, delta});
   }
   emit_store_assignable_value(ctx, lhs, new_val, lhs.pointee_ts, false);
-  if (return_updated_value) return lir::LirOperand(new_val);
+  if (return_updated_value) return new_val;
   return loaded.value;
 }
 
@@ -686,7 +689,7 @@ std::string StmtEmitter::emit_set_assign_value(FnCtx& ctx, const AssignableLValu
 }
 
 std::string StmtEmitter::emit_compound_assign_value(FnCtx& ctx, const AssignableLValue& lhs,
-                                                    AssignOp op, const std::string& rhs,
+                                                    AssignOp op, const LirOperand& rhs,
                                                     const TypeSpec& rhs_ts) {
   const TypeSpec& lhs_ts = lhs.pointee_ts;
   const std::string lty = llvm_ty(lhs_ts);
@@ -694,7 +697,7 @@ std::string StmtEmitter::emit_compound_assign_value(FnCtx& ctx, const Assignable
   if (lhs.is_bitfield()) {
     const LoadedAssignableValue loaded = emit_load_assignable_value(ctx, lhs);
     const std::string promoted_ty = llvm_ty(loaded.value_ts);
-    std::string rhs_op = coerce(ctx, rhs, rhs_ts, loaded.value_ts);
+    std::string rhs_op = coerce(ctx, rhs.str(), rhs_ts, loaded.value_ts);
     const bool ls = is_signed_int(loaded.value_ts.base);
     const char* instr = nullptr;
     static const struct {
@@ -728,16 +731,16 @@ std::string StmtEmitter::emit_compound_assign_value(FnCtx& ctx, const Assignable
   if ((op == AssignOp::Add || op == AssignOp::Sub) && lty == "ptr") {
     TypeSpec i64_ts{};
     i64_ts.base = TB_LONGLONG;
-    std::string delta = coerce(ctx, rhs, rhs_ts, i64_ts);
+    LirOperand delta = coerce_operand(ctx, rhs, rhs_ts, i64_ts);
     if (op == AssignOp::Sub) {
-      const std::string neg = fresh_tmp(ctx);
+      const LirOperand neg = fresh_value(ctx);
       emit_lir_op(ctx, lir::LirBinOp{neg, "sub", "i64", "0", delta});
       delta = neg;
     }
-    const std::string result = fresh_tmp(ctx);
-    emit_lir_op(ctx,
-                lir::LirGepOp{result, indexed_gep_elem_ty(lhs_ts), loaded.value, false,
-                              {"i64 " + delta}});
+    const LirOperand result = fresh_value(ctx);
+    emit_lir_op(ctx, lir::LirGepOp{
+                         result, indexed_gep_elem_ty(lhs_ts), loaded.value, false,
+                         {lir::LirGepIndex::typed(lir::LirTypeRef::integer(64), delta)}, true});
     return emit_store_assignable_value(ctx, lhs, result, lhs_ts, false);
   }
 
@@ -756,7 +759,7 @@ std::string StmtEmitter::emit_compound_assign_value(FnCtx& ctx, const Assignable
                       {AssignOp::BitXor, BinaryOp::BitXor}};
   const char* instr = nullptr;
   TypeSpec op_ts = lhs_ts;
-  std::string coerced_rhs = rhs;
+  std::string coerced_rhs = rhs.str();
   for (const auto& row : compound_map) {
     if (row.op != op) continue;
     if ((row.bop == BinaryOp::Add || row.bop == BinaryOp::Sub || row.bop == BinaryOp::Mul ||
@@ -798,7 +801,7 @@ std::string StmtEmitter::emit_compound_assign_value(FnCtx& ctx, const Assignable
       }
     }
     if (!instr) break;
-    return emit_nonptr_compound_assign_value(ctx, lhs, loaded, row.bop, instr, rhs, rhs_ts);
+    return emit_nonptr_compound_assign_value(ctx, lhs, loaded, row.bop, instr, rhs.str(), rhs_ts);
   }
   if (!instr) throw std::runtime_error("StmtEmitter: compound assign: unknown op");
   throw std::runtime_error("StmtEmitter: compound assign: unreachable non-pointer path");

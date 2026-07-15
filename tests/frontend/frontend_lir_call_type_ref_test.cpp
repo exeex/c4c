@@ -5163,6 +5163,55 @@ int lir_postfix_increment_ternary_phi_authority(int condition, int left, int rig
   fail("postfix ternary fixture should retain one PHI for malformed-authority coverage");
 }
 
+void test_pointer_postfix_and_compound_gep_result_authority() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int *lir_pointer_postfix_and_compound_gep_authority(int *pointer) {
+  pointer++;
+  pointer--;
+  pointer += 2;
+  pointer -= 2;
+  return pointer;
+}
+)c", "x86_64-linux-gnu");
+
+  const auto require_selected_geps = [](lir::LirModule& module) {
+    lir::LirFunction& function =
+        require_function(module, "lir_pointer_postfix_and_compound_gep_authority");
+    std::vector<lir::LirGepOp*> geps;
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* gep = std::get_if<lir::LirGepOp>(&inst);
+            gep && gep->requires_native_result_authority) {
+          geps.push_back(gep);
+        }
+      }
+    }
+    expect_true(geps.size() == 4,
+                "pointer postfix and compound fixture should retain four native GEP producers");
+    for (const lir::LirGepOp* gep : geps) {
+      expect_true(gep->result.value_id() && gep->result.value_id()->valid() &&
+                      gep->ptr.value_id() && gep->ptr.value_id()->valid() &&
+                      gep->indices.size() == 1 && gep->indices.front().is_authoritative() &&
+                      gep->indices.front().type_ref() == lir::LirTypeRef::integer(64) &&
+                      (gep->indices.front().value().value_id() ||
+                       gep->indices.front().value().integer_immediate()),
+                  "selected pointer GEP should retain native result, base, and index authority");
+    }
+    return geps;
+  };
+
+  require_selected_geps(lowered);
+  lir::verify_module(lowered);
+
+  lir::LirModule missing_result = lowered;
+  const auto malformed_geps = require_selected_geps(missing_result);
+  malformed_geps.front()->result = lir::LirOperand::raw("%missing-pointer-gep-result");
+  expect_identity_verification_rejected(
+      missing_result, "verifier should reject a selected pointer GEP without result authority");
+}
+
 void test_floating_unary_minus_ternary_phi_incoming_authority() {
   namespace lir = c4c::codegen::lir;
 
@@ -8891,6 +8940,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_cast_result_use_identity_boundary();
   test_ternary_coerce_result_authority_boundary();
   test_postfix_increment_ternary_phi_incoming_authority();
+  test_pointer_postfix_and_compound_gep_result_authority();
   test_floating_unary_minus_ternary_phi_incoming_authority();
   test_scalar_bit_not_ternary_phi_incoming_authority();
   test_logical_short_circuit_result_authority_loss_boundary();
