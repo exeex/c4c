@@ -51,12 +51,23 @@ matrix are documented for implementation.
 
 ### Step 2 - Repair and cover bounded mask-lane coherence
 
-Goal: implement only the Step 1 mask-lane publication/mirror contract and add
+Goal: repair only the Step 1 mask-lane publication/mirror contract and add
 nearby coverage.
 
+Actions:
+
+- inspect the actual scalar-to-vector lowering's emitted structured
+  `LirShuffleMaskLane` entries at the full-baseline failure seam; do not infer
+  them from the unit fixture or printed instruction;
+- repair only the valid zero-initializer carrier so every emitted structured
+  lane mirrors the zero mask, while retaining the fail-closed verifier contract
+  for malformed forms;
+- extend nearby coverage with the representative emitted-lowering path plus
+  malformed carrier cases, then rerun the bounded build and focused proof.
+
 Completion check: the existing splat mask supplies coherent native
-`mask_lanes` and matching display evidence; malformed forms reject; no
-out-of-scope route changes.
+`mask_lanes` and matching display evidence in the actual lowering; malformed
+forms reject; no out-of-scope route changes.
 
 ### Step 3 - Prove the blocker handoff and return decision
 

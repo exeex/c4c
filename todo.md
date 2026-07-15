@@ -3,38 +3,47 @@
 Status: Active
 Source Idea Path: ideas/open/815_lir_shuffle_vector_native_mask_lane_coherence_repair.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove the blocker handoff and return decision
+Current Step ID: 2
+Current Step Title: Repair and cover bounded mask-lane coherence
 
 ## Just Finished
 
-Plan Step 2 complete. `LirShuffleVectorOp` now treats the existing
-`zeroinitializer` mask contract as exact: every structured native mask lane
-must be `Inactive` with `selected_lane == 0`, in addition to the existing
-count, mask-type, and token checks. Nearby native-vector authority coverage
-keeps the default inactive carrier as the valid form and rejects selected
-lanes, nonzero inactive payloads, and invalid enum values. The verifier uses
-only structured fields and does not introduce shuffle selection semantics or
-text recovery.
+Step 2's verifier tightening and nearby fixture coverage were accepted in
+`0d8e74852`: the zero-initializer contract now rejects selected lanes, nonzero
+inactive payloads, and invalid enum values using structured fields only. A
+fresh build and the focused backend command passed (6/6), with a non-decreasing
+matching regression guard.
+
+The supervisor's subsequent full command, `cmake --build --preset default &&
+ctest --test-dir build -j --output-on-failure`, did not meet acceptance: it
+reached 3038 tests but failed actual scalar-to-vector lowering at
+`llvm_gcc_c_torture_src_scal_to_vec1_c` with
+`LirShuffleVectorOp.native_vector_authority.mask_lanes: must mirror the
+structured shuffle mask`. The unit fixture was therefore not representative
+of the emitted carrier. Step 2 remains active; no full-baseline success is
+claimed.
 
 ## Suggested Next
 
-Execute plan Step 3 only: preserve this bounded handoff, compare the matching
-regression logs, and return the parent-route decision to the supervisor.
+Execute repaired plan Step 2 only: inspect the actual emitted structured
+mask-lane facts in the scalar-to-vector splat lowering that fails the full
+baseline, then implement only the valid zero-mask publication/coherence fix.
+Keep the existing fail-closed malformed-form checks and add representative
+nearby coverage before rerunning the bounded proof.
 
 ## Watchouts
 
-The lowerings already publish the valid default inactive lanes. This packet
-only makes verifier coherence fail closed; it does not parse text, select
-shuffle semantics, claim a 754 row, or change vector/second-shape facts,
-poison, aggregate, extract/insert, provenance, CFG/PHI, target/MIR, or
-emission behavior.
+Do not assume the lowerings publish the valid default inactive lanes merely
+because the fixture does. Inspect the emitted structured carrier, not display
+text. This repair does not parse text, select shuffle semantics, claim a 754
+row, or change vector/second-shape facts, poison, aggregate, extract/insert,
+provenance, CFG/PHI, target/MIR, or emission behavior.
 
 ## Proof
 
-Fresh build: `cmake --build --preset default`.
-
-Focused proof: `ctest --test-dir build -j --output-on-failure -R '^backend_' >
-test_after.log 2>&1`; the supervisor-selected command passed and its log is at
-`test_after.log`. Step 3 still requires the supervisor-owned matching
-regression comparison and fresh 100% baseline decision.
+Accepted narrow evidence from `0d8e74852`: fresh
+`cmake --build --preset default`, focused backend 6/6, and a non-decreasing
+matching regression guard. It is insufficient for the actual lowering route.
+After the repaired Step 2 packet, rerun a fresh build and representative
+same-feature proof; return readiness still requires the supervisor-owned
+matching regression comparison and fresh 100% baseline decision.
