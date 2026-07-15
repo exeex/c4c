@@ -1,4 +1,4 @@
-# DirectScalar Unary Fneg Authority Runbook
+# DirectScalar Unary Fneg Authority Regression-Guard Repair Runbook
 
 Status: Active
 Source Idea: ideas/open/828_lir_direct_scalar_unary_fneg_authority.md
@@ -6,8 +6,9 @@ Switched from: ideas/open/827_lir_direct_scalar_binary_lhs_authority_repair.md, 
 
 ## Purpose
 
-Resolve the newly observed native DirectScalar unary floating `fneg` authority
-gap without broadening into the parked binary or selector routes.
+Finish the native DirectScalar unary floating `fneg` authority route only when
+the expanded regression baseline is accounted for, without broadening into the
+parked binary or selector routes.
 
 ## Core Rule
 
@@ -28,42 +29,45 @@ testcase-shaped predicate.
 - Direct switch-selector/Idea 825 work, Raw-BIR/importer, generic rows, and
   any non-unary-floating-`fneg` authority route.
 
+## Accepted Progress
+
+- Step 1 traced the unary `fneg` producer/verifier seam.
+- Step 2 was implemented in accepted commit `524b24f64`: structured native
+  DirectScalar authority publication, verifier fail-closed RHS validation, and
+  nearby positive/malformed coverage.
+- The fresh build and focused
+  `^frontend_lir_function_signature_type_ref$` CTest passed, with matching
+  narrow guard logs (1/1, no new failures).
+
 ## Ordered Steps
 
-### Step 1 - Trace unary fneg publication and verifier shape
+### Step 2R - Classify and resolve the expanded-baseline regression
 
-Goal: establish the exact producer/verifier seam for a native DirectScalar
-parameter used by unary floating `fneg`, then decide whether a bounded repair
-is warranted and what structured shape it must use.
+Goal: determine whether the new `frontend_hir_tests` SEGFAULT is attributable
+to `524b24f64` or to preserved unrelated dirty work, and restore an acceptable
+expanded baseline before crediting this idea as complete.
 
 Actions:
 
-- trace `expr/misc.cpp` from unary minus to the emitted `LirBinOp` and inspect
-  the verifier relation that reports missing authority;
-- use the known standalone source
-  `double lir_floating_unary_minus_ternary_phi_authority(int condition, double left, double right) { return condition ? -left : -right; }`
-  only as the diagnostic anchor;
-- record native value, owner, index, type, ABI, role, operand identity, and
-  operation type, plus the smallest producer/verifier design decision;
-- do not modify code or tests in this diagnosis packet.
+- preserve the dirty 821/822/825-related worktree changes while comparing a
+  matched expanded baseline that isolates `524b24f64` from those changes;
+- record the exact reproducer, comparison, and attribution from structured
+  repository evidence; do not infer causality merely from the current dirty
+  aggregate worktree;
+- if the commit is causal, repair only the unary `fneg` route with nearby
+  coverage and repeat build, focused proof, and the matched expanded guard;
+- if the commit is not causal, name the responsible open route and switch only
+  if that separate route blocks this idea's accepted proof.
 
-Completion check: the unary `fneg` authority seam and a bounded
-producer/verifier decision are documented from structured facts, with no
-binary, selector, or generic-row expansion.
+Completion check: the matched expanded guard has no new failure, or a
+separately scoped and active blocker owns a proven unrelated failure. The
+`frontend_hir_tests` SEGFAULT must not be silently waived.
 
-### Step 2 - Implement the justified unary fneg authority repair
+### Step 3 - Close or return to 827
 
-Goal: implement only the Step 1-supported structured publication/verifier
-shape and focused nearby coverage.
+Goal: after Step 2R accepts the expanded baseline, record 828's accepted
+evidence and return to 827 for its explicit repair/close decision.
 
-Completion check: positive and malformed cases demonstrate the selected unary
-`fneg` contract and unrelated forms stay fail closed.
-
-### Step 3 - Prove the narrow route and return to 827
-
-Goal: obtain independently attributable acceptance evidence and hand the
-result back to 827 for its explicit repair/close decision.
-
-Completion check: run a fresh build and the Step 1-selected narrow CTest; do
-not credit the parent composite CTest or dirty selector work as this idea's
-acceptance proof.
+Completion check: 828 is closed only with the accepted regression guard and
+the parent return record; do not credit the parent composite CTest or dirty
+selector/call-type work as 828 proof.

@@ -61,3 +61,18 @@ or verifier shape is selected.
   old binary mismatch theory instead of structured native parameter facts.
 - Reject a producer-only or verifier-only change without focused positive and
   malformed coverage showing the chosen unary `fneg` contract fails closed.
+
+## Regression Guard Blocker
+
+- Accepted implementation evidence is commit `524b24f64`, a fresh successful
+  `cmake --build --preset default`, and the focused
+  `^frontend_lir_function_signature_type_ref$` CTest with matching narrow logs
+  (1/1, no new failures).
+- Capability closure is rejected for now: the expanded baseline comparison
+  changed from 0/3038 failures to `frontend_hir_tests` SEGFAULT (1 failure),
+  recorded in `test_baseline.new.log`.
+- The shared worktree also contains preserved unrelated 821/822/825 changes,
+  so the regression's relation to `524b24f64` is not yet established. Step
+  2R must isolate that attribution and either restore the baseline within this
+  unary route or name and activate the proven separate blocker before 828 can
+  return to parent 827.
