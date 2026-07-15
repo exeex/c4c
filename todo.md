@@ -8,12 +8,17 @@ Current Step Title: Trace and classify failing GEP producer families
 
 ## Just Finished
 
-None.
+810 Step 1 trace-only: reproduced `c_testsuite_src_00173_c` and traced its
+authoritative GEP failure to pointer postfix increment lowering
+(`emit_load_assignable_value` `fresh_value` base ->
+`emit_assignable_incdec_value` `fresh_tmp` GEP result).  Evidence is in
+`review/810_step1_gep_producer_trace.md`; no repair was made.
 
 ## Suggested Next
 
-Trace representative `LirGepOp.result` authority failures to select one
-evidenced producer family; do not modify 801's preserved repair.
+Select one bounded native pointer increment/decrement (and, if in scope,
+pointer compound-add/sub) result-authority repair packet; do not group other
+partial-log GEP failures without an independent producer trace.
 
 ## Watchouts
 
@@ -22,4 +27,4 @@ PHI residual failures belong to 804/806.
 
 ## Proof
 
-No blocker proof recorded yet.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_src_00173_c$'` — build was up to date; the one-test subset failed as reproduced with `LirGepOp.result: authoritative GEP requires LirValueId result authority`.  The command does not write a root proof log; existing partial `test_after.log` was intentionally left untouched by this trace-only packet.
