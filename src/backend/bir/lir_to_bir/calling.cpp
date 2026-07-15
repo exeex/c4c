@@ -1416,11 +1416,14 @@ std::optional<bir::Function> BirFunctionLowerer::lower_extern_decl(
     const c4c::TargetProfile& target_profile,
     const TypeDeclMap& type_decls,
     const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts) {
-  auto return_info = lower_return_info_from_type(
-      decl.return_type_str, type_decls, target_profile, &structured_layouts);
-  if (!return_info.has_value()) {
+  std::optional<LoweredReturnInfo> return_info;
+  if (!decl.return_type.empty()) {
     return_info = lower_return_info_from_type(
-        decl.return_type.str(), type_decls, target_profile, &structured_layouts);
+        decl.return_type.str(), type_decls, target_profile, &structured_layouts,
+        &decl.return_type);
+  } else {
+    return_info = lower_return_info_from_type(
+        decl.return_type_str, type_decls, target_profile, &structured_layouts);
   }
   if (!return_info.has_value()) {
     return std::nullopt;

@@ -5216,6 +5216,13 @@ void test_external_declaration_rejections_and_transactionality() {
         module.extern_decl_link_name_map.begin()->second.return_type_str = "i64";
       },
       "compatibility return text must agree with structured authority");
+  rejected(
+      [](lir::LirModule& module) {
+        module.extern_decls[0].return_type_str = "%struct.StaleReturnShadow";
+        module.extern_decl_link_name_map.begin()->second.return_type_str =
+            "%struct.StaleReturnShadow";
+      },
+      "a stale extern return shadow must not override its structured carrier");
 
   bir::ModuleBuilder builder;
   expect(builder.add_link_name(1, "linked_ext").has_value(),
