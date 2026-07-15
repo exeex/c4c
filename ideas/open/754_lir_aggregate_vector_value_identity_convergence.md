@@ -225,6 +225,40 @@ PHI work.
 - Reject expectation weakening, named-case-only behavior, or accepting the
   reverted prototype as structured-authority progress.
 
+## Resumption Record: Step 8 native vector authority blocker
+
+Last accepted progress: Steps 1--4 completed the selected `LirExtractValueOp`
+route.  Step 5 selected the terminal direct-complex `LirInsertValueOp` route
+in `270c6a93e`; Step 6 completed it in `8fe6c3569`; and Step 7 correctly
+rejected source closure.  The accepted implementation retains the matching
+`^backend_` regression guard at 5/5 and the supervisor-accepted 3037/3037 full
+baseline.  Those accepted steps and proofs must not be repeated.
+
+Interrupted step: Step 8, `Audit and select one remaining vector authority
+row`.
+
+Blocker evidence: `LirInsertElementOp` splat lowering emits raw `fresh_tmp`
+results, `std::string` elements, rendered vector types, and the display index
+`"i64 0"`; vector `IndexExpr` emits `LirExtractElementOp` result/vector/index
+through `fresh_tmp`, `emit_rval_id`, and `coerce` strings; and splat
+`LirShuffleVectorOp` emits raw result/input strings plus rendered mask type and
+`poison`/`zeroinitializer` display tokens.  The row schemas have no opt-in
+authority fields, and the verifier only checks operand kinds and type-reference
+well-formedness.  `LirOperand` supports `LirValueId`, but these seams do not
+populate it; `LirTypeRef` has no native vector layout or mask-lane facts.
+
+Classification: `separate-blocker`.  New open
+`ideas/open/811_lir_native_vector_authority_carrier_publication.md` owns only
+the reusable vector carrier prerequisite: current-function result/use IDs,
+vector lane/element facts, index value/type facts, and shuffle mask-lane facts.
+It must not implement an 754 row, recover authority from display text, or
+widen into non-vector provenance.
+
+Exact return point: after 811 publishes and proves that carrier handoff,
+reactivate 754 at Step 9, `Implement and prove the Step 8 selection`, and
+first rerun a fresh one-row vector audit against the handoff.  Select exactly
+one row then; do not repeat Steps 1--7 or the accepted insertvalue route.
+
 ## Resumption Update: accepted 801 native-layout handoff
 
 801 is capability-complete and has published its accepted Step 2--3 native
