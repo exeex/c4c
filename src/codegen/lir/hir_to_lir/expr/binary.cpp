@@ -646,8 +646,10 @@ std::string StmtEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Exp
   const std::string tmp = fresh_tmp(ctx);
   emit_lir_op(
       ctx, lir::LirPhiOp{tmp, res_ty,
-                          {{rhs_val, rhs_end_target.label, rhs_end_target.id},
-                           {skip_val, skip_target.label, skip_target.id}}});
+                          {{rhs_val, rhs_end_target.label, rhs_end_target.id,
+                            lir::LirSuccessorOccurrenceId::direct_branch()},
+                           {skip_val, skip_target.label, skip_target.id,
+                            lir::LirSuccessorOccurrenceId::direct_branch()}}});
   return tmp;
 }
 

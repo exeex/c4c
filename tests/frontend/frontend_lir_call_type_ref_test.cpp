@@ -875,8 +875,14 @@ int lir_amd64_vaarg_register_stack(int count, ...) {
                   phis[0]->incoming[0].value.value_id() &&
                   phis[0]->incoming[1].value.value_id() &&
                   phis[0]->incoming[0].predecessor.valid() &&
-                  phis[0]->incoming[1].predecessor.valid(),
-              "AMD64 vaarg PHI should retain both helper-input values and predecessor-block IDs");
+                  phis[0]->incoming[1].predecessor.valid() &&
+                  phis[0]->incoming[0].successor_occurrence &&
+                  phis[0]->incoming[1].successor_occurrence &&
+                  *phis[0]->incoming[0].successor_occurrence ==
+                      lir::LirSuccessorOccurrenceId::direct_branch() &&
+                  *phis[0]->incoming[1].successor_occurrence ==
+                      lir::LirSuccessorOccurrenceId::direct_branch(),
+              "AMD64 vaarg PHI should retain helper inputs, predecessor IDs, and direct successor occurrences");
   lir::verify_module(amd64);
 }
 
@@ -932,8 +938,14 @@ long double lir_aarch64_fp_vaarg_native_result_authority(int count, ...) {
                   source_phi->incoming[0].value.value_id() &&
                   source_phi->incoming[1].value.value_id() &&
                   source_phi->incoming[0].predecessor.valid() &&
-                  source_phi->incoming[1].predecessor.valid(),
-              "AArch64 vaarg PHI should retain helper-input values and predecessor-block IDs");
+                  source_phi->incoming[1].predecessor.valid() &&
+                  source_phi->incoming[0].successor_occurrence &&
+                  source_phi->incoming[1].successor_occurrence &&
+                  *source_phi->incoming[0].successor_occurrence ==
+                      lir::LirSuccessorOccurrenceId::direct_branch() &&
+                  *source_phi->incoming[1].successor_occurrence ==
+                      lir::LirSuccessorOccurrenceId::direct_branch(),
+              "AArch64 vaarg PHI should retain helper inputs, predecessor IDs, and direct successor occurrences");
   lir::verify_module(lowered);
 
   lir::LirModule missing = lowered;
@@ -1197,6 +1209,18 @@ void test_conditional_and_switch_successor_identity_contract() {
   expect_true(parallel_cbr.true_successor == parallel_cbr.false_successor &&
                   parallel_cbr.true_label == parallel_cbr.false_label,
               "conditional branches should admit repeated ordered successor occurrences");
+  const lir::LirPhiIncoming conditional_true{
+      lir::LirOperand::integer("0", 0), "entry", lir::LirBlockId{0},
+      lir::LirSuccessorOccurrenceId::conditional_true()};
+  const lir::LirPhiIncoming conditional_false{
+      lir::LirOperand::integer("1", 1), "entry", lir::LirBlockId{0},
+      lir::LirSuccessorOccurrenceId::conditional_false()};
+  expect_true(conditional_true.predecessor == conditional_false.predecessor &&
+                  conditional_true.successor_occurrence &&
+                  conditional_false.successor_occurrence &&
+                  !(*conditional_true.successor_occurrence ==
+                    *conditional_false.successor_occurrence),
+              "parallel conditional successors should retain distinct typed PHI occurrence IDs");
 
   lir::LirModule switch_module;
   switch_module.functions.push_back(make_switch());
@@ -1219,6 +1243,18 @@ void test_conditional_and_switch_successor_identity_contract() {
                   parallel_sw.case_successors[0] == parallel_sw.case_successors[1] &&
                   parallel_sw.cases[0].second == parallel_sw.cases[1].second,
               "switch cases should admit repeated ordered successor occurrences");
+  const lir::LirPhiIncoming first_switch_case{
+      lir::LirOperand::integer("0", 0), "entry", lir::LirBlockId{0},
+      lir::LirSuccessorOccurrenceId::switch_case(0)};
+  const lir::LirPhiIncoming second_switch_case{
+      lir::LirOperand::integer("1", 1), "entry", lir::LirBlockId{0},
+      lir::LirSuccessorOccurrenceId::switch_case(1)};
+  expect_true(first_switch_case.predecessor == second_switch_case.predecessor &&
+                  first_switch_case.successor_occurrence &&
+                  second_switch_case.successor_occurrence &&
+                  !(*first_switch_case.successor_occurrence ==
+                    *second_switch_case.successor_occurrence),
+              "parallel switch successors should retain distinct typed PHI occurrence IDs");
 
   lir::LirModule missing_conditional;
   missing_conditional.functions.push_back(make_conditional());
@@ -4299,11 +4335,17 @@ long long lir_ternary_coerce_result_authority_loss(int condition, long long inpu
   expect_true(phi_incoming_values_are_operands && phis[0]->incoming.size() == 2 &&
                   phis[0]->incoming.front().predecessor.valid() &&
                   phis[0]->incoming[1].predecessor.valid() &&
+                  phis[0]->incoming.front().successor_occurrence &&
+                  phis[0]->incoming[1].successor_occurrence &&
+                  *phis[0]->incoming.front().successor_occurrence ==
+                      lir::LirSuccessorOccurrenceId::direct_branch() &&
+                  *phis[0]->incoming[1].successor_occurrence ==
+                      lir::LirSuccessorOccurrenceId::direct_branch() &&
                   phis[0]->incoming.front().value.value_id() &&
                   phis[0]->incoming[1].value.value_id() &&
                   *phis[0]->incoming.front().value.value_id() ==
                       *selected_coercion.result.value_id(),
-              "ternary PHI should retain selected arm value and predecessor-block authority");
+              "ternary PHI should retain selected arm value, predecessor, and direct successor occurrence authority");
   expect_true(!phis[0]->result.has_authority() && !binary_ops[0]->lhs.has_authority(),
               "ternary PHI carrier and later consumer remain raw outside the selected arm packet");
   lir::verify_module(lowered);
@@ -4502,8 +4544,11 @@ int lir_logical_short_circuit_result_authority_loss(int lhs, int rhs) {
         return incoming.value.value_id() &&
                *incoming.value.value_id() == *rhs_conversion->result.value_id();
       });
-  expect_true(rhs_incoming != phis[0]->incoming.end() && rhs_incoming->predecessor.valid(),
-              "logical PHI should retain the selected RHS value and predecessor-block authority");
+  expect_true(rhs_incoming != phis[0]->incoming.end() && rhs_incoming->predecessor.valid() &&
+                  rhs_incoming->successor_occurrence &&
+                  *rhs_incoming->successor_occurrence ==
+                      lir::LirSuccessorOccurrenceId::direct_branch(),
+              "logical PHI should retain selected RHS value, predecessor, and direct successor occurrence authority");
   expect_true(!phis[0]->result.value_id() && !binary_ops[0]->lhs.value_id(),
               "logical PHI result and final consumer remain outside the RHS result-authority claim");
   lir::verify_module(lowered);

@@ -240,8 +240,10 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, con
   const std::string tmp = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirPhiOp{
                        tmp, res_ty,
-                       {{void_to_zero(then_coerced), then_end_target.label, then_end_target.id},
-                        {void_to_zero(else_coerced), else_end_target.label, else_end_target.id}}});
+                       {{void_to_zero(then_coerced), then_end_target.label, then_end_target.id,
+                         lir::LirSuccessorOccurrenceId::direct_branch()},
+                        {void_to_zero(else_coerced), else_end_target.label, else_end_target.id,
+                         lir::LirSuccessorOccurrenceId::direct_branch()}}});
   return tmp;
 }
 

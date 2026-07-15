@@ -61,6 +61,39 @@ struct LirBlockId {
   return lhs.value == rhs.value;
 }
 
+// Identifies one ordered successor occurrence in a predecessor terminator's
+// typed CFG structure. This is deliberately independent of PHI input order
+// and of rendered block labels: conditional true/false and repeated switch
+// targets are distinct occurrences even when they name the same block.
+struct LirSuccessorOccurrenceId {
+  uint32_t value = 0;
+  static constexpr uint32_t kInvalid = std::numeric_limits<uint32_t>::max();
+  [[nodiscard]] constexpr bool valid() const { return value != kInvalid; }
+  [[nodiscard]] static constexpr LirSuccessorOccurrenceId invalid() {
+    return LirSuccessorOccurrenceId{kInvalid};
+  }
+  [[nodiscard]] static constexpr LirSuccessorOccurrenceId direct_branch() {
+    return LirSuccessorOccurrenceId{0};
+  }
+  [[nodiscard]] static constexpr LirSuccessorOccurrenceId conditional_true() {
+    return LirSuccessorOccurrenceId{0};
+  }
+  [[nodiscard]] static constexpr LirSuccessorOccurrenceId conditional_false() {
+    return LirSuccessorOccurrenceId{1};
+  }
+  [[nodiscard]] static constexpr LirSuccessorOccurrenceId switch_default() {
+    return LirSuccessorOccurrenceId{0};
+  }
+  [[nodiscard]] static constexpr LirSuccessorOccurrenceId switch_case(uint32_t case_index) {
+    return LirSuccessorOccurrenceId{case_index + 1};
+  }
+};
+
+[[nodiscard]] constexpr bool operator==(LirSuccessorOccurrenceId lhs,
+                                        LirSuccessorOccurrenceId rhs) {
+  return lhs.value == rhs.value;
+}
+
 struct LirStackSlotId {
   uint32_t value = 0;
   static constexpr uint32_t kInvalid = std::numeric_limits<uint32_t>::max();
@@ -426,12 +459,15 @@ struct LirCmpOp {
   LirOperand rhs;                 // SSA name or literal for right operand
 };
 
-// PHI incoming authority.  `value` selects the native value and `predecessor`
-// selects the current-function CFG edge; `label` is only their display mirror.
+// PHI incoming authority. `value` selects the native value, `predecessor`
+// selects the current-function CFG predecessor, and `successor_occurrence`
+// selects one exact successor occurrence in that predecessor's typed
+// terminator. `label` is only the predecessor display mirror.
 struct LirPhiIncoming {
   LirOperand value;
   std::string label;
   LirBlockId predecessor = LirBlockId::invalid();
+  std::optional<LirSuccessorOccurrenceId> successor_occurrence;
 };
 
 // Typed PHI node.

@@ -135,8 +135,10 @@ std::string StmtEmitter::emit_amd64_va_arg(FnCtx& ctx, const TypeSpec& res_ts,
 
   const LirOperand phi = fresh_value(ctx);
   emit_lir_op(ctx, lir::LirPhiOp{phi, res_ty,
-                                 {{reg_value, reg_target.label, reg_target.id},
-                                  {stack_value, stack_target.label, stack_target.id}}});
+                                 {{reg_value, reg_target.label, reg_target.id,
+                                   lir::LirSuccessorOccurrenceId::direct_branch()},
+                                  {stack_value, stack_target.label, stack_target.id,
+                                   lir::LirSuccessorOccurrenceId::direct_branch()}}});
   return phi.str();
 }
 
