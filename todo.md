@@ -3,11 +3,23 @@
 Status: Active
 Source Idea Path: ideas/open/785_lir_call_result_operand_carrier_foundation.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory direct call-result carrier surfaces and probe feasibility
+Current Step ID: 2
+Current Step Title: Bind and validate the minimal call-result carrier
 
 ## Just Finished
 
+- Step 2 complete. The FP/alignment-only `@llvm.ptrmask.p0.i64` call at
+  `hir_to_lir/call/vaarg.cpp:145` now receives `fresh_value(ctx)` and uses the
+  existing `make_lir_call_op_with_return_type_ref` with native pointer return
+  type. The sibling HFA ptrmask at `:244` remains unchanged.
+- A native ptrmask input requires its immediate GEP consumer to be
+  authoritative, so only the selected ptrmask branch now emits a native
+  `stack_next` GEP with a typed i64 immediate index. Its store consumes that
+  native GEP result. The <=8-byte branch retains its original raw GEP route.
+- `test_aarch64_fp_vaarg_ptrmask_result_identity_boundary` lowers an AArch64
+  `long double` vaarg fixture, verifies the ptrmask result has a valid native
+  value ID and pointer return type, and checks a GEP pointer operand owns the
+  exact same ID. It uses structural fields, not rendered result text.
 - Inventory complete. `call_args_ops.hpp:87` already provides the direct
   native-result boundary: `make_lir_call_op_with_return_type_ref(LirOperand,
   LirTypeRef, ...)` trims only display text, then moves that operand into
@@ -34,9 +46,9 @@ Current Step Title: Inventory direct call-result carrier surfaces and probe feas
 
 ## Suggested Next
 
-- Plan Step 2: convert only the explicitly selected ptrmask result site(s) to
-  the existing native factory and add the focused structural result/consumer
-  probe. Do not absorb the sibling HFA route unless that step names it.
+- Return to the supervisor for the next runbook decision. This packet does not
+  authorize conversion of the sibling HFA ptrmask route or other legacy call
+  sites.
 
 ## Watchouts
 
@@ -47,6 +59,6 @@ Current Step Title: Inventory direct call-result carrier surfaces and probe feas
 
 ## Proof
 
-- Fresh Step 1 proof passed 1/1: `cmake --build --preset default && ctest
+- Fresh Step 2 proof passed 1/1: `cmake --build --preset default && ctest
   --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`.
   Full output is preserved in `test_after.log`.

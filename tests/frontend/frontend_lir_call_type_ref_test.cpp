@@ -651,6 +651,48 @@ int main(void) {
                   "AArch64 scalar stdarg should preserve structured va_list lowering");
 }
 
+void test_aarch64_fp_vaarg_ptrmask_result_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+typedef __builtin_va_list va_list;
+
+long double lir_aarch64_fp_vaarg_ptrmask_identity(int count, ...) {
+  va_list ap;
+  __builtin_va_start(ap, count);
+  return __builtin_va_arg(ap, long double);
+}
+)c", "aarch64-linux-gnu");
+
+  lir::LirFunction& function =
+      require_function(lowered, "lir_aarch64_fp_vaarg_ptrmask_identity");
+  lir::LirCallOp* ptrmask_call = nullptr;
+  std::vector<lir::LirGepOp*> geps;
+  for (auto& block : function.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* call = std::get_if<lir::LirCallOp>(&inst)) {
+        expect_true(!ptrmask_call,
+                    "FP vaarg alignment fixture should lower exactly one ptrmask call");
+        ptrmask_call = call;
+      }
+      if (auto* gep = std::get_if<lir::LirGepOp>(&inst)) geps.push_back(gep);
+    }
+  }
+  expect_true(ptrmask_call && ptrmask_call->result.kind() == lir::LirOperandKind::SsaValue &&
+                  ptrmask_call->result.value_id() && ptrmask_call->result.value_id()->valid(),
+              "FP vaarg ptrmask must define a valid native result ID");
+  expect_true(ptrmask_call->return_type.kind() == lir::LirTypeKind::Pointer,
+              "FP vaarg ptrmask must retain its native pointer return type");
+  const auto consumer = std::find_if(
+      geps.begin(), geps.end(), [&](const lir::LirGepOp* gep) {
+        return gep->ptr.kind() == lir::LirOperandKind::SsaValue && gep->ptr.value_id() &&
+               *gep->ptr.value_id() == *ptrmask_call->result.value_id();
+      });
+  expect_true(consumer != geps.end(),
+              "FP vaarg ptrmask result must preserve its exact ID into the immediate GEP consumer");
+  lir::verify_module(lowered);
+}
+
 c4c::codegen::lir::LirFunction make_identity_test_function(
     std::string name, c4c::codegen::lir::LirValueId id) {
   namespace lir = c4c::codegen::lir;
@@ -7439,6 +7481,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_rv64_direct_variadic_integer_extension_attrs();
   test_rv64_scalar_stdarg_uses_pointer_cursor();
   test_aarch64_scalar_stdarg_preserves_structured_va_list();
+  test_aarch64_fp_vaarg_ptrmask_result_identity_boundary();
   test_structured_operand_identity_foundation();
   test_standalone_cast_result_authority_contract();
   test_direct_branch_successor_identity_contract();

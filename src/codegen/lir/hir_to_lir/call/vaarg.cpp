@@ -136,15 +136,19 @@ std::string StmtEmitter::emit_aarch64_vaarg_fp_src_ptr(FnCtx& ctx, const std::st
   const std::string stack_ptr = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirLoadOp{stack_ptr, std::string("ptr"), stack_ptr_ptr});
   std::string aligned_stack_ptr = stack_ptr;
+  std::optional<LirOperand> aligned_stack_ptr_value;
   if (stack_align_bytes > 1) {
     if (stack_align_bytes > 8) {
       const std::string stack_plus = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirGepOp{stack_plus, "i8", stack_ptr, false,
                                      {"i64 " + std::to_string(stack_align_bytes - 1)}});
-      aligned_stack_ptr = fresh_tmp(ctx);
-      emit_lir_op(ctx, make_lir_call_op(aligned_stack_ptr, "ptr", "@llvm.ptrmask.p0.i64", "",
-                                        {{"ptr", stack_plus},
-                                         {"i64", std::to_string(-stack_align_bytes)}}));
+      aligned_stack_ptr_value = fresh_value(ctx);
+      aligned_stack_ptr = aligned_stack_ptr_value->str();
+      emit_lir_op(ctx, make_lir_call_op_with_return_type_ref(
+                           *aligned_stack_ptr_value, LirTypeRef(LirBuiltinType::Pointer),
+                           "@llvm.ptrmask.p0.i64", "",
+                           {{"ptr", stack_plus},
+                            {"i64", std::to_string(-stack_align_bytes)}}));
       module_->need_ptrmask = true;
     } else {
       const std::string stack_i = fresh_tmp(ctx);
@@ -161,10 +165,20 @@ std::string StmtEmitter::emit_aarch64_vaarg_fp_src_ptr(FnCtx& ctx, const std::st
                                       masked, "ptr"});
     }
   }
-  const std::string stack_next = fresh_tmp(ctx);
-  emit_lir_op(ctx, lir::LirGepOp{stack_next, "i8", aligned_stack_ptr, false,
-                                 {"i64 " + std::to_string(stack_slot_bytes)}});
-  emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), stack_next, stack_ptr_ptr});
+  if (aligned_stack_ptr_value) {
+    const LirOperand stack_next = fresh_value(ctx);
+    emit_lir_op(ctx, lir::LirGepOp{
+        stack_next, LirTypeRef("i8"), *aligned_stack_ptr_value, false,
+        {LirGepIndex::typed(LirTypeRef::integer(64),
+                            LirOperand::integer(std::to_string(stack_slot_bytes),
+                                                stack_slot_bytes))}});
+    emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), stack_next, stack_ptr_ptr});
+  } else {
+    const std::string stack_next = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirGepOp{stack_next, "i8", aligned_stack_ptr, false,
+                                   {"i64 " + std::to_string(stack_slot_bytes)}});
+    emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), stack_next, stack_ptr_ptr});
+  }
   emit_fallthrough_lbl(ctx, join_target);
   const std::string src_ptr = fresh_tmp(ctx);
   emit_lir_op(
