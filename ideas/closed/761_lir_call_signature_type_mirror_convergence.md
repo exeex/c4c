@@ -107,3 +107,26 @@ or explicit compatibility boundary.
   relaxed to hide a remaining string-authority path.
 - The result still lets mismatched string type fragments override typed refs in
   call/signature verification or backend consumption.
+
+## Closure Disposition
+
+Capability complete. The selected call/signature convergence established
+structured argument and fixed-parameter type refs as authority whenever the
+mirrors are complete, with `args_str` retained only as the explicit raw
+compatibility/emission fallback. Verifier coverage rejects stale rendered
+mirrors without allowing them to override structured facts. The switch path
+now derives selector typing from `selector_type_ref` and treats
+`selector_type` as a checked display mirror.
+
+Inline assembly needs no further conversion for this idea: ordinary value
+typing is already represented by `LirInlineAsmValueBinding` facts, while the
+assembly template, constraints, and rendered argument text remain intentional
+opaque-text boundaries rather than raw type authority.
+
+Accepted implementation slices: `2b3bde7be` (structured call argument
+authority), `56c73e775` (structured call type verification), and `a6c013ed0`
+(structured switch selector types). Supervisor-owned closure proof passed:
+fresh `cmake --build --preset default`, then matching
+`ctest --test-dir build -j --output-on-failure -R
+'^(backend_|frontend_cxx_|frontend_hir_tests$)'` in `test_before.log` and
+`test_after.log`, 7/7 passing in each log; regression guard PASS.
