@@ -50,7 +50,7 @@ Accepted in `68bd79809`: selected only scalar integer output-only
 Any later 734 receipt may consume only those structured facts; compatibility
 `result` text remains receiver scope.
 
-### Step 2 - Publish and verify the selected authority — current
+### Step 2 - Publish and verify the selected authority — complete
 
 Goal: implement only the Step 1 selected producer/schema/verifier contract.
 
@@ -72,10 +72,30 @@ ID, typed output binding/index, and checked verifier ownership/tuple facts;
 malformed alternatives reject; no receiver/importer, result-text, or other
 inline-assembly family change occurs.
 
-### Step 3 - Prove and hand off the bounded row — pending
+Outcome: independent audit confirmed the complete committed contract; no code
+patch was needed. `StmtEmitter::emit_inline_asm` produces a fresh value and
+typed `Output`/index-0 binding. The schema preserves its native ID and type,
+and the verifier checks the exact tuple, valid native ID, and current-function
+ownership. Nearby tests reject missing, invalid, duplicate, role-, index-,
+type-, and foreign-authority forms. Fresh designated proof and matching
+before/after regression comparison both passed (1/1 tests).
 
-Goal: run the selected focused proof and write the exact 734 receiver handoff.
+### Step 3 - Prove and hand off the bounded row — current
 
-Completion check: fresh build and focused positive/negative proof pass; the
-handoff identifies one receiver row, rejected forms, and return to 734 only
-for that row.
+Goal: preserve the fresh focused proof and write the exact bounded semantic
+handoff for one later 734 receiver row.
+
+Actions:
+
+- Hand off only `StmtEmitter::emit_inline_asm`'s fresh scalar ordinary result
+  plus its typed `Output` binding at constraint index 0; the verifier contract
+  is exact tuple/native valid ID/current-function ownership.
+- State that missing, invalid, duplicate, role-mismatched, index-mismatched,
+  type-mismatched, and foreign forms remain rejected.
+- Keep compatibility `result` text presentation-only and defer Raw-BIR receipt
+  to one later 734 receiver packet; do not implement that receipt here.
+
+Completion check: the fresh focused build/test proof is retained; the handoff
+identifies the one permitted 734 receiver row, native facts, rejected forms,
+and deferred return to 734. This bounded proof/handoff does not by itself
+complete the source idea.
