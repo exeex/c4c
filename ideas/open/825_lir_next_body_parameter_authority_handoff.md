@@ -100,6 +100,31 @@ material.
   There is no Step 2 proof. The completed isolation prerequisite must not be
   mistaken for authority acceptance or performed again by Idea 825.
 
+## Resumption Record: native DirectScalar binary-LHS authority blocker
+
+Status: deactivated for separately scoped Idea 827; resume only after its
+accepted binary-LHS producer/verifier repair.
+
+- Last accepted progress and completed steps: Step 1 only, accepted in
+  `7e6366cc9` (`plan: select direct scalar switch selector authority row`).
+  Step 2 has no accepted semantic progress.
+- Interrupted step: Step 2, *Publish and verify the selected authority tuple*.
+  The current shared-worktree `core.cpp`, `ir.hpp`, `verify.cpp`, and focused
+  test changes are preserved, unaccepted implementation only; do not claim,
+  commit, discard, or alter them during the blocker.
+- Build and focused evidence: fresh `cmake --build --preset default` passed.
+  The matching exact `^frontend_lir_call_type_ref$` CTest was 0/1 before at
+  the earlier `LirSwitch.selector` abort and remains 0/1 after, now at
+  `LirBinOp.scalar_lhs_parameter_authority: is required when LirBinOp.lhs uses
+  a native direct-scalar parameter`.
+- First bad fact and scope boundary: the newly exposed native DirectScalar
+  `LirBinOp` LHS producer/verifier gap is outside this source's selected direct
+  `LirSwitch.selector` row. It belongs solely to Idea 827; closed 820's prior
+  `ull` publication does not authorize it.
+- Exact return point and commit status: after Idea 827 receives accepted proof,
+  resume exactly at Step 2. Reassess the preserved Step 2 selector slice using
+  its own proof; there is no Idea 825 Step 2 acceptance commit.
+
 ## Reviewer Reject Signals
 
 - Reject selection from rendered parameter names, types, signatures, operand
