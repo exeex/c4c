@@ -2692,6 +2692,11 @@ void verify_function_value_ownership(const LirModule& mod,
     check_shape(authority.result_shape, vector_type, "result_shape");
     if (!authority.first_vector_shape) fail_verify(std::string(name) + ".native_vector_authority.first_vector_shape", "must be present");
     check_shape(*authority.first_vector_shape, vector_type, "first_vector_shape");
+    if (second) {
+      if (!authority.second_vector_shape)
+        fail_verify(std::string(name) + ".native_vector_authority.second_vector_shape", "must be present");
+      check_shape(*authority.second_vector_shape, vector_type, "second_vector_shape");
+    }
     if (index) {
       if (!authority.index || !index_type || authority.index->value.str() != index->str() ||
           authority.index->value.authority() != index->authority() || authority.index->type.str().empty())

@@ -3,29 +3,28 @@
 Status: Active
 Source Idea Path: ideas/open/811_lir_native_vector_authority_carrier_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish structured vector identities and facts
+Current Step ID: 3
+Current Step Title: Verify carrier coherence and focused coverage
 
 ## Just Finished
 
-Step 2 published opt-in `LirNativeVectorAuthority` carriers on insert,
-extract, and shuffle schemas. The two scalar-splat seams now use native result
-operands and publish result/vector/element IDs when available, lane/element
-shapes, structured zero indices, and ordered zero-mask lanes; the vector
-`IndexExpr` seam publishes its native result/vector/index facts. Function
-ownership validation rejects incoherent owner/result/use IDs and incompatible
-shape/index/mask mirrors without adding vector-row semantics.
+Step 3 added direct LIR-verifier coverage for a valid insert/extract/shuffle
+carrier set and malformed owner, result/use identity, vector shape/display
+mirror, index value/type, and shuffle mask-lane/mask-mirror cases. Shuffle now
+also requires its second vector shape whenever it carries a second vector use;
+this is carrier coherence only and does not validate vector operation semantics.
 
 ## Suggested Next
 
-Step 3: add focused valid/malformed carrier coverage for ownership and mirror
-coherence only; do not add insert/extract/shuffle row semantics.
+Step 4: obtain the supervisor-selected regression guard and record the carrier
+handoff for the return to 754 Step 9.
 
 ## Watchouts
 
-No display-text recovery or synthetic IDs for `poison`/`zeroinitializer`.
-Keep aggregate, CFG/PHI, pointers, Raw-BIR, target, MIR, emission, tests, and
-all 754 row behavior outside this packet.
+The new tests call `verify_module` directly and do not assert lane selection,
+element compatibility, shuffle input compatibility, poison behavior, or row
+admission. Keep aggregate, CFG/PHI, pointers, Raw-BIR, target, MIR, emission,
+and all 754 row behavior outside this packet.
 
 ## Proof
 
