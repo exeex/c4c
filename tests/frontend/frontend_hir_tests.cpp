@@ -7262,7 +7262,16 @@ float extract_imag(int value) {
     expect_true(aggregate_call != nullptr && aggregate_call->result.value_id() != nullptr &&
                     extract != nullptr && extract->agg.value_id() != nullptr &&
                     *aggregate_call->result.value_id() == *extract->agg.value_id() &&
-                    aggregate_call->result.str() == extract->agg.str(),
+                    aggregate_call->result.str() == extract->agg.str() &&
+                    aggregate_call->return_type.has_anonymous_struct_layout() &&
+                    aggregate_call->return_type.anonymous_struct_field_types() != nullptr &&
+                    aggregate_call->return_type.anonymous_struct_field_types()->size() == 2 &&
+                    (*aggregate_call->return_type.anonymous_struct_field_types())[0] == "float" &&
+                    (*aggregate_call->return_type.anonymous_struct_field_types())[1] == "float" &&
+                    aggregate_call->callee_signature.has_value() &&
+                    aggregate_call->callee_signature->return_type_ref.has_value() &&
+                    *aggregate_call->callee_signature->return_type_ref == aggregate_call->return_type &&
+                    extract->agg_type == aggregate_call->return_type,
                 "direct complex call and unary extractvalue must retain one native aggregate SSA authority");
   }
 }

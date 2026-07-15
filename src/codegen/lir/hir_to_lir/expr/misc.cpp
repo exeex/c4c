@@ -12,6 +12,16 @@ std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
   return resolved.empty() ? std::string(fallback) : std::string(resolved);
 }
 
+LirTypeRef unary_complex_aggregate_type(const TypeSpec& type,
+                                        std::string_view rendered_type,
+                                        bool native_aggregate_use) {
+  if (!native_aggregate_use || !is_complex_base(type.base)) {
+    return LirTypeRef(std::string(rendered_type));
+  }
+  const LirTypeRef component_type(llvm_ty(complex_component_ts(type.base)));
+  return LirTypeRef::anonymous_struct({component_type, component_type});
+}
+
 }  // namespace
 
 LirOperand StmtEmitter::emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u,
@@ -94,13 +104,15 @@ LirOperand StmtEmitter::emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u,
       if (is_complex_base(op_ts.base)) {
         const TypeSpec elem_ts = complex_component_ts(op_ts.base);
         const bool native_aggregate_use = val.value_id() != nullptr;
+        const LirTypeRef aggregate_type =
+            unary_complex_aggregate_type(op_ts, op_ty, native_aggregate_use);
         const LirOperand real_v = native_aggregate_use ? fresh_value(ctx) :
                                                         LirOperand(fresh_tmp(ctx));
-        emit_lir_op(ctx, lir::LirExtractValueOp{real_v, op_ty, val, 0,
+        emit_lir_op(ctx, lir::LirExtractValueOp{real_v, aggregate_type, val, 0,
                                                 native_aggregate_use});
         const LirOperand imag_v0 = native_aggregate_use ? fresh_value(ctx) :
                                                           LirOperand(fresh_tmp(ctx));
-        emit_lir_op(ctx, lir::LirExtractValueOp{imag_v0, op_ty, val, 1,
+        emit_lir_op(ctx, lir::LirExtractValueOp{imag_v0, aggregate_type, val, 1,
                                                 native_aggregate_use});
         const std::string imag_v = fresh_tmp(ctx);
         if (is_float_base(elem_ts.base)) {
@@ -192,7 +204,8 @@ LirOperand StmtEmitter::emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u,
       const bool native_aggregate_use = val.value_id() != nullptr;
       const LirOperand tmp = native_aggregate_use ? fresh_value(ctx) :
                                                    LirOperand(fresh_tmp(ctx));
-      emit_lir_op(ctx, lir::LirExtractValueOp{tmp, llvm_ty(op_ts), val,
+      emit_lir_op(ctx, lir::LirExtractValueOp{
+          tmp, unary_complex_aggregate_type(op_ts, llvm_ty(op_ts), native_aggregate_use), val,
                                               u.op == UnaryOp::ImagPart ? 1 : 0,
                                               native_aggregate_use});
       return tmp;

@@ -14,6 +14,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "../../shared/struct_name_table.hpp"
 
@@ -174,6 +175,17 @@ class LirTypeRef {
     return type;
   }
 
+  // Anonymous aggregate fields are opt-in semantic facts.  Their LLVM text is
+  // strictly a derived compatibility mirror, never a source for the layout.
+  [[nodiscard]] static LirTypeRef anonymous_struct(
+      std::vector<LirTypeRef> field_types) {
+    LirTypeRef type(anonymous_struct_compatibility_text(field_types),
+                    LirTypeKind::Struct);
+    type.anonymous_struct_field_types_ =
+        std::make_shared<std::vector<LirTypeRef>>(std::move(field_types));
+    return type;
+  }
+
   [[nodiscard]] const std::string& str() const { return text_; }
   [[nodiscard]] std::string& str() { return text_; }
   // LLVM emission renders supported structural forms from their semantic facts
@@ -182,6 +194,9 @@ class LirTypeRef {
     if (has_array_shape()) {
       return "[" + std::to_string(*array_length_) + " x " +
              array_element_type_->render_llvm() + "]";
+    }
+    if (has_anonymous_struct_layout()) {
+      return anonymous_struct_compatibility_text(*anonymous_struct_field_types_);
     }
     return text_;
   }
@@ -223,6 +238,12 @@ class LirTypeRef {
   [[nodiscard]] bool has_array_shape() const {
     return array_element_type_ != nullptr && array_length_.has_value();
   }
+  [[nodiscard]] const std::vector<LirTypeRef>* anonymous_struct_field_types() const {
+    return anonymous_struct_field_types_.get();
+  }
+  [[nodiscard]] bool has_anonymous_struct_layout() const {
+    return anonymous_struct_field_types_ != nullptr;
+  }
   [[nodiscard]] bool empty() const { return text_.empty(); }
 
   operator std::string&() { return text_; }
@@ -234,6 +255,10 @@ class LirTypeRef {
     if (lhs.has_array_shape() && rhs.has_array_shape()) {
       return lhs.array_length_ == rhs.array_length_ &&
              *lhs.array_element_type_ == *rhs.array_element_type_;
+    }
+    if (lhs.has_anonymous_struct_layout() || rhs.has_anonymous_struct_layout()) {
+      return lhs.has_anonymous_struct_layout() && rhs.has_anonymous_struct_layout() &&
+             *lhs.anonymous_struct_field_types_ == *rhs.anonymous_struct_field_types_;
     }
     if (lhs.has_struct_name_id() && rhs.has_struct_name_id()) {
       return lhs.struct_name_id_ == rhs.struct_name_id_ &&
@@ -470,6 +495,16 @@ class LirTypeRef {
     return "[" + std::to_string(length) + " x " + element_type.render_llvm() + "]";
   }
 
+  [[nodiscard]] static std::string anonymous_struct_compatibility_text(
+      const std::vector<LirTypeRef>& field_types) {
+    std::string text = "{ ";
+    for (std::size_t index = 0; index < field_types.size(); ++index) {
+      if (index != 0) text += ", ";
+      text += field_types[index].render_llvm();
+    }
+    return text + " }";
+  }
+
   std::string text_;
   LirTypeKind kind_ = LirTypeKind::RawText;
   std::optional<unsigned> integer_bit_width_;
@@ -479,6 +514,7 @@ class LirTypeRef {
   StructNameId struct_name_id_ = kInvalidStructName;
   std::shared_ptr<LirTypeRef> array_element_type_;
   std::optional<std::size_t> array_length_;
+  std::shared_ptr<std::vector<LirTypeRef>> anonymous_struct_field_types_;
 };
 
 enum class LirBinaryOpcode : unsigned char {

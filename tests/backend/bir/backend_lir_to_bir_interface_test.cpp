@@ -1643,6 +1643,74 @@ void test_typed_lir_type_rejections() {
          "conflicting StructNameId/spelling identity must be rejected");
 }
 
+void test_anonymous_aggregate_layout_verifier_rejections() {
+  const auto module_with_layout = [](const lir::LirTypeRef& layout) {
+    lir::LirModule module;
+    auto texts = std::make_shared<c4c::TextTable>();
+    module.link_name_texts = texts;
+    module.link_names.attach_text_table(texts.get());
+    module.struct_names.attach_text_table(texts.get());
+    const c4c::LinkNameId callee_id = module.link_names.intern("anon_pair_source");
+
+    lir::LirCallSignature signature;
+    signature.return_type_ref = layout;
+    signature.fixed_param_types = {"i32"};
+    signature.fixed_param_type_refs = {lir::LirTypeRef::integer(32)};
+
+    lir::LirBlock block;
+    block.id = lir::LirBlockId{0};
+    block.label = "entry";
+    block.insts.push_back(lir::LirCallOp{
+        .result = lir::LirOperand::ssa("%pair", lir::LirValueId{1}),
+        .return_type = layout,
+        .callee = lir::LirOperand("@anon_pair_source"),
+        .direct_callee_link_name_id = callee_id,
+        .callee_type_suffix = "(i32)",
+        .args_str = "i32 5",
+        .arg_type_refs = {lir::LirTypeRef::integer(32)},
+        .callee_signature = std::move(signature),
+        .structured_args = {{"i32", lir::LirOperand::integer("5", 5),
+                             lir::LirTypeRef::integer(32)}},
+    });
+    block.insts.push_back(lir::LirExtractValueOp{
+        .result = lir::LirOperand::ssa("%field", lir::LirValueId{2}),
+        .agg_type = layout,
+        .agg = lir::LirOperand::ssa("%pair", lir::LirValueId{1}),
+        .index = 0,
+        .requires_native_result_authority = true,
+    });
+    block.terminator = lir::LirRet{std::nullopt, lir::LirTypeRef("void")};
+    auto function = void_definition("anonymous_layout_verifier", {std::move(block)});
+    function.signature_text = "define void @anonymous_layout_verifier()";
+    module.functions.push_back(std::move(function));
+    return module;
+  };
+
+  const lir::LirTypeRef valid_layout = lir::LirTypeRef::anonymous_struct(
+      {lir::LirTypeRef("float"), lir::LirTypeRef("float")});
+  lir::verify_module(module_with_layout(valid_layout));
+
+  const auto expect_rejected = [&](const lir::LirTypeRef& layout,
+                                   const std::string& message) {
+    try {
+      lir::verify_module(module_with_layout(layout));
+      fail(message);
+    } catch (const lir::LirVerifyError&) {
+    }
+  };
+
+  auto stale_layout = valid_layout;
+  stale_layout.str() = "{ double, double }";
+  expect_rejected(stale_layout,
+                  "anonymous aggregate layout must reject a stale display mirror");
+  expect_rejected(lir::LirTypeRef::anonymous_struct({}),
+                  "anonymous aggregate layout must reject missing ordered fields");
+  const lir::LirTypeRef foreign_field = lir::LirTypeRef::struct_type(
+      "%struct.Foreign", c4c::StructNameId{77});
+  expect_rejected(lir::LirTypeRef::anonymous_struct({foreign_field, foreign_field}),
+                  "anonymous aggregate layout must reject foreign field types");
+}
+
 void test_verifier_rejects_malformed_raw_type() {
   bir::ModuleBuilder builder;
   bir::FunctionSignature malformed;
@@ -12612,6 +12680,7 @@ int main() {
   test_function_metadata_import_receipt();
   test_function_metadata_import_rejections_and_transactionality();
   test_typed_lir_type_rejections();
+  test_anonymous_aggregate_layout_verifier_rejections();
   test_verifier_rejects_malformed_raw_type();
   test_intrinsic_requirements_receipt();
   test_module_name_and_struct_declaration_receipt();

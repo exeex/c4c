@@ -113,6 +113,18 @@ bool operand_kind_allowed(LirOperandKind kind,
 }
 
 std::optional<std::string> type_ref_mismatch_detail(const LirTypeRef& type) {
+  if (type.has_anonymous_struct_layout()) {
+    const auto* fields = type.anonymous_struct_field_types();
+    if (!fields || type.kind() != LirTypeKind::Struct || type.has_struct_name_id()) {
+      return "anonymous aggregate layout must belong to an unnamed struct type";
+    }
+    if (fields->empty()) {
+      return "anonymous aggregate layout must carry ordered field types";
+    }
+    if (type.str() != type.render_llvm()) {
+      return "anonymous aggregate layout display mirror disagrees with native fields";
+    }
+  }
   const auto classified_kind = type.empty() ? LirTypeKind::RawText
                                             : LirTypeRef(type.str()).kind();
   if (type.kind() != classified_kind) {
@@ -190,6 +202,11 @@ const std::string& require_module_type_ref(const LirModule& mod,
       mismatch.has_value()) {
     fail_verify(field, *mismatch);
   }
+  if (const auto* fields = type.anonymous_struct_field_types()) {
+    for (const LirTypeRef& field_type : *fields) {
+      require_module_type_ref(mod, field_type, field);
+    }
+  }
   return rendered;
 }
 
@@ -242,7 +259,7 @@ bool call_arg_type_matches_byval_pointee(std::string_view formatted_type,
 void verify_call_return_type_ref_mirror(const LirModule& mod,
                                         const LirTypeRef& mirror) {
   const std::string& shadow =
-      require_type_ref(mirror, "LirCallOp.return_type", true);
+      require_module_type_ref(mod, mirror, "LirCallOp.return_type", true);
   const StructNameId formatted_struct_name_id =
       find_declared_struct_name_id(mod, shadow);
 
