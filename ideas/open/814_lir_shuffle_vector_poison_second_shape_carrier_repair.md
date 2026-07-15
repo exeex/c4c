@@ -70,6 +70,22 @@ accepts a fresh 100% full baseline, reactivate this idea at unchanged Step 3,
 second-shape handoff, do not repeat Steps 1--2, and then make this idea's
 parent return decision.
 
+## Resumption Record: returned from native shuffle mask-lane coherence blocker
+
+815 is accepted and closed. Its implementation commit `510388751` (*lir:
+repair zero shuffle mask lane authority*) repaired the existing zero-initializer
+splat mask carrier while preserving the bounded non-semantic scope. Accepted
+proof: fresh `cmake --build --preset default`; matching
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` guard, 6/6
+before and after with no new failures; representative `scal-to-vec1.c` LLVM
+emission; and supervisor-owned full `ctest --test-dir build -j
+--output-on-failure`, 3038/3038 passing.
+
+Exact resumed point: Step 3, `Prove the blocker handoff and return decision`.
+Steps 1--2 remain accepted in `c1cde8430` and must not be repeated. This step
+now makes only 814's parent return decision using the preserved 754 Step 9
+return contract.
+
 ## Reviewer Reject Signals
 
 - Reject a shuffle row-capability claim, mask-semantics implementation, or 754 row selection disguised as this carrier/lowering repair.

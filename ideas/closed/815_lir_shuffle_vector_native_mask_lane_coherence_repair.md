@@ -64,6 +64,28 @@ unchanged Step 3, `Prove the blocker handoff and return decision`. Do not
 repeat 814 Steps 1--2; use its accepted `c1cde8430` second-shape/poison
 handoff, then make the preserved parent return decision.
 
+## Disposition
+
+Status: Closed — capability complete within this bounded prerequisite scope.
+
+Accepted implementation: `510388751` (*lir: repair zero shuffle mask lane
+authority*). The existing zero-initializer splat carrier now publishes coherent
+native `mask_lanes` with its matching display mirror; nearby valid and
+malformed forms provide the required fail-closed evidence. This records only
+the mask-lane prerequisite and makes no shuffle-row semantic or 754 capability
+claim.
+
+Accepted proof: fresh `cmake --build --preset default`; matching
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` regression guard
+with 6/6 passing both before and after and no new failures; representative
+`scal-to-vec1.c` LLVM emission; and supervisor-owned full
+`ctest --test-dir build -j --output-on-failure`, 3038/3038 passing.
+
+Handoff: resume
+`ideas/open/814_lir_shuffle_vector_poison_second_shape_carrier_repair.md` at
+unchanged Step 3, `Prove the blocker handoff and return decision`. Do not
+repeat 814 Steps 1--2 (`c1cde8430`).
+
 ## Reviewer Reject Signals
 
 - Reject a shuffle row-semantic claim, mask-selection implementation, or 754
