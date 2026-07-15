@@ -1,49 +1,73 @@
-# LIR-to-New-BIR Fixed Direct-Call Parameter Receipt Runbook
+# Next Body-Parameter Authority Handoff Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Resumed from: closed 827's accepted fixed-direct-call argument-0 handoff
+Source Idea: ideas/open/829_lir_next_body_parameter_authority_handoff.md
+Activated from: 734 post-Step 7.40 separate-blocker decision
 
 ## Purpose
 
-Receive exactly closed 827's native DirectScalar fixed-direct-call
-argument-0 parameter authority into verified Raw BIR.
+Publish one exact next native function-body parameter-use authority row so 734
+can later receive that row without presentation-derived recovery.
 
 ## Core Rule
 
-Consume only the 827-authorized structured argument-0 authority and its exact
-current-function and fixed-callee-parameter-0 coherence. Do not recover any
-fact from text, names, signatures, rendered operands, diagnostics, or
-compatibility fields.
+Select and publish one existing producer relation only. Native structured
+authority, not names, signatures, diagnostics, printed operands, or
+compatibility fields, must carry every semantic fact needed by the later
+receiver.
 
 ## Non-Goals
 
-- Any second parameter-use row, generic parameter admission, ABI conversion,
-  or producer/schema/verifier change.
-- Repeating accepted Steps 1 through 7.39 or receiving memory/VA,
-  aggregate/vector, module/type/global, residual instruction/terminator, or
-  inline-assembly work.
+- Raw-BIR/importer/container/verifier work or receiver implementation.
+- Generic parameter support, ABI conversion, or a multi-row sweep.
+- Reopening any authority row already received by 734 through Step 7.40.
+- Memory/VA, aggregate/vector, module/type/global/metadata, residual
+  instruction/terminator, inline-assembly, and unrelated 821/822 material.
 
 ## Ordered Steps
 
-### Step 7.40 - Receive the 827-authorized fixed-direct-call argument-0 DirectScalar body-parameter authority row
+### Step 1 - Trace and select one next native parameter-use relation
 
-Goal: map only the closed-827 authority tuple into one typed Raw-BIR
-call-argument destination and retain all native relations before publication.
+Goal: identify one currently produced, valid function-body parameter consumer
+after the accepted fixed-direct-call argument-0 row and demonstrate why it
+requires a new typed authority tuple.
 
 Actions:
 
-- map only the parameter value, owner, index, type, DirectScalar ABI, and
-  `FixedDirectCallArgument0` role from `LirCallOp.structured_args[0]`;
-- require the structured argument-0 SSA value/type to equal the authority and
-  to agree with fixed callee parameter 0 of a direct, non-variadic, specified
-  call; and
-- extend only the reachable importer/verifier path and nearby positive plus
-  malformed-authority coverage so missing, invalid, duplicate, foreign,
-  owner/index/type/ABI/role-mismatched, or consumer-incoherent input rolls
-  back transactionally.
+- inspect only native LIR construction, its verifier, and nearby focused test
+  surface;
+- record the selected current-function value/owner/index/type/ABI/role and
+  exact consumer coherence relation; and
+- leave every nonselected form fail closed without using presentation fields.
 
-Completion check: fresh build, focused same-feature receiver proof, and a
-matching regression guard show only this one 827-authorized row is received;
-then return to the source completion gate without claiming whole-source
-completion.
+Completion check: a single receiver-consumable relation and its bounded
+producer/verifier seam are explicit; otherwise conclude no eligible row rather
+than broadening scope.
+
+### Step 2 - Publish and verify the selected authority
+
+Goal: add only the selected structured carrier and native verification.
+
+Actions:
+
+- populate authority directly from the existing parameter definition and
+  selected consumer;
+- reject missing, invalid, duplicate, foreign, owner/index/type/ABI/role, and
+  consumer-incoherent authority before downstream use; and
+- add same-feature positive plus malformed-authority coverage.
+
+Completion check: fresh build and exact focused producer proof pass with the
+selected semantic relation exercised.
+
+### Step 3 - Record the one-row handoff to 734
+
+Goal: make the producer result receiver-ready without implementing receipt.
+
+Actions:
+
+- record the exact authority tuple, consumer relation, implementation commit,
+  and accepted focused proof in the source idea; and
+- name 734's exact next bounded receiver return action.
+
+Completion check: 829 can close as a producer-only capability and 734 can be
+reactivated without rediscovering the selected row.

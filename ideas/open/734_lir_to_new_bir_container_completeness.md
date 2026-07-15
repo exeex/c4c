@@ -1631,3 +1631,48 @@ malformed-authority coverage. Do not repeat Steps 1 through 7.39, receive any
 other parameter form, or reconstruct authority from text, names, signatures,
 rendered operands, diagnostics, or `monostate`. This handoff makes no Raw-BIR
 receipt claim and does not complete this source.
+
+## Runbook Exhaustion Decision: post-Step 7.40 fixed-direct-call argument-0 receipt
+
+Close rejected. Commit `6609d92d4` receives exactly closed 827's
+`LirCallOp.structured_args[0]` DirectScalar fixed-direct-call argument-0
+authority into the typed Raw-BIR call-argument destination. The importer and
+reachable verifier preserve the native parameter/owner/index/type/ABI/role
+tuple and its direct non-variadic fixed-callee parameter-0 coherence,
+rejecting missing, invalid, duplicate, foreign, owner/index/type/ABI/role, and
+consumer-incoherent authority transactionally before publication. Supervisor
+acceptance is a fresh `cmake --build --preset default`, exact
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` proof passing
+6/6, and a matching accepted 6/6 before/after non-decreasing regression
+guard.
+
+This one bounded receiver row does not satisfy the source completion gate. The
+checked no-omission coverage matrix and its per-row typed
+authority/destination/importer/verifier/proof dispositions remain incomplete;
+lossless verified receipt of every valid current-LIR semantic fact, complete
+explicit dispatcher and neighboring coverage, whole-module transactional
+proof, documentation convergence, and source-wide focused/broader proof are
+still unmet. Valid unreceived families include further function-body parameter
+uses, memory/VA, aggregate/vector, module/type/global/metadata, residual
+instruction/terminator, and inline-assembly forms. They remain fail closed;
+no receiver may recover authority from text, names, rendered operands,
+signatures, `monostate`, or unclassified values.
+
+Classification: `separate-blocker`. New open idea
+`ideas/open/829_lir_next_body_parameter_authority_handoff.md` owns only tracing,
+publishing, verifying, and handing off exactly one next valid function-body
+parameter-use row. It must not edit Raw-BIR/importer code, reopen the accepted
+DirectPointer or DirectScalar GEP/binary-LHS/binary-RHS/ReturnValue/
+switch-selector/truthiness-comparison-LHS/fixed-direct-call-argument-0
+receipts, select from presentation fields, or absorb another family.
+
+Resumption record: Steps 1 through 7.40 are accepted historical work, most
+recently receiver commit `6609d92d4` with the fresh build, exact backend 6/6,
+and matching accepted guard above. Interrupted point: source completion
+reassessment after Step 7.40; no further 734 receiver row is authorized.
+After 829 closes with one exact structured handoff and accepted focused
+producer proof, reactivate 734 and repair its runbook only for that matching
+typed Raw-BIR receiver row. Do not repeat Step 7.40 or receive another
+parameter, memory/VA, aggregate/vector, module/type/global,
+instruction/terminator, or inline-assembly form without its separately scoped
+first-owner handoff.
