@@ -1186,6 +1186,7 @@ void test_conditional_and_switch_successor_identity_contract() {
         .default_successor = lir::LirBlockId{3},
         .case_successors = {lir::LirBlockId{1}, lir::LirBlockId{2}},
         .selector = lir::LirValueId{7},
+        .selector_type_ref = lir::LirTypeRef::integer(32),
     };
     return fn;
   };
@@ -1450,6 +1451,30 @@ void test_conditional_and_switch_successor_identity_contract() {
   expect_identity_verification_rejected(
       misleading_switch_selector_type,
       "misleading switch selector type text must not select or repair a selector ID");
+  lir::LirModule missing_switch_selector_type_ref;
+  missing_switch_selector_type_ref.functions.push_back(make_switch());
+  std::get<lir::LirSwitch>(
+      missing_switch_selector_type_ref.functions[0].blocks[0].terminator)
+      .selector_type_ref = lir::LirTypeRef{};
+  expect_identity_verification_rejected(
+      missing_switch_selector_type_ref,
+      "verifier should reject a missing structured switch selector type reference");
+  lir::LirModule stale_switch_selector_type_ref;
+  stale_switch_selector_type_ref.functions.push_back(make_switch());
+  std::get<lir::LirSwitch>(
+      stale_switch_selector_type_ref.functions[0].blocks[0].terminator)
+      .selector_type_ref = lir::LirTypeRef::integer(64);
+  expect_identity_verification_rejected(
+      stale_switch_selector_type_ref,
+      "verifier should reject a stale structured switch selector type reference");
+  lir::LirModule incoherent_switch_selector_type_ref;
+  incoherent_switch_selector_type_ref.functions.push_back(make_switch());
+  std::get<lir::LirSwitch>(
+      incoherent_switch_selector_type_ref.functions[0].blocks[0].terminator)
+      .selector_type_ref = lir::LirTypeRef("i32", lir::LirTypeKind::Integer, 64);
+  expect_identity_verification_rejected(
+      incoherent_switch_selector_type_ref,
+      "verifier should reject an incoherent structured switch selector type reference");
   lir::LirModule noninteger_switch_selector;
   noninteger_switch_selector.functions.push_back(make_switch());
   auto& noninteger_switch_entry = noninteger_switch_selector.functions[0].blocks[0];
@@ -5069,6 +5094,61 @@ long long lir_ternary_coerce_result_authority_loss(int condition, long long inpu
       foreign_result, "verifier should reject foreign selected ternary coercion result ID");
 }
 
+void test_postfix_increment_ternary_phi_incoming_authority() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int lir_postfix_increment_ternary_phi_authority(int condition, int left, int right) {
+  return condition ? left++ : right++;
+}
+)c", "x86_64-linux-gnu");
+
+  lir::LirFunction& function =
+      require_function(lowered, "lir_postfix_increment_ternary_phi_authority");
+  std::vector<const lir::LirLoadOp*> loads;
+  lir::LirPhiOp* phi = nullptr;
+  for (auto& block : function.blocks) {
+    for (auto& inst : block.insts) {
+      if (const auto* load = std::get_if<lir::LirLoadOp>(&inst)) loads.push_back(load);
+      if (auto* candidate = std::get_if<lir::LirPhiOp>(&inst)) {
+        expect_true(phi == nullptr, "postfix ternary fixture should retain one PHI");
+        phi = candidate;
+      }
+    }
+  }
+  expect_true(phi && phi->incoming.size() == 2,
+              "postfix ternary fixture should retain both old-value PHI inputs");
+  for (const lir::LirPhiIncoming& incoming : phi->incoming) {
+    expect_true(incoming.value.value_id() && incoming.value.value_id()->valid(),
+                "postfix old-value PHI input should retain native value authority");
+    const auto producer = std::find_if(
+        loads.begin(), loads.end(), [&](const lir::LirLoadOp* load) {
+          return load->result.value_id() &&
+                 *load->result.value_id() == *incoming.value.value_id();
+        });
+    expect_true(producer != loads.end(),
+                "postfix old-value PHI input should refer to its load producer's native ID");
+  }
+
+  lir::verify_module(lowered);
+
+  lir::LirModule missing_authority = lowered;
+  lir::LirFunction& malformed =
+      require_function(missing_authority, "lir_postfix_increment_ternary_phi_authority");
+  for (auto& block : malformed.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* candidate = std::get_if<lir::LirPhiOp>(&inst)) {
+        candidate->incoming.front().value = lir::LirOperand("%missing-postfix-old-value");
+        expect_identity_verification_rejected(
+            missing_authority,
+            "verifier should reject a postfix old-value PHI input without native authority");
+        return;
+      }
+    }
+  }
+  fail("postfix ternary fixture should retain one PHI for malformed-authority coverage");
+}
+
 void test_logical_short_circuit_result_authority_loss_boundary() {
   namespace lir = c4c::codegen::lir;
 
@@ -8672,6 +8752,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_floating_binary_result_use_identity_boundary();
   test_scalar_cast_result_use_identity_boundary();
   test_ternary_coerce_result_authority_boundary();
+  test_postfix_increment_ternary_phi_incoming_authority();
   test_logical_short_circuit_result_authority_loss_boundary();
   test_phi_special_token_authority_boundary();
   test_vaarg_helper_result_authority_boundary();

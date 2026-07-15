@@ -569,7 +569,7 @@ LoadedAssignableValue StmtEmitter::emit_load_assignable_value(FnCtx& ctx,
   }
 
   loaded.value_ts = lhs.pointee_ts;
-  loaded.value = fresh_tmp(ctx);
+  loaded.value = fresh_value(ctx);
   emit_lir_op(ctx, lir::LirLoadOp{loaded.value,
                                   llvm_value_ty(mod_, lhs.pointee_ts),
                                   LirOperand::raw(lhs.ptr.str())});
@@ -623,9 +623,10 @@ std::string StmtEmitter::emit_store_assignable_value(FnCtx& ctx, const Assignabl
   return value.str();
 }
 
-std::string StmtEmitter::emit_assignable_incdec_value(FnCtx& ctx, const AssignableLValue& lhs,
-                                                      bool increment,
-                                                      bool return_updated_value) {
+lir::LirOperand StmtEmitter::emit_assignable_incdec_value(FnCtx& ctx,
+                                                           const AssignableLValue& lhs,
+                                                           bool increment,
+                                                           bool return_updated_value) {
   if (lhs.is_bitfield()) {
     const LoadedAssignableValue loaded = emit_load_assignable_value(ctx, lhs);
     const std::string pty = llvm_ty(loaded.value_ts);
@@ -634,7 +635,8 @@ std::string StmtEmitter::emit_assignable_incdec_value(FnCtx& ctx, const Assignab
     emit_lir_op(ctx, lir::LirBinOp{new_val, "add", pty, loaded.value, delta});
     const std::string stored =
         emit_store_assignable_value(ctx, lhs, new_val, loaded.value_ts, return_updated_value);
-    return return_updated_value ? stored : loaded.value;
+    if (return_updated_value) return lir::LirOperand(stored);
+    return loaded.value;
   }
 
   const LoadedAssignableValue loaded = emit_load_assignable_value(ctx, lhs);
@@ -653,7 +655,8 @@ std::string StmtEmitter::emit_assignable_incdec_value(FnCtx& ctx, const Assignab
     emit_lir_op(ctx, lir::LirBinOp{new_val, "add", pty, loaded.value, delta});
   }
   emit_store_assignable_value(ctx, lhs, new_val, lhs.pointee_ts, false);
-  return return_updated_value ? new_val : loaded.value;
+  if (return_updated_value) return lir::LirOperand(new_val);
+  return loaded.value;
 }
 
 std::string StmtEmitter::emit_set_assign_value(FnCtx& ctx, const AssignableLValue& lhs,

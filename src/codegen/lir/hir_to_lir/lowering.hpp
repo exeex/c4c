@@ -92,7 +92,7 @@ struct AssignableLValue {
 };
 
 struct LoadedAssignableValue {
-  std::string value;
+  lir::LirOperand value;
   TypeSpec value_ts{};
 };
 
@@ -511,8 +511,8 @@ class StmtEmitter {
                                           const lir::LirOperand& value,
                                           const TypeSpec& value_ts,
                                           bool reload_after_store);
-  std::string emit_assignable_incdec_value(FnCtx& ctx, const AssignableLValue& lhs,
-                                           bool increment, bool return_updated_value);
+  lir::LirOperand emit_assignable_incdec_value(FnCtx& ctx, const AssignableLValue& lhs,
+                                                bool increment, bool return_updated_value);
   std::string emit_set_assign_value(FnCtx& ctx, const AssignableLValue& lhs,
                                     const lir::LirOperand& rhs,
                                     const TypeSpec& rhs_ts);
