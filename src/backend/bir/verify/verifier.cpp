@@ -68,7 +68,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
     case Opcode::Store:
       return std::holds_alternative<StoreNode>(instruction.payload);
     case Opcode::Load:
-      return std::holds_alternative<LoadNode>(instruction.payload);
+      return std::holds_alternative<LoadNode>(instruction.payload) ||
+             std::holds_alternative<LocalLoadAuthorityNode>(instruction.payload);
     case Opcode::GetElementPtr:
       return std::holds_alternative<GetElementPtrNode>(instruction.payload);
     case Opcode::Abs:
@@ -759,6 +760,43 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           report(result, VerificationRule::ValueDefinition, function_id,
                  inst_id,
                  "load must have no operands, one source-backed typed integer result, and one exact global source");
+      }
+      if (const auto* load = std::get_if<LocalLoadAuthorityNode>(&instruction.payload)) {
+        const ValueDef* pointer = nullptr;
+        const ValueDef* result_value = nullptr;
+        if (instruction.operands.size() == 1) {
+          const auto resolved = function.values_.get(function_id, instruction.operands[0]);
+          if (resolved) pointer = &resolved.value().get();
+        }
+        if (instruction.results.size() == 1) {
+          const auto resolved = function.values_.get(function_id, instruction.results[0]);
+          if (resolved) result_value = &resolved.value().get();
+        }
+        const bool owner_resolves = load->owner.valid() && load->owner.epoch == module.epoch_ &&
+            load->owner.slot < module.link_names_.size();
+        const auto* pointer_result = pointer
+            ? std::get_if<InstResultDef>(&pointer->definition) : nullptr;
+        const auto pointer_inst = pointer_result
+            ? function.insts_.get(function_id, pointer_result->instruction)
+            : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(ResolveError::OutOfRange);
+        const auto* alloca = pointer_inst
+            ? std::get_if<AllocaAuthorityNode>(&pointer_inst.value().get().payload) : nullptr;
+        const bool exact = load->result.valid() && load->pointer_definition.valid() &&
+            load->object.valid() && load->result.owner == function_id &&
+            load->pointer_definition.owner == function_id && load->object.owner == function_id &&
+            owner_resolves && load->pointer_type == Type{TypeKind::Pointer} &&
+            is_well_formed(load->loaded_type) &&
+            (integer_type(load->loaded_type) || floating_type(load->loaded_type)) && load->live &&
+            pointer && pointer->source_id == load->pointer_definition &&
+            pointer->type == load->pointer_type && result_value &&
+            result_value->source_id == load->result && result_value->type == load->loaded_type &&
+            alloca && alloca->result == load->pointer_definition &&
+            alloca->pointer_definition == load->pointer_definition &&
+            alloca->object.owner == load->object.owner && alloca->object.value == load->object.value &&
+            alloca->owner == load->owner && alloca->pointer_type == load->pointer_type &&
+            alloca->pointee_type == load->loaded_type && alloca->live;
+        if (!exact) report(result, VerificationRule::ValueDefinition, function_id, inst_id,
+                           "local load must retain one live typed current-function pointer/object authority and exact result");
       }
       if (const auto* memcpy = std::get_if<SelectedMemcpyNode>(&instruction.payload)) {
         const bool owner_resolves = memcpy->destination_object_owner.valid() &&

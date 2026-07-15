@@ -163,6 +163,16 @@ struct LoadSpec {
   std::uint32_t source_result_id = 0;
 };
 
+struct LocalLoadAuthoritySpec {
+  SourceValueId result{};
+  SourceValueId pointer_definition{};
+  SourceObjectId object{};
+  LinkNameId owner{};
+  Type pointer_type{TypeKind::Pointer};
+  Type loaded_type{};
+  bool live = false;
+};
+
 struct GetElementPtrSpec {
   GetElementPtrBase base{};
   Type element_type{};
@@ -352,6 +362,8 @@ class FunctionBuilder {
   Result<BuildResult, BuildError> append(BlockId block, InlineAsmSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, StoreSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, LoadSpec spec);
+  Result<BuildResult, BuildError> append(BlockId block,
+                                         LocalLoadAuthoritySpec spec);
   Result<BuildResult, BuildError> append(BlockId block,
                                          GetElementPtrSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, AbsSpec spec);

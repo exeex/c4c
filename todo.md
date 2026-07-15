@@ -8,21 +8,26 @@ Current Step Title: Receive the selected direct local-scalar LirLoadOp authority
 
 ## Just Finished
 
-- Closed 789 published the exact local-scalar load authority handoff at
-  `docs/lir_local_operation_authority/handoff_to_734.md`; do not repeat Step
-  7.26 selected-allocation receipt.
+- Step 7.27 received the one selected native local-scalar `LirLoadOp` into a
+  typed Raw-BIR local-load authority node, with native result/pointer/object/
+  owner/type/liveness validation, reachable verifier coverage, and
+  transactional negative cases. Step 7.26 selected-allocation receipt remains
+  unchanged.
 
 ## Suggested Next
 
-- Execute Step 7.27 only from the published native authority contract.
+- Supervisor selects the next bounded packet after reviewing this completed
+  receiver slice.
 
 ## Watchouts
 
-- Reject malformed authority transactionally and do not select semantics from
-  presentation text. Every other local load/store/GEP/VLA and later family
-  remains out of scope.
+- The local receipt accepts only the selected direct scalar authority tied to
+  the existing selected alloca. Other local load/store/GEP/VLA and later
+  families remain fail-closed; no presentation text is consulted.
 
 ## Proof
 
-- First obtain a fresh build and narrow receiver proof; supervisor selects any
-  broader acceptance and owns canonical regression logs.
+- `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_'` passed 5/5. The required proof output is
+  preserved in `test_after.log`; supervisor owns any broader acceptance and
+  canonical regression comparison.

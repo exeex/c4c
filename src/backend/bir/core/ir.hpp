@@ -180,6 +180,19 @@ struct LoadNode {
   Type loaded_type{};
 };
 
+// Receipt of one producer-selected direct local-scalar load.  The local
+// pointer/object facts stay native source identities; no local spelling is
+// retained or recovered.
+struct LocalLoadAuthorityNode {
+  SourceValueId result{};
+  SourceValueId pointer_definition{};
+  SourceObjectId object{};
+  LinkNameId owner{};
+  Type pointer_type{TypeKind::Pointer};
+  Type loaded_type{};
+  bool live = false;
+};
+
 // A GEP base is deliberately narrower than a general pointer value.  The
 // label-address alternative can only name the exact current-function constant
 // ValueId that defines a LabelAddressConstant; it is not an SSA operand.
@@ -298,7 +311,8 @@ struct AllocaAuthorityNode {
 using InstPayload =
     std::variant<InlineAsmNode, StoreNode, LoadNode, GetElementPtrNode,
     AbsNode, CallNode, BinaryNode, CompareNode, SelectNode, SelectedMemcpyNode,
-    IntrinsicCallNode, CastNode, PhiNode, AllocaAuthorityNode>;
+    IntrinsicCallNode, CastNode, PhiNode, AllocaAuthorityNode,
+    LocalLoadAuthorityNode>;
 
 class BlockView;
 class FunctionView;

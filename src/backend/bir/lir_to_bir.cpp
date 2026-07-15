@@ -173,6 +173,16 @@ bool is_integer_type(const Type& type) noexcept {
   }
 }
 
+bool is_local_scalar_load_type(const Type& type) noexcept {
+  if (is_integer_type(type)) return true;
+  switch (type.kind) {
+    case TypeKind::F32:
+    case TypeKind::F64:
+    case TypeKind::Floating: return true;
+    default: return false;
+  }
+}
+
 std::optional<Type> lower_constant_type(const LirModule& module,
                                         const TypeSpec& type);
 
@@ -2338,6 +2348,13 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_map<std::uint32_t, std::string> block_labels_by_id;
   std::unordered_map<std::string, Type> ordinary_values;
   std::unordered_map<std::uint32_t, Type> source_values;
+  if (!function.alloca_insts.empty()) {
+    const auto& alloca = std::get<LirAllocaOp>(function.alloca_insts.front());
+    if (!source_values.emplace(alloca.result.value_id()->value,
+                               Type{TypeKind::Pointer}).second)
+      return fail<void>(ImportErrorCode::UnsupportedAllocaInstructions, name, {},
+                        "alloca result collided in the current-function source registry");
+  }
   std::unordered_set<std::uint32_t> inline_asm_results;
   std::unordered_map<std::uint32_t, std::size_t> inline_asm_store_uses;
   std::unordered_set<std::uint32_t> intrinsic_results;
@@ -2563,6 +2580,47 @@ Result<void, ImportError> validate_function(const LirModule& module,
         const auto type = lower_lir_type(module, load->type_str);
         const auto* result = load->result.value_id();
         const auto* source = load->ptr.link_name_id();
+        const auto* pointer = load->ptr.value_id();
+        const auto* authority = load->local_object_authority
+            ? &*load->local_object_authority : nullptr;
+        const auto pointer_type = authority
+            ? lower_lir_type(module, authority->pointer_type) : std::optional<Type>{};
+        const auto pointee_type = authority
+            ? lower_lir_type(module, authority->pointee_type) : std::optional<Type>{};
+        const auto* selected_alloca = function.alloca_insts.size() == 1
+            ? std::get_if<LirAllocaOp>(&function.alloca_insts.front()) : nullptr;
+        const auto* alloca_authority = selected_alloca &&
+                selected_alloca->local_object_authority
+            ? &*selected_alloca->local_object_authority : nullptr;
+        const bool authority_coherent = authority && alloca_authority &&
+            authority->pointer_definition == alloca_authority->pointer_definition &&
+            authority->object == alloca_authority->object &&
+            authority->owner == alloca_authority->owner &&
+            authority->pointer_type == alloca_authority->pointer_type &&
+            authority->pointee_type == alloca_authority->pointee_type &&
+            authority->live == alloca_authority->live;
+        const bool local_scalar = authority && load->requires_native_result_authority &&
+            type && is_local_scalar_load_type(*type) &&
+            load->result.kind() == codegen::lir::LirOperandKind::SsaValue &&
+            result && result->valid() &&
+            load->ptr.kind() == codegen::lir::LirOperandKind::SsaValue &&
+            pointer && pointer->valid() &&
+            authority->pointer_definition == *pointer && authority->object.valid() &&
+            function.link_name_id != c4c::kInvalidLinkName &&
+            authority->owner == function.link_name_id && authority_coherent && pointer_type &&
+            *pointer_type == Type{TypeKind::Pointer} && pointee_type &&
+            *pointee_type == *type && authority->live;
+        if (local_scalar) {
+          if (!source_values.emplace(result->value, *type).second)
+            return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                              name, block.label,
+                              "duplicate authoritative LirValueId definition");
+          continue;
+        }
+        if (authority)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "local load authority must form the one selected native local-scalar load shape");
         if (!type || !is_integer_type(*type) ||
             load->type_str.kind() != codegen::lir::LirTypeKind::Integer ||
             load->result.kind() != codegen::lir::LirOperandKind::SsaValue ||
@@ -3853,6 +3911,43 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
               }
               if (const auto* load = std::get_if<LirLoadOp>(&instruction)) {
                 const Type type = *lower_lir_type(module, load->type_str);
+                if (load->local_object_authority) {
+                  const auto& authority = *load->local_object_authority;
+                  const auto owner = imported_link_names.find(authority.owner);
+                  if (owner == imported_link_names.end()) {
+                    edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                        name, block.label,
+                        "validated local load authority owner disappeared from imported name identities"};
+                    return Result<void, BuildError>::failure(BuildError::InvalidNameId);
+                  }
+                  const auto pointer = source_values.find(authority.pointer_definition.value);
+                  if (pointer == source_values.end()) {
+                    edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                        name, block.label,
+                        "validated local load pointer disappeared from the current-function source registry"};
+                    return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                  }
+                  auto appended = function_builder.append(
+                      blocks.at(block.id.value), LocalLoadAuthoritySpec{
+                          SourceValueId{function_ids[function_index], load->result.value_id()->value},
+                          SourceValueId{function_ids[function_index], authority.pointer_definition.value},
+                          SourceObjectId{function_ids[function_index], authority.object.value},
+                          owner->second, Type{TypeKind::Pointer}, type, authority.live});
+                  if (!appended) {
+                    edit_error = builder_failure(name, block.label,
+                                                 "append local load authority", appended.error());
+                    return Result<void, BuildError>::failure(appended.error());
+                  }
+                  if (appended.value().results.size() != 1 ||
+                      !source_values.emplace(load->result.value_id()->value,
+                                             appended.value().results[0]).second) {
+                    edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                        name, block.label,
+                        "local load result collided in the current-function source registry"};
+                    return Result<void, BuildError>::failure(BuildError::DuplicateSourceValue);
+                  }
+                  continue;
+                }
                 const auto source =
                     global_objects.find(*load->ptr.link_name_id());
                 if (source == global_objects.end()) {

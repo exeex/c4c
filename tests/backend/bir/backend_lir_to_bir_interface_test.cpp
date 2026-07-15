@@ -11956,6 +11956,73 @@ void test_selected_hoisted_alloca_authority_receipt_and_rejections() {
          "repeated alloca authority record must reject transactionally");
 }
 
+void test_selected_local_scalar_load_authority_receipt_and_rejections() {
+  lir::LirModule module;
+  auto texts = std::make_shared<c4c::TextTable>();
+  module.link_name_texts = texts;
+  module.link_names.attach_text_table(texts.get());
+  const auto owner = module.link_names.intern("typed_local_load_owner");
+  lir::LirBlock entry = return_block(0, "entry");
+  entry.insts.push_back(lir::LirLoadOp{
+      lir::LirOperand::ssa("%misleading.local.result", lir::LirValueId{42}),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::ssa("%misleading.local.pointer", lir::LirValueId{41}), true,
+      lir::LirCurrentFunctionLocalObjectPointer{
+          lir::LirValueId{41}, lir::LirObjectId{7}, owner,
+          lir::LirTypeRef(lir::LirBuiltinType::Pointer), lir::LirTypeRef::integer(32), true}});
+  entry.terminator = lir::LirRet{
+      lir::LirOperand::ssa("%not-used-for-authority", lir::LirValueId{42}),
+      lir::LirTypeRef::integer(32)};
+  lir::LirFunction function = void_definition("typed_local_load_owner", {entry});
+  function.return_type = scalar_type(c4c::TB_INT);
+  function.signature_return_type_ref = lir::LirTypeRef::integer(32);
+  function.link_name_id = owner;
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      lir::LirOperand::ssa("%misleading.alloca.pointer", lir::LirValueId{41}),
+      lir::LirTypeRef::integer(32), {}, 0,
+      lir::LirCurrentFunctionLocalObjectPointer{
+          lir::LirValueId{41}, lir::LirObjectId{7}, owner,
+          lir::LirTypeRef(lir::LirBuiltinType::Pointer), lir::LirTypeRef::integer(32), true}});
+  module.functions.push_back(std::move(function));
+
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "one selected native local-scalar load must publish verified Raw BIR");
+  const auto view = raw.value().view();
+  const auto function_view = view.function(view.functions()[0]).value();
+  const auto instructions = function_view.instructions(function_view.blocks()[0]).value();
+  const auto local_load = function_view.instruction(instructions[1]).value().local_load_authority();
+  expect(local_load && local_load->result == bir::SourceValueId{function_view.id(), 42} &&
+             local_load->pointer_definition == bir::SourceValueId{function_view.id(), 41} &&
+             local_load->object.owner == function_view.id() && local_load->object.value == 7 &&
+             local_load->pointer_type == bir::Type{bir::TypeKind::Pointer} &&
+             local_load->loaded_type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+             local_load->live,
+         "Raw BIR local load must preserve only typed result, pointer, and local-object authority");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = module;
+    auto& load = std::get<lir::LirLoadOp>(candidate.functions[0].blocks[0].insts[0]);
+    mutate(candidate, load);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value(), message);
+  };
+  rejected([](auto&, auto& load) { load.requires_native_result_authority = false; },
+           "local load without native-result admission must reject transactionally");
+  rejected([](auto&, auto& load) { load.result = lir::LirOperand::ssa("%bad", lir::LirValueId::invalid()); },
+           "local load with invalid result must reject transactionally");
+  rejected([](auto&, auto& load) { load.ptr = lir::LirOperand::ssa("%other", lir::LirValueId{99}); },
+           "local load pointer must equal its authority definition");
+  rejected([](auto& candidate, auto& load) {
+             load.local_object_authority->owner = candidate.link_names.intern("foreign_local_load_owner");
+           }, "foreign local load object owner must reject transactionally");
+  rejected([](auto&, auto& load) { load.local_object_authority->object = lir::LirObjectId{8}; },
+           "local load object must match its selected current-function pointer authority");
+  rejected([](auto&, auto& load) { load.local_object_authority->pointee_type = lir::LirTypeRef::integer(64); },
+           "local load pointee type must equal its load type");
+  rejected([](auto&, auto& load) { load.local_object_authority->live = false; },
+           "dead local load authority must reject transactionally");
+}
+
 void test_typed_phi_edge_authority_receipt_and_rejections() {
   lir::LirBlock left;
   left.id = lir::LirBlockId{1}; left.label = "left";
@@ -12215,6 +12282,7 @@ int main() {
   test_selected_global_i32_abs_receipt_and_rejections();
   test_mixed_accepted_row_dispatcher_transactionality();
   test_selected_hoisted_alloca_authority_receipt_and_rejections();
+  test_selected_local_scalar_load_authority_receipt_and_rejections();
   test_typed_phi_edge_authority_receipt_and_rejections();
   test_typed_phi_loop_and_parallel_edge_occurrences();
   return 0;
