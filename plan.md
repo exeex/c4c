@@ -1,69 +1,71 @@
-# AMD64 `va_arg` Unselected Alloca Compatibility Regression Runbook
+# LIR Memory/VA Pointer Authority Convergence Runbook
 
 Status: Active
-Source Idea: ideas/open/800_lir_amd64_vaarg_unselected_alloca_compatibility_regression.md
-Activated from: 753 Step 3 full-baseline regression blocker
+Source Idea: ideas/open/753_lir_memory_va_pointer_authority_convergence.md
+Resumed from: resolved 800 unselected-alloca compatibility blocker at 753 Step 3
 
 ## Purpose
 
-Restore the verifier-compatible typed-result construction for the unselected
-AMD64 overflow `va_arg` compatibility route. This is a regression follow-up to
-closed 799, not a reopening or expansion of its selected carrier authority.
+Finish the bounded native memory/VA producer proof by documenting exactly one
+receiver-ready handoff. The selected AMD64 aggregate `va_arg` overflow carrier
+is already published and verified; do not duplicate its semantic work.
 
 ## Core Rule
 
-Keep selected AMD64 aggregate overflow carrier authority exactly as accepted in
-`c4e820a48`. Repair only the unselected route's typed `LirAllocaOp` result
-representation; do not weaken the verifier or derive semantic facts from raw
-text.
+Native structured current-function authority is the sole semantic input. Do
+not recover pointer, object, lifetime, size, or row-selection facts from text,
+or redefine the aggregate/vector carrier boundary.
 
 ## Read First
 
-- `ideas/open/800_lir_amd64_vaarg_unselected_alloca_compatibility_regression.md`
+- `ideas/open/753_lir_memory_va_pointer_authority_convergence.md`
+- `ideas/closed/800_lir_amd64_vaarg_unselected_alloca_compatibility_regression.md`
+- `ideas/closed/799_lir_amd64_vaarg_overflow_aggregate_carrier_authority.md`
 - `src/codegen/lir/hir_to_lir/call/vaarg_amd64.cpp`
-- `src/codegen/lir/ir.hpp` and the `LirAllocaOp` verifier admission path
-- `ideas/open/753_lir_memory_va_pointer_authority_convergence.md` (durable
-  return record)
+- Existing `LirVaArgOp`, pointer/object/lifetime verifier, and focused backend
+  authority coverage adjacent to the AMD64 vaarg lowering seam
 
 ## Non-Goals
 
-- Reopening closed 799, changing selected carrier fields or authority,
-  aggregate/vector generalization, ABI redesign, Raw-BIR/MIR/emission work,
-  or work on 753's receiver handoff.
+- Aggregate/vector carrier publication or generalization, other targets,
+scalar `va_arg`, generic memory intrinsics, Raw-BIR receipt/lowering, MIR,
+emission, or any selected-carrier authority change.
 
 ## Ordered Steps
 
-### Step 1 - Restore typed alloca-result compatibility on unselected overflow routes
+### Step 1 - Establish the bounded native memory/VA authority boundary (complete)
 
-Goal: make the unselected compatibility temporary satisfy `LirAllocaOp`'s
-typed result contract without changing selected-route behavior.
+Completed accepted 753 work includes direct-local `va_start`/`va_end`,
+positive-size aggregate `memset`, direct-local `va_copy`, and AMD64
+scalar/pointer `va_arg`. Their retained evidence is recorded in the source
+handoff record.
+
+Completion check: complete; do not redo these accepted packets.
+
+### Step 2 - Consume and verify the checked aggregate overflow carrier (complete; no delta)
+
+Accepted closed-799 commit `c4e820a48` already selects the one AMD64
+aggregate-overflow row, publishes its checked carrier, and verifies it. Its
+fresh build plus focused backend proof and non-decreasing 5/5 comparison are
+recorded in the source idea.
+
+Completion check: complete with no new 753 semantic delta; do not republish
+or generalize the carrier.
+
+### Step 3 - Document exactly one receiver-ready handoff with native fields, guarantees, rejected forms, and accepted proof
+
+Goal: record the one source-required receiver handoff without Raw-BIR receipt
+work.
 
 Actions:
 
-- inspect the `selected` branch in
-  `emit_amd64_va_arg_from_overflow` and the `LirAllocaOp` verifier contract;
-- replace only the unselected raw-text temporary construction with the
-  appropriate typed operand/result representation accepted by that contract;
-- retain the selected `fresh_value` path, native carrier construction, and
-  `requires_native_memory_va_authority` selection boundary unchanged;
-- add or adjust nearby focused coverage only if needed to demonstrate both
-  compatible unselected construction and preserved selected authority.
+- document exactly one selected receiver handoff with its native fields,
+  guarantees, rejected forms, and accepted proof;
+- retain the accepted fresh build, focused frontend proof, and matching
+  3037/3037 full-baseline guard comparison from resolved 800 as the source
+  proof gate;
+- do not implement Raw-BIR receipt/lowering or redo accepted Steps 1/2.
 
-Completion check: fresh `cmake --build --preset default` and
-`./build/tests/frontend/frontend_lir_call_type_ref_test` pass, with no
-verifier relaxation or selected-carrier contract change.
-
-### Step 2 - Re-establish the parent baseline return gate
-
-Goal: show the correction restores the interrupted full-baseline gate before
-753 resumes.
-
-Actions:
-
-- have the supervisor run the exact matching full baseline and compare it with
-the accepted 3037/3037 baseline; diagnose any remaining loss before return;
-- record the accepted proof and return 753 to Step 3 at its receiver-handoff
-action, without performing that handoff under this blocker.
-
-Completion check: matching full baseline is 100% passing and the supervisor
-can switch back to 753 using its durable return record.
+Completion check: the source contains exactly one receiver-ready handoff with
+native facts and rejection boundary; receiver implementation remains outside
+this runbook.

@@ -1,6 +1,6 @@
 # AMD64 `va_arg` Unselected Alloca Compatibility Regression
 
-Status: Open
+Status: Closed
 Type: narrowly scoped regression blocker
 Parent: `ideas/open/753_lir_memory_va_pointer_authority_convergence.md`
 Regression source: closed 799 implementation `c4e820a48` (closed idea remains closed)
@@ -62,3 +62,24 @@ The only code commit after the last full-green 3037/3037 acceptance
   the one unselected temporary construction seam.
 - Reject a named-case-only test adjustment that leaves the existing typed
   result contract violated on the compatibility route.
+
+## Closure Record
+
+Disposition: capability complete; resolved regression blocker closed after
+Step 2 return gate.
+
+- **Accepted implementation:** `18e67ea70` changes only the unselected AMD64
+  overflow `va_arg` temporary from `LirOperand::raw(fresh_tmp(ctx))` to
+  `fresh_value(ctx)`, restoring the typed `LirAllocaOp` result contract.
+- **Preserved boundary:** selected `fresh_value` construction, destination and
+  carrier publication, `requires_native_memory_va_authority`, and closed 799's
+  selected aggregate-overflow authority are unchanged.
+- **Accepted proof:** fresh `cmake --build --preset default` and
+  `./build/tests/frontend/frontend_lir_call_type_ref_test` passed. The
+  supervisor's full `ctest --test-dir build -j --output-on-failure` passed
+  3037/3037; regression guard comparison with the accepted 3037/3037 baseline
+  using `--allow-non-decreasing-passed` found 0 new failures.
+- **Parent return:** 753 resumes at Step 3 only: document exactly one
+  receiver-ready handoff with native fields, guarantees, rejected forms, and
+  accepted proof. It does not authorize rerunning Steps 1/2 or any Raw-BIR
+  receiver implementation.

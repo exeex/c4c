@@ -130,3 +130,20 @@ semantic gaps unless the common memory/va pointer boundary is closed.
   with native fields, guarantees, rejected forms, and accepted proof. Do not
   rerun accepted Steps 1/2, republish carrier authority, or perform Raw-BIR
   receiver implementation.
+
+## Step 3 Blocker Resolution / Active Resumption Record
+
+- **Resolved blocker disposition:** 800 is capability-complete and closes on
+  `18e67ea70`. That commit repairs only the unselected AMD64 overflow `va_arg`
+  `LirAllocaOp` result by using `fresh_value(ctx)` rather than a raw-text
+  temporary; it does not alter closed 799's selected carrier authority.
+- **Accepted proof:** a fresh `cmake --build --preset default` and
+  `./build/tests/frontend/frontend_lir_call_type_ref_test` passed. The
+  supervisor's matching full `ctest --test-dir build -j --output-on-failure`
+  passed 3037/3037 and the regression guard comparison against the accepted
+  3037/3037 baseline passed with `--allow-non-decreasing-passed` (0 new
+  failures).
+- **Active return point:** resume Step 3 only at: document exactly one
+  receiver-ready handoff with native fields, guarantees, rejected forms, and
+  accepted proof. Steps 1 and 2 remain complete; do not rerun them, republish
+  carrier authority, or perform Raw-BIR receiver implementation.
