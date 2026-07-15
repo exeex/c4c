@@ -94,15 +94,15 @@ unallocated `RawBir` to phase B. The exact B1 consumer clause is
 an immutable published `RawBir` view. B1 receives no draft, importer map,
 unsupported valid row, hidden side table, target context, or partial
 capability. The phase-B contract is historical evidence from closed
-[Child B](../../../../ideas/closed/736_bir_phase_b_canonical_document_convergence.md);
-subsequent ordered documentation convergence remains owned by open
-[umbrella 732](../../../../ideas/open/732_bir_stage_document_convergence_umbrella.md)
-after idea 734 closes.
+[Child B](../../../../ideas/closed/736_bir_phase_b_canonical_document_convergence.md).
+Open [umbrella 732](../../../../ideas/open/732_bir_stage_document_convergence_umbrella.md)
+actively owns the ordered A-F documentation convergence; its B-F planning is
+converged. Only Step 8B awaits a named completed revision of the parallel
+importer route plus inspectable code and matching test evidence.
 
-The active implementation owner is
-[idea 734](../../../../ideas/open/734_lir_to_new_bir_container_completeness.md).
-This ledger fixes its bounded packet order; it does not itself claim that a
-missing container, importer case, verifier rule, or proof has landed.
+Historical idea 734 (`lir_to_new_bir_container_completeness`) is evidence, not
+current lifecycle authority. This ledger does not itself claim that a missing
+container, importer case, verifier rule, or proof has landed.
 
 ## Exhaustive Instruction Input Matrix
 
@@ -428,4 +428,4 @@ evidence-gated route decision rather than permission to widen that packet.
 - [x] Build-included bootstrap truth is distinct from build-excluded design.
 - [x] The contract gives one private draft to one full A2 gate; failure publishes nothing.
 - [x] B1 receives only the exact move-only verified `RawBir`.
-- [x] Active idea 734 has an exact dependency order and one bounded first C++ packet.
+- [x] Historical idea 734 is evidence only; active 732 Step 8B waits for a named completed importer revision and matching code/test evidence.
