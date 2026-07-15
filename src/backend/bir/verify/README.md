@@ -405,6 +405,12 @@ repair `PseudoBir`.
 
 ### Allocated profile and E4 publication
 
+E4 is one terminal publication transaction for phase E, not an allocation
+repair pass. After frame-action materialization, final projection and E1 are
+freshly recomputed; E2 assignment and E3 spill checks are non-mutating
+validators. Any request to evict, spill, reassign, insert a copy, or retry is
+gate failure, not an edge back into E1.
+
 The `Allocated` profile accepts only the final private candidate produced by
 D5 copy resolution followed by E4 frame-action materialization.
 Its stage key names the exact module epoch/revision and ordered function-revision
