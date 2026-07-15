@@ -1,38 +1,33 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
+Source Idea Path: ideas/open/803_lir_aggregate_ssa_producer_authority_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair structured result and aggregate operand authority
+Current Step ID: 1
+Current Step Title: Trace and select aggregate producer authority seams
 
 ## Just Finished
 
-- Lifecycle switch from 801: its Step 1 remains accepted in `827dae5bd3` and
-  its Step 2 repair remains preserved but unaccepted. The first full-baseline
-  failure is aggregate SSA authority in `LirExtractValueOp.agg`, which is 754
-  scope; historical 754 Step 2 acceptance cannot make Step 3 runnable.
+- Lifecycle switch from 754 Step 2: the formerly accepted direct-call-only
+  contract cannot authorize local-load or constructed-insertvalue aggregate
+  producer provenance. The two focused failures require a separate bounded
+  prerequisite; no 754 repair is accepted.
 
 ## Suggested Next
 
-- Step 2 only: trace and repair the supported aggregate SSA path that reaches
-  `LirExtractValueOp.agg` without a valid `LirValueId`. Preserve structured
-  authority and add nearby same-feature coverage; do not weaken the verifier.
+- Step 1 only: trace the two selected aggregate producer paths from creation
+  to `LirExtractValueOp.agg`, identify their exact existing IDs and the
+  smallest checked carrier/verifier seams. Do not implement or widen scope.
 
 ## Watchouts
 
-- Do not parse display text, repeat Step 1, claim historical Step 2 as current
-  acceptance, begin index/result-type layout validation, touch Raw-BIR, or
-  absorb 801's anonymous-layout work. Preserve 801's unaccepted repair and
-  802's parked unaccepted hunk.
+- Do not use display text or raw fallback, broaden to generic operand/
+  expression provenance, add extractvalue index/layout/result rules, or touch
+  Raw-BIR. Preserve 754 Step 2 for the exact post-handoff return.
 
 ## Proof
 
-- Blocker evidence: fresh `cmake --build --preset default`, then
-  `ctest --test-dir build -R '^positive_sema_ok_call_builtin_runtime_c$'
-  --output-on-failure` and
-  `ctest --test-dir build -R '^llvm_gcc_c_torture_src_complex_2_c$'
-  --output-on-failure` each fail at `LirExtractValueOp.agg: aggregate SSA
-  operand requires valid LirValueId authority`.
-- Before accepting Step 2: fresh build, focused aggregate/frontend/backend
-  proof, and supervisor-owned 100% full baseline acceptance.
+- Reproduce with fresh build then `ctest --test-dir build -R
+  '^(positive_sema_ok_call_builtin_runtime_c|llvm_gcc_c_torture_src_complex_2_c|frontend_hir_tests$|backend_)' --output-on-failure`.
+- Current named failures are the runtime and direct-complex aggregate paths;
+  raw classification is explicitly rejected because it evades authority.

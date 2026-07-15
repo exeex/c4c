@@ -142,6 +142,31 @@ argument-mirror repair is preserved in the working tree but remains
 unaccepted. The aggregate-use failure is outside 801. On completion of this
 754 repair, return to 801 Step 2 exactly as recorded there.
 
+## Resumption Update: aggregate SSA producer-authority prerequisite
+
+The reopened Step 2 diagnosis establishes that the required authority is not
+limited to the historical selected direct composite call. The failing runtime
+and direct-conjugate paths extract from valid non-call aggregate SSA values:
+a local load and a constructed `LirInsertValueOp` result. Marking those
+extracts as raw moves the runtime failure to `aggregate SSA authority must
+select a matching current-function call result type`; permitting a raw fallback
+would evade the authority rule and is prohibited.
+
+Classification: `separate-blocker`. 754's historical Step 2 contract and
+closed 798 handoff both expressly publish only direct-composite-call
+provenance. Extending native provenance across local-load and constructed
+aggregate producer boundaries is a producer/operand prerequisite, not a
+row-local extractvalue repair; absorbing it here would violate the source's
+reject signal against generic operand/expression provenance. New open
+`ideas/open/803_lir_aggregate_ssa_producer_authority_publication.md` owns the
+bounded prerequisite.
+
+Exact return point: after 803 publishes and proves native `LirValueId`
+authority for the selected aggregate local-load and constructed-insertvalue
+producer paths, reactivate 754 at unchanged Step 2. Then repair only
+`LirExtractValueOp` result/use authority using that accepted handoff; do not
+begin Step 3 layout/index/result-type work or repeat Step 1.
+
 ## Reviewer Reject Signals
 
 - Reject recovery of aggregate-use identity from `%t`, `std::string`, printer
