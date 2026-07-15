@@ -91,3 +91,20 @@ without weakening that verifier, add nearby relevant coverage, then obtain the
 Step 2 required fresh build, focused call/frontend/backend checks, and the
 supervisor-accepted full baseline before advancing to Step 3. Do not repeat
 Step 1 and do not treat a clean narrow subset as acceptance.
+
+## Resumption Update: Step 2 argument-mirror prerequisite
+
+802 Step 1 cannot reach its selector switch check in the preserved working
+tree. `frontend_lir_call_type_ref` now first rejects at
+`LirCallOp.arg_type_refs`: `argument 0 mirror does not match call text; shadow
+'i32', call argument type 'rendered arguments are not'`. This is an in-scope
+Step 2 compatibility defect: the argument-mirror verifier must recover its
+native structured argument comparison without using rendered diagnostic text
+as type authority and without weakening either the mirror or callee-signature
+contract.
+
+801 is reactivated unchanged at Step 2 for that repair. The prior Step 1
+acceptance in `827dae5bd3`, its unaccepted implementation base `201f229d3`,
+and all earlier resumption constraints remain in force. First prove
+`frontend_lir_call_type_ref` reaches the selector switch check; then return to
+802 Step 1, whose isolated verifier/test hunk remains unaccepted and parked.

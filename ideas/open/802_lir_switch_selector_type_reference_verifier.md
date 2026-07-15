@@ -56,3 +56,19 @@ aggregate field layout or structured call signatures.
   changes claimed as verifier-contract repair.
 - Reject retaining the same selector/type mismatch behind a renamed helper or
   alternate representation.
+
+## Resumption Record: Step 1 801 argument-mirror prerequisite
+
+No 802 implementation is accepted. Its isolated Step 1 switch verifier/test
+working-tree hunk remains preserved and unaccepted, including the exact
+focused proof command:
+`ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`.
+
+The command currently fails before the switch selector check in the preserved
+801 Step 2 repair at `LirCallOp.arg_type_refs`: `argument 0 mirror does not
+match call text; shadow 'i32', call argument type 'rendered arguments are
+not'`. That native argument-mirror verifier defect is in scope for 801 Step 2,
+not this selector blocker. Resume 802 unchanged at Step 1 only after 801
+repairs that defect without weakening contracts and proves the focused test
+reaches the switch check. Do not claim this parked hunk/tests accepted or use
+them as evidence for returning control to 801.
