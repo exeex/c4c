@@ -8,27 +8,25 @@ Current Step Title: Verify selected LirExtractValueOp index and result-type cohe
 
 ## Just Finished
 
-Step 2 accepted in `33a6c21cc`: selected `LirExtractValueOp` result-authority
-coverage rejects missing and cross-function result IDs while result display
-spelling remains non-authoritative. The accepted producer handoffs remain
-limited to 798 direct-composite and 803 local-load / terminal-insertvalue
-paths.
+Step 3 selected-row coverage completed: the existing verifier uses 801's
+ordered anonymous-aggregate layout facts to reject negative/out-of-range
+`LirExtractValueOp` indexes and mismatched result-element types. Nearby
+direct-complex positive and malformed checks now exercise that same selected
+row without display-text recovery or widening.
 
 ## Suggested Next
 
-Step 3 only: use 801's accepted native anonymous-aggregate field-layout facts
-to validate the selected `LirExtractValueOp` index bounds and result element
-type coherence. Add nearby malformed and positive coverage; leave all other
-aggregate/vector rows fail-closed.
+Step 4 only: obtain the supervisor-owned full baseline and record the bounded
+selected-row handoff; do not widen into any other aggregate/vector route.
 
 ## Watchouts
 
-Do not revisit Step 2 authority, widen to other aggregate/vector rows, reopen
-PHI work, parse display text, or absorb layout publication work owned by 801.
+Do not revisit Steps 2–3 authority, widen to other aggregate/vector rows,
+reopen PHI work, parse display text, or absorb layout publication work owned
+by 801.
 
 ## Proof
 
-Step 2 focused proof passed 6/6. Supervisor accepted source commit
-`33a6c21cc`; a fresh build had no work and matching full CTest before/after
-captures each passed 3037/3037. The monotonic guard passed with
-`--allow-non-decreasing-passed` for the equal repeat capture.
+Step 3 exact focused proof passed 1/1:
+`cmake --build --preset default --target frontend_lir_call_type_ref_test && ctest --test-dir build --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log 2>&1`.
+The proof log is `test_after.log`.

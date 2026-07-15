@@ -8645,6 +8645,24 @@ float extract_real(int value) { return __real__ complex_source(value); }
       "%non_mirror_result", *display_extract.result.value_id());
   lir::verify_module(result_display_is_not_authority);
 
+  lir::LirModule negative_direct_index = direct_complex;
+  selected_direct_extract(negative_direct_index).index = -1;
+  expect_identity_verification_rejected(
+      negative_direct_index, "selected direct-complex extract must reject a negative field index");
+
+  lir::LirModule out_of_bounds_direct_index = direct_complex;
+  selected_direct_extract(out_of_bounds_direct_index).index = 2;
+  expect_identity_verification_rejected(
+      out_of_bounds_direct_index,
+      "selected direct-complex extract must reject an out-of-range field index");
+
+  lir::LirModule mismatched_direct_result_type = direct_complex;
+  selected_direct_extract(mismatched_direct_result_type).result_element_type =
+      lir::LirTypeRef::integer(32);
+  expect_identity_verification_rejected(
+      mismatched_direct_result_type,
+      "selected direct-complex extract must reject a conflicting field result type");
+
   const auto make_module = [&](bool terminal_insert) {
     lir::LirModule module;
     lir::LirFunction function;
