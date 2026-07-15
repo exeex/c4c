@@ -420,11 +420,18 @@ struct LirCmpOp {
   LirOperand rhs;                 // SSA name or literal for right operand
 };
 
+// Value-only PHI transport. The label remains presentation-only; this carrier
+// deliberately adds no predecessor or edge semantics.
+struct LirPhiIncoming {
+  LirOperand value;
+  std::string label;
+};
+
 // Typed PHI node.
 struct LirPhiOp {
   LirOperand result;      // SSA name for result
   LirTypeRef type_str;    // LLVM type string
-  std::vector<std::pair<std::string, std::string>> incoming;  // (value, label) pairs
+  std::vector<LirPhiIncoming> incoming;
 };
 
 // Typed select instruction.

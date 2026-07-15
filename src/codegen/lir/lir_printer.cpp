@@ -398,7 +398,7 @@ void render_inst(std::ostringstream& os, const LirFunction& function,
        << " = phi " << require_type_ref(op->type_str, "LirPhiOp.type_str");
     for (size_t i = 0; i < op->incoming.size(); ++i) {
       os << (i == 0 ? " " : ", ");
-      os << "[ " << op->incoming[i].first << ", %" << op->incoming[i].second << " ]";
+      os << "[ " << op->incoming[i].value << ", %" << op->incoming[i].label << " ]";
     }
     os << "\n";
   } else if (const auto* op = std::get_if<LirSelectOp>(&inst)) {

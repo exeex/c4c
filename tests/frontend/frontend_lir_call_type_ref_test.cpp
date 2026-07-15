@@ -693,6 +693,76 @@ long double lir_aarch64_fp_vaarg_ptrmask_identity(int count, ...) {
   lir::verify_module(lowered);
 }
 
+void test_vaarg_helper_native_operand_carriers() {
+  namespace lir = c4c::codegen::lir;
+  const auto has_native_phi_join = [](const lir::LirFunction& function) {
+    for (const auto& block : function.blocks) {
+      for (const auto& inst : block.insts) {
+        const auto* phi = std::get_if<lir::LirPhiOp>(&inst);
+        if (!phi || phi->incoming.size() != 2 || !phi->result.value_id()) continue;
+        if (std::all_of(phi->incoming.begin(), phi->incoming.end(),
+                        [](const lir::LirPhiIncoming& incoming) {
+                          return incoming.value.value_id() && incoming.value.value_id()->valid();
+                        })) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  const auto has_native_gep_base_and_index = [](const lir::LirFunction& function) {
+    for (const auto& block : function.blocks) {
+      for (const auto& inst : block.insts) {
+        const auto* gep = std::get_if<lir::LirGepOp>(&inst);
+        if (!gep || !gep->result.value_id() || !gep->ptr.value_id() ||
+            gep->indices.empty()) {
+          continue;
+        }
+        if (std::all_of(gep->indices.begin(), gep->indices.end(),
+                        [](const lir::LirGepIndex& index) {
+                          return index.is_authoritative();
+                        })) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  lir::LirModule aarch64_gp = lower_lir_module_for_target(R"c(
+typedef __builtin_va_list va_list;
+int native_gp_vaarg(int count, ...) {
+  va_list ap; __builtin_va_start(ap, count); return __builtin_va_arg(ap, int);
+}
+)c", "aarch64-linux-gnu");
+  const lir::LirFunction& gp = require_function(aarch64_gp, "native_gp_vaarg");
+  expect_true(has_native_gep_base_and_index(gp) && has_native_phi_join(gp),
+              "AArch64 GP vaarg must retain native GEP base/index and PHI value authority");
+  lir::verify_module(aarch64_gp);
+
+  lir::LirModule aarch64_fp = lower_lir_module_for_target(R"c(
+typedef __builtin_va_list va_list;
+long double native_fp_vaarg(int count, ...) {
+  va_list ap; __builtin_va_start(ap, count); return __builtin_va_arg(ap, long double);
+}
+)c", "aarch64-linux-gnu");
+  const lir::LirFunction& fp = require_function(aarch64_fp, "native_fp_vaarg");
+  expect_true(has_native_gep_base_and_index(fp) && has_native_phi_join(fp),
+              "AArch64 FP vaarg must retain native alignment and PHI value authority");
+  lir::verify_module(aarch64_fp);
+
+  lir::LirModule amd64 = lower_lir_module_for_target(R"c(
+typedef __builtin_va_list va_list;
+int native_amd64_vaarg(int count, ...) {
+  va_list ap; __builtin_va_start(ap, count); return __builtin_va_arg(ap, int);
+}
+)c", "x86_64-linux-gnu");
+  const lir::LirFunction& x64 = require_function(amd64, "native_amd64_vaarg");
+  expect_true(has_native_gep_base_and_index(x64) && has_native_phi_join(x64),
+              "AMD64 vaarg must retain native register/stack helper and PHI value authority");
+  lir::verify_module(amd64);
+}
+
 c4c::codegen::lir::LirFunction make_identity_test_function(
     std::string name, c4c::codegen::lir::LirValueId id) {
   namespace lir = c4c::codegen::lir;
@@ -3974,10 +4044,11 @@ long long lir_ternary_coerce_result_authority_loss(int condition, long long inpu
                   selected_coercion.result.value_id()->valid() &&
                   selected_coercion.result.has_authority(),
               "selected ternary then-arm coercion should retain native SSA result authority");
-  constexpr bool phi_incoming_values_are_raw_strings =
-      std::is_same_v<std::decay_t<decltype(phis[0]->incoming.front().first)>, std::string>;
-  expect_true(phi_incoming_values_are_raw_strings && phis[0]->incoming.size() == 2,
-              "both ternary PHI incoming values remain raw string carriers without native authority");
+  constexpr bool phi_incoming_values_are_operands =
+      std::is_same_v<std::decay_t<decltype(phis[0]->incoming.front().value)>, lir::LirOperand>;
+  expect_true(phi_incoming_values_are_operands && phis[0]->incoming.size() == 2 &&
+                  !phis[0]->incoming.front().value.has_authority(),
+              "PHI incoming values use the value-only operand carrier without fabricating authority");
   expect_true(!phis[0]->result.has_authority() && !binary_ops[0]->lhs.has_authority(),
               "ternary PHI carrier and later consumer remain raw outside the selected arm packet");
   lir::verify_module(lowered);
@@ -7482,6 +7553,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_rv64_scalar_stdarg_uses_pointer_cursor();
   test_aarch64_scalar_stdarg_preserves_structured_va_list();
   test_aarch64_fp_vaarg_ptrmask_result_identity_boundary();
+  test_vaarg_helper_native_operand_carriers();
   test_structured_operand_identity_foundation();
   test_standalone_cast_result_authority_contract();
   test_direct_branch_successor_identity_contract();

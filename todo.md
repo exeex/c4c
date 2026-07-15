@@ -8,27 +8,28 @@ Current Step Title: Bind the minimal generic carrier contract
 
 ## Just Finished
 
-- Closed 785 accepted its direct factory carrier at `3b53451c0`. The AArch64
-  FP128 ptrmask direct call now retains its native result through the immediate
-  typed GEP consumer; focused structural proof passed. 784 Step 1 remains
-  accepted at `b96751b03`.
+- Plan Step 2 completed the minimum carrier contract: AArch64 GP/FP helper
+  loads, GEPs, and join inputs plus AMD64 register/stack helper results retain
+  native `LirOperand` authority. `LirPhiOp` now transports only its value half
+  as `LirOperand`; labels remain strings and no PHI verification or edge work
+  was added. Focused structural probes cover all three chains.
 
 ## Suggested Next
 
-- Plan Step 2: retry the minimal three-chain carrier contract with the direct
-  FP128 ptrmask result available, then retain the separate decision on whether
-  value-only PHI incoming transport is indispensable.
+- Plan Step 3: review the accepted three-chain structural evidence, publish the
+  783 handoff, and explicitly retain the value-only PHI decision as transport
+  only rather than PHI completion.
 
 ## Watchouts
 
 - 785 does not authorize HFA ptrmask conversion, unrelated generic call/argument
   changes, PHI verification, predecessor/edge identity, Raw-BIR/importer,
   backend, target lowering, MIR, emission, or broad generic-expression work.
-- Do not recover identity from compatibility spelling or other text.
+- `LirPhiIncoming::label` remains presentation-only; do not infer predecessor
+  or CFG semantics from this carrier. Do not recover identity from text.
 
 ## Proof
 
-- Accepted 785 proof: `cmake --build --preset default && ctest --test-dir build
-  -j --output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1. The
-  monotonic regression guard passed with before/after 1 passed, 0 failed, and
-  no new failures/timeouts; commit `3b53451c0`.
+- `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1. Full
+  output: `test_after.log`; this is the supervisor-selected focused proof.
