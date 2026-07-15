@@ -1,64 +1,63 @@
-# LIR PHI Scalar Dereference-Load Authority Runbook
+# LIR PHI Incoming Producer Authority Repair Runbook
 
 Status: Active
-Source Idea: ideas/open/809_lir_phi_scalar_dereference_load_authority.md
-Activated from: 806 Step 4 after its completed trace established an out-of-scope producer handoff.
+Source Idea: ideas/open/804_lir_phi_incoming_producer_authority_repair.md
+Resumed from: accepted 806 residual producer-family chain and its 3037/3037
+full-baseline gate; preserve 804 Steps 1--2.
 
 ## Purpose
 
-Repair and prove the scalar dereference-load authority handoff, then return
-the parent chain only through its required full-baseline gate.
+Complete 804's recorded return step, then restore 754's full-baseline gate
+without repeating accepted PHI producer work.
 
 ## Core Rule
 
-Preserve a native checked current-function `LirValueId`; do not reconstruct
-identity from temporary text or broaden the repair beyond the scalar
-`UnaryOp::Deref` load-result handoff.
+Native checked current-function IDs are authority. Do not use display text,
+instruction order, or testcase identity, and do not weaken PHI verification.
 
 ## Read First
 
-- `ideas/open/809_lir_phi_scalar_dereference_load_authority.md`
-- `ideas/open/806_lir_phi_residual_producer_family_authority_trace.md`
-- accepted postfix commit `961ce9fda`
-- the scalar `UnaryOp::Deref` lowering and existing conditional-PHI authority path
+- `ideas/open/804_lir_phi_incoming_producer_authority_repair.md`
+- `ideas/closed/806_lir_phi_residual_producer_family_authority_trace.md`
+- accepted 804 handoff commit `308fff39c`
+- accepted residual-chain commits `961ce9fda`, `8f31e2535`, `b86df3b9d`, and
+  `4d29f7b3e`
 
 ## Non-Goals
 
-- Postfix, `fneg`, `xor`, scalar unary-minus, CFG, PHI verifier, generic
-  conditional lowering, or generic provenance changes.
-- Full-baseline clearance without supervisor acceptance.
+- Repeating 804's scalar unary-minus route or reopening CFG/PHI verifier,
+  predecessor, or edge semantics.
+- Residual producer conversion, generic provenance, text recovery, or
+  testcase-specific behavior.
 
 ## Ordered Steps
 
-### Step 1 - Repair and focus-proof the scalar dereference-load handoff
+## Completed Steps
 
-Goal: carry the immediate scalar dereference `LirLoadOp` result's checked
-native authority into the existing conditional PHI path.
+### Step 1 - Trace the failing PHI incoming producer handoff
 
-Actions:
+Completed: identified the scalar integer unary-minus ternary-else handoff.
 
-- Inspect the traced `UnaryOp::Deref` load lowering and make the smallest
-  bounded handoff repair.
-- Add nearby same-family positive and malformed/foreign, stale, or unknown
-  authority coverage without weakening the existing PHI contract.
-- Run a fresh build, the new nearby coverage, and focused
-  `llvm_gcc_c_torture_src_20060910_1_c` proof.
+### Step 2 - Repair only the selected producer-side handoff
 
-Completion check: focused proof demonstrates the repaired native handoff and
-the malformed-authority contract still rejects invalid authority.
+Completed in `308fff39c`: publish the scalar unary-minus `sub` result through
+`fresh_value(ctx)` with nearby positive and malformed-authority coverage.
 
-### Step 2 - Full-baseline gate and parent return
+## Ordered Steps
 
-Goal: establish the only evidence that may release 806's parent gate.
+### Step 3 - Prove the blocker and return it to 754
+
+Goal: record the accepted PHI producer-blocker chain and restore the parent
+baseline gate without re-opening completed work.
 
 Actions:
 
-- After supervisor acceptance of Step 1, run the supervisor-selected fresh
-  full baseline.
-- Require a supervisor-accepted 100% result before recording the parent
-  return.
-- Return execution to 806 at its recorded full-baseline step, then its parent
-  chain; do not repeat accepted producer-family work.
+- Preserve the accepted 804 scalar unary-minus evidence and the closed 806
+  successor chain.
+- Record the supervisor-accepted 3037/3037 full baseline as satisfying the
+  bounded blocker gate.
+- Reactivate 754 at its unchanged Step 2 only after the supervisor accepts
+  this return decision.
 
-Completion check: accepted 100% full baseline is recorded and 806 can resume
-at its exact return point; otherwise retain this active blocker route.
+Completion check: the accepted full baseline and parent return point are
+recorded; 754 can resume unchanged Step 2 without repeating 804 Steps 1--2.

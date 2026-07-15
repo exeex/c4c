@@ -1,8 +1,8 @@
 # LIR PHI Scalar Dereference-Load Authority
 
-Status: Open
+Status: Closed
 Type: bounded PHI producer-handoff blocker
-Blocked Parent: `ideas/open/806_lir_phi_residual_producer_family_authority_trace.md`
+Blocked Parent: `ideas/closed/806_lir_phi_residual_producer_family_authority_trace.md`
 
 ## Goal
 
@@ -66,3 +66,14 @@ emits `LirLoadOp` through a fresh temporary string and loses the immediate
 accepted 809 repair and supervisor-accepted fresh 100% full baseline,
 reactivate 806 at its recorded Step 3 full-baseline return point; do not
 repeat classification or accepted producer repairs.
+
+## Closure Record
+
+Capability complete. Commit `4d29f7b3e` repairs scalar `UnaryOp::Deref` by
+giving its `LirLoadOp` result a fresh native current-function `LirValueId`.
+Fresh direct `frontend_lir_call_type_ref_test` coverage passed; the matching
+focused before/after guard improved from 1/2 to 2/2 with no new failures; and
+the supervisor accepted the fresh
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure`
+full baseline at 3037/3037. That accepted baseline fulfills the parent-return
+contract and releases 806's recorded Step 3 gate without repeating this route.

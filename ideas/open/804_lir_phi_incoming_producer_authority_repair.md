@@ -100,7 +100,7 @@ this idea does not assume that commit is the root cause.
   expressly bounded unary-minus route and its rejection of a broad residual
   instruction/terminator sweep.
 - **Successor and exact return point:**
-  `ideas/open/806_lir_phi_residual_producer_family_authority_trace.md` owns
+  `ideas/closed/806_lir_phi_residual_producer_family_authority_trace.md` owned
   only classification and, if evidenced, the smallest repair for the four
   observed residual cases. After it supplies an accepted same-feature repair
   and the supervisor accepts a 100% full baseline, reactivate 804 at unchanged
@@ -110,3 +110,19 @@ this idea does not assume that commit is the root cause.
   fresh build and `^backend_` 5/5 proof; the rejected 3033/3037 full baseline
   in root `test_after.log`. The original matching `test_before.log` is
   unavailable because the initial checkout was unmerged.
+
+## Resumption Update — 806 chain accepted
+
+- **Last accepted progress:** Steps 1--2 remain accepted. The selected scalar
+  integer unary-minus producer handoff was repaired in `308fff39c`.
+- **Interrupted step:** Step 3 — *Prove the blocker and return it to 754*.
+- **Resolved successor chain:** 806 completed its residual producer-family
+  route: postfix in `961ce9fda`, separately closed `fneg` and `xor` successors
+  in `8f31e2535` and `b86df3b9d`, and scalar dereference-load authority in
+  `4d29f7b3e`.
+- **Return evidence:** the supervisor accepted a fresh full baseline at
+  3037/3037 from `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure` (build had no work; total about 29.11s). That fulfills
+  806's sole remaining Step 3 gate.
+- **Exact return point:** resume this source at unchanged Step 3 only. Do not
+  repeat Steps 1--2 or reopen CFG/PHI semantics or the closed residual routes.

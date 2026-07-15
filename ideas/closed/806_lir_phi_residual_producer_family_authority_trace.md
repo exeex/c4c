@@ -1,6 +1,6 @@
 # LIR PHI Residual Producer-Family Authority Trace
 
-Status: Open
+Status: Closed
 Type: bounded PHI residual-producer baseline blocker
 Blocked Parent: `ideas/open/804_lir_phi_incoming_producer_authority_repair.md`
 
@@ -120,7 +120,7 @@ reactivate 804 at Step 3, *Prove the blocker and return it to 754*.
   loses the immediate `LirValueId` into the conditional PHI. That
   dereference-load handoff is not the accepted postfix producer route and is
   therefore owned by separately scoped
-  `ideas/open/809_lir_phi_scalar_dereference_load_authority.md`.
+  `ideas/closed/809_lir_phi_scalar_dereference_load_authority.md`.
 - Exact return point: after 809 has an accepted repair and the supervisor has
   accepted a fresh 100% full baseline, resume 806 at Step 3, *Prove the
   blocker and return to 804*, without repeating Steps 1–2.
@@ -130,3 +130,14 @@ reactivate 804 at Step 3, *Prove the blocker and return it to 754*.
   recorded fresh build, matching frontend-HIR guard, and
   `frontend_lir_call_type_ref_test`; `8f31e2535` and `b86df3b9d` remain the
   separately closed `fneg` and scalar bit-not `xor` routes.
+
+## Closure Record
+
+Capability complete. Steps 1--2 remain accepted, including postfix repair
+`961ce9fda`; 807 and 808 remain the separately closed `fneg` and `xor`
+routes; and 809 completed the separately scoped scalar dereference-load
+handoff in `4d29f7b3e`. The supervisor accepted its fresh full baseline at
+3037/3037 after `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure` (build had no work; total about 29.11s). This is the
+required Step 3 full-baseline result, so no intermediate 806 runbook step or
+duplicate proof is required. Return directly to 804 at unchanged Step 3.
