@@ -21,13 +21,107 @@ Architecture ownership is not implementation evidence. A valid current LIR row
 that the bootstrap rejects remains unreceived. Current LIR is complete and
 immutable for this route; missing receipt belongs to core and/or the importer.
 
+## Durable Node and Pass Model
+
+The durable BIR shape is a flat arena-owned node. `InstId` is the stable
+function-arena identity and is not repeated inside `InstData`; slot addresses,
+object pointers and vector positions never identify a node. Each node stores a
+closed `NodeKind`, one closed payload alternative, ordered input-only
+`operands`, and bootstrap result compatibility described below. A payload owns
+kind-specific parameters such as a predicate, callee, source authority or
+opaque inline-assembly bytes. It does not independently decide the node's
+semantic family, arity, effects or phase legality.
+
+Concrete type is a `ValueDef` fact. It remains outside kind-only traits because
+the result type of a call, cast, phi or overloaded operation can depend on a
+signature, payload, inputs or an explicitly stored value fact. This is the
+same semantic distinction used by LLVM-style IR: operations compare stable
+kind and typed semantic facts, never C++ object addresses or pointer identity.
+
+### One NodeKind schema authority
+
+[`ir.hpp`](ir.hpp) defines `NodeKind` as the durable closed vocabulary;
+`Opcode` is only a compatibility alias. The hidden
+`detail::node_kind_traits<K>` specializations are the single C++ schema
+authority for the currently admitted 16 kinds. `NodeKindDescriptor` exposes
+family, binary classification, fixed or variable operand bounds, zero/one/many
+result policy, effects and the Raw/Canonical/Prepared legality mask.
+
+Pass-facing compile-time queries are `node_kind_descriptor<K>()`,
+`is_semantic_node_kind_v<K>` and `is_binary_node_kind_v<K>`. Runtime code uses
+`node_kind_descriptor(kind)`, `is_semantic_node_kind(kind)`,
+`is_binary_node_kind(kind)`, `node_kind_legal_in(kind, stage)`,
+`node_kind_accepts_payload(kind, payload)` and
+`node_kind_accepts_arity(kind, operand_count, result_count)`. Every runtime
+query fails closed for an invalid or unhandled kind. The foundation verifier
+uses the shared payload and arity helpers as generic preconditions and retains
+payload-specific checks for signatures, types, phi edges and other facts that
+cannot be answered from kind alone.
+
+A transformation still dispatches explicitly on the vocabulary it accepts,
+normally with `switch (node.kind)`. Classification helpers remove duplicated
+tables; they are not permission for a catch-all visitor, silent pass-through or
+default success. Adding a kind requires one reviewed C++ traits specialization,
+the relevant explicit pass cases and nearby positive/negative coverage. BIR
+therefore needs no TableGen `.td` side language, generated mirror vocabulary or
+second schema: the C++ type system and closed payload variant already provide
+the compile-time and runtime authority used by storage and passes.
+
+### Results and compatibility storage
+
+`InstData::operands` contains input uses only; outputs are never encoded as
+operand indices. The checked-in `InstData::results` vector and
+`InstResultDef::{instruction,result_index}` remain bootstrap compatibility
+storage for ordered generic results. They are not the durable excuse for an
+unbounded result-vector architecture, and `ValueDef::type` remains the concrete
+type authority.
+
+The preferred durable disposition is one ordinary result value per node.
+Operations that are semantically multi-result should normalize into one
+aggregate result plus explicit projection nodes, or into another reviewed
+single-result form. If measurement later proves that genuine compact
+multi-result nodes are required, a compact `ResultSpan` or external
+revision-keyed result table is a separately approved follow-up; it must replace,
+not silently coexist with, generic result-vector authority.
+
+### Phase vocabulary and external products
+
+Raw-to-Canonical is a target-independent vocabulary transition, not a retag of
+the same permissive graph. The historical accepted phase-B contract
+([idea 736](../../../../ideas/closed/736_bir_phase_b_canonical_document_convergence.md))
+orders B1 legalization, B2 scalar normalization, B3 CFG normalization, B4 SSA,
+B5 memory normalization, B6 aggregate normalization and B7 intrinsic/helper
+normalization, followed by the distinct B8 verification/publication boundary.
+B4 owns SSA construction after the required CFG and dominance facts exist;
+SSA is a Canonical property, not a phase-A import prerequisite.
+
+Later ownership remains separate: C selects and verifies target-aware
+preparation products; D forms and legalizes pseudos; E owns allocation,
+spill/reload and final frame realization; F owns MIR lowering and emission.
+Core `NodeKind` traits may state stable legality/effect facts, but they do not
+absorb target selection, pseudo expansion, register assignment, frame placement
+or MIR ownership.
+
+Analyses and phase products are immutable external maps keyed by the exact
+module epoch/revision, ordered function revisions, options and applicable
+schema/target fingerprints. They do not become fields on core nodes. Mutation
+invalidates or explicitly preserves those products for the new exact key;
+stale, foreign or merely compatible-looking products are rejected rather than
+retargeted.
+
+This section publishes the durable contract and the schema/helper foundation
+that is checked in now. It does not claim that the full A inventory, B1-B8
+pipeline, C-F products, result normalization or all future node kinds are
+implemented.
+
 ## Owns
 
 - module/function-local stable typed IDs and generation-checked storage;
 - deterministic semantic iteration order independent of slot reuse or hashes;
 - one typed owner for types, constants, symbols, globals, functions, locals,
   blocks, instructions, values, initializers, data objects and origin records;
-- closed instruction payloads, ordered ordinary operands/results, exact def-use,
+- closed instruction payloads, ordered input operands and bootstrap-compatible
+  result bindings, exact def-use,
   one terminator per block and terminator-only CFG successor authority;
 - private draft storage and the immutable storage behind published `RawBir`;
 - target-independent source semantics needed by later canonical passes.
@@ -89,11 +183,18 @@ The shared [A2 verifier](../verify/README.md) alone owns
 core constructor, diagnostic verifier or importer may bypass that gate.
 
 B1's exact consumer clause accepts only an immutable published `RawBir`. The
-broader documentation lifecycle remains governed by
-[Child A](../../../../ideas/open/735_bir_phase_a_import_raw_document_convergence.md);
-deferred implementation idea 734 remains inactive.
+historical phase-A ownership contract is recorded in
+[closed idea 735](../../../../ideas/closed/735_bir_phase_a_import_raw_document_convergence.md).
+It is historical architecture evidence rather than current implementation
+completeness.
 
 ## Exhaustive Instruction Receiving Matrix
+
+This matrix preserves the phase-A target inventory accepted under closed idea
+735. Its `Checked-in disposition` column is historical and is not a current
+code inventory; the current implementation boundary is stated explicitly in
+`Implementation State` below. In particular, it must not override the landed
+16-kind NodeKind schema described above.
 
 Each row has one target core owner. `missing` means the typed owner is designed
 but not checked in; `partial` names the exact checked-in subset. No row is
@@ -284,18 +385,24 @@ Checked-in headers [`ir.hpp`](ir.hpp), [`type.hpp`](type.hpp),
 - function/block/instruction/value IDs, generation-checked slots and explicit
   function/block/instruction order;
 - parameter/instruction-result definitions and generic instruction
-  operand/result vectors;
-- only `Opcode::InlineAsm` and `InlineAsmNode` opaque payload;
-- only Void, I1/I8/I16/I32/I64, F32/F64 and Pointer types;
-- `JumpTerm`, `CondJumpTerm`, `ReturnTerm`, `UnreachableTerm`;
-- basic functions/signatures/declarations, builders/views and foundation
-  `ModuleBuilder::publish() &&`.
+  input-operand/bootstrap-result vectors;
+- the closed 16-kind `NodeKind` vocabulary, its payload variant, one hidden
+  traits authority, compile-time/runtime query surfaces and fail-closed
+  payload/arity verifier preconditions;
+- current structured `Type`, constant, symbol/global, function, block,
+  instruction, value and selected authority receipts admitted by the bounded
+  builders and verifier;
+- `JumpTerm`, `CondJumpTerm`, `IndirectJumpTerm`, `SwitchTerm`, `ReturnTerm` and
+  `UnreachableTerm` storage;
+- basic functions/signatures/declarations, builders/views, revision/stage
+  stamps, `RawBir`/`CanonicalBir` wrappers and foundation publication paths.
 
-It does not implement the missing owner families recorded above, a complete
-def-use store, general editors/revisions, private `ModuleDraft`, or the sole full
-A2 gate path. The current importer wires only bounded inline asm plus jump,
-void return and unreachable. Therefore `Implementation-Status: partial` is
-exact; unsupported valid rows and target design prose are not coverage.
+It does not implement the complete phase-A target inventory, full def-use
+store, durable single-result normalization, all B1-B8 transformations, or the
+C-F target/pseudo/allocation/MIR chain. Therefore
+`Implementation-Status: partial` remains exact: the landed NodeKind contract is
+real shared-code infrastructure, but documentation and schema coverage are not
+evidence of end-to-end compiler completeness.
 
 ## Proof Requirements
 
