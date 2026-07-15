@@ -36,6 +36,40 @@ Diagnose and repair the existing `LirShuffleVectorOp` splat lowering so its nati
 
 After this blocker has an accepted narrow repair and the supervisor accepts a 100% fresh full baseline, reactivate `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md` at its unchanged Step 9, *Implement and prove the Step 8 selection*. Reuse Step 9's completed audit, but make a fresh row selection/proof decision. Do not repeat accepted Steps 1--8 and do not silently implement `LirExtractElementOp` or `LirShuffleVectorOp` as a 754 row.
 
+## Resumption Record: native shuffle mask-lane coherence blocker
+
+Last accepted progress: Step 1, `Diagnose the poison second-operand carrier
+handoff`, and Step 2, `Repair and cover the bounded carrier/lowering seam`,
+are complete. Accepted implementation `c1cde8430` (*lir: supply shuffle poison
+second shape*) populates the same local native shape used for the poison
+second vector as `second_vector_shape` at both scalar-to-vector splats.
+Nearby coverage accepts the coherent structured poison form and rejects
+missing, incoherent, and extraneous-use evidence. This is the accepted
+second-shape/poison handoff and must not be repeated.
+
+Interrupted step: Step 3, `Prove the blocker handoff and return decision`.
+
+Blocker evidence: the fresh supervisor full checkpoint completes 3035/3038
+and fails only `llvm_gcc_c_torture_src_pr60960_c`,
+`llvm_gcc_c_torture_src_scal_to_vec1_c`, and
+`llvm_gcc_c_torture_src_scal_to_vec2_c`. Each fails
+`LirShuffleVectorOp.native_vector_authority.mask_lanes: must mirror the
+structured shuffle mask`. This is a native mask-lane publication/coherence
+contract, not a second-shape/poison operand handoff.
+
+Classification: `separate-blocker`. New open
+`ideas/open/815_lir_shuffle_vector_native_mask_lane_coherence_repair.md` owns
+only the existing splat lowering's structured native shuffle mask-lane facts
+and mask-display mirror. It must not infer from text, select shuffle row
+semantics, or change vectors, second shape, aggregate, extract/insert,
+provenance, CFG, or target work.
+
+Exact return point: after 815 has an accepted narrow repair and the supervisor
+accepts a fresh 100% full baseline, reactivate this idea at unchanged Step 3,
+`Prove the blocker handoff and return decision`. Use the accepted `c1cde8430`
+second-shape handoff, do not repeat Steps 1--2, and then make this idea's
+parent return decision.
+
 ## Reviewer Reject Signals
 
 - Reject a shuffle row-capability claim, mask-semantics implementation, or 754 row selection disguised as this carrier/lowering repair.

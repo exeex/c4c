@@ -1,57 +1,75 @@
-# LIR Shuffle-Vector Poison Second-Shape Carrier Repair Runbook
+# LIR Shuffle-Vector Native Mask-Lane Coherence Repair Runbook
 
 Status: Active
-Source Idea: ideas/open/814_lir_shuffle_vector_poison_second_shape_carrier_repair.md
-Switched from: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md Step 9
+Source Idea: ideas/open/815_lir_shuffle_vector_native_mask_lane_coherence_repair.md
+Switched from: ideas/open/814_lir_shuffle_vector_poison_second_shape_carrier_repair.md Step 3
 
 ## Purpose
 
-Restore the existing shuffle splat lowering's coherent native carrier for a poison second operand so the full baseline can run without an unrelated carrier-validation failure.
+Restore the existing scalar-to-vector splat shuffle lowering's native
+mask-lane publication and structured-mask/display coherence so the full
+baseline can run without an unrelated carrier-validation failure.
 
 ## Core Rule
 
-Repair only the required native `second_vector_shape` fact and structured poison-second-operand handoff. Do not turn this prerequisite into a shuffle row-semantic capability or a 754 vector-row selection.
+Repair only the existing zero-initializer splat mask carrier. Do not select or
+implement shuffle row semantics, make a 754 claim, or recover facts from text.
 
 ## Read First
 
+- `ideas/open/815_lir_shuffle_vector_native_mask_lane_coherence_repair.md`
 - `ideas/open/814_lir_shuffle_vector_poison_second_shape_carrier_repair.md`
-- `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`
 - `ideas/closed/811_lir_native_vector_authority_carrier_publication.md`
-- Existing `LirShuffleVectorOp` construction, verifier, and splat lowering seams named by the diagnosis.
+- Existing scalar-to-vector splat lowering, `LirShuffleVectorOp` carrier, and
+  verifier seams named by the full-baseline failure.
 
 ## Non-Goals
 
-- Do not alter aggregate, ExtractElement, InsertElement, generic provenance, CFG/PHI, target/MIR/emission, or parse/display-text behavior.
-- Do not select or implement shuffle operation semantics for 754.
+- Do not change vector/second-shape or poison handoff facts, aggregate,
+  ExtractElement, InsertElement, generic provenance, CFG/PHI, target/MIR,
+  emission, or parse/display-text behavior.
+- Do not implement mask/lane semantic selection beyond publication and
+  coherence of the existing structured splat mask.
 
 ## Steps
 
-### Step 1 - Diagnose the poison second-operand carrier handoff
+### Step 1 - Diagnose the splat mask-lane carrier seam
 
-Goal: identify the precise existing shuffle splat construction path that omits `second_vector_shape` for poison, and define the smallest structured representation that keeps the carrier coherent.
+Goal: identify the existing zero-initializer splat mask construction that
+fails to publish coherent native `mask_lanes` and a matching display mirror.
 
 Actions:
 
-- trace the splat lowering, carrier construction, and verifier requirement;
-- record the valid poison-second-operand form plus absent, foreign, malformed, and incoherent forms in `todo.md`;
-- confirm the repair neither adds row semantics nor derives facts from display text.
+- trace the splat lowering, structured shuffle mask, carrier construction, and
+  verifier requirement;
+- record valid, missing, incoherent, malformed, and non-mirroring cases in
+  `todo.md`;
+- confirm the route introduces neither text recovery nor shuffle semantics.
 
-Completion check: a single native carrier/lowering repair seam and a focused valid/malformed matrix are documented for executor implementation.
+Completion check: one native lowering/carrier seam and a focused fail-closed
+matrix are documented for implementation.
 
-### Step 2 - Repair and cover the bounded carrier/lowering seam
+### Step 2 - Repair and cover bounded mask-lane coherence
 
-Goal: implement only the Step 1 contract and add nearby coverage.
+Goal: implement only the Step 1 mask-lane publication/mirror contract and add
+nearby coverage.
 
-Completion check: the valid structured poison form supplies a coherent `second_vector_shape`; malformed carrier/lowering forms fail closed; no out-of-scope route changes.
+Completion check: the existing splat mask supplies coherent native
+`mask_lanes` and matching display evidence; malformed forms reject; no
+out-of-scope route changes.
 
 ### Step 3 - Prove the blocker handoff and return decision
 
-Goal: obtain the bounded proof and make the prerequisite handoff decision.
+Goal: obtain bounded proof and make the parent return decision.
 
 Actions:
 
-- run a fresh build, focused same-feature proof, and matching regression guard;
-- require supervisor-owned fresh full-baseline acceptance before declaring the blocker return-ready;
-- return to 754 Step 9 only with the source's exact preserved return point.
+- run a fresh build, focused same-feature proof, and matching regression
+  guard;
+- require supervisor-owned fresh 100% full-baseline acceptance before
+  declaring this blocker return-ready;
+- return to 814 Step 3 only with the exact preserved return point.
 
-Completion check: accepted narrow proof and supervisor acceptance of a 100% full baseline are recorded, or the remaining failure has its own explicit lifecycle route.
+Completion check: accepted narrow proof and supervisor acceptance of a 100%
+full baseline are recorded, or every remaining failure has its own explicit
+lifecycle route.
