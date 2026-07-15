@@ -1136,6 +1136,7 @@ void test_native_scalar_binary_lhs_authority_verifier_boundary() {
         .type = lir::LirTypeRef::integer(32), .owner = owner,
         .abi = lir::LirNativeBodyParameterAbi::DirectScalar});
     lir::LirBlock entry;
+    entry.id = lir::LirBlockId{1};
     entry.label = "entry";
     entry.insts.push_back(lir::LirBinOp{
         .result = lir::LirOperand::ssa("%sum", lir::LirValueId{2}), .opcode = "add",
@@ -1149,26 +1150,58 @@ void test_native_scalar_binary_lhs_authority_verifier_boundary() {
             .role = lir::LirScalarBinaryParameterRole::Lhs}});
     entry.terminator = lir::LirRet{std::nullopt, lir::LirTypeRef("void")};
     function.blocks.push_back(std::move(entry));
+    function.entry = lir::LirBlockId{1};
     module.functions.push_back(std::move(function));
     return module;
   };
   lir::verify_module(make_module());
+  const auto raw = bir::lower_lir_to_raw_bir(make_module());
+  const auto verification = raw.has_value() ? bir::FoundationVerifier::verify(raw.value())
+                                            : bir::VerificationResult{};
+  expect(raw.has_value() && verification.ok(),
+         "selected direct-scalar LHS authority must publish verified Raw-BIR: " +
+             (raw.has_value() ? (verification.errors.empty() ? std::string{} : verification.errors.front().message)
+                              : raw.error().detail));
+  const auto view = raw.value().view();
+  const auto function_view = view.function(view.functions()[0]).value();
+  const auto instruction = function_view.instruction(
+      function_view.instructions(function_view.blocks()[0]).value()[0]).value();
+  const auto* binary = instruction.binary();
+  expect(binary && binary->direct_scalar_lhs &&
+             binary->direct_scalar_lhs->source_value_id == 1 &&
+             binary->direct_scalar_lhs->parameter_index == 0 &&
+             binary->direct_scalar_lhs->scalar_type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+             binary->direct_scalar_lhs->owner.valid(),
+         "Raw-BIR scalar binary must retain typed parameter identity and owner authority");
+  auto unselected_scalar_parameter = make_module();
+  unselected_scalar_parameter.functions[0].blocks[0].insts.clear();
+  expect(bir::lower_lir_to_raw_bir(std::move(unselected_scalar_parameter)).has_value(),
+         "an unselected native DirectScalar parameter definition must not require a Raw-BIR receipt");
   const auto rejects = [&](auto mutate, const std::string& message) {
     auto module = make_module();
     auto& op = std::get<lir::LirBinOp>(module.functions[0].blocks[0].insts[0]);
     mutate(module, op);
-    expect_rejected(std::move(module), message);
+    expect_rejected(module, message);
+    expect(!bir::lower_lir_to_raw_bir(std::move(module)).has_value(),
+           message + " must roll back Raw-BIR receipt");
   };
   rejects([](auto&, auto& op) { op.scalar_lhs_parameter_authority.reset(); },
           "scalar parameter lhs requires an authority binding");
   rejects([](auto&, auto& op) { op.scalar_lhs_parameter_authority->value = lir::LirValueId{9}; },
           "unknown scalar parameter value must reject");
+  rejects([](auto& module, auto& op) {
+    op.scalar_lhs_parameter_authority->owner = module.link_names.intern("foreign_scalar_owner");
+  }, "foreign scalar parameter owner must reject");
   rejects([](auto&, auto& op) { op.scalar_lhs_parameter_authority->role = lir::LirScalarBinaryParameterRole::Invalid; },
           "wrong scalar parameter role must reject");
   rejects([](auto&, auto& op) { op.scalar_lhs_parameter_authority->parameter_index = 9; },
           "out-of-range scalar parameter position must reject");
   rejects([](auto&, auto& op) { op.scalar_lhs_parameter_authority->type = lir::LirTypeRef::integer(64); },
           "scalar parameter type mismatch must reject");
+  rejects([](auto& module, auto& op) {
+    module.functions[0].native_body_parameter_definitions[0].type = lir::LirTypeRef("ptr");
+    op.scalar_lhs_parameter_authority->type = lir::LirTypeRef("ptr");
+  }, "non-scalar parameter authority must reject");
   rejects([](auto&, auto& op) { op.scalar_lhs_parameter_authority->abi = lir::LirNativeBodyParameterAbi::DirectPointer; },
           "scalar parameter ABI mismatch must reject");
   rejects([](auto&, auto& op) { op.lhs = lir::LirOperand::ssa("%p.x", lir::LirValueId{2}); },

@@ -268,9 +268,17 @@ struct CallNode {
 
 enum class BinaryOpcode : std::uint8_t { FAdd, FMul, Add, Mul };
 
+struct DirectScalarBodyParameterBinaryLhs {
+  std::uint32_t source_value_id = 0;
+  std::uint32_t parameter_index = 0;
+  Type scalar_type{TypeKind::Void};
+  LinkNameId owner{};
+};
+
 struct BinaryNode {
   BinaryOpcode opcode = BinaryOpcode::FAdd;
   Type type{};
+  std::optional<DirectScalarBodyParameterBinaryLhs> direct_scalar_lhs;
 };
 
 enum class ComparePredicate : std::uint8_t { Slt, OLt, Eq };

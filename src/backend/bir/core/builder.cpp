@@ -1585,6 +1585,15 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       lhs && rhs && lhs.value().get().type == f32 && rhs.value().get().type == f32;
   const bool exact_add = spec.opcode == BinaryOpcode::Add && spec.type == i32 &&
       lhs && rhs && lhs.value().get().type == i32 && rhs.value().get().type == i32;
+  const auto* direct_scalar = spec.direct_scalar_lhs ? &*spec.direct_scalar_lhs : nullptr;
+  const bool exact_direct_scalar_add = exact_add && direct_scalar &&
+      direct_scalar->source_value_id != 0 && direct_scalar->scalar_type == i32 &&
+      direct_scalar->owner.valid() && direct_scalar->owner.epoch == parent_->data_->epoch_ &&
+      direct_scalar->owner.slot < parent_->data_->link_names_.size() &&
+      parent_->data_->link_names_[direct_scalar->owner.slot].spelling ==
+          function_data.link_name_ &&
+      direct_scalar->parameter_index < function_data.parameters_.size() &&
+      function_data.parameters_[direct_scalar->parameter_index] == spec.lhs;
   const bool exact_sext_add = spec.opcode == BinaryOpcode::Add && spec.type == i64 &&
       lhs && rhs && lhs.value().get().type == i64 && rhs.value().get().type == i64;
   const bool exact_mul = spec.opcode == BinaryOpcode::Mul && spec.type == i32 &&
@@ -1628,12 +1637,13 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
     const auto* intrinsic = std::get_if<IntrinsicCallNode>(&lhs_producer.value().get().payload);
     return intrinsic && intrinsic->kind == IntrinsicKind::Cttz && intrinsic->type == spec.type;
   }();
-  if ((!exact_fadd && !exact_fmul && !exact_float_fmul && !exact_add && !exact_sext_add && !exact_mul) ||
+  if ((!exact_fadd && !exact_fmul && !exact_float_fmul && !exact_add && !exact_sext_add && !exact_mul &&
+       !exact_direct_scalar_add) ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
-  if (!lhs_def)
+  if (!exact_direct_scalar_add && !lhs_def)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
-  if (!lhs_producer ||
+  if (!exact_direct_scalar_add && (!lhs_producer ||
       (exact_fadd && !std::holds_alternative<CallNode>(lhs_producer.value().get().payload)) ||
       (exact_fmul && [&] {
         const auto* binary = std::get_if<BinaryNode>(&lhs_producer.value().get().payload);
@@ -1663,7 +1673,7 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       (exact_mul && [&] {
         const auto* binary = std::get_if<BinaryNode>(&lhs_producer.value().get().payload);
         return !binary || binary->opcode != BinaryOpcode::Add || binary->type != i32;
-      }()))
+      }())))
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   if (exact_add || exact_sext_add || exact_mul) {
     const auto* rhs_constant = std::get_if<ConstantDef>(&rhs.value().get().definition);
@@ -1680,7 +1690,7 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
 
   detail::InstData instruction;
   instruction.opcode = Opcode::Binary;
-  instruction.payload = BinaryNode{spec.opcode, spec.type};
+  instruction.payload = BinaryNode{spec.opcode, spec.type, spec.direct_scalar_lhs};
   instruction.operands = {spec.lhs, spec.rhs};
   auto inserted = function_data.insts_.emplace(function_, std::move(instruction));
   if (!inserted)

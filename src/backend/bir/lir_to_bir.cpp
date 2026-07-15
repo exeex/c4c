@@ -2302,11 +2302,15 @@ Result<void, ImportError> validate_function(const LirModule& module,
   if (!function.stack_objects.empty())
     return fail<void>(ImportErrorCode::UnsupportedStackObjects, name, {},
                       "stack objects require the memory family");
-  if (!function.native_body_parameter_definitions.empty()) {
-    if (function.native_body_parameter_definitions.size() != 1)
-      return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
-                        "only one selected direct-pointer body parameter is receivable");
-  }
+  const auto direct_pointer_parameter_count = std::count_if(
+      function.native_body_parameter_definitions.begin(),
+      function.native_body_parameter_definitions.end(), [](const auto& parameter) {
+        return parameter.abi ==
+            codegen::lir::LirNativeBodyParameterAbi::DirectPointer;
+      });
+  if (direct_pointer_parameter_count > 1)
+    return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
+                      "only one selected direct-pointer body parameter is receivable");
   const LirMemcpyOp* overflow_memcpy = nullptr;
   const codegen::lir::LirAmd64SysVOverflowAggregateCarrier* overflow_carrier = nullptr;
   for (const auto& block : function.blocks) for (const auto& instruction : block.insts) {
@@ -2469,7 +2473,13 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_map<std::string, Type> ordinary_values;
   std::unordered_map<std::uint32_t, Type> source_values;
   for (const auto& parameter : function.native_body_parameter_definitions) {
-    if (!source_values.emplace(parameter.value.value, Type{TypeKind::Pointer}).second)
+    // Direct-scalar rows are producer bookkeeping until the one supported
+    // scalar-LHS authority selects one.  Do not make an unselected row a
+    // generic SSA definition: that would accidentally admit its consumers.
+    if (parameter.abi != codegen::lir::LirNativeBodyParameterAbi::DirectPointer)
+      continue;
+    const auto type = lower_lir_type(module, parameter.type);
+    if (!type || !source_values.emplace(parameter.value.value, *type).second)
       return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
                         "body parameter identity collided in the current-function source registry");
   }
@@ -2527,6 +2537,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_set<std::uint32_t> normalized_i32_add_results;
   std::unordered_set<std::uint32_t> scalar_sext_results;
   std::size_t selected_body_parameter_gep_count = 0;
+  std::size_t selected_scalar_body_parameter_lhs_count = 0;
   labels.reserve(function.blocks.size());
   block_ids.reserve(function.blocks.size());
   block_labels_by_id.reserve(function.blocks.size());
@@ -2955,7 +2966,9 @@ Result<void, ImportError> validate_function(const LirModule& module,
             ? std::find_if(function.native_body_parameter_definitions.begin(),
                            function.native_body_parameter_definitions.end(),
                            [&](const auto& parameter) {
-                             return parameter.value == *parameter_base;
+                             return parameter.value == *parameter_base &&
+                                 parameter.abi ==
+                                     codegen::lir::LirNativeBodyParameterAbi::DirectPointer;
                            })
             : function.native_body_parameter_definitions.end();
         if (selected_parameter != function.native_body_parameter_definitions.end()) {
@@ -3119,6 +3132,40 @@ Result<void, ImportError> validate_function(const LirModule& module,
         continue;
       }
       if (const auto* bin = std::get_if<LirBinOp>(&instruction)) {
+        const auto* scalar_authority = bin->scalar_lhs_parameter_authority
+            ? &*bin->scalar_lhs_parameter_authority : nullptr;
+        const auto scalar_definition = scalar_authority
+            ? std::find_if(function.native_body_parameter_definitions.begin(),
+                           function.native_body_parameter_definitions.end(), [&](const auto& definition) {
+                return definition.value == scalar_authority->value &&
+                    definition.parameter_index == scalar_authority->parameter_index &&
+                    definition.type == scalar_authority->type && definition.owner == scalar_authority->owner &&
+                    definition.abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar;
+              }) : function.native_body_parameter_definitions.end();
+        const auto scalar_definition_count = scalar_authority
+            ? std::count_if(function.native_body_parameter_definitions.begin(),
+                            function.native_body_parameter_definitions.end(), [&](const auto& definition) {
+                return definition.value == scalar_authority->value &&
+                    definition.parameter_index == scalar_authority->parameter_index &&
+                    definition.type == scalar_authority->type && definition.owner == scalar_authority->owner &&
+                    definition.abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar;
+              }) : 0;
+        const bool selected_scalar_lhs = scalar_authority &&
+            scalar_definition != function.native_body_parameter_definitions.end() &&
+            scalar_definition_count == 1 &&
+            scalar_authority->abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar &&
+            scalar_authority->role == codegen::lir::LirScalarBinaryParameterRole::Lhs &&
+            scalar_authority->owner == function.link_name_id &&
+            scalar_authority->parameter_index < function.signature_param_type_refs.size() &&
+            function.signature_param_type_refs[scalar_authority->parameter_index] == scalar_authority->type &&
+            bin->lhs.value_id() && *bin->lhs.value_id() == scalar_authority->value &&
+            bin->type_str == scalar_authority->type &&
+            bin->opcode.typed() == std::optional{codegen::lir::LirBinaryOpcode::Add} &&
+            bin->type_str == codegen::lir::LirTypeRef::integer(32) &&
+            bin->rhs.integer_immediate() && bin->rhs.integer_immediate()->value == 1;
+        if (scalar_authority && (!selected_scalar_lhs || ++selected_scalar_body_parameter_lhs_count != 1))
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                            "direct scalar body-parameter binary requires the one exact typed LHS authority row");
         const bool fadd = exact_downstream_double_fadd(
             *bin, source_values, native_floating_call_results);
         const bool fmul = exact_downstream_double_fmul(
@@ -3137,7 +3184,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
             *bin, source_values, scalar_fptoui_results);
         const bool wide_ffs_trunc_add = exact_downstream_i32_fptosi_add(
             *bin, source_values, wide_ffs_trunc_results);
-        const bool add = exact_normalized_i32_add(
+        const bool add = selected_scalar_lhs || exact_normalized_i32_add(
             *bin, source_values, selected_global_i32_load_results) ||
             exact_native_i32_cttz_add(
                 *bin, source_values, native_i32_cttz_results) ||
@@ -3610,10 +3657,12 @@ Result<void, ImportError> validate_function(const LirModule& module,
         block.terminator);
     if (!checked) return checked;
   }
-  if (!function.native_body_parameter_definitions.empty() &&
-      selected_body_parameter_gep_count != 1)
+  if (direct_pointer_parameter_count != 0 && selected_body_parameter_gep_count != 1)
     return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
                       "direct body-parameter authority requires exactly one selected getelementptr receipt");
+  if (selected_body_parameter_gep_count + selected_scalar_body_parameter_lhs_count > 1)
+    return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
+                      "only one selected body-parameter authority receipt is supported");
   return Result<void, ImportError>::success();
 }
 
@@ -3970,9 +4019,40 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
             source_values.emplace(constant.value.value, reserved.value());
           }
 
-          const auto* selected_body_parameter =
-              function.native_body_parameter_definitions.empty()
-                  ? nullptr : &function.native_body_parameter_definitions.front();
+          const auto selected_body_parameter = std::find_if(
+              function.native_body_parameter_definitions.begin(),
+              function.native_body_parameter_definitions.end(), [](const auto& parameter) {
+                return parameter.abi ==
+                    codegen::lir::LirNativeBodyParameterAbi::DirectPointer;
+              });
+          const auto selected_scalar_authority = [&]() {
+            for (const auto& block : function.blocks)
+              for (const auto& instruction : block.insts)
+                if (const auto* bin = std::get_if<LirBinOp>(&instruction);
+                    bin && bin->scalar_lhs_parameter_authority)
+                  return &*bin->scalar_lhs_parameter_authority;
+            return static_cast<const codegen::lir::LirScalarBinaryLhsParameterAuthority*>(nullptr);
+          }();
+          const auto selected_scalar_body_parameter = selected_scalar_authority
+              ? std::find_if(function.native_body_parameter_definitions.begin(),
+                             function.native_body_parameter_definitions.end(),
+                             [&](const auto& parameter) {
+                               return parameter.value == selected_scalar_authority->value &&
+                                   parameter.parameter_index == selected_scalar_authority->parameter_index &&
+                                   parameter.type == selected_scalar_authority->type &&
+                                   parameter.owner == selected_scalar_authority->owner &&
+                                   parameter.abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar;
+                             })
+              : function.native_body_parameter_definitions.end();
+          if (selected_scalar_body_parameter != function.native_body_parameter_definitions.end()) {
+            auto parameter = function_builder.parameter(selected_scalar_body_parameter->parameter_index);
+            if (!parameter || !source_values.emplace(selected_scalar_body_parameter->value.value,
+                                                     parameter.value()).second) {
+              edit_error = ImportError{ImportErrorCode::UnsupportedFunctionParameters, name, {},
+                                       "direct scalar body parameter failed authoritative Raw-BIR receipt"};
+              return Result<void, BuildError>::failure(BuildError::InvalidParameter);
+            }
+          }
 
           for (const LirBlock& block : function.blocks) {
             (void)block;
@@ -4463,7 +4543,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   }
                   continue;
                 }
-                if (selected_body_parameter && gep->ptr.value_id() &&
+                if (selected_body_parameter != function.native_body_parameter_definitions.end() &&
+                    gep->ptr.value_id() &&
                     *gep->ptr.value_id() == selected_body_parameter->value) {
                   const auto owner = imported_link_names.find(selected_body_parameter->owner);
                   if (owner == imported_link_names.end()) {
@@ -4817,6 +4898,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 continue;
               }
               if (const auto* bin = std::get_if<LirBinOp>(&instruction)) {
+                const auto* scalar_authority = bin->scalar_lhs_parameter_authority
+                    ? &*bin->scalar_lhs_parameter_authority : nullptr;
                 const bool fadd = bin->opcode.typed() ==
                     std::optional{codegen::lir::LirBinaryOpcode::FAdd};
                 const bool fmul = bin->opcode.typed() ==
@@ -4916,6 +4999,18 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   }
                   rhs_value = reserved.value();
                 }
+                std::optional<DirectScalarBodyParameterBinaryLhs> direct_scalar_lhs;
+                if (scalar_authority) {
+                  const auto owner = imported_link_names.find(scalar_authority->owner);
+                  if (owner == imported_link_names.end()) {
+                    edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                                             block.label, "validated scalar parameter owner disappeared"};
+                    return Result<void, BuildError>::failure(BuildError::InvalidNameId);
+                  }
+                  direct_scalar_lhs = DirectScalarBodyParameterBinaryLhs{
+                      scalar_authority->value.value, scalar_authority->parameter_index,
+                      Type{TypeKind::Integer, 32, "i32"}, owner->second};
+                }
                 auto appended = function_builder.append(
                     blocks.at(block.id.value),
                     BinarySpec{fadd ? BinaryOpcode::FAdd
@@ -4930,7 +5025,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                     : (sext_add || (add && bin->type_str.integer_bit_width() == 64)) ? Type{TypeKind::Integer, 64, "i64"}
                                                : Type{TypeKind::Integer, 32, "i32"},
                                lhs->second, rhs_value,
-                               bin->result.value_id()->value});
+                               bin->result.value_id()->value, direct_scalar_lhs});
                 if (!appended) {
                   edit_error = builder_failure(name, block.label,
                                                fadd ? "append double FAdd"
