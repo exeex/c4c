@@ -3,27 +3,30 @@
 Status: Active
 Source Idea Path: ideas/open/798_lir_stack_restore_lifetime_consumer_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Define the selected native stack-restore authority contract
+Current Step ID: 2
+Current Step Title: Verify the selected stack-restore authority
 
 ## Just Finished
 
-- Lifecycle switch from 794: Step 1 evidence boundary is complete in
-  `1cbad00d6`; 798 now owns the separate stack-restore
-  producer/schema/verifier blocker.
+- Plan Step 1: published the exact selected `LirStackRestoreOp` native
+  admission, saved-checkpoint binding, and operation-local transition contract
+  in `docs/lir_to_new_bir_remaining_coverage/798_stack_restore_native_authority_contract.md`.
 
 ## Suggested Next
 
-- Execute Plan Step 1: define the one selected `LirStackRestoreOp` native
-  admission and structured lifetime-consumer transition contract.
+- Execute Plan Step 2: implement and verify the selected stack-restore
+  admission and checkpoint-transition contract with focused same-feature
+  positive/negative coverage.
 
 ## Watchouts
 
-- Do not absorb dynamic-VLA count work, VLA GEP, other local/lifetime rows,
+- `local_object_authority.live` remains a checkpoint-binding validity fact;
+  this route has no per-VLA allocation lifetime state and must not invent one.
+  Do not absorb dynamic-VLA count work, VLA GEP, other local/lifetime rows,
   Raw-BIR/importer/734 receipt, or presentation-derived facts.
 
 ## Proof
 
-- For this lifecycle switch: `git diff --check` and structural linkage that
-  plan.md and todo.md name 798, while 794 retains its completed Step 1 and
-  exact return condition.
+- Documentation packet only: `git diff --check` plus structural inspection
+  that the Step 1 note names selected admission, binding, transition, invalid
+  cases, and current-versus-proposed facts; no build or test was required.
