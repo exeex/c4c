@@ -169,3 +169,23 @@ acceptance and the current unaccepted Step 2 repair; complete its required
 fresh build, focused call/frontend/backend checks, and supervisor-accepted
 full baseline before Step 3. Do not repeat Step 1 or claim the narrow focused
 proof as 801 acceptance.
+
+## Resumption Update: accepted 802 selector return
+
+802 accepted its bounded selector verifier repair in `8218993a5`. The repair
+requires a valid structured `selector_type_ref` before comparing its integer
+width to the selector-selected definition; nearby coverage proves matching
+forms and rejection of missing, non-integer, stale-width, and same-width
+incoherent references. Fresh accepted proof was `cmake --build --preset
+default && ctest --test-dir build -j --output-on-failure -R
+'^frontend_lir_call_type_ref$'`, with matching regression-guard
+`test_before.log` / `test_after.log` results.
+
+801 is reactivated at unchanged Step 2, `Repair anonymous layout / structured-call
+compatibility`. Step 1 remains the only accepted 801 progress (`827dae5bd3`).
+The preserved `args.cpp`, `target.cpp`, and `verify.cpp` LirCallOp/InsertValue
+hunks and the related `frontend_hir_tests.cpp` work remain unaccepted and must
+not be modified, credited, or broadened by this return. Complete Step 2's
+direct-complex call-signature/argument-mirror contract and required focused
+call/frontend/backend proof plus supervisor-accepted full baseline before
+Step 3; 802's proof does not satisfy that gate.
