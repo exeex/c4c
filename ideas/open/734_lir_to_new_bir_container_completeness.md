@@ -1559,3 +1559,46 @@ LHS/type/predicate/zero relations. Do not repeat Steps 1 through 7.38,
 receive another parameter row, use `LirCondBr.condition` as direct parameter
 authority, or recover identity from presentation fields. Reapply this source
 completion gate after the one receipt.
+
+## Runbook Exhaustion Decision: post-Step 7.39 DirectScalar truthiness-comparison-LHS receipt
+
+Close rejected. Commit `f7c33237e` receives exactly closed 826's
+`LirCmpOp` truthiness-comparison-LHS DirectScalar parameter tuple into typed
+Raw BIR, retaining the value, owner, index, type, ABI, role, and checked
+integer-`ne`/authoritative-zero-RHS relation. The supervisor accepted a fresh
+`cmake --build --preset default`, exact
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` proof passing
+6/6, and the matching accepted regression guard recorded in `test_after.log`.
+Malformed missing, invalid, duplicate, foreign, owner/index/type/ABI/role,
+and consumer-incoherent authority rejects transactionally.
+
+This bounded receiver row does not satisfy the source completion gate. The
+checked no-omission coverage matrix and its per-row typed
+authority/destination/importer/verifier/proof dispositions remain incomplete;
+lossless verified receipt of every valid current-LIR semantic fact, complete
+explicit dispatcher and neighboring coverage, whole-module transactional
+proof, documentation convergence, and source-wide focused/broader proof are
+still unmet. Valid unreceived families include additional function-body
+parameter uses, memory/VA, aggregate/vector, module/type/global/metadata,
+residual instruction/terminator, and inline-assembly forms. They remain fail
+closed; no receiver may recover authority from text, names, rendered operands,
+signatures, `monostate`, or unclassified values.
+
+Classification: `separate-blocker`. New open idea
+`ideas/open/827_lir_next_body_parameter_authority_handoff.md` owns only the
+trace, publication, verification, and exact one-row handoff for the next valid
+function-body parameter use. It must not edit Raw-BIR/importer code, reopen
+the accepted DirectPointer or DirectScalar GEP/binary-LHS/binary-RHS/
+ReturnValue/switch-selector/truthiness-comparison-LHS receipts, select from
+presentation fields, or absorb another family.
+
+Resumption record: Steps 1 through 7.39 are accepted historical work, most
+recently receiver commit `f7c33237e` with the fresh build, exact backend 6/6,
+and matching accepted guard above. Interrupted point: source completion
+reassessment after Step 7.39; no further 734 receiver row is authorized.
+After 827 closes with one exact structured handoff and accepted focused
+producer proof, reactivate 734 and repair its runbook only for that matching
+typed Raw-BIR receiver row. Do not repeat Step 7.39 or receive another
+parameter, memory/VA, aggregate/vector, module/type/global, instruction/
+terminator, or inline-assembly form without its separately scoped first-owner
+handoff.

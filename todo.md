@@ -1,33 +1,28 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
+Source Idea Path: ideas/open/827_lir_next_body_parameter_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 7.39
-Current Step Title: Receive the 826-authorized DirectScalar truthiness-comparison-LHS parameter authority row
-你該做code review了
+Current Step ID: 1
+Current Step Title: Trace and select one next native parameter-use row
 
 ## Just Finished
 
-- Step 7.39 complete: received exactly one 826-authorized DirectScalar integer
-  truthiness-comparison-LHS parameter into typed Raw BIR, retaining its
-  value/owner/index/type and checked integer-`ne`/zero-RHS relation. Import and
-  foundation verification fail closed for missing, invalid, duplicate, foreign,
-  index/type/ABI/role, LHS/predicate/float/zero-RHS, and second-row violations.
+- Switched from 734 after its accepted Step 7.39 completion-gate decision;
+  no 827 implementation packet has run.
 
 ## Suggested Next
 
-- Return the exhausted Step 7.39 runbook to plan-owner for the source
-  completion-gate decision; do not infer whole-source completion.
+- Trace one bounded native function-body parameter-use candidate and record
+  its structured authority boundary before changing code.
 
 ## Watchouts
 
-- The receiver accepts only the 826 truthiness-comparison LHS; it does not use
-  `LirCondBr.condition`, presentation fields, or another parameter-use row.
+- Do not edit Raw-BIR/importer code or infer authority from presentation
+  fields; all nonselected parameter forms remain fail closed.
 
 ## Proof
 
-- Fresh `cmake --build --preset default` passed. Exact `ctest --test-dir build
-  -j --output-on-failure -R '^backend_'` passed 6/6; output is in
-  `test_after.log`. Canonical baseline/regression decisions remain
-  supervisor-owned.
+- Select the exact focused producer proof after Step 1 establishes the
+  bounded row; 734's accepted `f7c33237e` backend 6/6 proof remains historical
+  receiver evidence only.
