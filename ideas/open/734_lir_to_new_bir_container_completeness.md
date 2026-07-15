@@ -1,7 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (active; resumed at Step 7.28 selected direct local-scalar store
-receipt after closed 790's accepted native authority handoff)
+Status: Open (active; resumed at Step 7.31 selected VLA stack-restore receipt
+after closed 794's accepted native authority handoff)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -1039,10 +1039,31 @@ receiver commits `006d79aaf`, `7dc03f23a`, `2cce9da69`, `eabf7a3b8`,
 
 Exact return point: 793 concluded with its evidence summary, ownership
 classification, and ordered bounded successor queue in
-`docs/lir_to_new_bir_remaining_coverage/successor_queue.md`. The first
-successor is `ideas/open/794_lir_next_local_vla_authority_handoff.md`; do not
-reactivate 734 until 794 has accepted one exact typed local/VLA handoff. Then
-repair the runbook for only that handoff's one receiver row, preserving Steps
-1 through 7.30. The queue deliberately does not preselect stack restore,
-dynamic VLA allocation, VLA GEP, or any other row from unresolved or
-text/monostate classifications.
+`docs/lir_to_new_bir_remaining_coverage/successor_queue.md`. Its first
+successor, now closed 794, accepted one exact typed local/VLA handoff. The
+active runbook now repairs 734 for only that matching receiver row, preserving
+Steps 1 through 7.30. The queue did not preselect stack restore, dynamic VLA
+allocation, VLA GEP, or any other row from unresolved or text/monostate
+classifications; 794's completed selected-only handoff is the sole authority
+for this resumed packet.
+
+## Resumption Record: selected stack-restore authority completion
+
+Closed idea 794 completed the first successor handoff with selected-only
+native `LirStackRestoreOp` authority. Its closed record and the exact receiver
+contract are `ideas/closed/794_lir_next_local_vla_authority_handoff.md` and
+`docs/lir_local_operation_authority/handoff_to_734.md`. Accepted producer
+contract/implementation/handoff commits are `8bd881842`, `cdeacb2cd`, and
+`f5cfa52b7`; 794's final focused verification record is `b2e2e5594`, with
+`^frontend_lir_call_type_ref$` passing 1/1 after a fresh build.
+
+Exact return action: resume only at **Step 7.31 - Receive the selected VLA
+`LirStackRestoreOp` authority**. Receive only the selected admission,
+`saved_ptr`, checked current-function local object/owner/pointer-type/
+pointee-type/live checkpoint binding, and
+`RestoreSavedVlaStackCheckpoint` transition into one typed Raw-BIR receiver
+path with transactional positive/negative coverage. Do not repeat Steps 1
+through 7.30 or absorb dynamic-VLA count/allocation, VLA GEP, other local or
+lifetime rows, Raw-BIR work beyond this one receiver packet, target lowering,
+MIR, or presentation-derived recovery. This resumption record authorizes the
+packet; it does not claim that the receiver work has occurred.

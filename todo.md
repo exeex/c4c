@@ -1,36 +1,34 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/794_lir_next_local_vla_authority_handoff.md
+Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Write the exact 734 handoff and obtain acceptance disposition
+Current Step ID: 7.31
+Current Step Title: Receive the selected VLA LirStackRestoreOp authority
 
 ## Just Finished
 
-- 794 Step 2 confirmed closed 798's selected native `LirStackRestoreOp`
-  authority without a new repair: selected admission, `saved_ptr` binding,
-  current-function object/owner/pointer/pointee/live authority, and the
-  `RestoreSavedVlaStackCheckpoint` transition are emitted and verified.
-  Nearby producer/verifier proof covers the valid selected restore and
-  malformed, foreign, type-incoherent, non-live, unbound, and
-  transition-invalid rejection forms.
+- Closed 794 completed the one selected `LirStackRestoreOp` producer handoff.
+  Steps 1 through 7.30 remain accepted historical 734 receiver work and must
+  not be repeated. The exact native authority contract is in
+  `docs/lir_local_operation_authority/handoff_to_734.md`.
 
 ## Suggested Next
 
-- Execute 794 Step 3 only: write the exact handoff and obtain the required
-  acceptance disposition for this one selected stack-restore row.
+- Execute Step 7.31 only: receive closed 794's documented native stack-restore
+  authority into the minimum typed Raw-BIR receiver path.
 
 ## Watchouts
 
-- The handoff remains to 794, not a 734 receipt. `local_object_authority.live`
-  is checkpoint-binding validity, not a per-VLA allocation lifetime state;
-  retain the boundary against dynamic-VLA count, VLA GEP, other local/lifetime
-  rows, Raw-BIR/importer/734 receipt, and presentation-derived facts.
+- `local_object_authority.live` is checkpoint-binding validity, not a
+  per-VLA allocation lifetime state. Consume only selected admission,
+  `saved_ptr`, matching local authority, and the selected restore transition.
+  Do not derive facts from presentation or absorb dynamic-VLA count/allocation,
+  VLA GEP, other local/lifetime rows, or any later family.
 
 ## Proof
 
-- Fresh Step 2 verification: `cmake --build --preset default && ctest
-  --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
-  passed 1/1. The delegated packet prohibited canonical root-log changes, so
-  the existing `test_after.log` remains owned by supervisor baseline policy.
+- Producer acceptance carried from closed 794: `cmake --build --preset default
+  && ctest --test-dir build -j --output-on-failure -R
+  '^frontend_lir_call_type_ref$'` passed 1/1. Before receiver implementation,
+  run fresh build and focused receiver proof; supervisor selects broader proof.

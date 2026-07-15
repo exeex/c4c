@@ -136,3 +136,46 @@ it passed with the focused guard non-decreasing at **1/1**.
 native stack-restore authority, or complete its own handoff process.  This
 does not authorize Raw-BIR/importer/734 receipt, dynamic-VLA count work, VLA
 GEP, or any other local/VLA row.
+
+## 794 handoff to 734: selected VLA stack restore only
+
+This is the one receiver-ready handoff from **794** to **734**. It authorizes
+exactly the selected `LirStackRestoreOp` emitted for the backward-VLA-goto
+route; it is not a Raw-BIR/importer implementation or a 734 receipt. Selection
+is native and explicit: `requires_native_stack_restore_authority == true`.
+No local name, rendered operand, LLVM text, testcase identity, `monostate`, or
+unresolved classification may select or supplement this row.
+
+| Native field | Receiver guarantee |
+| --- | --- |
+| `requires_native_stack_restore_authority` | Must be true; this is the sole selected-row admission. |
+| `saved_ptr` | A valid current-function SSA saved-pointer `LirValueId`. |
+| `local_object_authority.pointer_definition` | Equal to `saved_ptr`, and a modeled current-function pointer definition. |
+| `local_object_authority.object` / `owner` | A valid current-function object and its unique matching current-function owner. |
+| `local_object_authority.pointer_type` / `pointee_type` / `live` | Native `ptr` / `ptr` facts and a live saved-checkpoint binding. `live` is binding validity, not a per-dynamic-VLA allocation lifetime state. |
+| `lifetime_transition` | Present for this selected row only; kind is `RestoreSavedVlaStackCheckpoint`, and `saved_pointer_definition` equals both `saved_ptr` and `local_object_authority.pointer_definition`. |
+
+734 may consume these fields transactionally for one typed stack-restore
+destination, importer dispatch, reachable verification, and nearby
+positive/negative receiver coverage. The producer verifier rejects absent or
+unselected admission; non-SSA, invalid, unbound, or mismatched saved pointers;
+invalid object; foreign or non-unique owner; non-pointer pointer/pointee types;
+non-live authority; and missing, invalid-kind, or definition-mismatched
+transitions. Each such form remains fail closed before downstream use.
+
+Everything outside that one row remains excluded: dynamic-VLA count/allocation,
+VLA GEP, any other stack save or restore, local load/store/GEP, local
+temporaries, other lifetime consumers, Raw-BIR work beyond the one future 734
+packet, target lowering, MIR, and presentation-derived recovery.
+
+### Accepted producer proof and exact receiver return
+
+The producer contract, implementation, and original return handoff are
+`8bd881842`, `cdeacb2cd`, and `f5cfa52b7`. 794 preserved that selected-only
+contract through its completed Step 2 (`b2e2e5594`), with fresh focused proof:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
+
+The command passed 1/1. Resume 734 only at **Step 7.31 - Receive the selected
+VLA `LirStackRestoreOp` authority**. Do not treat this handoff as evidence that
+734 has received, verified, lowered, or otherwise implemented the row.

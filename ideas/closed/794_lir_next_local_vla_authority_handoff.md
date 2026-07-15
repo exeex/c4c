@@ -75,3 +75,27 @@ accepted contract, implementation, and handoff commits are `8bd881842`,
 `cdeacb2cd`, and `f5cfa52b7`. Resume now at Step 2 only, preserving accepted
 Step 1 evidence `1cbad00d6`; the selected row remains `LirStackRestoreOp` and
 the original no-expansion boundary remains in force.
+
+## Closure Record
+
+Disposition: capability complete. 794 completed its selected-only authority
+process: accepted Step 1 evidence remains `1cbad00d6`; selected producer
+authority came only from closed 798's `8bd881842`, `cdeacb2cd`, and
+`f5cfa52b7`; and Step 2 preserved and freshly verified that exact contract in
+`b2e2e5594`. The fresh focused command
+`cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1.
+
+The one exact receiver-ready handoff is
+`docs/lir_local_operation_authority/handoff_to_734.md`: selected
+`LirStackRestoreOp`, native selected admission, `saved_ptr`, current-function
+object/owner/pointer-type/pointee-type/live checkpoint binding, and
+`RestoreSavedVlaStackCheckpoint` transition, plus malformed/foreign/type-
+incoherent/non-live/unbound/transition-invalid rejection forms. It does not
+claim a 734 receipt.
+
+Successor disposition: resume
+`ideas/open/734_lir_to_new_bir_container_completeness.md` at **Step 7.31 -
+Receive the selected VLA `LirStackRestoreOp` authority** for exactly one
+matching receiver packet. All other local/VLA rows remain fail closed and
+outside this closed idea.
