@@ -1009,3 +1009,35 @@ runbook for only that receiver row: add the minimum typed Raw-BIR destination,
 importer dispatch, reachable verification, and transactional positive/negative
 coverage. Do not absorb any other local/VLA or later family without a separate
 producer-authorized handoff.
+
+## Runbook Exhaustion Decision: post-Step 7.30 VLA stack-save receipt
+
+Close rejected. Commit `2323afb91` receives exactly closed 792's selected VLA
+`LirStackSaveOp` saved-stack-pointer authority into a typed Raw-BIR node,
+transactional importer dispatch, reachable verifier, and nearby backend
+coverage. Supervisor acceptance is a fresh build, `^backend_` proof 5/5, and
+a matching non-decreasing canonical regression guard 5/5 to 5/5. Closed 792's
+producer handoff is `900a42bfd` and `89f4d7f85`; its closure is `ecccb195f`.
+
+This bounded row does not satisfy the source completion gate. The no-omission
+checked coverage matrix and per-row authority/destination/importer/verifier/
+proof dispositions remain incomplete; lossless verified receipt of every
+valid current-LIR semantic fact, a complete explicit dispatcher, and final
+whole-module transactional, documentation-convergence, focused, and broader
+proof remain unproven. Remaining local/VLA (stack restore, dynamic VLA
+allocation, VLA GEP, nonselected operations, and local temporaries), memory/
+va-list, aggregate/vector, body-parameter, module/type/global/metadata,
+instruction/terminator, and inline-assembly families remain fail closed.
+
+Classification: `separate-blocker`. The already-open umbrella
+`ideas/open/793_lir_to_new_bir_remaining_coverage_umbrella.md` is the next
+executable route. It owns post-Step 7.30 evidence classification and an
+ordered, first-owner successor queue; it must not implement Raw-BIR or LIR
+changes. This source is paused after accepted Steps 1 through 7.30, including
+receiver commits `006d79aaf`, `7dc03f23a`, `2cce9da69`, `eabf7a3b8`,
+`f5cda70ee`, `4ab2deb7e`, and `2323afb91`.
+
+Exact return point: after 793 closes with its evidence summary, ownership
+classification, and ordered bounded successor ideas, reactivate 734 only for
+the first successor's exact typed handoff. Repair the runbook for one
+handed-off receiver row and preserve Steps 1 through 7.30.

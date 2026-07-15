@@ -1,30 +1,26 @@
 # Current Packet
 
-Status: Awaiting Acceptance
-Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
+Status: Active
+Source Idea Path: ideas/open/793_lir_to_new_bir_remaining_coverage_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: 7.30
-Current Step Title: Receive the selected VLA LirStackSaveOp authority
+Current Step ID: 1
+Current Step Title: Establish the post-Step 7.30 evidence baseline
 
 ## Just Finished
 
-- Step 7.30 received closed 792's one selected VLA `LirStackSaveOp` into a
-  typed Raw-BIR stack-save authority node, transactional importer dispatch,
-  reachable verifier, and positive/negative nearby backend coverage.
+- 734 Step 7.30 is accepted in `2323afb91`: one VLA stack-save receiver row,
+  fresh build, `^backend_` 5/5, and matching non-decreasing 5/5-to-5/5 proof.
 
 ## Suggested Next
 
-- Supervisor acceptance and commit decision for the bounded Step 7.30 slice.
+- Execute plan Step 1 without implementation changes.
 
 ## Watchouts
 
-- Presentation is nonsemantic. Consume only the native result, pointer
-  definition, object/owner, pointer-type/pointee-type, and liveness fields.
-- Stack restore and dynamic VLA allocation remain unreceived; validation
-  rejects nonselected or second selected saves before publication.
+- Closed 792 authorizes only the already received VLA stack save, not stack
+  restore, dynamic VLA allocation, VLA GEP, or broad local conversion.
 
 ## Proof
 
-- Passed: `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^backend_' > test_after.log` (5/5 backend tests).
-  Proof log: `test_after.log`.
+- Structural lifecycle check: plan and todo name the same active 793 source;
+  no new code proof belongs to this umbrella step.

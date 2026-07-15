@@ -1,6 +1,6 @@
 # LIR-To-New-BIR Remaining Coverage Umbrella
 
-Status: Draft
+Status: Open (active after 734 Step 7.30 exhaustion)
 Type: Umbrella triage and follow-up idea generator
 Parent: `ideas/open/734_lir_to_new_bir_container_completeness.md`
 Handoff Directory: `docs/lir_to_new_bir_remaining_coverage/`
@@ -35,25 +35,25 @@ is tempting.
 
 ## Current Evidence
 
-- `ideas/open/734_lir_to_new_bir_container_completeness.md` is the parent
-  source. Its post-Step 7.29 exhaustion records accepted receiver work through
-  commit `4ab2deb7e` for the selected direct static-local-array `LirGepOp`,
-  then rejects closure because the no-omission matrix, every-row typed
-  receiver dispositions, complete explicit dispatcher, whole-module
-  transactional proof, and documentation convergence remain unmet.
-- `ideas/open/792_lir_next_local_operation_receiver_handoff.md` is the active
-  local-operation producer handoff route. It owns exactly one next local row
-  after the accepted local-array GEP and explicitly excludes Raw-BIR/importer
-  receiver work, target lowering, broad local conversion, and later families.
+- `ideas/open/734_lir_to_new_bir_container_completeness.md` is the paused
+  parent source. Its post-Step 7.30 exhaustion records accepted receiver work
+  through `2323afb91` for closed 792's selected VLA `LirStackSaveOp`, then
+  rejects closure because the no-omission matrix, every-row typed receiver
+  dispositions, complete dispatcher, whole-module proof, and documentation
+  convergence remain unmet.
+- Closed 792 selected and published that one VLA stack-save authority in
+  `900a42bfd` and `89f4d7f85`; its lifecycle closure is `ecccb195f`. It does
+  not authorize stack restore, dynamic VLA allocation, VLA GEP, or broad local
+  conversion.
 - `docs/lir_local_operation_authority/handoff_to_734.md` currently records
   the 792-selected VLA `LirStackSaveOp` row as a saved-stack-pointer result
   with native current-function `LirValueId`, local object, owner, pointer type,
   pointee type, and liveness authority. It explicitly rejects stack restore,
   dynamic VLA allocation, VLA GEP, nonselected local rows, and presentation
   recovery.
-- `todo.md` for active 792 records Step 2 as having published and verified the
-  selected VLA `LirStackSaveOp` authority, with Step 3 remaining to record the
-  bounded 734 handoff and producer proof.
+- Accepted 734 Step 7.30 evidence is a fresh build plus `^backend_` 5/5 and a
+  matching non-decreasing 5/5-to-5/5 canonical guard. This post-792/post-7.30
+  evidence supersedes the draft's older active-792 snapshot.
 - Type/model prerequisites are likely related but separately owned:
   `ideas/open/763_lir_composite_type_ref_model.md` provides the composite
   `LirTypeRef` carrier, `ideas/open/761_lir_call_signature_type_mirror_convergence.md`

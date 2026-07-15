@@ -1,64 +1,58 @@
-# LIR-To-New-BIR VLA Stack-Save Receiver Runbook
+# LIR-To-New-BIR Remaining Coverage Umbrella Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Resumed from: closed 792 VLA `LirStackSaveOp` authority handoff.
+Source Idea: ideas/open/793_lir_to_new_bir_remaining_coverage_umbrella.md
+Activated from: exhausted 734 Step 7.30 receiver runbook.
 
 ## Purpose
 
-Receive exactly closed 792's selected VLA stack-save saved-stack-pointer row
-in typed Raw-BIR without repeating accepted alloca, load, store, or local-array
-GEP receipts.
+Classify the post-Step 7.30 remaining coverage space before selecting the next
+bounded owner; direct receiver work would invent ordering and scope.
 
 ## Core Rule
 
-Use only the native fields in
-`docs/lir_local_operation_authority/handoff_to_734.md`. Local spelling,
-formatted operands, printer output, LLVM text, and testcase identity are never
-semantic input.
+Use current structured evidence and first-owner analysis. Do not implement
+code, and do not derive semantic authority from presentation text.
 
-## Historical Progress
+## Read First
 
-Steps 1 through 7.29 are accepted, including receiver commits `006d79aaf`,
-`7dc03f23a`, `2cce9da69`, `eabf7a3b8`, `f5cda70ee`, and `4ab2deb7e`.
-Closed 792 published this exact stack-save authority in `900a42bfd` and
-`89f4d7f85`; do not redo producer work.
-
-## Current Scope
-
-- receive exactly one selected VLA `LirStackSaveOp` saved-stack-pointer result
-  with native valid current-function result, pointer definition, object/owner,
-  pointer-type/pointee-type, and liveness authority;
-- add the minimum target-independent Raw-BIR saved-stack-pointer destination,
-  importer dispatch, reachable verifier, and transactional positive/negative
-  coverage;
-- require selected row admission and complete native authority coherence before
-  publication, rejecting malformed rows transactionally.
+- `ideas/open/793_lir_to_new_bir_remaining_coverage_umbrella.md`
+- `ideas/open/734_lir_to_new_bir_container_completeness.md`
+- `docs/lir_local_operation_authority/handoff_to_734.md`
+- `ideas/open/761_lir_call_signature_type_mirror_convergence.md`
+- `ideas/open/762_lir_module_declaration_type_shadow_convergence.md`
+- `ideas/open/763_lir_composite_type_ref_model.md`
 
 ## Non-Goals
 
-- `LirStackRestoreOp`, dynamic VLA allocation, any second stack save, local
-  load/store/GEP, named/local-temporary, or any other local row;
-- memory/va, aggregate/vector, body parameters, module/type/global/metadata,
-  CFG/PHI, target lowering, MIR, emission, and every later family;
-- presentation-derived recovery or repeating accepted producer work.
+- Raw-BIR, importer, verifier, LIR producer/schema, test, expectation,
+  lowering, MIR, or emission changes;
+- treating closed 792's stack save as authority for another local/VLA row;
+- one catch-all implementation successor.
 
 ## Ordered Steps
 
-### Step 7.30 - Receive the selected VLA LirStackSaveOp authority
+### Step 1 - Establish the post-Step 7.30 evidence baseline
 
-Goal: transactionally import closed 792's one saved-stack-pointer result into
-a typed Raw-BIR destination.
+Goal: create a current evidence summary under
+`docs/lir_to_new_bir_remaining_coverage/` that distinguishes accepted 734 work
+from remaining fail-closed rows.
 
-Actions:
+Completion check: the handoff directory has a post-792/post-7.30 baseline with
+no stale active-792 claim.
 
-- map only the native result, pointer definition, object/owner,
-  pointer-type/pointee-type, and liveness facts;
-- validate selected-save admission and every producer contract field before
-  publication, rejecting malformed or nonselected rows transactionally;
-- add nearby positive and negative receiver coverage, then run a fresh build
-  and narrow proof before supervisor-selected broader acceptance proof.
+### Step 2 - Classify remaining families by first owner
 
-Completion check: exactly the selected VLA stack-save result imports and
-verifies without presentation recovery; stack restore, dynamic VLA allocation,
-and all excluded local and later families remain fail closed.
+Goal: produce a matrix separating producer authority, Raw-BIR receiver,
+type-model, dispatcher/proof, and documentation ownership.
+
+Completion check: every remaining family has a first-owner classification or
+explicit evidence gap, with dependency order.
+
+### Step 3 - Generate the bounded successor queue and close the umbrella
+
+Goal: create ordered single-owner follow-up ideas and record the exact 734
+return path.
+
+Completion check: docs and open ideas agree on first owners, order, and the
+future one-row 734 handoff route.
