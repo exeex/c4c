@@ -1,40 +1,29 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/775_lir_phi_producer_helper_result_identity.md
+Source Idea Path: ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Reassess the bounded producer handoff and source disposition
+Current Step ID: 1
+Current Step Title: Publish and verify typed PHI incoming authority
 
 ## Just Finished
 
-- Plan Step 2 added focused structural coverage for the selected scalar
-  ternary `then`-arm narrowing `LirCastOp`, locating its block through the
-  conditional branch's native true-successor ID and proving a valid native
-  result authority. The existing verifier rejects missing, invalid,
-  same-function duplicate, and foreign result authority. Raw PHI carriers and
-  the later consumer remain explicitly raw, outside this route.
+- Closed 775 capability-complete for native ternary, logical-RHS, and vaarg
+  helper-producer result authority, and activated 751 at its preserved Step 1.
 
 ## Suggested Next
 
-- Execute Plan Step 3's bounded reassessment. It must determine whether the
-  accepted producer facts support 775's handoff without treating raw PHI
-  carriers as native authority; do not infer source completion from the
-  exhausted then-arm steps.
+- Begin Plan Step 1 using the closed 775 producer-field handoff; retain the
+  work at the `LirPhiOp` carrier and verifier seam.
 
 ## Watchouts
 
-- The accepted selected else-arm, logical-RHS, and vaarg facts are retained.
-  Do not widen to another expression family, generic expression APIs, PHI/751,
-  Raw-BIR, or backend work.
-- The structural selector follows native block IDs only; do not replace it
-  with labels, instruction order, rendered text, or testcase-shaped matching.
-- The raw ternary/logical PHI result and incoming carriers plus later consumers
-  remain excluded. Any route that changes them belongs to 751, not this step.
+- Do not recover identity from `%t` names, labels, rendered LLVM, instruction
+  order, or testcase text.
+- Do not reopen generic helper result publication or extend into Raw-BIR,
+  backend, target lowering, MIR, or emission.
 
 ## Proof
 
-- Passed `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log`.
-  The focused `frontend_lir_call_type_ref` subset passed after the selected
-  then-arm structural and malformed-authority coverage. Log: `test_after.log`.
+- See Plan Step 1 completion check. Supervisor selects canonical regression
+  logs and broader acceptance proof.

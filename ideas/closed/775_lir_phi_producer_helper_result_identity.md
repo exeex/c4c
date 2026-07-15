@@ -180,18 +180,26 @@ remaining criterion that all named helper results structurally reach the
 eventual PHI input seam: the raw ternary/logical PHI result and incoming
 carriers and later consumers remain explicitly unresolved and outside 775.
 
-Disposition: **close rejected — repair-current-route**. The active repaired
-runbook must perform only a bounded reassessment/handoff decision: either
-identify evidence that the existing native producer fields meet the source's
-producer-side handoff criterion without crossing the raw PHI boundary, or
-record the exact remaining criterion and route it to the owner that may change
-the PHI carrier. No generic `emit_rval_*`/`coerce` migration, `LirPhiOp`
-representation/verifier work, Raw-BIR, backend, or 751 implementation is
-authorized by this repair.
+Disposition after Plan Step 3: **capability complete — close accepted**. The
+accepted 777 vaarg, 778 logical-RHS, 781 selected ternary-else, and
+`a67fc07bd`/`b03baa3a6` selected ternary-then facts collectively satisfy
+775's bounded producer-side handoff: each named helper producer now publishes
+a valid native current-function result ID before display spelling, with focused
+structural and fail-closed proof. This is the furthest producer-side result
+that can be established without crossing the raw PHI receiver boundary.
 
-Exact return point: resume at Plan Step 3, `Reassess the bounded producer
-handoff and source disposition`, using commits `a67fc07bd` and `b03baa3a6`,
-the accepted 781 selected-else handoff, and closed 777/778 handoffs. If the
-remaining criterion requires raw PHI result/incoming authority, create or
-activate a separately scoped PHI-carrier successor and preserve 775's producer
-facts; do not represent that consumer work as completed 775 scope.
+Exact downstream handoff: `LirVaArgOp.result`, the selected logical RHS
+`LirCastOp.result`, and both selected ternary-arm `LirCastOp.result` fields are
+the native authoritative producer values for the existing raw PHI creation
+sites. Their individual proofs are closed 777, closed 778, closed 781, and
+the focused 1/1 proof/guard for `a67fc07bd` and `b03baa3a6`. 751 resumes at
+its recorded Step 1 to replace or augment the raw `LirPhiOp` incoming pairs,
+wire these producer IDs through its typed carrier, and verify value/predecessor
+authority. Raw PHI result/incoming carriers and later consumers remain 751
+scope; this closure makes no claim that they are already authoritative.
+
+Closure record: archive 775 as capability-complete for native helper-producer
+result publication only. The named open successor is
+`ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md`; activate
+it at its preserved Step 1 rather than expanding 775 into PHI carrier,
+verifier, Raw-BIR, backend, or generic expression-API work.
