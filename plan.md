@@ -1,77 +1,63 @@
-# Frontend LIR Manual Switch Modelled-Result Authority Runbook
+# LIR DirectScalar Body-Parameter Producer/Verifier Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/821_frontend_lir_manual_switch_modelled_result_authority.md
-Switched from: 820 Step 3 (DirectScalar boundary checkpoint remains pending)
+Source Idea: ideas/open/820_lir_directscalar_parameter_producer_verifier_publication.md
+Resumed from: Ideas 821 and 822 focused frontend proof boundary
 
 ## Purpose
 
-Remove the independent manual-switch fixture failure that prevents Idea 820's
-Step 3 frontend proof from reaching its DirectScalar coverage.
+Complete the remaining DirectScalar boundary proof for the accepted typed
+`ull` authority publication, then record only the selected 734 handoff.
+
+## Historical Progress
+
+Step 1 trace was accepted in `35cff0993`. Step 2 typed DirectScalar
+publication and focused fail-closed coverage were accepted in `4bcc7c8ff`.
+Resume at Step 3; do not repeat or broaden those steps.
 
 ## Core Rule
 
-Repair only the selected manual `LirSwitch` fixture/modelled-result authority
-seam. Preserve the existing fail-closed current-function integer selector
-contract and do not broaden switch, DirectScalar, or Raw-BIR behavior.
+Publish and verify only structured native current-function DirectScalar
+identity and type. Do not derive authority from presentation fields, change
+Raw-BIR, or admit generic scalar parameter receipt.
 
 ## Read First
 
-- `ideas/open/821_frontend_lir_manual_switch_modelled_result_authority.md`
 - `ideas/open/820_lir_directscalar_parameter_producer_verifier_publication.md`
-- the `frontend_lir_call_type_ref` manual switch fixture and the
-  `LirSwitch.selector` verifier branch
+- `ideas/open/821_frontend_lir_manual_switch_modelled_result_authority.md`
+- `ideas/open/822_lowering_produced_lir_switch_selector_authority.md`
+- `src/codegen/lir/verify.cpp` and the existing `ull` native DirectScalar
+  producer path
 
 ## Non-Goals
 
-- DirectScalar producer/verifier publication, Raw-BIR/importer work, generic
-  switch support, or unrelated fixture repair.
+- Accepting or modifying either pending Idea 821 manual-fixture patch or Idea
+  822 lowering-selector patch.
+- Raw-BIR/importer work, generic scalar parameters, other ABI forms, generic
+  switch redesign, or broader DirectScalar authority redesign.
 
 ## Ordered Steps
 
-### Step 1 - Trace the manual switch authority seam
+### Step 3 - Prove the boundary and record the 734 handoff
 
-Goal: identify the fixture's intended current-function integer value definition
-and the exact structured modelled-result field the selector verifier requires.
-
-Actions:
-
-- inspect the manually constructed switch fixture and its value-definition
-  registration;
-- confirm the failure is representational rather than a generic switch feature
-  gap;
-- stop and request a separate blocker if the smallest correction requires
-  DirectScalar, Raw-BIR, or a generic switch redesign.
-
-Completion check: one local fixture/modelled-result authority seam is named
-without text-derived identity or a verifier relaxation.
-
-### Step 2 - Correct and test the selected authority
-
-Goal: publish the required structured selector authority while preserving
-fail-closed malformed cases.
+Goal: demonstrate that the existing DirectScalar verifier failure no longer
+blocks the external route, then return only the selected receiver authority to
+Idea 734.
 
 Actions:
 
-- implement the minimal selected fixture/modelled-result correction;
-- add nearby positive and missing, foreign, or type-incoherent authority
-  coverage appropriate to the existing test surface;
-- keep all unrelated switch and value-authority routes untouched.
-
-Completion check: the selected fixture verifies and malformed selector
-authority rejects under the existing contract.
-
-### Step 3 - Prove the blocker and return to 820
-
-Goal: establish that the frontend test no longer stops at the selector failure
-and preserve the exact parent return point.
-
-Actions:
-
-- run a fresh build and focused `^frontend_lir_call_type_ref$` proof;
+- preserve the unaccepted Idea 821 and 822 shared-worktree patches while
+  diagnosing and repairing only the remaining DirectScalar route;
+- run a fresh build and focused producer/verifier proof;
+- run `ctest --test-dir build --output-on-failure -R
+  '^llvm_gcc_c_torture_src_20041011_1_c$'`;
 - run the supervisor-selected matching regression/broader proof;
-- record that 820 resumes unchanged at Step 3 to rerun its own broader
-  checkpoint and record only the selected 734 `LirBinOp.lhs` handoff.
+- record that 734 resumes solely at Step 7.35 with its selected
+  `LirBinOp.lhs` row, only after the checkpoint succeeds.
 
-Completion check: the focused test passes beyond the former selector abort and
-the durable return record does not claim 820 Step 3 acceptance.
+Completion check: the external test no longer stops at the named pre-import
+DirectScalar verifier failure under accepted prerequisites, the selected
+broader proof is executable and accepted, and the handoff grants no generic
+scalar authorization. A composite-only pass that depends on unaccepted Ideas
+821/822 selector work or unaccepted 734 receiver work is diagnosis only; a
+backend command with missing registered executables is not broader proof.

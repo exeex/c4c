@@ -105,3 +105,30 @@ Raw-BIR importer defect.
   exact before/after regression guard accepted with `4bcc7c8ff`; the current
   `frontend_lir_call_type_ref` failure is diagnosis only and is not acceptance
   proof for Step 3.
+
+## Runbook Repair Decision: Step 3 composite-proof boundary
+
+Close and handoff are rejected. Step 3 remains incomplete despite a fresh
+`cmake --build --preset default --clean-first` and a passing exact
+`^llvm_gcc_c_torture_src_20041011_1_c$` CTest in the protected composite
+worktree. The narrow `backend_lir_selected_pointer_authority` proof passed
+before that clean build. Those results are causal evidence that the former
+DirectScalar boundary is passed in the composite, but they are not acceptance
+evidence for this source: the external pass depends on unaccepted out-of-scope
+Ideas 821/822 selector patches and unaccepted 734 Step 7.35-shaped Raw-BIR
+receiver work.
+
+The attempted broader `^backend_` CTest cannot repair that gap: after the
+clean build, six registered executables are missing, making that command
+infrastructure-invalid rather than a semantic pass or fail. The frontend
+focused test remains red at the existing DirectScalar authority abort; its
+strict-count comparison is non-accepting diagnostic evidence.
+
+Classification: `repair-current-route`. Keep this idea active at unchanged
+Step 3, preserve every pending shared-worktree patch, and select an executable
+matching checkpoint whose result is attributable to accepted prerequisites and
+the accepted `4bcc7c8ff` DirectScalar work. Only after that accepted checkpoint
+may this source record the narrow 734 handoff. The exact return point is Step
+3, *Prove the boundary and record the 734 handoff*; do not activate or accept
+734 Step 7.35 from the current composite evidence, and grant no generic scalar
+authorization.
