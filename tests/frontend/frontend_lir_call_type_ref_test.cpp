@@ -4410,6 +4410,93 @@ int switch_selector_native(int selector) {
   }, "duplicate native switch selector parameter definition must fail closed");
 }
 
+void test_native_direct_scalar_truthiness_comparison_lhs_authority() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int truthiness_comparison_helper(int value) { return value; }
+int truthiness_comparison_native(int value) {
+  if (value) return 11;
+  return 22;
+}
+)c", "x86_64-linux-gnu");
+  const auto require_comparison = [](lir::LirModule& module) -> lir::LirCmpOp& {
+    lir::LirFunction& function = require_function(module, "truthiness_comparison_native");
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* comparison = std::get_if<lir::LirCmpOp>(&inst);
+            comparison && !comparison->is_float &&
+            comparison->predicate.typed() == lir::LirCmpPredicate::Ne &&
+            comparison->rhs.integer_immediate() &&
+            comparison->rhs.integer_immediate()->value == 0) {
+          return *comparison;
+        }
+      }
+    }
+    fail("native truthiness fixture should contain the selected comparison");
+  };
+  const auto require_function_authority = [](lir::LirModule& module)
+      -> lir::LirFunction& { return require_function(module, "truthiness_comparison_native"); };
+
+  lir::LirCmpOp& comparison = require_comparison(lowered);
+  expect_true(comparison.truthiness_lhs_parameter_authority.has_value(),
+              "native direct-scalar truthiness comparison should publish parameter authority");
+  const auto& authority = *comparison.truthiness_lhs_parameter_authority;
+  expect_true(comparison.lhs.value_id() && authority.value == *comparison.lhs.value_id() &&
+                  authority.type == comparison.type_str &&
+                  authority.abi == lir::LirNativeBodyParameterAbi::DirectScalar &&
+                  authority.role ==
+                      lir::LirTruthinessComparisonLhsParameterRole::TruthinessComparisonLhs &&
+                  comparison.predicate.typed() == lir::LirCmpPredicate::Ne &&
+                  comparison.rhs.integer_immediate() &&
+                  comparison.rhs.integer_immediate()->value == 0,
+              "truthiness authority should bind the exact integer LHS, type, role, ne predicate, and zero RHS");
+  lir::verify_module(lowered);
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    lir::LirModule malformed = lowered;
+    mutate(malformed, require_comparison(malformed), require_function_authority(malformed));
+    expect_identity_verification_rejected(malformed, message);
+  };
+  rejected([](auto&, auto& candidate, auto&) {
+    candidate.truthiness_lhs_parameter_authority.reset();
+  }, "native truthiness comparison without parameter authority must fail closed");
+  rejected([](auto&, auto& candidate, auto&) {
+    candidate.truthiness_lhs_parameter_authority->value = lir::LirValueId::invalid();
+  }, "native truthiness comparison with invalid parameter value must fail closed");
+  rejected([](auto& module, auto& candidate, auto&) {
+    candidate.truthiness_lhs_parameter_authority->owner =
+        require_function(module, "truthiness_comparison_helper").link_name_id;
+  }, "native truthiness comparison with foreign owner must fail closed");
+  rejected([](auto&, auto& candidate, auto&) {
+    candidate.truthiness_lhs_parameter_authority->parameter_index = 9;
+  }, "native truthiness comparison with invalid parameter index must fail closed");
+  rejected([](auto&, auto& candidate, auto&) {
+    candidate.truthiness_lhs_parameter_authority->type = lir::LirTypeRef::integer(64);
+  }, "native truthiness comparison with stale type must fail closed");
+  rejected([](auto&, auto& candidate, auto&) {
+    candidate.truthiness_lhs_parameter_authority->abi =
+        lir::LirNativeBodyParameterAbi::DirectPointer;
+  }, "native truthiness comparison with pointer ABI must fail closed");
+  rejected([](auto&, auto& candidate, auto&) {
+    candidate.truthiness_lhs_parameter_authority->role =
+        lir::LirTruthinessComparisonLhsParameterRole::Invalid;
+  }, "native truthiness comparison with invalid role must fail closed");
+  rejected([](auto&, auto& candidate, auto&) {
+    candidate.predicate = lir::LirCmpPredicate::Eq;
+  }, "native truthiness comparison with a non-ne predicate must fail closed");
+  rejected([](auto&, auto& candidate, auto&) {
+    candidate.rhs = lir::LirOperand::integer("1", 1);
+  }, "native truthiness comparison with a nonzero RHS must fail closed");
+  rejected([](auto&, auto& candidate, auto&) {
+    candidate.type_str = lir::LirTypeRef::integer(64);
+  }, "native truthiness comparison incoherent with authority type must fail closed");
+  rejected([](auto&, auto&, auto& function) {
+    function.native_body_parameter_definitions.push_back(
+        function.native_body_parameter_definitions.front());
+  }, "duplicate native truthiness parameter definition must fail closed");
+}
+
 void test_local_and_parameter_rvalue_identity_route() {
   namespace lir = c4c::codegen::lir;
 
@@ -9278,6 +9365,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_direct_branch_successor_identity_contract();
   test_conditional_and_switch_successor_identity_contract();
   test_native_direct_scalar_switch_selector_authority();
+  test_native_direct_scalar_truthiness_comparison_lhs_authority();
   test_indirect_branch_successor_identity_contract();
   test_global_store_identity_contract();
   test_global_load_identity_contract();

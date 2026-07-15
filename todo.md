@@ -9,18 +9,19 @@ Current Step Title: Publish and verify the selected truthiness-comparison LHS au
 
 ## Just Finished
 
-- Step 1 selection complete: select one unchanged current-function
-  `DirectScalar` integer parameter as `LirCmpOp.lhs` in the native truthiness
-  compare emitted by `StmtEmitter::to_bool_operand`; its exact consumer
-  relation is the parameter `LirValueId`/type on the comparison LHS, with
-  integer `ne` against the authoritative zero immediate. The native definition
-  supplies owner, index, type, and ABI. No authority has been published yet.
+- Step 2 complete: published the native `DirectScalar` integer parameter
+  authority on `LirCmpOp` only for `StmtEmitter::to_bool_operand`'s exact
+  truthiness relation: matching LHS `LirValueId` and type, integer `ne`, and
+  authoritative integer-zero RHS. The verifier fail-closes missing, invalid,
+  duplicate-definition, foreign, owner/index/type/ABI/role, and
+  consumer-incoherent authority; focused producer coverage exercises the
+  positive row and malformed variants.
 
 ## Suggested Next
 
-- Step 2: publish and verifier-check only the selected direct-scalar integer
-  truthiness-comparison-LHS authority row, keeping every other comparison and
-  parameter form fail closed.
+- Step 3: record the exact 734 receiver handoff with the selected tuple,
+  consumer relation, rejection boundary, proof, and bounded receiver return
+  action.
 
 ## Watchouts
 
@@ -29,9 +30,11 @@ Current Step Title: Publish and verify the selected truthiness-comparison LHS au
 - Do not derive identity from names, signatures, rendered operands,
   diagnostics, `monostate`, or testcase shape.
 - `LirCondBr.condition` is a comparison-result authority, not the direct
-  parameter-use seam; keep the row bounded to `LirCmpOp.lhs`.
+  parameter-use seam; the published row remains bounded to `LirCmpOp.lhs`.
 
 ## Proof
 
-- No proof ran: this Step 1 evidence packet makes no code change or authority
-  publication. Step 2 needs a supervisor-selected focused producer proof.
+- Passed: `cmake --build --preset default`; `ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_call_type_ref$'`. The delegated packet
+  prohibits changing canonical `test_before.log` and `test_after.log`, so no
+  regression log was written.

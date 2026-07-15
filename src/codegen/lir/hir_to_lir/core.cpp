@@ -1950,6 +1950,32 @@ lir::LirOperand StmtEmitter::to_bool_operand(FnCtx& ctx, lir::LirOperand val,
                                               const TypeSpec& ts) {
   const lir::LirOperand result = fresh_value(ctx);
   const std::string ty = llvm_ty(ts);
+  const auto truthiness_lhs_authority = [&](const lir::LirTypeRef& cmp_type)
+      -> std::optional<lir::LirTruthinessComparisonLhsParameterAuthority> {
+    if (ctx.lir_function == nullptr || !val.value_id() ||
+        cmp_type.kind() != lir::LirTypeKind::Integer) {
+      return std::nullopt;
+    }
+    const auto definition = std::find_if(
+        ctx.lir_function->native_body_parameter_definitions.begin(),
+        ctx.lir_function->native_body_parameter_definitions.end(),
+        [&](const auto& candidate) {
+          return candidate.value == *val.value_id() && candidate.type == cmp_type &&
+                 candidate.owner == ctx.lir_function->link_name_id &&
+                 candidate.abi == lir::LirNativeBodyParameterAbi::DirectScalar;
+        });
+    if (definition == ctx.lir_function->native_body_parameter_definitions.end()) {
+      return std::nullopt;
+    }
+    return lir::LirTruthinessComparisonLhsParameterAuthority{
+        .value = definition->value,
+        .parameter_index = definition->parameter_index,
+        .type = definition->type,
+        .owner = definition->owner,
+        .abi = definition->abi,
+        .role = lir::LirTruthinessComparisonLhsParameterRole::TruthinessComparisonLhs,
+    };
+  };
   if (ty == "ptr") {
     const lir::LirOperand as_int(fresh_tmp(ctx));
     emit_lir_op(ctx, lir::LirCastOp{as_int, lir::LirCastKind::PtrToInt,
@@ -1961,7 +1987,8 @@ lir::LirOperand StmtEmitter::to_bool_operand(FnCtx& ctx, lir::LirOperand val,
   } else if (ty == "i1") {
     emit_lir_op(ctx, lir::LirCmpOp{result, false, lir::LirCmpPredicate::Ne,
                                    lir::LirTypeRef::integer(1), val,
-                                   lir::LirOperand::integer("0", 0)});
+                                   lir::LirOperand::integer("0", 0),
+                                   truthiness_lhs_authority(lir::LirTypeRef::integer(1))});
   } else if (is_float_base(ts.base) && ts.ptr_level == 0 && ts.array_rank == 0) {
     emit_lir_op(ctx, lir::LirCmpOp{result, true, lir::LirCmpPredicate::UNe,
                                    lir::LirTypeRef(ty), val,
@@ -1972,7 +1999,8 @@ lir::LirOperand StmtEmitter::to_bool_operand(FnCtx& ctx, lir::LirOperand val,
         bits > 0 ? lir::LirTypeRef::integer(static_cast<unsigned>(bits))
                  : lir::LirTypeRef(ty);
     emit_lir_op(ctx, lir::LirCmpOp{result, false, lir::LirCmpPredicate::Ne, cmp_type, val,
-                                   lir::LirOperand::integer("0", 0)});
+                                   lir::LirOperand::integer("0", 0),
+                                   truthiness_lhs_authority(cmp_type)});
   }
   return result;
 }

@@ -546,6 +546,11 @@ enum class LirScalarBinaryParameterRole : uint8_t {
   Rhs,
 };
 
+enum class LirTruthinessComparisonLhsParameterRole : uint8_t {
+  Invalid,
+  TruthinessComparisonLhs,
+};
+
 // Native authority for exactly a direct plain scalar current-function
 // parameter used as the LHS of this binary operation.  The operand spelling
 // is a checked display mirror only; all selection facts live here.
@@ -570,6 +575,19 @@ struct LirScalarBinaryRhsParameterAuthority {
   LirScalarBinaryParameterRole role = LirScalarBinaryParameterRole::Invalid;
 };
 
+// Native authority for exactly a direct plain scalar current-function integer
+// parameter used as the LHS of its truthiness comparison. The comparison
+// relation itself remains checked on LirCmpOp; display spellings are mirrors.
+struct LirTruthinessComparisonLhsParameterAuthority {
+  LirValueId value = LirValueId::invalid();
+  uint32_t parameter_index = 0;
+  LirTypeRef type;
+  LinkNameId owner = kInvalidLinkName;
+  LirNativeBodyParameterAbi abi = LirNativeBodyParameterAbi::Invalid;
+  LirTruthinessComparisonLhsParameterRole role =
+      LirTruthinessComparisonLhsParameterRole::Invalid;
+};
+
 // Typed binary arithmetic/bitwise/unary operation.
 // Covers: add, sub, mul, sdiv, udiv, srem, urem, fadd, fsub, fmul, fdiv, frem,
 //         and, or, xor, shl, lshr, ashr, fneg.
@@ -591,6 +609,8 @@ struct LirCmpOp {
   LirTypeRef type_str;            // LLVM type string of operands
   LirOperand lhs;                 // SSA name or literal for left operand
   LirOperand rhs;                 // SSA name or literal for right operand
+  std::optional<LirTruthinessComparisonLhsParameterAuthority>
+      truthiness_lhs_parameter_authority;
 };
 
 // PHI incoming authority. `value` selects the native value, `predecessor`

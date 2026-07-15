@@ -2782,11 +2782,70 @@ void verify_function_value_ownership(const LirModule& mod,
       fail_verify(field, "must exactly mirror one native direct-scalar parameter definition");
     }
   };
+  const auto verify_truthiness_lhs_parameter_authority = [&](const LirCmpOp& op) {
+    const auto truthiness_definition =
+        !op.is_float && op.predicate.typed() == LirCmpPredicate::Ne &&
+                op.type_str.kind() == LirTypeKind::Integer &&
+                op.lhs.kind() == LirOperandKind::SsaValue && op.lhs.value_id() &&
+                op.rhs.integer_immediate() && op.rhs.integer_immediate()->value == 0
+            ? std::find_if(function.native_body_parameter_definitions.begin(),
+                           function.native_body_parameter_definitions.end(),
+                           [&](const auto& definition) {
+                             return definition.value == *op.lhs.value_id() &&
+                                    definition.type == op.type_str &&
+                                    definition.abi ==
+                                        LirNativeBodyParameterAbi::DirectScalar;
+                           })
+            : function.native_body_parameter_definitions.end();
+    if (!op.truthiness_lhs_parameter_authority) {
+      if (truthiness_definition != function.native_body_parameter_definitions.end()) {
+        fail_verify("LirCmpOp.truthiness_lhs_parameter_authority",
+                    "is required when LirCmpOp.lhs uses a native direct-scalar parameter in a truthiness comparison");
+      }
+      return;
+    }
+    const auto& authority = *op.truthiness_lhs_parameter_authority;
+    constexpr std::string_view field = "LirCmpOp.truthiness_lhs_parameter_authority";
+    const bool unique_owner = authority.owner != kInvalidLinkName &&
+        authority.owner == function.link_name_id &&
+        std::count_if(mod.functions.begin(), mod.functions.end(), [&](const LirFunction& candidate) {
+          return candidate.link_name_id == authority.owner;
+        }) == 1;
+    if (!authority.value.valid() || !unique_owner ||
+        authority.parameter_index >= function.params.size() ||
+        authority.abi != LirNativeBodyParameterAbi::DirectScalar ||
+        authority.role !=
+            LirTruthinessComparisonLhsParameterRole::TruthinessComparisonLhs ||
+        op.is_float || op.predicate.typed() != LirCmpPredicate::Ne ||
+        op.type_str.kind() != LirTypeKind::Integer ||
+        op.lhs.kind() != LirOperandKind::SsaValue || !op.lhs.value_id() ||
+        *op.lhs.value_id() != authority.value || op.type_str != authority.type ||
+        !op.rhs.integer_immediate() || op.rhs.integer_immediate()->value != 0) {
+      fail_verify(field,
+                  "requires one native direct-scalar current-function truthiness-comparison LHS binding");
+    }
+    const auto matches = std::count_if(
+        function.native_body_parameter_definitions.begin(),
+        function.native_body_parameter_definitions.end(), [&](const auto& definition) {
+          return definition.value == authority.value &&
+                 definition.parameter_index == authority.parameter_index &&
+                 definition.type == authority.type && definition.owner == authority.owner &&
+                 definition.abi == authority.abi;
+        });
+    if (matches != 1 ||
+        !direct_scalar_parameter_type(function.params[authority.parameter_index].second)) {
+      fail_verify(field,
+                  "must exactly mirror one native direct-scalar parameter definition");
+    }
+  };
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
       if (const auto* op = std::get_if<LirBinOp>(&inst)) {
         verify_scalar_binary_lhs_authority(*op);
         verify_scalar_binary_rhs_authority(*op);
+      }
+      if (const auto* op = std::get_if<LirCmpOp>(&inst)) {
+        verify_truthiness_lhs_parameter_authority(*op);
       }
     }
   }
