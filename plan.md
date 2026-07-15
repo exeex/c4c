@@ -1,87 +1,93 @@
-# LIR Call-Result Operand Carrier Foundation Runbook
+# LIR Native Vaarg Operand Carrier Foundation Runbook
 
 Status: Active
-Source Idea: ideas/open/785_lir_call_result_operand_carrier_foundation.md
-Supersedes: 784 Step 2 while its generic call-result prerequisite is resolved.
+Source Idea: ideas/open/784_lir_native_vaarg_operand_carrier_foundation.md
+Resumed from: closed `ideas/closed/785_lir_call_result_operand_carrier_foundation.md`
 
 ## Purpose
 
-Recover native current-function result authority at the direct generic call
-factory boundary, then return the FP128 alignment carrier route to 784.
+Finish the minimal native vaarg operand/result carrier foundation now that the
+FP128 ptrmask direct call result retains its native authority.
 
 ## Goal
 
-Accept the smallest `make_lir_call_op` result carrier contract without
-redesigning generic expression or call/argument families.
+Establish the smallest carrier contract covering AArch64 GP, AArch64
+FP/alignment, and AMD64 register/stack seams, then make the distinct
+value-only-PHI-transport decision required to return probe binding to 783.
 
 ## Core Rule
 
-Change only direct call-result transport. Do not make this factory boundary a
-route into PHI semantics, generic call redesign, or target lowering.
+Use only native current-function authority. 785 solved the direct FP128 call
+result boundary; it does not authorize PHI verification, predecessor/edge work,
+or broad generic-expression changes.
+
+## Completed Work
+
+- Step 1, `Inventory carrier surfaces and prove structural-probe feasibility`,
+  accepted at commit `b96751b03`.
+- Closed 785 provides commit `3b53451c0`: the FP128 ptrmask direct call result
+  now reaches its immediate typed GEP consumer as native authority.
 
 ## Read First
 
-- `ideas/open/785_lir_call_result_operand_carrier_foundation.md`
 - `ideas/open/784_lir_native_vaarg_operand_carrier_foundation.md`
-- `src/codegen/lir/call_args_ops.hpp`
-- direct `make_lir_call_op` declarations, implementations, and frontend-LIR
-  structural-test inventory
+- `ideas/closed/785_lir_call_result_operand_carrier_foundation.md`
+- `ideas/open/783_lir_native_vaarg_operand_result_seam_decomposition.md`
+- `ideas/open/782_lir_vaarg_phi_input_result_identity_publication.md`
+- `ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md`
+- `src/codegen/lir/hir_to_lir/call/vaarg.cpp`
+- `src/codegen/lir/hir_to_lir/call/vaarg_amd64.cpp`
 
 ## Non-Goals
 
-- Do not modify PHI incoming transport/verification, predecessor/edge identity,
-  Raw-BIR/importer, backend, target lowering, MIR, emission, vaarg helpers, or
-  unrelated generic call/argument families.
-- Do not recover result identity from text or compatibility spelling.
+- Do not modify PHI verification, predecessor/edge identity, Raw-BIR/importer,
+  backend, target lowering, MIR, emission, broad generic-expression redesign,
+  or 782 helper fields.
+- Do not recover authority from names, labels, text, output, instruction order,
+  side tables, or result-name maps.
 
 ## Ordered Steps
 
-### Step 1 - Inventory direct call-result carrier surfaces and probe feasibility
+### Step 1 - Inventory carrier surfaces and prove structural-probe feasibility (complete)
 
-Goal: prove the smallest direct factory/support boundary that can retain a
-native result for structured callers.
+Completion: accepted at `b96751b03`. The shared carrier route and the
+remaining PHI incoming-value question were recorded before implementation.
 
-Actions:
+### Step 2 - Bind the minimal generic carrier contract
 
-- trace `make_lir_call_op` result construction, storage, and direct consumers;
-- inspect whether the required support type can carry `LirOperand` without
-  reaching unrelated generic call or argument families; and
-- select focused frontend-LIR structural evidence for native factory-result
-  retention.
-
-Completion check:
-
-- the direct carrier boundary and any narrower successor requirement are
-  evidence-backed; no code or test change occurs.
-
-### Step 2 - Bind and validate the minimal call-result carrier
-
-Goal: retain a current-function native call result through the direct factory.
+Goal: publish only the native current-function operand/result carrier required
+by all three seam boundaries.
 
 Actions:
 
-- add only the selected direct result carrier and required compatibility
-  plumbing;
-- preserve the existing fail-closed validation boundary; and
-- add focused structural plus applicable malformed-authority coverage.
+- retry the previously interrupted contract with 785's direct FP128 ptrmask
+  result carrier available;
+- bind the smallest remaining producer/consumer carrier additions across GP,
+  FP/alignment, and AMD64 register/stack; and
+- decide whether value-only PHI incoming transport is indispensable, adding it
+  only as transport of existing native authority and excluding verification and
+  CFG semantics.
 
 Completion check:
 
-- structured callers can observe the native factory result without text
-  recovery or unrelated generic-family changes.
+- all three seams retain native structural authority at their immediate
+  consumer boundaries with no text-recovery fallback or PHI-completion claim.
 
-### Step 3 - Publish the 784 handoff
+### Step 3 - Prove the carrier and publish the 783 handoff
 
-Goal: give 784 a verified, bounded prerequisite and exact retry point.
+Goal: establish focused structural evidence and an unambiguous parent return.
 
 Actions:
 
-- run the focused build/test proof and coordinate the supervisor-owned matching
-  regression guard; and
-- record the direct carrier contract and return 784 to Step 2, explicitly
-  retaining its separate PHI incoming-value decision.
+- add focused frontend-LIR structural coverage for GP, FP/alignment, and AMD64
+  register/stack carrier propagation plus relevant malformed authority cases;
+- run the focused build/test command and coordinate the supervisor-owned
+  matching regression guard; and
+- record the accepted contract, PHI incoming-value decision, and exact return
+  point to 783 Step 3.
 
 Completion check:
 
-- 784 can retry its FP128 ptrmask carrier route without reopening 785; any
-  non-direct support requirement is named as a successor.
+- 783 can resume its three focused probe bindings without reopening this
+  foundation; any non-transport PHI requirement is named as a separate
+  successor.

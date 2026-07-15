@@ -120,3 +120,23 @@ Accepted proof after the reverted partial work:
 --output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1; full output
 is `test_after.log`. No code or test change was accepted, and `test_before.log`
 and `test_after.log` match.
+
+## Resumption Record: direct call-result carrier accepted
+
+785 is closed accepted. Commit `3b53451c0` converts only the AArch64 FP128
+alignment ptrmask direct call at `vaarg.cpp:145` to `fresh_value(ctx)` plus the
+existing `make_lir_call_op_with_return_type_ref`, retaining its ID through the
+immediate typed GEP consumer. Its focused AArch64 long-double vaarg structural
+probe proves the native call-result ID and pointer return type; the sibling HFA
+ptrmask and unrelated generic call families remain untouched.
+
+Accepted proof: `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1. The
+monotonic regression guard passed with before/after 1 passed, 0 failed, and no
+new failures/timeouts. Preserve Step 1 accepted at `b96751b03`.
+
+Exact return point: resume Step 2, `Bind the minimal generic carrier contract`,
+with the FP128 ptrmask direct call-result carrier now available. Complete the
+remaining three-chain carrier work and retain the separate decision on whether
+value-only PHI incoming transport is required; no PHI verification or
+predecessor/edge work is authorized by 785's closure.
