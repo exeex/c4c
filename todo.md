@@ -3,27 +3,33 @@
 Status: Active
 Source Idea Path: ideas/open/778_lir_logical_rhs_result_authority_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Publish the logical RHS conversion result
+Current Step ID: 2
+Current Step Title: Prove the logical RHS result authority contract
 
 ## Just Finished
 
-- Closed 779 capability-complete: its selected standalone-cast verifier/IR
-  contract and focused positive/malformed proof are accepted; 778 now resumes
-  at its recorded Step 1 clean producer reattempt.
+- Plan Step 1 complete: the logical integer RHS non-`i1` `zext` now allocates
+  its `LirCastOp.result` through `fresh_value(ctx)` and retains that native
+  `LirOperand` at the producer; the raw PHI result/incoming boundary remains
+  unchanged.
 
 ## Suggested Next
 
-- Dispatch Plan Step 1.
+- Dispatch Plan Step 2: update the obsolete no-authority assertion with
+  focused positive and malformed authority coverage for this logical RHS
+  `LirCastOp.result` only.
 
 ## Watchouts
 
-- Do not reuse the former unaccepted `binary.cpp` diff. Limit the reattempt to
-  the logical RHS non-`i1` conversion result; PHI result/incoming, generic
-  expression APIs, and other producer families remain excluded.
+- The fixed proof command builds successfully but the selected test still has
+  its obsolete pre-Step-2 assertion that the RHS result lacks authority. Step
+  2 owns updating that assertion and adding malformed authority coverage; PHI
+  result/incoming, the final logical consumer, generic expression APIs, and
+  other producer families remain excluded.
 
 ## Proof
 
-- 779 accepted proof: `cmake --build --preset default && ctest --test-dir
-  build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`.
-- 778 has no producer proof yet; run its focused proof after Steps 1–2.
+- Step 1 attempted: `cmake --build --preset default && ctest --test-dir build
+  -j --output-on-failure -R '^frontend_lir_call_type_ref$'`. Build passed; the
+  selected test reached its obsolete pre-Step-2 assertion. The active runbook
+  directs no root-log writes for this focused proof.

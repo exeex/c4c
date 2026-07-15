@@ -625,8 +625,10 @@ std::string StmtEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Exp
     emit_lir_op(ctx,
                 lir::LirCastOp{rhs_val, lir::LirCastKind::SIToFP, "i32", as_i32, res_ty});
   } else {
-    rhs_val = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirCastOp{rhs_val, lir::LirCastKind::ZExt, "i1", rc, res_ty});
+    const LirOperand rhs_result = fresh_value(ctx);
+    emit_lir_op(ctx,
+                lir::LirCastOp{rhs_result, lir::LirCastKind::ZExt, "i1", rc, res_ty});
+    rhs_val = rhs_result.str();
   }
   emit_fallthrough_lbl(ctx, rhs_end_target);
   emit_br_and_open_lbl(ctx, end_target, skip_target);
