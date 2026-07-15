@@ -5155,6 +5155,69 @@ int lir_postfix_increment_ternary_phi_authority(int condition, int left, int rig
   fail("postfix ternary fixture should retain one PHI for malformed-authority coverage");
 }
 
+void test_floating_unary_minus_ternary_phi_incoming_authority() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+double lir_floating_unary_minus_ternary_phi_authority(
+    int condition, double left, double right) {
+  return condition ? -left : -right;
+}
+)c", "x86_64-linux-gnu");
+
+  const auto require_focused = [](lir::LirModule& module)
+      -> std::pair<lir::LirPhiOp&, std::vector<lir::LirBinOp*>> {
+    lir::LirFunction& function = require_function(
+        module, "lir_floating_unary_minus_ternary_phi_authority");
+    lir::LirPhiOp* phi = nullptr;
+    std::vector<lir::LirBinOp*> fnegs;
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirPhiOp>(&inst)) {
+          expect_true(phi == nullptr,
+                      "floating unary-minus ternary fixture should retain one PHI");
+          phi = candidate;
+        }
+        if (auto* candidate = std::get_if<lir::LirBinOp>(&inst);
+            candidate && candidate->opcode.typed() == lir::LirBinaryOpcode::FNeg) {
+          fnegs.push_back(candidate);
+        }
+      }
+    }
+    expect_true(phi && phi->incoming.size() == 2 && fnegs.size() == 2,
+                "floating unary-minus ternary fixture should retain both fneg arms and one PHI");
+    return {*phi, std::move(fnegs)};
+  };
+
+  auto [phi, fnegs] = require_focused(lowered);
+  for (const lir::LirPhiIncoming& incoming : phi.incoming) {
+    expect_true(incoming.value.value_id() && incoming.value.value_id()->valid(),
+                "floating unary-minus PHI input should retain native fneg result authority");
+    const auto producer = std::find_if(
+        fnegs.begin(), fnegs.end(), [&](const lir::LirBinOp* fneg) {
+          return fneg->result.value_id() &&
+                 *fneg->result.value_id() == *incoming.value.value_id();
+        });
+    expect_true(producer != fnegs.end(),
+                "floating unary-minus PHI input should refer to its fneg producer's native current-function ID");
+  }
+  lir::verify_module(lowered);
+
+  lir::LirModule missing_authority = lowered;
+  auto [malformed_phi, malformed_fnegs] = require_focused(missing_authority);
+  const lir::LirValueId removed_id = *malformed_phi.incoming.front().value.value_id();
+  const auto producer = std::find_if(
+      malformed_fnegs.begin(), malformed_fnegs.end(), [&](const lir::LirBinOp* fneg) {
+        return fneg->result.value_id() && *fneg->result.value_id() == removed_id;
+      });
+  expect_true(producer != malformed_fnegs.end(),
+              "malformed floating unary-minus fixture should select a PHI-referenced fneg");
+  (*producer)->result = lir::LirOperand{};
+  expect_identity_verification_rejected(
+      missing_authority,
+      "verifier should reject floating unary-minus PHI input after fneg authority is removed");
+}
+
 void test_logical_short_circuit_result_authority_loss_boundary() {
   namespace lir = c4c::codegen::lir;
 
@@ -8759,6 +8822,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_cast_result_use_identity_boundary();
   test_ternary_coerce_result_authority_boundary();
   test_postfix_increment_ternary_phi_incoming_authority();
+  test_floating_unary_minus_ternary_phi_incoming_authority();
   test_logical_short_circuit_result_authority_loss_boundary();
   test_phi_special_token_authority_boundary();
   test_vaarg_helper_result_authority_boundary();
