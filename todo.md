@@ -3,28 +3,37 @@
 Status: Active
 Source Idea Path: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish structured result and operand authority
+Current Step ID: 3
+Current Step Title: Verify row-specific index or mask facts
 
 ## Just Finished
 
-- Lifecycle resume: 754 Step 1 was accepted in `d8e5ed3a8`; blocker 798 is
-  capability-complete with the accepted handoff in `2c231e342`. No 754 Step 2
-  implementation is accepted yet.
+- Completed resumed 754 Plan Step 2. `LirExtractValueOp` now has the minimum
+  opt-in `requires_native_result_authority` marker. Only the closed-798 unary
+  complex aggregate carrier path sets it: when `agg` already has the checked
+  `LirOperand::ssa`/`LirValueId`, lowering allocates its result with
+  `fresh_value(ctx)` and forwards the exact aggregate operand unchanged.
+- The verifier requires valid SSA result and aggregate IDs for that opt-in
+  marker, includes native extract results in current-function foreign-owner
+  checks, and retains the 798 call-result/aggregate-type/display-mirror gate.
+  Printer rendering remains the existing compatibility rendering. Unselected
+  extractvalue producers and all other aggregate/vector rows remain legacy
+  compatibility/fail-closed paths. No index or element-result type semantics
+  were added.
 
 ## Suggested Next
 
-- Step 2 only: publish the minimum opt-in `LirExtractValueOp` structured
-  result and aggregate-use authority, consuming the exact checked operand
-  carried by 798. Leave index semantics for Step 3.
+- Step 3 only: add `LirExtractValueOp` aggregate field/index and result-type
+  coherence validation plus its focused proof; do not widen to other rows.
 
 ## Watchouts
 
-- Do not repeat Step 1, reopen 798, recover IDs from display text, widen to
-  other aggregate/vector rows, or edit Raw BIR.
+- Do not reopen 798, recover IDs from display text, widen to other
+  aggregate/vector rows, or add aggregate index semantics before Step 3.
 
 ## Proof
 
-- Before accepting Step 2, run a fresh build and the delegated same-feature
-  proof. 798's accepted 6/6 before/after subset is prerequisite evidence, not
-  754 Step 2 proof.
+- `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^(backend_|frontend_hir_tests$)' > test_after.log`
+  passed: fresh build succeeded and the focused frontend/backend subset passed
+  6/6. `test_after.log` is the Step 2 proof log.

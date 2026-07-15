@@ -1395,7 +1395,24 @@ bool requires_native_result_authority(const LirInst& inst) {
   if (const auto* call = std::get_if<LirCallOp>(&inst)) {
     return call->requires_native_result_authority;
   }
+  if (const auto* extract = std::get_if<LirExtractValueOp>(&inst)) {
+    return extract->requires_native_result_authority;
+  }
   return false;
+}
+
+void verify_extract_value_authority(const LirExtractValueOp& op) {
+  if (!op.requires_native_result_authority) return;
+  if (op.result.kind() != LirOperandKind::SsaValue || !op.result.value_id() ||
+      !op.result.value_id()->valid()) {
+    fail_verify("LirExtractValueOp.result",
+                "native extractvalue result requires valid LirValueId authority");
+  }
+  if (op.agg.kind() != LirOperandKind::SsaValue || !op.agg.value_id() ||
+      !op.agg.value_id()->valid()) {
+    fail_verify("LirExtractValueOp.agg",
+                "native extractvalue aggregate requires valid SSA LirValueId authority");
+  }
 }
 
 void verify_inst(const LirModule& mod, const LirInst& inst) {
@@ -1455,6 +1472,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     verify_result_operand(op->result, "LirExtractValueOp.result");
     require_module_type_ref(mod, op->agg_type, "LirExtractValueOp.agg_type");
     verify_value_operand(op->agg, "LirExtractValueOp.agg");
+    verify_extract_value_authority(*op);
     return;
   }
   if (const auto* op = std::get_if<LirInsertValueOp>(&inst)) {

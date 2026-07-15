@@ -348,6 +348,8 @@ struct LirExtractValueOp {
   LirTypeRef agg_type;    // aggregate type string (e.g. "{ double, double }")
   LirOperand agg;         // SSA name of aggregate value
   int index = 0;          // field index
+  // Opt-in result/use identity for the closed-798 aggregate operand handoff.
+  bool requires_native_result_authority = false;
 };
 
 struct LirInsertValueOp {

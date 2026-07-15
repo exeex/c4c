@@ -93,10 +93,15 @@ LirOperand StmtEmitter::emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u,
     case UnaryOp::BitNot: {
       if (is_complex_base(op_ts.base)) {
         const TypeSpec elem_ts = complex_component_ts(op_ts.base);
-        const std::string real_v = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirExtractValueOp{real_v, op_ty, val, 0});
-        const std::string imag_v0 = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirExtractValueOp{imag_v0, op_ty, val, 1});
+        const bool native_aggregate_use = val.value_id() != nullptr;
+        const LirOperand real_v = native_aggregate_use ? fresh_value(ctx) :
+                                                        LirOperand(fresh_tmp(ctx));
+        emit_lir_op(ctx, lir::LirExtractValueOp{real_v, op_ty, val, 0,
+                                                native_aggregate_use});
+        const LirOperand imag_v0 = native_aggregate_use ? fresh_value(ctx) :
+                                                          LirOperand(fresh_tmp(ctx));
+        emit_lir_op(ctx, lir::LirExtractValueOp{imag_v0, op_ty, val, 1,
+                                                native_aggregate_use});
         const std::string imag_v = fresh_tmp(ctx);
         if (is_float_base(elem_ts.base)) {
           emit_lir_op(ctx, lir::LirBinOp{imag_v, "fneg", llvm_ty(elem_ts), imag_v0, ""});
@@ -184,9 +189,12 @@ LirOperand StmtEmitter::emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u,
       } catch (const std::runtime_error&) {
       }
       if (!is_complex_base(op_ts.base)) return "0";
-      const std::string tmp = fresh_tmp(ctx);
+      const bool native_aggregate_use = val.value_id() != nullptr;
+      const LirOperand tmp = native_aggregate_use ? fresh_value(ctx) :
+                                                   LirOperand(fresh_tmp(ctx));
       emit_lir_op(ctx, lir::LirExtractValueOp{tmp, llvm_ty(op_ts), val,
-                                              u.op == UnaryOp::ImagPart ? 1 : 0});
+                                              u.op == UnaryOp::ImagPart ? 1 : 0,
+                                              native_aggregate_use});
       return tmp;
     }
   }
