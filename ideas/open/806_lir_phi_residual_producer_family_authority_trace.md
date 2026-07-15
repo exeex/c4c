@@ -104,3 +104,29 @@ reactivate 804 at Step 3, *Prove the blocker and return it to 754*.
   non-decreasing guard mode `--allow-non-decreasing-passed` exited 0 and was
   supervisor-accepted. This is focused successor acceptance, not parent
   clearance.
+
+## Resumption Update — switched to scalar dereference-load authority blocker
+
+- Last accepted progress and completed steps: Step 1 classified the residual
+  producer families, and Step 2's postfix-increment old-value repair was
+  accepted in `961ce9fda` with the focused proof recorded above. Step 3's
+  trace is complete but did not authorize a 806 repair.
+- Interrupted step: Step 4, *Repair the classified in-scope producer handoff
+  and prove the blocker*.
+- Blocker and scope boundary: `20060910-1.c`'s `check_header` ternary true
+  expression, `*((deeper)->buffer_position)++`, preserves existing incoming
+  authority through conditional lowering. The enclosing scalar
+  `UnaryOp::Deref` emits a `LirLoadOp` through a fresh temporary string and
+  loses the immediate `LirValueId` into the conditional PHI. That
+  dereference-load handoff is not the accepted postfix producer route and is
+  therefore owned by separately scoped
+  `ideas/open/809_lir_phi_scalar_dereference_load_authority.md`.
+- Exact return point: after 809 has an accepted repair and the supervisor has
+  accepted a fresh 100% full baseline, resume 806 at Step 3, *Prove the
+  blocker and return to 804*, without repeating Steps 1–2.
+- Remaining action: evaluate that full-baseline result at 806 Step 3; only a
+  supervisor-accepted 100% result may reactivate 804 at its unchanged Step 3.
+- Accepted proof references: `961ce9fda` accepted the postfix repair with the
+  recorded fresh build, matching frontend-HIR guard, and
+  `frontend_lir_call_type_ref_test`; `8f31e2535` and `b86df3b9d` remain the
+  separately closed `fneg` and scalar bit-not `xor` routes.
