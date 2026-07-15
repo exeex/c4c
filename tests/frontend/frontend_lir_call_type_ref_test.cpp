@@ -1459,6 +1459,14 @@ void test_conditional_and_switch_successor_identity_contract() {
   expect_identity_verification_rejected(
       missing_switch_selector_type_ref,
       "verifier should reject a missing structured switch selector type reference");
+  lir::LirModule noninteger_switch_selector_type_ref;
+  noninteger_switch_selector_type_ref.functions.push_back(make_switch());
+  std::get<lir::LirSwitch>(
+      noninteger_switch_selector_type_ref.functions[0].blocks[0].terminator)
+      .selector_type_ref = lir::LirTypeRef("double");
+  expect_identity_verification_rejected(
+      noninteger_switch_selector_type_ref,
+      "verifier should reject a non-integer structured switch selector type reference");
   lir::LirModule stale_switch_selector_type_ref;
   stale_switch_selector_type_ref.functions.push_back(make_switch());
   std::get<lir::LirSwitch>(
@@ -1471,10 +1479,10 @@ void test_conditional_and_switch_successor_identity_contract() {
   incoherent_switch_selector_type_ref.functions.push_back(make_switch());
   std::get<lir::LirSwitch>(
       incoherent_switch_selector_type_ref.functions[0].blocks[0].terminator)
-      .selector_type_ref = lir::LirTypeRef("i32", lir::LirTypeKind::Integer, 64);
+      .selector_type_ref = lir::LirTypeRef("i32-alias", lir::LirTypeKind::Integer, 32);
   expect_identity_verification_rejected(
       incoherent_switch_selector_type_ref,
-      "verifier should reject an incoherent structured switch selector type reference");
+      "verifier should reject a same-width incoherent structured switch selector type reference");
   lir::LirModule noninteger_switch_selector;
   noninteger_switch_selector.functions.push_back(make_switch());
   auto& noninteger_switch_entry = noninteger_switch_selector.functions[0].blocks[0];

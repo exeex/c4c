@@ -2737,8 +2737,9 @@ void verify_function_value_ownership(const LirModule& mod,
       fail_verify("LirSwitch.selector_name",
                   "display name must match the selector-selected value definition");
     }
+    require_type_ref(sw.selector_type_ref, "LirSwitch.selector_type_ref");
     if (sw.selector_type_ref.kind() != LirTypeKind::Integer ||
-        sw.selector_type_ref != *type) {
+        sw.selector_type_ref.integer_bit_width() != type->integer_bit_width()) {
       fail_verify("LirSwitch.selector_type_ref",
                   "must match the selector-selected integer value definition");
     }
