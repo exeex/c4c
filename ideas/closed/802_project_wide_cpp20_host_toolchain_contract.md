@@ -1,7 +1,26 @@
 # Project-Wide C++20 Host Toolchain Contract
 
-Status: Open (active)
+Status: Closed (capability complete)
 Type: project-wide build/toolchain migration
+
+## Closure Record
+
+Idea 802 is capability-complete. The project now has one required,
+non-extension C++20 host-build authority, configure-time capability checks,
+and a durable host-toolchain contract. All 139 generated compile-command
+entries use `-std=c++20`, with no remaining in-scope C++17 or GNU-extension
+host mode. The bounded NodeKind authoring surface now uses named designated
+schema rows, typed stage/arity/refinement policies, per-entry `consteval`
+construction, and retained registry-wide validation without changing the
+pass-facing helper API or established semantics.
+
+Accepted implementation and evidence commits are `7175a52fe`, `4d523ddec`,
+`4b4df45ec`, and `74fde86ae`. The supervisor-owned matching configure, build,
+and CTest evidence records 1272 passed and the same 40 pre-existing failures
+out of 1312 tests both before and after; the failure sets are identical, the
+monotonic regression guard passes, and no new test exceeds 30 seconds. Focused
+backend proof passes 6/6. No target or test was disabled, no language-under-test
+fixture contract changed, and idea 732 was not modified.
 
 ## Goal
 
