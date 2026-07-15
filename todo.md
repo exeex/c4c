@@ -3,22 +3,24 @@
 Status: Active
 Source Idea Path: ideas/open/752_lir_local_object_pointer_authority_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Establish the selected local-object authority contract
+Current Step ID: 2
+Current Step Title: Verify and prove the producer boundary
 你該做code review了
 
 ## Just Finished
 
-- Step 1 VLA repair: the pointer-slot `LirStoreOp` now carries the hoisted slot
-  authority that matches its pointer operand, while the dynamic alloca retains
-  its own result authority. Focused coverage identifies that store by the
-  dynamic alloca value ID and checks the pointer-authority ID equality.
+- Accepted Step 1: `ca26a8242` established selected local authority across
+  alloca, direct local load/store/GEP, and VLA save/restore routes; `b200ac033`
+  repaired the reviewed VLA pointer-slot store mismatch. Fresh builds passed,
+  and matching `^backend_` baseline/after runs were 5/5 with the regression
+  guard accepted using `--allow-non-decreasing-passed`.
 
 ## Suggested Next
 
-- Supervisor: review this bounded Step 1 repair and decide the next packet.
-  Do not start Step 2 malformed-authority checks or Step 3 handoff work until
-  this repair is accepted.
+- Execute Step 2 malformed producer-boundary checks: verify
+  current-function ownership, pointer/object and type relations, and live
+  lifetime; add nearby positive and missing/invalid/foreign/mismatched/dead
+  negative coverage. Do not begin the Step 3 Raw-BIR handoff.
 
 ## Watchouts
 
