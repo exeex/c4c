@@ -400,11 +400,180 @@ define the complete future vocabulary.
 | Contract-only pseudo category | pseudo family; PseudoPreallocation owner/admission; exact roles/effects; explicit expansion or allocation disposition | It requires an explicit later transition; shared storage gives no catch-all retention. |
 | Contract-only machine category | machine plus target-specific; MachineOnly; MirReadyMachine owner/admission; never ordinary BIR SSA | Physical/register effects are not ordinary SSA results, and machine admission is fail-closed before F. |
 
-## 11. Pending Step 3: single query authority
+## 11. Single schema and query authority
 
-Pending. Step 3 will specify the hidden validated schema representation and the
-small stable compile-time/runtime query surface derived from it. It must not
-change the meanings or validation rules fixed above.
+### 11.1 One closed C++17 inventory
+
+The implementation has exactly one authoritative per-kind inventory. Its
+conceptual value type is the validated `KindSchema` from Section 2:
+
+```cpp
+struct KindSchema {
+  NodeKind kind;
+  ValueModel value;
+  SemanticFamily family;
+  EffectControl effects;
+  StageVocabulary stages;
+  ShapePolicy shape;
+  MirRealizability mir;
+  PayloadAlternativeSet payloads;
+};
+```
+
+In C++17 the preferred representation is one hidden `inline constexpr` closed
+registry of these records. A constexpr lookup by `NodeKind` serves both
+template queries and runtime wrappers. The public enum must expose a closed
+count/sentinel or another compile-time completeness proof so validation can
+show that every known enum value occurs exactly once and no registry entry is
+unknown.
+
+If enum spelling or ABI constraints make that representation impractical, one
+internal X-macro kind registry may emit both the enum inventory and the
+constexpr `KindSchema` registry. That macro is C++ implementation plumbing,
+not TableGen, a `.td` file, code generation, reflection, or a pass-visible DSL.
+It must contain each kind and its schema entry once. It may mechanically emit
+lookup cases or array rows; authors must not maintain a second list beside it.
+
+Both forms enforce the same rule: there is one kind inventory and one schema
+entry per kind. Separate hand-written compile-time specializations plus a
+runtime switch, a copied descriptor array, verifier-local classifications, or
+pass-local kind lists are prohibited even if tests currently keep them equal.
+The two repeated landed-746 dispatch inventories are migration evidence, not a
+contract to preserve.
+
+The registry and its type-level adaptation live in the schema implementation
+namespace. Passes see neither the registry, X-macro, typelist, specialization
+machinery, bit encoding, nor validation implementation.
+
+### 11.2 Validation precedes queryability
+
+A `consteval` facility is unavailable in C++17, so the complete registry is
+checked by `constexpr` validation plus namespace-scope `static_assert`. The
+validation pipeline is ordered:
+
+1. prove the registry contains every known `NodeKind` exactly once and no
+   unknown kind;
+2. validate every finite enum/set member and the structural rules in Section
+   2, including a non-empty explicit admission set;
+3. validate each axis's required, forbidden, and derived combinations from
+   Sections 3 through 8;
+4. validate payload alternatives, arity bounds, operand roles, result form,
+   concrete-type source, effects, stage owner/admission, and MIR disposition as
+   one entry;
+5. prove any emitted compact runtime descriptor is a projection of that entry,
+   never separately authored data.
+
+Only a registry for which the aggregate `static_assert` succeeds may define
+the query templates or runtime view. A deliberately invalid schema entry must
+fail compilation in a validation proof; production code cannot represent
+"invalid but queryable." This is how descriptor drift and free-form tag
+combinations fail closed before execution.
+
+### 11.3 Derived compile-time surface
+
+The stable pass-facing compile-time surface is conceptually:
+
+```cpp
+template<NodeKind K>
+inline constexpr KindSchemaView node_kind_schema_v = /* validated registry */;
+
+template<NodeKind K, class Tag>
+inline constexpr bool node_has_tag_v = /* derived from schema view */;
+
+template<NodeKind K, PublishedStage S>
+inline constexpr bool node_admitted_in_v = /* stages.admitted */;
+
+template<NodeKind K, PublishedStage S>
+inline constexpr bool is_ssa_eligible_in_v =
+    node_admitted_in_v<K, S> && node_has_tag_v<K, SsaEligibleTag>;
+```
+
+`Tag` is a closed schema tag type whose axis and member are known at compile
+time. Unknown tag types are ill-formed rather than false. Named helpers are
+thin derived aliases for common semantic questions, including at minimum:
+
+- `is_value_producing_v<K>` and `has_ordinary_result_v<K>`;
+- `is_ssa_eligible_in_v<K, S>`;
+- `is_memory_op_v<K>`, `is_call_like_v<K>`, and
+  `is_terminator_v<K>`;
+- `may_read_memory_v<K>`, `may_write_memory_v<K>`, and `may_trap_v<K>`;
+- `node_admitted_in_v<K, S>`;
+- `requires_expansion_v<K>`, `requires_allocation_or_frame_v<K>`, and
+  `is_machine_only_v<K>`.
+
+A timeless `is_ssa_eligible_v<K>` may exist only where registry validation
+proves the answer invariant across every admitted stage, as required by
+Section 9. No named helper stores another fact: each is a formula over the
+same schema view and tag semantics.
+
+### 11.4 Derived runtime surface
+
+Runtime code receives a small value-oriented API:
+
+```cpp
+std::optional<NodeKindSchemaView> node_kind_schema(NodeKind) noexcept;
+bool node_has_tag(NodeKind, NodeTag) noexcept;
+bool node_admitted_in(NodeKind, PublishedStage) noexcept;
+bool is_ssa_eligible_in(NodeKind, PublishedStage) noexcept;
+```
+
+It also receives runtime counterparts for the named helpers above, such as
+`is_value_producing`, `is_memory_op`, `is_call_like`, `is_terminator`,
+`may_read_memory`, `may_write_memory`, `may_trap`, `requires_expansion`, and
+`is_machine_only`. Each wrapper performs one checked lookup in the same
+validated registry and applies the same derived predicate used by its
+compile-time counterpart.
+
+`NodeKindSchemaView` is immutable and pass-facing. It exposes reviewed axis
+values and closed role/payload views, not template types or mutable registry
+storage. If a compact descriptor is useful, it is mechanically projected from
+`KindSchema` during constant evaluation; there is no descriptor initializer to
+edit independently.
+
+Payload admission follows the same rule. Each schema entry owns its closed
+payload alternative set and the predicate/visitor needed to test the current
+closed variant. Operand bounds and roles, result/type policy, effects, and
+stage admission come from that same entry. The runtime payload checker may be
+mechanically emitted from the single registry, but a second manually repeated
+kind switch is forbidden.
+
+### 11.5 Fail-closed semantics
+
+- An unknown runtime `NodeKind`, `NodeTag`, or `PublishedStage` yields no schema
+  view and every boolean query returns `false`.
+- An unknown compile-time kind or tag is ill-formed; it cannot instantiate a
+  permissive primary template.
+- An invalid schema or incomplete/duplicate inventory fails the aggregate
+  compile-time validation before queries exist.
+- A runtime descriptor/view cannot drift because it is a projection of the
+  validated entry; an independently initialized descriptor is forbidden.
+- A known kind at a stage absent from its explicit admission set is rejected.
+- Payload, arity, role, result/type, effect, and MIR checks reject values not
+  admitted by the entry; payload refinement cannot broaden kind-level bounds.
+- Classification never authorizes implicit pass-through. Step 4 must give each
+  accepted input an explicit transition rule; an accepted kind with no rule,
+  or an input outside the accepted set, is an unhandled-transition failure.
+
+The runtime API must distinguish an unknown value from a known negative fact
+where diagnostics need that distinction, using the optional schema view or a
+closed error result. Boolean convenience wrappers remain fail-closed.
+
+### 11.6 Bounded feasibility proof categories
+
+If Step 6 requires a C++ proof, it is limited to these categories:
+
+- existing semantic representatives: `Binary`, `Store`, and `Phi`;
+- one contract-only prepared schema entry;
+- one contract-only pseudo schema entry;
+- one contract-only machine/MIR-ready schema entry.
+
+The contract-only entries may live in a compile-time proof fixture rather than
+the production `NodeKind` enum. They prove multi-axis validation and paired
+compile-time/runtime derivation without inventing production names, a complete
+future vocabulary, or any phase pass. The proof must cover invalid
+combinations, unknown runtime kind/tag/stage, illegal stage admission, and
+compile-time/runtime agreement. Production logic must not recognize testcase
+names or special-case these representatives.
 
 ## 12. Pending Step 4: B-through-F vocabularies and transitions
 

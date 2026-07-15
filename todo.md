@@ -3,42 +3,39 @@
 Status: Active
 Source Idea Path: ideas/open/801_bir_node_kind_tag_algebra_and_phase_vocabulary_lowering_contract.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define the closed tag algebra and SSA boundary
+Current Step ID: 3
+Current Step Title: Specify the single query authority
 
 ## Just Finished
 
-- Completed `plan.md` Step 2 in
-  `docs/backend/bir_node_kind_tag_algebra_and_phase_vocabulary.md`.
-- Defined one validated `KindSchema` composed of six finite axes: value/SSA,
-  semantic family, effects/control, stage vocabulary, operand/result/type/
-  payload policy, and MIR realizability. Each axis now names its exclusive
-  groups, allowed composable refinements, required combinations, invalid
-  combinations, and extension-review rule; derived facts replace duplicate
-  free booleans.
-- Defined `SsaEligible` only as static participation when admitted to an
-  SSA-governed vocabulary. B4 separately establishes and verifies definitions,
-  uses, dominance, phi edges, and Canonical graph publication. A shared
-  Raw/Canonical kind whose static meaning actually changes must use a
-  stage-qualified query or split kinds; no timeless helper may make a false
-  claim.
-- Added bounded algebra illustrations for existing `Binary`, `Store`, and
-  `Phi`, plus contract-only prepared, pseudo, and machine categories. They do
-  not enumerate future production kinds. Step 3 query mechanics and Step 4
-  transition rows remain explicit pending sections.
+- Completed `plan.md` Step 3 in the normative artifact's Section 11.
+- Specified one hidden C++17 per-kind `KindSchema` inventory, preferably a
+  constexpr registry with compile-time completeness proof; an internal
+  X-macro may emit enum and registry only when required, but may not become a
+  second inventory, TableGen-like DSL, or pass-visible mechanism.
+- Required registry completeness and all six-axis relational validation to
+  pass namespace-scope `static_assert` before traits are queryable. Runtime
+  schema/descriptor views, payload admission, shape, effect, and stage facts
+  are mechanical projections of the same entry, not hand-maintained switches.
+- Defined generic and named compile-time/runtime helper surfaces, including
+  tag, stage admission, stage-qualified SSA, value/effect/control, and MIR
+  disposition queries. Unknown runtime enum/tag/stage values and illegal
+  admission fail closed; unknown compile-time values are ill-formed.
+- Selected only `Binary`, `Store`, `Phi`, and contract-only
+  prepared/pseudo/machine categories for any later bounded feasibility proof.
+  Step 4 remains pending and no transition rules were invented.
 
 ## Suggested Next
 
-- Execute only Step 3: specify the hidden single schema authority and its
-  stable compile-time/runtime query surface over the accepted algebra.
+- Execute only Step 4: publish the exact B/C/D/E/F admitted vocabularies and
+  complete B-to-C, C-to-D, D-to-E, and E-to-F transition matrix.
 
 ## Watchouts
 
 - Do not revise or activate idea 732, reopen idea 746, or treat tag
   classification as proof of graph-stage SSA validity.
-- Do not turn the closed refinements into independent booleans. Step 3 must
-  derive views from a validated axis record, and Step 4 must decide actual
-  cross-stage retention rather than infer it from shared storage.
+- Step 4 must enumerate transition outcomes explicitly; neither successful
+  classification nor shared node storage authorizes catch-all retention.
 
 ## Proof
 
