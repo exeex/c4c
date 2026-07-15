@@ -79,9 +79,11 @@ Completion check:
 
 ### Step 2 - Diagnose and repair the variadic baseline regression
 
-Status: required acceptance repair; Step 1 has implementation commits
-`97d305332` and `4830e94a5`, but its capability claim is not accepted while
-the baseline remains rejected.
+Status: complete. Step 1 implementation commits `97d305332` and `4830e94a5`
+were repaired by accepted commit `11a45f173`, which validates authoritative
+`inttoptr` endpoints without weakening the native helper-input contract. The
+exact named regression family passed 20/20 after a fresh build and the matching
+full suite passed 3037/3037.
 
 Goal: reduce the post-`4830e94a5` full-suite failure family back to the
 baseline without weakening contracts or expanding this producer-only scope.
@@ -109,11 +111,9 @@ Actions:
 
 Completion check:
 
-- after a fresh build, prove the exact 20-test failure set is eliminated with
-  a matching full-suite candidate against the 0/3037-failure baseline; a
-  credible narrowly targeted command covering this complete named family may
-  justify the code slice provisionally, but requires that later matching
-  full-suite baseline recheck before any 782 capability acceptance; and
+- accepted: after a fresh build, the exact 20-test failure set passed 20/20
+  and the matching full suite passed 3037/3037 against the 0/3037-failure
+  baseline; and
 - no expectation downgrade, named-case workaround, or weaker malformed-
   authority behavior is used to obtain the result.
 
