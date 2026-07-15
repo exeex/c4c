@@ -904,6 +904,20 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
               }
             }
           }
+        } else if (const auto* parameter =
+                       std::get_if<DirectPointerBodyParameterGepBase>(&gep->base.authority)) {
+          const auto parameters = function.parameters_;
+          if (parameter->source_value_id != 0 && parameter->owner.valid() &&
+              parameter->owner.epoch == module.epoch_ &&
+              parameter->owner.slot < module.link_names_.size() &&
+              parameter->pointer_type == Type{TypeKind::Pointer} &&
+              parameter->parameter_index < parameters.size()) {
+            const auto value = function.values_.get(function_id,
+                                                    parameters[parameter->parameter_index]);
+            base_resolves = value && value.value().get().kind == ValueKind::Parameter &&
+                value.value().get().type == parameter->pointer_type;
+            base_matches_element_type = base_resolves;
+          }
         }
         bool indices_resolve = !instruction.operands.empty();
         for (const auto index : instruction.operands) {
@@ -918,9 +932,11 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
               function.values_.get(function_id, instruction.results[0]);
           if (resolved) result_value = &resolved.value().get();
         }
+        const bool direct_body_parameter =
+            std::holds_alternative<DirectPointerBodyParameterGepBase>(gep->base.authority);
         if (!indices_resolve || instruction.results.size() != 1 ||
             !base_resolves || !is_well_formed(gep->element_type) ||
-            gep->element_type.kind != TypeKind::Array || !result_value ||
+            (!direct_body_parameter && gep->element_type.kind != TypeKind::Array) || !result_value ||
             (result_value &&
              result_value->type != Type{TypeKind::Pointer}) ||
             (result_value &&

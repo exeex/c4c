@@ -318,6 +318,19 @@ bool supported_plain_parameter_base(TypeBase base) {
   }
 }
 
+bool selected_direct_pointer_body_parameter(const LirFunction& function,
+                                            std::size_t index,
+                                            const codegen::lir::LirTypeRef& mirror) {
+  return std::count_if(function.native_body_parameter_definitions.begin(),
+                       function.native_body_parameter_definitions.end(),
+                       [&](const auto& definition) {
+                         return definition.parameter_index == index &&
+                                definition.type == mirror &&
+                                definition.owner == function.link_name_id &&
+                                definition.abi == codegen::lir::LirNativeBodyParameterAbi::DirectPointer;
+                       }) == 1;
+}
+
 bool same_default_parameter_type(const TypeSpec& lhs, const TypeSpec& rhs) {
   return lhs.base == rhs.base &&
          lhs.enum_underlying_base == rhs.enum_underlying_base &&
@@ -360,22 +373,33 @@ std::optional<std::vector<Type>> lower_function_parameter_types(
     const auto& logical = function.params[index].second;
     const auto& signature = function.signature_params[index];
     const auto& mirror = function.signature_param_type_refs[index];
-    if (!supported_plain_parameter_base(logical.base) ||
-        !supported_plain_parameter_base(signature.type.base) ||
-        !default_parameter_type_metadata(logical) ||
-        !default_parameter_type_metadata(signature.type) || signature.is_byval ||
-        !same_default_parameter_type(logical, signature.type) ||
-        mirror.has_struct_name_id())
+    const bool selected_pointer =
+        mirror.kind() == codegen::lir::LirTypeKind::Pointer &&
+        logical.ptr_level > 0 && signature.type.ptr_level > 0 &&
+        !signature.is_byval &&
+        same_default_parameter_type(logical, signature.type) &&
+        selected_direct_pointer_body_parameter(function, index, mirror);
+    if ((!selected_pointer &&
+         (!supported_plain_parameter_base(logical.base) ||
+          !supported_plain_parameter_base(signature.type.base) ||
+          !default_parameter_type_metadata(logical) ||
+          !default_parameter_type_metadata(signature.type) || signature.is_byval ||
+          !same_default_parameter_type(logical, signature.type) ||
+          mirror.has_struct_name_id())) ||
+        (selected_pointer && mirror.has_struct_name_id()))
       return std::nullopt;
-    const auto type = lower_signature_type(module, signature.type, mirror);
+    const auto type = selected_pointer
+        ? std::optional<Type>{Type{TypeKind::Pointer}}
+        : lower_signature_type(module, signature.type, mirror);
     if (!type) return std::nullopt;
-    if ((type->kind == TypeKind::Integer &&
+    if ((type->kind == TypeKind::Pointer && !selected_pointer) ||
+        (type->kind == TypeKind::Integer &&
          (mirror.kind() != codegen::lir::LirTypeKind::Integer ||
           !mirror.integer_bit_width() ||
           *mirror.integer_bit_width() != type->bit_width)) ||
         (type->kind == TypeKind::Floating &&
          mirror.kind() != codegen::lir::LirTypeKind::Floating) ||
-        mirror.str() != type->spelling)
+        (type->kind != TypeKind::Pointer && mirror.str() != type->spelling))
       return std::nullopt;
     lowered.push_back(*type);
   }
@@ -2278,6 +2302,11 @@ Result<void, ImportError> validate_function(const LirModule& module,
   if (!function.stack_objects.empty())
     return fail<void>(ImportErrorCode::UnsupportedStackObjects, name, {},
                       "stack objects require the memory family");
+  if (!function.native_body_parameter_definitions.empty()) {
+    if (function.native_body_parameter_definitions.size() != 1)
+      return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
+                        "only one selected direct-pointer body parameter is receivable");
+  }
   const LirMemcpyOp* overflow_memcpy = nullptr;
   const codegen::lir::LirAmd64SysVOverflowAggregateCarrier* overflow_carrier = nullptr;
   for (const auto& block : function.blocks) for (const auto& instruction : block.insts) {
@@ -2439,6 +2468,11 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_map<std::uint32_t, std::string> block_labels_by_id;
   std::unordered_map<std::string, Type> ordinary_values;
   std::unordered_map<std::uint32_t, Type> source_values;
+  for (const auto& parameter : function.native_body_parameter_definitions) {
+    if (!source_values.emplace(parameter.value.value, Type{TypeKind::Pointer}).second)
+      return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
+                        "body parameter identity collided in the current-function source registry");
+  }
   for (const auto& instruction : function.alloca_insts) {
     const auto& alloca = std::get<LirAllocaOp>(instruction);
     if (!source_values.emplace(alloca.result.value_id()->value,
@@ -2492,6 +2526,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::unordered_set<std::uint32_t> selected_global_i32_abs_results;
   std::unordered_set<std::uint32_t> normalized_i32_add_results;
   std::unordered_set<std::uint32_t> scalar_sext_results;
+  std::size_t selected_body_parameter_gep_count = 0;
   labels.reserve(function.blocks.size());
   block_ids.reserve(function.blocks.size());
   block_labels_by_id.reserve(function.blocks.size());
@@ -2915,6 +2950,29 @@ Result<void, ImportError> validate_function(const LirModule& module,
           continue;
         }
         const auto* result = gep->result.value_id();
+        const auto* parameter_base = gep->ptr.value_id();
+        const auto selected_parameter = parameter_base
+            ? std::find_if(function.native_body_parameter_definitions.begin(),
+                           function.native_body_parameter_definitions.end(),
+                           [&](const auto& parameter) {
+                             return parameter.value == *parameter_base;
+                           })
+            : function.native_body_parameter_definitions.end();
+        if (selected_parameter != function.native_body_parameter_definitions.end()) {
+          const auto element_type = lower_lir_type(module, gep->element_type);
+          if (gep->result.kind() != codegen::lir::LirOperandKind::SsaValue || !result ||
+              !result->valid() || gep->ptr.kind() != codegen::lir::LirOperandKind::SsaValue ||
+              !parameter_base->valid() || selected_parameter->parameter_index != 0 ||
+              selected_parameter->type.kind() != codegen::lir::LirTypeKind::Pointer ||
+              selected_parameter->owner != function.link_name_id ||
+              selected_parameter->abi != codegen::lir::LirNativeBodyParameterAbi::DirectPointer ||
+              !element_type || gep->indices.empty() ||
+              ++selected_body_parameter_gep_count != 1 ||
+              !source_values.emplace(result->value, Type{TypeKind::Pointer}).second)
+            return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                              "direct body-parameter getelementptr requires the one selected typed parameter authority row");
+          continue;
+        }
         const auto* global_base = gep->ptr.link_name_id();
         const auto* direct_base = gep->ptr.value_id();
         const bool is_global_base =
@@ -3552,6 +3610,10 @@ Result<void, ImportError> validate_function(const LirModule& module,
         block.terminator);
     if (!checked) return checked;
   }
+  if (!function.native_body_parameter_definitions.empty() &&
+      selected_body_parameter_gep_count != 1)
+    return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
+                      "direct body-parameter authority requires exactly one selected getelementptr receipt");
   return Result<void, ImportError>::success();
 }
 
@@ -3907,6 +3969,10 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
             }
             source_values.emplace(constant.value.value, reserved.value());
           }
+
+          const auto* selected_body_parameter =
+              function.native_body_parameter_definitions.empty()
+                  ? nullptr : &function.native_body_parameter_definitions.front();
 
           for (const LirBlock& block : function.blocks) {
             (void)block;
@@ -4393,6 +4459,51 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   if (!registered.second) {
                     edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
                                              "local-array getelementptr result collided in the current-function source registry"};
+                    return Result<void, BuildError>::failure(BuildError::DuplicateSourceValue);
+                  }
+                  continue;
+                }
+                if (selected_body_parameter && gep->ptr.value_id() &&
+                    *gep->ptr.value_id() == selected_body_parameter->value) {
+                  const auto owner = imported_link_names.find(selected_body_parameter->owner);
+                  if (owner == imported_link_names.end()) {
+                    edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                                             block.label, "validated body-parameter owner disappeared"};
+                    return Result<void, BuildError>::failure(BuildError::InvalidNameId);
+                  }
+                  std::vector<ValueId> indices;
+                  indices.reserve(gep->indices.size());
+                  for (const auto& index : gep->indices) {
+                    const auto immediate = index.value().integer_immediate();
+                    if (!immediate) {
+                      edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                                               block.label, "validated body-parameter GEP index disappeared"};
+                      return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                    }
+                    auto reserved = function_builder.reserve_value(*lower_lir_type(module, index.type_ref()));
+                    if (!reserved) return Result<void, BuildError>::failure(reserved.error());
+                    auto defined = function_builder.define_int_constant(
+                        reserved.value(), static_cast<std::int64_t>(immediate->value));
+                    if (!defined) return defined;
+                    indices.push_back(reserved.value());
+                  }
+                  auto appended = function_builder.append(
+                      blocks.at(block.id.value), GetElementPtrSpec{
+                          DirectPointerBodyParameterGepBase{
+                              selected_body_parameter->value.value,
+                              selected_body_parameter->parameter_index,
+                              Type{TypeKind::Pointer}, owner->second},
+                          *lower_lir_type(module, gep->element_type), gep->inbounds,
+                          std::move(indices), gep->result.value_id()->value});
+                  if (!appended) {
+                    edit_error = builder_failure(name, block.label,
+                                                 "append direct body-parameter getelementptr", appended.error());
+                    return Result<void, BuildError>::failure(appended.error());
+                  }
+                  if (!source_values.emplace(gep->result.value_id()->value,
+                                             appended.value().results[0]).second) {
+                    edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                                             block.label, "body-parameter getelementptr result collided"};
                     return Result<void, BuildError>::failure(BuildError::DuplicateSourceValue);
                   }
                   continue;

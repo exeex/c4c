@@ -12748,6 +12748,73 @@ void test_typed_phi_loop_and_parallel_edge_occurrences() {
 
 }
 
+void test_direct_pointer_body_parameter_gep_receipt_and_rejections() {
+  lir::LirModule module;
+  auto texts = std::make_shared<c4c::TextTable>();
+  module.link_name_texts = texts;
+  module.link_names.attach_text_table(texts.get());
+  const auto owner = module.link_names.intern("direct_pointer_body_parameter_owner");
+  auto pointer = scalar_type(c4c::TB_CHAR);
+  pointer.ptr_level = 1;
+  pointer.inner_rank = -1;
+  lir::LirBlock entry = return_block(0, "entry");
+  entry.insts.push_back(lir::LirGepOp{
+      lir::LirOperand::ssa("%misleading.result", lir::LirValueId{42}),
+      lir::LirTypeRef::integer(8),
+      lir::LirOperand::ssa("%not-authoritative-spelling", lir::LirValueId{41}), false,
+      {lir::LirGepIndex::typed(lir::LirTypeRef::integer(64),
+                               lir::LirOperand::integer("misleading-zero", 0))}});
+  lir::LirFunction function = void_definition("direct_pointer_body_parameter_owner", {entry});
+  function.link_name_id = owner;
+  function.params.emplace_back("%presentation-only", pointer);
+  function.signature_params.push_back({"%presentation-only-signature", pointer, false});
+  function.signature_param_type_refs.push_back(lir::LirTypeRef(lir::LirBuiltinType::Pointer));
+  function.native_body_parameter_definitions.push_back(
+      {lir::LirValueId{41}, 0, lir::LirTypeRef(lir::LirBuiltinType::Pointer), owner,
+       lir::LirNativeBodyParameterAbi::DirectPointer});
+  module.functions.push_back(std::move(function));
+
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "selected direct pointer body parameter GEP must publish verified Raw BIR: " +
+             (raw.has_value() ? "foundation verifier rejected it" : raw.error().detail));
+  const auto view = raw.value().view();
+  const auto function_view = view.function(view.functions()[0]).value();
+  const auto instruction = function_view.instruction(
+      function_view.instructions(function_view.blocks()[0]).value()[0]).value();
+  const auto* gep = instruction.get_element_ptr();
+  const auto* parameter = gep ? std::get_if<bir::DirectPointerBodyParameterGepBase>(
+      &gep->base.authority) : nullptr;
+  expect(parameter && parameter->source_value_id == 41 && parameter->parameter_index == 0 &&
+             parameter->pointer_type == bir::Type{bir::TypeKind::Pointer} &&
+             parameter->owner.valid(),
+         "Raw BIR must retain only selected direct-pointer body-parameter authority");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = module;
+    mutate(candidate);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value(), message);
+  };
+  rejected([](auto& candidate) { candidate.functions[0].native_body_parameter_definitions.clear(); },
+           "missing body-parameter authority must reject transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].native_body_parameter_definitions[0].value = lir::LirValueId::invalid(); },
+           "invalid body-parameter value must reject transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].native_body_parameter_definitions[0].owner = candidate.link_names.intern("foreign_parameter_owner"); },
+           "foreign body-parameter owner must reject transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].native_body_parameter_definitions[0].type = lir::LirTypeRef::integer(64); },
+           "type-incoherent body-parameter authority must reject transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].native_body_parameter_definitions[0].abi = lir::LirNativeBodyParameterAbi::Invalid; },
+           "malformed direct-pointer ABI must reject transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].native_body_parameter_definitions.push_back(candidate.functions[0].native_body_parameter_definitions[0]); },
+           "duplicate body-parameter authority must reject transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].blocks[0].insts.push_back(candidate.functions[0].blocks[0].insts[0]); },
+           "duplicate selected body-parameter GEP receipt must reject transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].signature_params[0].is_byval = true; },
+           "byval body parameter must remain rejected transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].signature_is_variadic = true; },
+           "variadic body parameter must remain rejected transactionally");
+}
+
 }  // namespace
 
 int main() {
@@ -12856,5 +12923,6 @@ int main() {
   test_selected_local_scalar_load_authority_receipt_and_rejections();
   test_typed_phi_edge_authority_receipt_and_rejections();
   test_typed_phi_loop_and_parallel_edge_occurrences();
+  test_direct_pointer_body_parameter_gep_receipt_and_rejections();
   return 0;
 }

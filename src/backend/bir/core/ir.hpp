@@ -213,8 +213,19 @@ struct LabelAddressGepBase {
   ValueId value{};
 };
 
+// Receipt of the one producer-selected direct, non-expanded body parameter
+// used as a typed GEP base.  This retains native LIR identity plus the Raw-BIR
+// parameter ordinal; it is not a recoverable spelling or generic SSA base.
+struct DirectPointerBodyParameterGepBase {
+  std::uint32_t source_value_id = 0;
+  std::uint32_t parameter_index = 0;
+  Type pointer_type{TypeKind::Pointer};
+  LinkNameId owner{};
+};
+
 using GetElementPtrBaseAuthority =
-    std::variant<GlobalObjectId, LabelAddressGepBase>;
+    std::variant<GlobalObjectId, LabelAddressGepBase,
+                 DirectPointerBodyParameterGepBase>;
 
 struct GetElementPtrBase {
   GetElementPtrBaseAuthority authority = GlobalObjectId{};
@@ -222,6 +233,8 @@ struct GetElementPtrBase {
   GetElementPtrBase() = default;
   GetElementPtrBase(GlobalObjectId global) : authority(global) {}
   GetElementPtrBase(LabelAddressGepBase label) : authority(label) {}
+  GetElementPtrBase(DirectPointerBodyParameterGepBase parameter)
+      : authority(parameter) {}
 };
 
 struct GetElementPtrNode {

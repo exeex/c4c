@@ -1177,8 +1177,10 @@ Result<BuildResult, BuildError> FunctionBuilder::append(
   if (function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(
         BuildError::DuplicateSourceValue);
+  const bool direct_body_parameter =
+      std::holds_alternative<DirectPointerBodyParameterGepBase>(spec.base.authority);
   if (!is_well_formed(spec.element_type) ||
-      spec.element_type.kind != TypeKind::Array)
+      (!direct_body_parameter && spec.element_type.kind != TypeKind::Array))
     return Result<BuildResult, BuildError>::failure(BuildError::InvalidValueType);
   if (const auto* global =
           std::get_if<GlobalObjectId>(&spec.base.authority)) {
@@ -1217,6 +1219,19 @@ Result<BuildResult, BuildError> FunctionBuilder::append(
       return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
     if (!function_data.blocks_.contains(function_, label_constant->target))
       return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
+  } else if (const auto* parameter =
+                 std::get_if<DirectPointerBodyParameterGepBase>(&spec.base.authority)) {
+    if (parameter->source_value_id == 0 || !parameter->owner.valid() ||
+        parameter->owner.epoch != parent_->data_->epoch_ ||
+        parameter->owner.slot >= parent_->data_->link_names_.size() ||
+        parameter->pointer_type != Type{TypeKind::Pointer} ||
+        parameter->parameter_index >= function_data.parameters_.size())
+      return Result<BuildResult, BuildError>::failure(BuildError::InvalidValue);
+    const auto parameter_value = function_data.values_.get(
+        function_, function_data.parameters_[parameter->parameter_index]);
+    if (!parameter_value || parameter_value.value().get().kind != ValueKind::Parameter ||
+        parameter_value.value().get().type != parameter->pointer_type)
+      return Result<BuildResult, BuildError>::failure(BuildError::DefinitionTypeMismatch);
   } else {
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   }
