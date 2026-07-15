@@ -1,6 +1,6 @@
 # LIR Next Function-Body Parameter Authority Handoff
 
-Status: Open
+Status: Closed
 Type: bounded LIR producer/schema/verifier authority publication
 Predecessor: `ideas/open/734_lir_to_new_bir_container_completeness.md` post-Step 7.37
 Consumer: `ideas/open/734_lir_to_new_bir_container_completeness.md`
@@ -69,70 +69,43 @@ binary-LHS relation, not this direct switch-selector row. DirectPointer,
 DirectScalar binary-LHS, binary-RHS, ReturnValue, and every other parameter
 form remain fail closed.
 
-## Resumption Record: Preserved lowering-selector worktree collision
+## Step 3: 734 Receiver Handoff
 
-Status: resumed after Idea 826 completed its isolation-only prerequisite.
-Idea 825 does not own, accept, remove, or edit the preserved dirty 822
-material.
+The sole receiver-authorized row for 734 is:
 
-- Last accepted progress: Step 1 only, accepted in `7e6366cc9` (`plan: select
-  direct scalar switch selector authority row`). No Step 2 implementation,
-  proof, or acceptance commit exists.
-- Completed runbook steps: Step 1 selected the unchanged current-function
-  `DirectScalar` integer parameter consumed directly as `LirSwitch.selector`.
-- Interrupted step: Step 2, *Publish and verify the selected authority tuple*.
-- Blocker and scope boundary: the preserved dirty `stmt.cpp` change documented
-  by Idea 822 detects the same direct-scalar switch selector but materializes
-  an `add` carrying `LirBinOp.scalar_lhs_parameter_authority`. That is the
-  binary-LHS/materializing route Step 2 expressly rejects, and editing around
-  it would overwrite or blend an unaccepted Idea 822 slice. Its companion
-  dirty test patch and Idea 821 note remain preserved and unaccepted.
-- Isolation resolution and exact return action: Idea 826 closed its bounded
-  isolation route with the dirty 822 material recoverably preserved at
-  `.git/c4c-preservation/822-materializing-add-and-lowered-route.patch`.
-  Restore it only with `git apply --binary .git/c4c-preservation/822-materializing-add-and-lowered-route.patch`.
-  Resume this runbook exactly at Step 2 and publish a dedicated optional
-  `LirSwitch` selector authority with the `SwitchSelector` role directly from
-  the native parameter definition; do not reuse
-  `scalar_lhs_parameter_authority` or materialize an add. Then define the
-  focused producer proof before proceeding to Step 3.
-- Proof and commit status: `7e6366cc9` is the only accepted Idea 825 progress.
-  There is no Step 2 proof. The completed isolation prerequisite must not be
-  mistaken for authority acceptance or performed again by Idea 825.
+| value | owner | parameter index | type | ABI | role |
+| --- | --- | --- | --- | --- | --- |
+| native parameter-definition `LirValueId` | current `LirFunction.link_name_id` | native parameter-definition index | native parameter-definition `LirTypeRef` | `LirNativeBodyParameterAbi::DirectScalar` | `LirSwitchSelectorParameterRole::SwitchSelector` |
 
-## Resumption Record: native DirectScalar binary-LHS authority blocker
+It is present only through `LirSwitch.selector_parameter_authority` for an
+unchanged current-function direct-scalar integer parameter. Its checked
+consumer relation is exact: `LirSwitch.selector == authority.value` and
+`LirSwitch.selector_type_ref == authority.type`. The verifier rejects a
+missing authority for this native route and rejects invalid, duplicate,
+foreign, owner/index/type/ABI/role-mismatched, or consumer-incoherent
+authority. It does not derive the row from rendered parameter or selector
+text.
 
-Status: deactivated for separately scoped Idea 827; resume only after its
-accepted binary-LHS producer/verifier repair.
+734 has exactly one bounded return action: add one receiver mapping that
+consumes this `LirSwitch.selector_parameter_authority` tuple for the direct
+`LirSwitch.selector` use, preserving the two stated equality checks. It must
+not admit a second parameter row, recover facts from presentation, reuse
+binary-LHS authority, or materialize an `add`. DirectPointer, DirectScalar
+binary-LHS, binary-RHS, ReturnValue, and all other nonselected forms remain
+fail closed.
 
-- Last accepted progress and completed steps: Step 1 only, accepted in
-  `7e6366cc9` (`plan: select direct scalar switch selector authority row`).
-  Step 2 has no accepted semantic progress.
-- Interrupted step: Step 2, *Publish and verify the selected authority tuple*.
-  The current shared-worktree `core.cpp`, `ir.hpp`, `verify.cpp`, and focused
-  test changes are preserved, unaccepted implementation only; do not claim,
-  commit, discard, or alter them during the blocker.
-- Build and focused evidence: fresh `cmake --build --preset default` passed.
-  The matching exact `^frontend_lir_call_type_ref$` CTest was 0/1 before at
-  the earlier `LirSwitch.selector` abort and remains 0/1 after, now at
-  `LirBinOp.scalar_lhs_parameter_authority: is required when LirBinOp.lhs uses
-  a native direct-scalar parameter`.
-- First bad fact and scope boundary: the newly exposed native DirectScalar
-  `LirBinOp` LHS producer/verifier gap is outside this source's selected direct
-  `LirSwitch.selector` row. It belongs solely to Idea 827; closed 820's prior
-  `ull` publication does not authorize it.
-- Exact return point and commit status: after Idea 827 receives accepted proof,
-  resume exactly at Step 2. Reassess the preserved Step 2 selector slice using
-  its own proof; there is no Idea 825 Step 2 acceptance commit.
+## Closure Record
 
-## Return From Idea 827
+Status: capability complete.
 
-- Idea 827 is intentionally concluded: its exact first failing operation was
-  unary `fneg`, and no truthful binary definition/operation type-mismatch
-  reproduction exists. Idea 828 accepted the unary route in `524b24f64`.
-- Resume exactly at Step 2, *Publish and verify the selected authority tuple*.
-  The current dirty selector-authority implementation remains unaccepted and
-  must receive its own focused proof; do not credit 827/828 evidence.
+Step 2 published the dedicated native `LirSwitch` selector authority and
+focused positive/malformed coverage in `37674ad76` (`lir: publish direct
+scalar switch selector authority`). The supervisor accepted a fresh
+`cmake --build --preset default`, the exact focused
+`ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`,
+and matching regression guard from baseline 0/1 expected abort to after 1/1
+pass. Step 3 above is the durable one-row 734 handoff. No Raw-BIR/importer or
+receiver code changed in this idea.
 
 ## Reviewer Reject Signals
 
