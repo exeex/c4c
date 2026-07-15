@@ -675,6 +675,64 @@ void expect_identity_verification_rejected(
   }
 }
 
+void test_standalone_cast_result_authority_contract() {
+  namespace lir = c4c::codegen::lir;
+
+  const auto make_module = [](lir::LirValueId result_id) {
+    lir::LirModule module;
+    lir::LirFunction function;
+    function.name = "standalone_native_cast";
+    function.signature_text = "define void @standalone_native_cast() {";
+    function.blocks.push_back(lir::LirBlock{});
+    function.blocks.back().insts.push_back(lir::LirCastOp{
+        .result = lir::LirOperand::ssa("%standalone.native.cast", result_id),
+        .kind = lir::LirCastKind::ZExt,
+        .from_type = lir::LirTypeRef::integer(32),
+        .operand = lir::LirOperand::integer("7", 7),
+        .to_type = lir::LirTypeRef::integer(64),
+        .requires_native_result_authority = true,
+    });
+    module.functions.push_back(std::move(function));
+    return module;
+  };
+
+  lir::LirModule valid = make_module(lir::LirValueId{7});
+  lir::verify_module(valid);
+
+  lir::LirModule missing_result = make_module(lir::LirValueId{7});
+  std::get<lir::LirCastOp>(missing_result.functions[0].blocks[0].insts[0]).result =
+      lir::LirOperand{};
+  expect_identity_verification_rejected(
+      missing_result,
+      "verifier should reject standalone native cast without result authority");
+
+  lir::LirModule invalid_result = make_module(lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_result, "verifier should reject invalid standalone native cast result ID");
+
+  lir::LirModule same_function_duplicate = make_module(lir::LirValueId{7});
+  same_function_duplicate.functions[0].blocks[0].insts.push_back(
+      lir::LirStackSaveOp{lir::LirOperand::ssa("%same.function.owner",
+                                                lir::LirValueId{7})});
+  expect_identity_verification_rejected(
+      same_function_duplicate,
+      "verifier should reject same-function duplicate standalone native cast result ID");
+
+  lir::LirModule foreign_result = make_module(lir::LirValueId{11});
+  lir::LirFunction foreign_function;
+  foreign_function.name = "standalone_native_cast_foreign_owner";
+  foreign_function.signature_text =
+      "define void @standalone_native_cast_foreign_owner() {";
+  foreign_function.blocks.push_back(lir::LirBlock{});
+  foreign_function.blocks.back().insts.push_back(
+      lir::LirStackSaveOp{lir::LirOperand::ssa("%foreign.owner",
+                                                lir::LirValueId{11})});
+  foreign_result.functions.push_back(std::move(foreign_function));
+  expect_identity_verification_rejected(
+      foreign_result,
+      "verifier should reject standalone native cast result ID owned by another function");
+}
+
 void test_direct_branch_successor_identity_contract() {
   namespace lir = c4c::codegen::lir;
   auto make = [](std::string name, lir::LirBlockId successor, std::string label = "exit") {
@@ -7229,6 +7287,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_rv64_scalar_stdarg_uses_pointer_cursor();
   test_aarch64_scalar_stdarg_preserves_structured_va_list();
   test_structured_operand_identity_foundation();
+  test_standalone_cast_result_authority_contract();
   test_direct_branch_successor_identity_contract();
   test_conditional_and_switch_successor_identity_contract();
   test_indirect_branch_successor_identity_contract();
