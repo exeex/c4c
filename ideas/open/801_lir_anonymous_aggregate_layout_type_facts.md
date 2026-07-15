@@ -108,3 +108,35 @@ acceptance in `827dae5bd3`, its unaccepted implementation base `201f229d3`,
 and all earlier resumption constraints remain in force. First prove
 `frontend_lir_call_type_ref` reaches the selector switch check; then return to
 802 Step 1, whose isolated verifier/test hunk remains unaccepted and parked.
+
+## Resumption Update: Step 2 aggregate-use authority blocker
+
+Last accepted progress remains Step 1, `Trace and select anonymous aggregate
+layout facts`, in `827dae5bd3`. Step 2 is still unaccepted: `201f229d3` is
+its unaccepted implementation base and the current working-tree
+argument-mirror repair is preserved but unaccepted. Its fresh build plus
+`frontend_lir_call_type_ref` proof passes, but that narrow result is not its
+required focused call/frontend/backend ladder or supervisor-accepted full
+baseline.
+
+Interrupted step: Step 2, `Repair anonymous layout / structured-call
+compatibility`. The active full-baseline attempt first fails in the aggregate
+extract path at `LirExtractValueOp.agg: aggregate SSA operand requires valid
+LirValueId authority` (for example,
+`positive_sema_ok_call_builtin_runtime_c` and
+`llvm_gcc_c_torture_src_complex_2_c`). The candidate baseline is 2989/3037
+versus the accepted 3037/3037 baseline, so Step 2 cannot be accepted or
+advanced.
+
+Classification: `separate-blocker`. The failure is aggregate-use authority
+owned by `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`,
+not anonymous layout construction, structured-call compatibility, or switch
+selector verification. The active 754 repair must reassess its formerly
+accepted Step 2 aggregate operand contract before Step 3 can be runnable.
+
+Exact return point: after 754 accepts the bounded aggregate-use authority
+repair with its required proof, reactivate 801 at unchanged Step 2. Preserve
+the current unaccepted Step 2 repair and 802's parked unaccepted hunk; first
+complete 801's fresh build, focused call/frontend/backend proof, and
+supervisor-accepted full baseline before Step 3. Do not repeat Step 1 or
+claim the preserved repair as accepted progress.

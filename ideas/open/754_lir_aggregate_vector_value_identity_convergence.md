@@ -116,6 +116,32 @@ field-layout/type facts, reactivate 754 at unchanged Step 3 and validate only
 `LirExtractValueOp` field/index/result coherence. Do not repeat Steps 1 or 2;
 then continue Step 4.
 
+## Resumption Update: Step 2 aggregate-use authority repair
+
+Historical status: Step 1 remains accepted in `d8e5ed3a8`. Step 2 was
+previously accepted in `da07100d0` on its focused 6/6 proof, but a fresh
+full-baseline attempt while 801 was active exposes that its aggregate-use
+authority contract is not valid for all existing aggregate SSA uses:
+`LirExtractValueOp.agg: aggregate SSA operand requires valid LirValueId
+authority`. The candidate baseline is 2989/3037 against the accepted
+3037/3037 baseline, with 47 new failures. Therefore the old Step 2 acceptance
+is not sufficient to permit Step 3; treat it as a bounded repair/resumption,
+not completed progress to repeat or silently bypass.
+
+Return point: repair and reprove Step 2, `Publish structured result and
+operand authority`, for aggregate SSA uses within this idea's selected
+`LirExtractValueOp` scope. Retain the established no-text-recovery rule and
+do not absorb anonymous layout/index/result-type validation (801/Step 3),
+Raw-BIR, or other aggregate/vector rows. The repair must explain and cover
+the valid `LirValueId` authority boundary rather than weakening the verifier.
+Only after supervisor acceptance, including a 100% full baseline, may 754
+continue at its preserved Step 3.
+
+Incoming switch context: 801 Step 1 is accepted in `827dae5bd3`; its Step 2
+argument-mirror repair is preserved in the working tree but remains
+unaccepted. The aggregate-use failure is outside 801. On completion of this
+754 repair, return to 801 Step 2 exactly as recorded there.
+
 ## Reviewer Reject Signals
 
 - Reject recovery of aggregate-use identity from `%t`, `std::string`, printer

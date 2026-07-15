@@ -1,79 +1,81 @@
-# LIR Anonymous Aggregate Layout Type Facts Runbook
+# LIR Aggregate and Vector Value Identity Convergence Runbook
 
 Status: Active
-Source Idea: ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md
-Activated from: 802 Step 1 prerequisite return; 802 resumes only after this
-in-scope Step 2 argument-mirror repair reaches its switch check.
+Source Idea: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
+Resumed from: 801's blocked Step 2 full-baseline acceptance. Step 1 remains
+accepted in `d8e5ed3a8`; the formerly accepted Step 2 is reopened only for
+the aggregate-use authority defect recorded in the source resumption update.
 
 ## Purpose
 
-Provide native anonymous aggregate field-layout/type facts needed by the
-selected extractvalue row without letting compatibility text become authority.
+Publish native structured value, type, index, and mask authority for the
+bounded aggregate/vector LIR row. Rendered `%t` spellings remain output only
+and cannot recover semantic identity.
 
 ## Core Rule
 
-Native structured field facts are authority. `LirTypeRef` rendering may mirror
-an anonymous aggregate but must not be parsed to create or repair its layout.
+Use checked current-function structured IDs and row-specific typed facts as
+authority. Do not infer result, operand, index, or mask identity from rendered
+LLVM text, instruction order, or testcase naming. Keep unselected rows
+fail-closed.
 
 ## Read First
 
-- `ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md`
-- `ideas/open/802_lir_switch_selector_type_reference_verifier.md` resumption
-  record
 - `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`
-- direct-complex aggregate lowering plus nearby focused tests
+- `ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md` resumption record
+- `ideas/closed/798_lir_operand_provenance_authority_publication.md`
+- `src/codegen/lir/ir.hpp`, `src/codegen/lir/verify.cpp`, and aggregate lowering seams
+- failing full-baseline evidence for aggregate SSA extractvalue uses
 
 ## Non-Goals
 
-- `LirExtractValueOp` result/use/index/result-type row validation.
-- 802 switch selector verifier repair or acceptance of its parked hunk/tests.
-- Raw-BIR, other aggregate/vector rows, broad type rewrite, lowering, MIR,
-  emission, and all text-derived layout recovery.
+- Anonymous aggregate layout, field-index, or result-element validation; those
+  remain 801/754 Step 3 work after this repair is accepted.
+- CFG/PHI, pointer/object, memory/VA authority, Raw-BIR, target lowering, MIR,
+  emission, broad aggregate/vector conversion, or display-text recovery.
+- Weakening `LirExtractValueOp.agg` verification merely to restore a baseline.
 
 ## Ordered Steps
 
-### Step 1 - Trace and select anonymous aggregate layout facts (accepted)
+### Step 1 - Audit and select one aggregate/vector authority row — complete
 
-Goal: identify the exact anonymous aggregate construction and verification
-boundary and select the smallest checked native field-layout carrier.
+Accepted in `d8e5ed3a8`: only `LirExtractValueOp` is selected. Do not repeat
+this audit or widen to other aggregate/vector rows.
 
-Completion check: accepted in `827dae5bd3`; one bounded native layout contract
-is explicit and no compatibility-text parsing or extractvalue-row work is
-selected.
+### Step 2 - Repair structured result and aggregate operand authority
 
-### Step 2 - Repair anonymous layout / structured-call compatibility
-
-Goal: repair the rejected anonymous-layout implementation so native ordered
-field facts remain checked without making a direct-complex `LirCallOp`'s
-structured callee signature or argument type mirror disagree with its call
-arguments.
+Goal: repair the previously accepted selected-row contract so every supported
+aggregate SSA `LirExtractValueOp.agg` use carries valid current-function
+`LirValueId` authority without text recovery.
 
 Actions:
 
-- start from rejected implementation commit `201f229d3` and the preserved
-  in-progress Step 2 repair; locate the ownership/type construction mismatch
-  rather than weakening verifier contracts;
-- repair the native `arg_type_refs` argument-mirror verifier defect exposed by
-  `frontend_lir_call_type_ref`: do not treat rendered diagnostic/call text as
-  the argument type authority;
-- retain checked native field-count/field-type access and malformed-layout
-  rejection; leave named structs, arrays, unrelated calls, and all
-  extractvalue-row validation unchanged;
-- prove `frontend_lir_call_type_ref` reaches the switch selector check, then
-  return and resume 802 unchanged at Step 1 with its parked unaccepted
-  verifier/test hunk and exact focused command.
+- trace the aggregate SSA producer-to-`LirExtractValueOp.agg` path exposed by
+  `positive_sema_ok_call_builtin_runtime_c` and direct-complex coverage;
+- make the smallest schema/lowering/verifier repair that preserves checked
+  result/use identity and exact aggregate type coherence;
+- add nearby same-feature positive and malformed coverage for the repaired
+  authority boundary; reject missing, unknown, foreign, stale, or
+  type-incoherent authority rather than weakening the verifier;
+- obtain a fresh build, focused aggregate/frontend/backend proof, then the
+  supervisor-owned full baseline. Do not advance on a partial baseline.
 
-Completion check: the native carrier remains authoritative, mirror and
-signature contracts remain fail-closed, and the focused call test reaches the
-switch check. This only clears 802's prerequisite; Step 2 still requires its
-fresh build, focused call/frontend/backend proof, and supervisor-accepted full
-baseline before Step 3.
+Completion check: aggregate SSA uses have structured, current-function
+authority independent of display spelling; focused proof passes and the full
+baseline is 100% accepted by the supervisor.
 
-### Step 3 - Prove and publish the 754 handoff
+### Step 3 - Verify row-specific index facts — blocked on 801 handoff
 
-Goal: establish positive and malformed proof and record the exact field-layout
-contract that 754 Step 3 may consume.
+Goal: enforce `LirExtractValueOp` field-index and selected result-type
+coherence using 801's native anonymous aggregate facts.
 
-Completion check: accepted proof supports reactivation of 754 at unchanged
-Step 3 without treating this blocker as extractvalue-row validation. Do not
-advance while Step 2 remains unaccepted.
+Completion check: start only after 801's Step 2/3 handoff is accepted; retain
+unrelated rows fail-closed.
+
+### Step 4 - Prove and hand off the bounded row
+
+Goal: obtain accepted producer-side proof for the selected row without a
+Raw-BIR receiver change.
+
+Completion check: a 100% full baseline and accepted one-row handoff are
+recorded; otherwise preserve an executable repair route.
