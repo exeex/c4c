@@ -664,3 +664,35 @@ identity from value text, labels, printer output, LLVM text, or instruction
 order. Do not repeat Steps 7.20 through 7.24 or absorb local/object, memory/va,
 aggregate/vector, body-parameter, or any other remaining family. Return to
 the source completion gate after this one bounded receipt.
+
+## Resumption Record: Step 7.25 special-token authority blocker
+
+Last accepted progress remains Steps 1 through 7.24, including closed 751's
+typed PHI incoming value/predecessor handoff (`6ece9fe8f`). No Step 7.25
+implementation, focused PHI-receiver proof, or implementation commit is
+accepted. The focused frontend/interface baseline and attempted exact build plus
+`^backend_lir_to_bir_interface$` proof did pass, but that test did not exercise
+the new PHI path and is not accepted Step 7.25 proof.
+
+Interrupted step: Step 7.25, `Receive typed PHI incoming authority`. The first
+blocking fact is outside this source's Raw-BIR receiver scope:
+`LirOperandKind::SpecialToken` has only `std::monostate` authority in
+`src/codegen/lir/operands.hpp`. `LirOperandAuthority` can presently carry only
+`LirValueId`, `LinkNameId`, or `LirIntegerImmediate` in addition to
+`monostate`; SpecialToken's distinguishing content is therefore display
+spelling/classification, not native semantic authority. DirectConstant and
+Immediate have their respective typed authority, but SpecialToken does not.
+Step 7.25 cannot receive and preserve a typed special-token PHI input without
+forbidden presentation recovery.
+
+Classification: `separate-blocker`. Open
+`ideas/open/786_lir_phi_special_token_semantic_authority_publication.md` owns
+only publication and verification of native semantic authority for the relevant
+PHI SpecialToken operands. It must not change the Raw-BIR receiver, backend
+lowering, or recover semantics from token text. Exact return point: after 786
+accepts its producer/verifier handoff, reactivate 734 at the unchanged Step
+7.25 and receive exactly the newly authorized typed SpecialToken incoming rows
+alongside the already accepted 751 value/predecessor authority, with existing
+edge-occurrence and transactional requirements. The remaining action is the
+single bounded Step 7.25 receiver packet; do not repeat Steps 1 through 7.24
+or treat the baseline/interface test as PHI receipt proof.
