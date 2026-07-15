@@ -1963,7 +1963,12 @@ void verify_local_object_authority_bindings(
              "LirStoreOp.local_object_authority");
     } else if (const auto* op = std::get_if<LirLoadOp>(&inst);
                op && op->local_object_authority) {
-      verify(*op->local_object_authority, op->ptr, nullptr,
+      if (!op->requires_native_result_authority || !op->result.value_id() ||
+          !op->result.value_id()->valid()) {
+        fail_verify("LirLoadOp.local_object_authority",
+                    "selected local-scalar load requires native result authority");
+      }
+      verify(*op->local_object_authority, op->ptr, &op->type_str,
              "LirLoadOp.local_object_authority");
     } else if (const auto* op = std::get_if<LirGepOp>(&inst);
                op && op->local_object_authority) {

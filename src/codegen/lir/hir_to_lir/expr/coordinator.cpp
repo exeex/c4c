@@ -684,7 +684,7 @@ LirOperand StmtEmitter::emit_decl_ref_rval_operand(FnCtx& ctx, const DeclRef& r,
     emit_lir_op(ctx, lir::LirLoadOp{
                          result, lir::LirTypeRef(ty),
                          lir::LirOperand::ssa(it->second, authority->second.pointer_definition),
-                         false, authority->second});
+                         true, authority->second});
     return result;
   }
 

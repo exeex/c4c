@@ -1866,6 +1866,57 @@ loop:
     }
     return nullptr;
   };
+  const auto selected_local_scalar_load = [](lir::LirModule& candidate) -> lir::LirLoadOp* {
+    lir::LirFunction& function = require_function(candidate, "local_scalar_authority");
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* op = std::get_if<lir::LirLoadOp>(&inst);
+            op && op->local_object_authority) {
+          return op;
+        }
+      }
+    }
+    return nullptr;
+  };
+
+  lir::LirLoadOp* scalar_load = selected_local_scalar_load(module);
+  expect_true(scalar_load != nullptr && scalar_load->local_object_authority,
+              "local scalar fixture should retain the selected authority-bearing load");
+  expect_true(scalar_load->requires_native_result_authority && scalar_load->result.value_id() &&
+                  scalar_load->result.value_id()->valid(),
+              "selected local scalar load should carry a native result identity");
+  expect_true(scalar_load->ptr.value_id() &&
+                  *scalar_load->ptr.value_id() ==
+                      scalar_load->local_object_authority->pointer_definition,
+              "selected local scalar load should use its authority pointer definition");
+  expect_true(scalar_load->type_str == scalar_load->local_object_authority->pointee_type,
+              "selected local scalar load type should equal its authority pointee type");
+
+  lir::LirModule missing_load_result = module;
+  lir::LirLoadOp* result_load = selected_local_scalar_load(missing_load_result);
+  expect_true(result_load != nullptr, "local scalar fixture should retain a mutable selected load");
+  result_load->result = lir::LirOperand::ssa("%invalid-local-load", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      missing_load_result,
+      "verifier should reject selected local scalar load without a native result identity");
+
+  lir::LirModule disabled_load_result_authority = module;
+  lir::LirLoadOp* disabled_load = selected_local_scalar_load(disabled_load_result_authority);
+  expect_true(disabled_load != nullptr,
+              "local scalar fixture should retain a native-result selected load");
+  disabled_load->requires_native_result_authority = false;
+  expect_identity_verification_rejected(
+      disabled_load_result_authority,
+      "verifier should reject selected local scalar load without native-result admission");
+
+  lir::LirModule mismatched_load_pointee = module;
+  lir::LirLoadOp* type_load = selected_local_scalar_load(mismatched_load_pointee);
+  expect_true(type_load != nullptr && type_load->local_object_authority,
+              "local scalar fixture should retain a typed selected load");
+  type_load->local_object_authority->pointee_type = lir::LirTypeRef::integer(1);
+  expect_identity_verification_rejected(
+      mismatched_load_pointee,
+      "verifier should reject selected local scalar load with a mismatched pointee type");
 
   lir::LirModule missing_pointer = module;
   lir::LirAllocaOp* missing_alloca = selected_alloca(missing_pointer);
