@@ -3,29 +3,32 @@
 Status: Active
 Source Idea Path: ideas/open/825_lir_next_body_parameter_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish and verify the selected authority tuple
-你該做code review了
+Current Step ID: 3
+Current Step Title: Write the 734 handoff
 
 ## Just Finished
 
-- 827 was intentionally concluded after its binary mismatch premise was
-  disproved. Its unary `fneg` blocker completed separately as closed Idea 828;
-  neither result accepts this selector route.
+- Step 2 — Publish and verify the selected authority tuple is accepted pending
+  supervisor commit: the native DirectScalar `LirSwitch.selector_parameter_authority`
+  producer, exact-tuple verifier, and positive/malformed `switch_selector_native`
+  coverage passed their matching focused proof and regression guard.
 
 ## Suggested Next
 
-- Execute Step 2 only: assess the existing dirty selector-authority slice as
-  unaccepted work, then publish/verify the dedicated direct selector tuple and
-  obtain its own focused positive/malformed proof.
+- Step 3 — Write the 734 handoff: record only the selected authority tuple,
+  consumer relation, rejection boundary, and bounded receiver return action.
 
 ## Watchouts
 
-- Preserve adjacent dirty 821/822 material. Do not reuse binary-LHS authority,
-  materialize an add, or claim the dirty aggregate `frontend_hir_tests`
-  failure as accepted evidence.
+- Preserve adjacent dirty 821/822 and binary/`fneg` hunks. The accepted route admits
+  only an unchanged current-function native DirectScalar integer parameter as
+  `LirSwitch.selector`; do not reuse binary-LHS authority or materialize an add.
 
 ## Proof
 
-- No Step 2 acceptance proof yet. `7e6366cc9` remains the only accepted Idea
-  825 progress (Step 1 selection).
+- `cmake --build --preset default` passed (no work required), then
+  `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
+  passed (1/1). Matching guard
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+  passed: baseline 0/1 expected abort; after 1/1 pass. Focused proof output:
+  `test_after.log`.

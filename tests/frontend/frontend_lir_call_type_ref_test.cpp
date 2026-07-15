@@ -1174,7 +1174,7 @@ void test_conditional_and_switch_successor_identity_contract() {
     fn.blocks[0].insts.push_back(lir::LirBinOp{
         .result = lir::LirOperand::ssa("%switch.selector", lir::LirValueId{7}),
         .opcode = "add",
-        .type_str = "i32",
+        .type_str = lir::LirTypeRef::integer(32),
         .lhs = "0",
         .rhs = "0",
     });
@@ -1289,6 +1289,10 @@ void test_conditional_and_switch_successor_identity_contract() {
               "switch default and case targets should carry native block IDs");
   expect_true(sw.selector.value == 7,
               "switch selector should carry its native value ID");
+  const auto& switch_selector_definition =
+      std::get<lir::LirBinOp>(switch_module.functions[0].blocks[0].insts[0]);
+  expect_true(switch_selector_definition.type_str == lir::LirTypeRef::integer(32),
+              "switch selector definition should carry structured integer result authority");
 
   lir::LirModule parallel_switch;
   parallel_switch.functions.push_back(make_switch());
@@ -1436,6 +1440,14 @@ void test_conditional_and_switch_successor_identity_contract() {
       .selector = lir::LirValueId{99};
   expect_identity_verification_rejected(
       foreign_switch_selector, "verifier should reject a foreign switch selector ID");
+  lir::LirModule missing_switch_selector_result_type;
+  missing_switch_selector_result_type.functions.push_back(make_switch());
+  std::get<lir::LirBinOp>(
+      missing_switch_selector_result_type.functions[0].blocks[0].insts[0])
+      .type_str = lir::LirTypeRef{};
+  expect_identity_verification_rejected(
+      missing_switch_selector_result_type,
+      "verifier should reject a switch selector definition without result type authority");
   lir::LirModule misleading_switch_selector;
   misleading_switch_selector.functions.push_back(make_switch());
   std::get<lir::LirSwitch>(misleading_switch_selector.functions[0].blocks[0].terminator)
@@ -4330,6 +4342,72 @@ void lir_direct_void_ssa_arg_identity(void) {
       lir::LirExtAttr::SignExt;
   expect_identity_verification_rejected(
       extension_conflict, "verifier should reject extension on fixed SSA argument");
+}
+
+void test_native_direct_scalar_switch_selector_authority() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int switch_selector_helper(int value) { return value; }
+int switch_selector_native(int selector) {
+  switch (selector) { case 1: return 11; default: return 22; }
+}
+)c", "x86_64-linux-gnu");
+  const auto require_switch = [](lir::LirModule& module) -> lir::LirSwitch& {
+    lir::LirFunction& function = require_function(module, "switch_selector_native");
+    for (auto& block : function.blocks) {
+      if (auto* sw = std::get_if<lir::LirSwitch>(&block.terminator)) return *sw;
+    }
+    fail("native direct-scalar switch fixture should contain a switch");
+  };
+  const auto require_function_authority = [](lir::LirModule& module)
+      -> lir::LirFunction& { return require_function(module, "switch_selector_native"); };
+
+  lir::LirSwitch& sw = require_switch(lowered);
+  expect_true(sw.selector_parameter_authority.has_value(),
+              "native direct-scalar switch selector should publish parameter authority");
+  const auto& authority = *sw.selector_parameter_authority;
+  expect_true(authority.value == sw.selector && authority.type == sw.selector_type_ref &&
+                  authority.abi == lir::LirNativeBodyParameterAbi::DirectScalar &&
+                  authority.role == lir::LirSwitchSelectorParameterRole::SwitchSelector,
+              "switch selector authority should mirror value, structured type, ABI, and role");
+  lir::verify_module(lowered);
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    lir::LirModule malformed = lowered;
+    mutate(malformed, require_switch(malformed), require_function_authority(malformed));
+    expect_identity_verification_rejected(malformed, message);
+  };
+  rejected([](auto&, auto& candidate, auto&) { candidate.selector_parameter_authority.reset(); },
+           "native switch selector without parameter authority must fail closed");
+  rejected([](auto&, auto& candidate, auto&) {
+    candidate.selector_parameter_authority->value = lir::LirValueId::invalid();
+  }, "native switch selector with invalid parameter value must fail closed");
+  rejected([](auto& module, auto& candidate, auto&) {
+    candidate.selector_parameter_authority->owner =
+        require_function(module, "switch_selector_helper").link_name_id;
+  }, "native switch selector with foreign owner must fail closed");
+  rejected([](auto&, auto& candidate, auto&) {
+    candidate.selector_parameter_authority->parameter_index = 9;
+  }, "native switch selector with invalid parameter index must fail closed");
+  rejected([](auto&, auto& candidate, auto&) {
+    candidate.selector_parameter_authority->type = lir::LirTypeRef::integer(64);
+  }, "native switch selector with stale type must fail closed");
+  rejected([](auto&, auto& candidate, auto&) {
+    candidate.selector_parameter_authority->abi = lir::LirNativeBodyParameterAbi::DirectPointer;
+  }, "native switch selector with pointer ABI must fail closed");
+  rejected([](auto&, auto& candidate, auto&) {
+    candidate.selector_parameter_authority->role = lir::LirSwitchSelectorParameterRole::Invalid;
+  }, "native switch selector with invalid role must fail closed");
+  rejected([](auto&, auto& candidate, auto&) { candidate.selector = lir::LirValueId::invalid(); },
+           "native switch selector incoherent with authority value must fail closed");
+  rejected([](auto&, auto& candidate, auto&) {
+    candidate.selector_type_ref = lir::LirTypeRef::integer(64);
+  }, "native switch selector incoherent with authority type must fail closed");
+  rejected([](auto&, auto&, auto& function) {
+    function.native_body_parameter_definitions.push_back(
+        function.native_body_parameter_definitions.front());
+  }, "duplicate native switch selector parameter definition must fail closed");
 }
 
 void test_local_and_parameter_rvalue_identity_route() {
@@ -9199,6 +9277,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_standalone_cast_result_authority_contract();
   test_direct_branch_successor_identity_contract();
   test_conditional_and_switch_successor_identity_contract();
+  test_native_direct_scalar_switch_selector_authority();
   test_indirect_branch_successor_identity_contract();
   test_global_store_identity_contract();
   test_global_load_identity_contract();

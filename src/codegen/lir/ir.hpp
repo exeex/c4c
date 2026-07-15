@@ -821,6 +821,23 @@ enum class LirReturnValueParameterRole : uint8_t {
   ReturnValue,
 };
 
+enum class LirSwitchSelectorParameterRole : uint8_t {
+  Invalid,
+  SwitchSelector,
+};
+
+// Native authority for exactly a direct plain scalar current-function
+// parameter used unchanged as a switch selector. The selector spelling is a
+// checked display mirror; selection facts live in this tuple.
+struct LirSwitchSelectorParameterAuthority {
+  LirValueId value = LirValueId::invalid();
+  uint32_t parameter_index = 0;
+  LirTypeRef type;
+  LinkNameId owner = kInvalidLinkName;
+  LirNativeBodyParameterAbi abi{};
+  LirSwitchSelectorParameterRole role = LirSwitchSelectorParameterRole::Invalid;
+};
+
 // Native authority for exactly a direct plain scalar current-function
 // parameter returned unchanged as an integer. The return operand remains a
 // checked display mirror; it is never used to reconstruct this binding.
@@ -856,6 +873,9 @@ struct LirSwitch {
   // Structured selector type authority.  Keep this after selector so legacy
   // aggregate producers retain their existing field order.
   LirTypeRef selector_type_ref;
+  // Present only when selector directly names a native direct-scalar
+  // current-function parameter.
+  std::optional<LirSwitchSelectorParameterAuthority> selector_parameter_authority;
 };
 
 struct LirIndirectBr {

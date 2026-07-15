@@ -3146,29 +3146,75 @@ void verify_function_value_ownership(const LirModule& mod,
     }
   };
   const auto verify_switch_selector = [&](const LirSwitch& sw) {
+    const auto native_selector_definition = std::find_if(
+        function.native_body_parameter_definitions.begin(),
+        function.native_body_parameter_definitions.end(), [&](const auto& definition) {
+          return definition.value == sw.selector &&
+                 definition.abi == LirNativeBodyParameterAbi::DirectScalar;
+        });
+    if (!sw.selector_parameter_authority) {
+      if (native_selector_definition != function.native_body_parameter_definitions.end()) {
+        fail_verify("LirSwitch.selector_parameter_authority",
+                    "is required when LirSwitch.selector uses a native direct-scalar parameter");
+      }
+    } else {
+      const auto& authority = *sw.selector_parameter_authority;
+      constexpr std::string_view field = "LirSwitch.selector_parameter_authority";
+      const bool unique_owner = authority.owner != kInvalidLinkName &&
+          authority.owner == function.link_name_id &&
+          std::count_if(mod.functions.begin(), mod.functions.end(), [&](const LirFunction& candidate) {
+            return candidate.link_name_id == authority.owner;
+          }) == 1;
+      if (!authority.value.valid() || !unique_owner ||
+          authority.parameter_index >= function.params.size() ||
+          authority.abi != LirNativeBodyParameterAbi::DirectScalar ||
+          authority.role != LirSwitchSelectorParameterRole::SwitchSelector ||
+          sw.selector != authority.value || sw.selector_type_ref != authority.type) {
+        fail_verify(field,
+                    "requires one native direct-scalar current-function switch-selector binding");
+      }
+      const auto matches = std::count_if(
+          function.native_body_parameter_definitions.begin(),
+          function.native_body_parameter_definitions.end(), [&](const auto& definition) {
+            return definition.value == authority.value &&
+                   definition.parameter_index == authority.parameter_index &&
+                   definition.type == authority.type && definition.owner == authority.owner &&
+                   definition.abi == authority.abi;
+          });
+      if (matches != 1 || authority.parameter_index >= function.params.size() ||
+          !direct_scalar_parameter_type(function.params[authority.parameter_index].second)) {
+        fail_verify(field, "must exactly mirror one native direct-scalar parameter definition");
+      }
+    }
     if (!sw.selector.valid()) {
       fail_verify("LirSwitch.selector",
                   "must carry a valid current-function LirValueId");
     }
     const auto definition = definition_insts.find(sw.selector.value);
-    if (definition == definition_insts.end() || definition->second == nullptr) {
+    if (definition == definition_insts.end()) {
       fail_verify("LirSwitch.selector",
                   "must identify a current-function integer value definition");
     }
-    const LirOperand* result = modeled_result_operand(*definition->second);
-    const LirTypeRef* type = modeled_scalar_result_type(*definition->second);
-    if (!result || !result->value_id() || *result->value_id() != sw.selector ||
-        !type || type->kind() != LirTypeKind::Integer) {
+    const bool native_direct_scalar =
+        native_selector_definition != function.native_body_parameter_definitions.end();
+    const LirOperand* result = definition->second ? modeled_result_operand(*definition->second) : nullptr;
+    const LirTypeRef* type = definition->second ? modeled_scalar_result_type(*definition->second) : nullptr;
+    if ((!native_direct_scalar && (!result || !result->value_id() ||
+                                   *result->value_id() != sw.selector ||
+                                   !type || type->kind() != LirTypeKind::Integer)) ||
+        (native_direct_scalar &&
+         native_selector_definition->type.kind() != LirTypeKind::Integer)) {
       fail_verify("LirSwitch.selector",
                   "must identify a current-function integer value definition");
     }
-    if (sw.selector_name != result->str()) {
+    if (result && sw.selector_name != result->str()) {
       fail_verify("LirSwitch.selector_name",
                   "display name must match the selector-selected value definition");
     }
     require_type_ref(sw.selector_type_ref, "LirSwitch.selector_type_ref");
     if (sw.selector_type_ref.kind() != LirTypeKind::Integer ||
-        sw.selector_type_ref.integer_bit_width() != type->integer_bit_width()) {
+        (type && sw.selector_type_ref.integer_bit_width() != type->integer_bit_width()) ||
+        (native_direct_scalar && sw.selector_type_ref != native_selector_definition->type)) {
       fail_verify("LirSwitch.selector_type_ref",
                   "must match the selector-selected integer value definition");
     }

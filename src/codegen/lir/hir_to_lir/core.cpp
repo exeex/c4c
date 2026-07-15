@@ -1412,6 +1412,25 @@ void StmtEmitter::emit_term_switch(
   sw.selector = selector.value_id() ? *selector.value_id()
                                    : lir::LirValueId::invalid();
   sw.selector_type_ref = lir::LirTypeRef(sel_type);
+  if (ctx.lir_function != nullptr && sw.selector.valid()) {
+    for (const auto& definition : ctx.lir_function->native_body_parameter_definitions) {
+      if (definition.value == sw.selector &&
+          definition.abi == lir::LirNativeBodyParameterAbi::DirectScalar) {
+        // Native parameter definitions own the structured ABI type. Do not
+        // reconstruct it from the rendered switch type spelling.
+        sw.selector_type_ref = definition.type;
+        sw.selector_parameter_authority = lir::LirSwitchSelectorParameterAuthority{
+            .value = definition.value,
+            .parameter_index = definition.parameter_index,
+            .type = definition.type,
+            .owner = definition.owner,
+            .abi = definition.abi,
+            .role = lir::LirSwitchSelectorParameterRole::SwitchSelector,
+        };
+        break;
+      }
+    }
+  }
   (void)set_terminator_if_open(ctx, std::move(sw));
 }
 
