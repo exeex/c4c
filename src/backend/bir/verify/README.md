@@ -232,6 +232,13 @@ new exact P07 occurrence followed by a successful B8 transaction can publish
 
 ### Pseudo publication and private assigned-candidate intervals
 
+D3 is an unconditional publication gate, not a `PassId` or cleanup rewrite.
+The pipeline freezes the exact D2 owner/revision and current
+`ProjectedConstraintSet`; the verifier may only accept or reject that same
+candidate. Prospective pseudo names in `pseudo/README.md` are documentation
+vocabulary until production registry entries land and are not accepted merely
+because Markdown names them.
+
 The public `PseudoPublicationGate` accepts only one private frozen candidate carrying a
 complete `PseudoStageKey`. That key must name the exact current
 `PipelineStageStamp`, parent Canonical stamp, `TargetFingerprint`, layout and
@@ -267,6 +274,13 @@ and D2 eliminated every `GenericCall` while preserving the exact plan-derived
 ABI requirements. Unassigned allocatable values are valid; no allocation
 completeness rule runs. D3 atomically mints the first immutable `PseudoBir` only
 after the full module and every function pass.
+
+D3 rejects every unknown, omitted, premature, stale, schema-unimplemented, or
+stage-illegal kind; every incomplete D1/D2 transition row; every Canonical or
+`GenericCall` leftover; and every concrete register, frame offset, general
+assignment, spill/reload, allocation, or machine fact. Failure publishes no
+partial function, projection, token, or reusable green report. D3 never repairs
+the candidate, inserts a node, refreshes a projection, or changes a key.
 
 The same allocation-free gate republishes D4 and initial-D5 `PseudoBir`.
 Initial D5 may contain only its bounded `ParallelCopy`/`CopyScratch`

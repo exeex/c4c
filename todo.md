@@ -8,24 +8,22 @@ Current Step Title: Plan phase D pseudo lowering and out-of-SSA
 
 ## Just Finished
 
-- Completed plan Step 4: converged C1-C9 immutable preparation/product
-  contracts; C2-C9 use the exact 17-section product spine, one cumulative
-  Canonical/target/predecessor key chain, closed reference-product matrices,
-  and failure-atomic publication without graph mutation.
+- Partially completed plan Step 5: converged D1/D2 to the 17-section mutation
+  spine, established one prospective closed pseudo planning vocabulary without
+  production-kind claims, and fixed D3 as a non-pass allocation-free
+  same-revision publication gate over the exact D2 projection.
 
 ## Suggested Next
 
-- Execute plan Step 5 in D1-D5 order: consume the exact Prepared envelope,
-  lower into explicit PseudoPreallocation vocabulary, publish/reverify at D3/
-  D4, remove dynamic SSA at D5, and hand every introduced value/copy/scratch
-  fact into E1/E2 normally.
+- Complete plan Step 5 with D4 target legalization/expansion and D5 out-of-SSA/
+  copy closure, including full reprojection/reverification and exact E1
+  admission for every introduced value, copy, clobber, and scratch reservation.
 
 ## Watchouts
 
-- D1 admission is the unchanged Canonical owner/token + exact C1 fingerprint +
-  complete verified C2-C8 bundle + C9 `BoundConstraintSet`; no subset or
-  compatible-looking tuple is accepted.
-- D1-D5 graph mutations request fresh exact-revision projections from C9 after
+- D4 must eliminate every expansion placeholder and prove direct one-record
+  realizability before allocation; it cannot redo D2 ABI/call lowering.
+- D4/D5 graph mutations request fresh exact-revision projections from C9 after
   complete candidate mappings; C9 never edits or publishes their graphs.
 - D5 is the sole required dynamic-SSA removal point and must make copy/scratch
   identities visible to allocation rather than hiding them in products.
@@ -34,11 +32,10 @@ Current Step Title: Plan phase D pseudo lowering and out-of-SSA
 ## Proof
 
 - Changed-path suffix audit: every changed path ends in `.md`.
-- Structural checks confirm C2-C9 each contain the exact 17-section product
-  spine in order and a closed reference/product matrix with explicit unknown/
-  illegal/omitted rejection.
-- C1-C9 headers/keys form one exact adjacency chain; C7 has no parser/binder,
-  C8 has no call lowering, C9 projections have no graph mutation, and the D1
-  seam rejects stale/mixed/coverage-incomplete tuples.
+- Structural checks confirm D1/D2 each contain the exact 17-section pass spine
+  and closed matrix; D1->D2->D3 revision/projection adjacency is exact.
+- Searches confirm no pseudo planning name is claimed as a landed production
+  kind, D2 contains no concrete register/frame/general allocation authority,
+  and D3 has no rewrite or allocation-completeness requirement.
 - `git diff --check` passes. No build/test run is applicable to this
   documentation-only packet; no `test_after.log` is created or modified.

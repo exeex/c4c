@@ -1,188 +1,112 @@
-# Shared ABI-Aware Call Lowering
+# D2 Shared ABI-Aware Call Lowering Pass Contract
 
-Status: converged design contract (unimplemented).
+Contract-Status: converged planned contract under idea 732
+Implementation-Status: absent
+Phase-ID: D2
+Upstream: exact private D1 candidate and projection
+Downstream: exact private D2 candidate submitted to D3
 
-## D2 boundary and sole ownership
+## Purpose
 
-`D2` is the one shared ABI-aware BIR call-lowering transaction for every
-supported target. Target variation is selected data, not a target-specific
-pass implementation: the validated `TargetProfile.backend_abi` selects one
-entry from a closed, versioned ABI-rule registry whose descriptor is keyed by
-the exact `TargetFingerprint`, verified target-layout schema fingerprint, ABI
-rule-set fingerprint, and call-lowering schema fingerprint. An architecture
-name, environment switch, backend callback, instruction spelling, or compatible
-looking plan cannot select or override a rule.
+D2 is the sole shared owner that replaces every prospective `D.GenericCall`
+with explicit abstract pseudo transport, call, clobber, and preservation
+operations using exact C3/C4/C5/C8 requirements.
 
-D2 is the sole owner of turning every `GenericCall`, including an ordinary
-call and a D1-created runtime-helper call, into explicit ABI transport. It owns
-ordered argument transport, outgoing call-stack stores, hidden sret/byval and
-variadic transport, the call operation, result recovery, fixed abstract ABI
-slot requirements, declared caller-saved clobbers, and required callee
-preservation/restoration. C3 and C4 classify and plan these requirements but do
-not mutate BIR; D1 creates only `GenericCall`; D4 may legalize an already
-chosen sequence but cannot repeat ABI classification or general call lowering.
+## Owns
 
-## Exact admitted input
+Generic-call elimination, explicit abstract argument/result/byval/sret/variadic
+transport, call-site clobbers/preservation obligations, candidate mapping,
+fresh C9 projection, and D2 postconditions.
 
-D2 consumes one private, frozen, complete D1 candidate and no reconstructed
-view. Its input key must bind all of the following:
+## Does Not Own
 
-- the D1 candidate's exact current `PipelineStageStamp`, parent Canonical
-  `PipelineStageStamp`, pseudo-schema fingerprint, and D1 lowering-schema and
-  occurrence fingerprints;
-- the exact `TargetFingerprint` and verified target-layout schema fingerprint;
-- the atomic `VerifiedPreparationBundle` fingerprint and its ordered product
-  fingerprints, including the exact `RuntimeHelperPlan` used by D1;
-- the C3 `AbiPlan` whose key contains that Canonical stamp, target fingerprint,
-  target-layout schema fingerprint, ABI-plan schema fingerprint, and no
-  predecessor-plan fingerprint;
-- the C4 `CallPlan` whose key contains that same Canonical stamp and target,
-  the layout and call-plan schema fingerprints, and the exact C3 `AbiPlan`
-  fingerprint; and
-- the immutable C9 `BoundConstraintSet` fingerprint carried as lineage, the
-  exact D1 `ProjectedConstraintSet` keyed to the D1 revision, and the selected
-  ABI-rule-set and D2 call-lowering schema fingerprints.
+D2 does not spell concrete registers or frame offsets, assign general homes,
+layout frames, spill, perform target one-to-many expansion, resolve copies,
+publish `PseudoBir`, or reclassify ABI/call/helper requirements.
 
-Every `GenericCall` names one live Canonical call identity or one reviewed
-runtime-helper interface identity and its exact `CallPlan`/`AbiPlan` entries.
-Its ordered ordinary input and result identities, calling convention, tail-call
-decision, helper identity when applicable, and hidden-carrier requirements must
-agree with those entries. Module-revision equality, stable-ID equality,
-semantic hashes, structurally equal products, or products from separate
-preparation transactions do not establish freshness. A missing, duplicated,
-stale, mixed-target, or mismatched entry rejects D2 before mutation.
+## Inputs
 
-## Closed rewrite and output schema
+The exact D1 candidate/revision/projection plus unchanged C1 and exact C2-C9
+lineage, especially C3 `AbiPlan`, C4 `CallPlan`, C5 `VariadicPlan`, and C8
+helper requirements.
 
-For each `GenericCall`, D2 emits only the pseudo-schema variants below, in the
-canonical order required by its selected rule and exact `CallPlan`:
+## Input NodeKind/Tag Vocabulary
 
-1. `AbiPreserve` operations required at the boundary;
-2. ordered `AbiArgMove` operations for register-eligible arguments and hidden
-   carriers, plus ordered `AbiArgStore` operations naming abstract outgoing
-   stack-object identities for stack-required pieces;
-3. exactly one `AbiCall`, carrying the direct/indirect/helper callee identity,
-   semantic effects, tail-call decision, abstract caller-clobber units, and
-   the plan/rule fingerprints that authorized it;
-4. ordered `AbiResultMove` operations for ordinary and hidden-result recovery;
-   and
-5. matching `AbiRestore` operations when control returns.
+Exactly the prospective D1 output groups. `D.GenericCall` is the only call
+lowering input; all other groups receive explicit retain/reject rows. These
+names are planning vocabulary, not production enum claims.
 
-`AbiPreserve` and `AbiRestore` are call-site value-transport nodes paired
-around that individual `AbiCall`; they preserve live values across its declared
-caller-clobber boundary. They are not function entry/exit frame operations.
-D2 records abstract function-level callee-save obligations required by the ABI
-but never emits saves for them. E4 alone intersects those obligations with
-post-allocation used callee-saved units and exact frame placement, then emits
-`FrameCalleeSave`/`FrameCalleeRestore`. Final verification requires exactly one
-applicable call-site or function-frame coverage record and rejects duplicates.
+## Required Analyses and Products
 
-An empty category is omitted. A proved tail call admits only the closed
-tail-call shape selected by the `CallPlan`; it cannot silently degrade to or
-from an ordinary returning call. Every introduced operand, result, definition,
-use, effect, clobber, requirement, and stack-object reference is ordinary BIR
-state. Parallel transport semantics come from the plan's typed ordered pieces;
-D2 cannot serialize overlapping transfers in a way that changes those
-semantics or hide a temporary in a descriptor or side table.
+Exact D1 CFG/value-flow/SSA, current projection, and C2-C9 products. D2 cannot
+reconstruct a requirement or choose a compatible ABI.
 
-The output contains no `GenericCall`. It may contain only the closed D1 schema
-plus the six D2 families above. Abstract ABI locations are typed layout-owned
-`(category, class/group, slot)` requirements or abstract outgoing stack-object
-identities. They are fixed ABI requirements, not general assignments. D2 never
-spells a concrete register, stack displacement, frame offset, machine opcode,
-or encoding; chooses a pressure-driven home; inserts capacity `Spill`/`Reload`;
-or creates a target-private call graph. Unsupported target instruction shapes
-remain an explicit D4 legalization obligation only after D2 has completed the
-one shared semantic ABI rewrite.
+## Ordered Behavior
 
-Every outgoing-call stack object/store, hidden carrier, call-frame access, and
-implicit stack adjustment receives stable abstract identity and complete size,
-alignment, lifetime, and access requirements. After allocation and D5
-resolution, E4's private frame-action draft is the sole placement authority for
-those identities. `FrameActionMaterializationTransaction` emits every required
-call/frame action as explicit one-record nodes, and the final frame plan covers
-each D2 operation and action. Unrepresentable needs fail atomically before
-`MirReadyBirView`; D2 and F1 cannot choose or repair placement.
+1. Validate D1 revision/projection and every preparation fingerprint.
+2. Inventory each `D.GenericCall` and assign its exact plan rows.
+3. Reserve and build all explicit transport/call/clobber/preserve nodes in one
+   private candidate with total result/provenance mapping.
+4. Verify graph/SSA/requirements and request fresh C9 projection.
+5. Freeze the complete candidate for D3 or discard it.
 
-## Stable identity, revision, and output key
+## NodeKind/Tag Lowering Matrix
 
-D2 forks one private candidate from the exact D1 input. An unchanged entity
-keeps its stable ID. A `GenericCall` may keep its `InstId` only when
-`AbiCall` is its unique compatible semantic continuation and its result
-identity contract remains valid. Other introduced instructions and results
-receive fresh IDs, removed identities become tombstones, and deterministic
-old-to-new/tombstone mappings are diagnostic aids rather than freshness or
-semantic authority.
+| D1 planning input | Outcome and D2 planning output | Tags retained | Tags added | Tags removed | Identity / provenance | Failure |
+|---|---|---|---|---|---|---|
+| ordinary `D.GenericCall` | expand into abstract argument moves/stores, prospective `D.Call`, result moves, clobber and call-site preserve/restore obligations | signature/callee/args/result/effects | explicit pseudo transport/def-use/clobber/ABI-slot roles | generic-call placeholder | source retires; all outputs fresh with ordered call-role provenance and total result map | incomplete C3/C4 plan rejects |
+| helper-derived `D.GenericCall` | same shared expansion using exact C8 interface + C3/C4 plan | helper semantic provenance/signature/effects | same explicit call transport roles | helper/generic-call placeholder | fresh IDs; helper source chain retained as provenance | helper mismatch rejects |
+| variadic/byval/sret call | expand per exact C3/C4/C5 requirements | semantic transport/type obligations | explicit abstract stack-object/ABI-slot roles | unresolved transport | fresh outputs and total mapping | missing requirement rejects |
+| non-call generic value/memory/effect/control | retain exact prospective group | all classifications/roles/effects | none | none | preserve | mutation forbidden |
+| pending phi | retain for D5 | phi/type/predecessor roles/SSA | none | none | preserve | edge mutation forbidden |
+| opaque inline asm | retain exact bytes/bindings | opaque/ordinary roles/effects | none | none | preserve | parsing or rebinding forbidden |
+| remaining `D.GenericCall`, unknown/illegal/omitted/premature kind | reject | none | none | none | no candidate | `D2CallCoverageInvalid` |
 
-Every mutation advances each affected function revision and the module
-revision and produces a new complete `PipelineStageStamp`. The frozen output
-`PseudoStageKey` contains that exact stamp, the unchanged parent Canonical
-stamp, target and layout fingerprints, preparation-bundle and
-Canonical `BoundConstraintSet` fingerprint, the exact D2
-`ProjectedConstraintSet` fingerprint, pseudo-schema fingerprint, the ordered D1
-fingerprints, and one D2 occurrence fingerprint derived from the selected
-ABI-rule-set, call-lowering schema, exact `AbiPlan` and `CallPlan` fingerprints,
-and deterministic rewrite result. Stable IDs, an equal graph hash, or the D1
-stamp cannot substitute for this new key. D2 publishes a private candidate,
-not `PseudoBir`.
+## Identity and Provenance
 
-## Preservation, invalidation, and D3 handoff
+Every call expansion retires the generic source and creates fresh role-ordered
+nodes. Results map totally to explicit result transport. Abstract ABI slots are
+requirements, not concrete register or frame identity.
 
-Because D2 changes the instruction/value graph, it rebuilds def-use and all
-local graph invariants for the new revision. CFG, dominance, SSA, provenance,
-publication/value-flow, call-graph, memory-effect, liveness, interference,
-assignment, spill, realizability, and other revision-bound products are invalid
-unless their owning contract supplies an explicit preservation proof over the
-exact D2 mutation summary. Call-boundary products that describe Canonical
-requirements remain immutable planning inputs; they are not relabeled as
-facts keyed to the D2 revision.
+## Outputs
 
-The D1 `ProjectedConstraintSet` is stale after D2 mutation. Before candidate
-verification or freeze, the D2 transaction invokes the sole shared
-`ConstraintProjectionTransaction` with the immutable C9 root binding, exact
-D1 projection, new stamp, D2 occurrence fingerprint, call rewrite map,
-tombstones, and complete mutation summary. It must produce one
-`ProjectedConstraintSet` keyed to the D2 revision, preserving unchanged
-requirements and deriving introduced ABI requirements only from the exact
-`AbiPlan`, `CallPlan`, and selected rule. Any projection failure rolls back D2.
-Reusing D1's product because an `InstId` survived, records compare equal, or a
-mapping was copied is forbidden.
+One private D2 candidate with no `D.GenericCall`, complete explicit abstract
+call transport/clobber/preserve operations, exact revision/lineage, and fresh
+`ProjectedConstraintSet`.
 
-`D3` accepts only the one frozen, complete D2 candidate and exact product set.
-Its full cumulative `Pseudo` profile proves that every planned call has exactly
-one complete transport sequence, every transport node is plan/rule-derived,
-no `GenericCall` remains, every fixed requirement and clobber is explicit, and
-all stage/product keys match. Only D3 may atomically mint the first immutable
-`PseudoBir`.
+## Verification and Publication
 
-## D4 adjacency and forbidden reassignment
+Verify total call-site and plan coverage, signatures/types/roles/effects,
+def-use/CFG/SSA, exact projection, no generic-call leftovers, and absence of
+concrete registers/frame offsets/general assignments/spills. D2 publishes no
+stage; D3 owns the gate.
 
-`D4` may expand or legalize an explicit D2 call-sequence pseudo when the target
-cannot map it one-to-one. Every introduced value remains visible to ordinary
-analysis and allocation, and D4 must preserve the selected call plan, ABI-rule
-identity, fixed requirements, effects, clobbers, and transport semantics. D4
-cannot reconstruct `GenericCall`, select a different `AbiPlan` or `CallPlan`,
-reclassify an argument/result, add hidden transport, or become a second shared
-call-lowering owner.
+## Analysis Preservation and Invalidation
 
-## Failure atomicity and legacy disposition
+Call expansion invalidates value-flow, call graph, effects, SSA consumers,
+liveness, and prior projection. Required facts are recomputed for the D2 key;
+preparation products remain immutable lineage only.
 
-Plan/key mismatch, incomplete call or piece coverage, illegal overlap,
-unsupported convention or tail-call shape, unavailable abstract layout slot,
-unrepresentable outgoing object, invalid helper interface, stale identity,
-schema/rule mismatch, nondeterminism, cancellation, resource exhaustion, or
-failed graph/schema checking aborts the whole module D2 transaction. The
-transaction rolls back the candidate, replacement map, mutation summary, and
-candidate-only derived facts. No function subset, instruction sequence,
-revision, property, stage key, cache entry, or fallback D1 revision is
-published; the immutable D1
-candidate and Canonical/preparation inputs remain unchanged, and D3 receives
-nothing.
+## Failure and Diagnostics
 
-Legacy `prealloc/calls.hpp`, `call_plans.*`, `formal_publications.*`,
-`publication_plans.*`, `variadic_entry_plans.*`, `storage_plans.*`, decoded
-homes, special carriers, and call-boundary route records are coverage evidence
-only. Their admitted ABI transport behavior is represented by C3/C4 typed
-plans and this D2 rewrite. Publication routes, hidden side-record operands,
-decoded physical homes, target-private call lowering, and spelling-based
-fallback are rejected rather than migrated.
+Stale/mixed products, uncovered call, incomplete mapping, plan disagreement,
+projection failure, concrete-resource attempt, cancellation, or verifier
+failure discards the candidate and publishes nothing.
+
+## Adjacent-Stage Contract
+
+D1 supplies the sole input. D3 receives this exact frozen candidate and
+projection and performs no rewrite. D4 alone owns later target expansion.
+
+## Implementation State
+
+Absent. Legacy per-target call lowering does not implement this shared owner.
+
+## Proof Requirements
+
+Prove ordinary/helper/direct/indirect/void/value/variadic/byval/sret neighbors,
+total call elimination/mapping, exact plans/projection, and no concrete resource.
+
+## Open Questions
+
+New call transport shapes require explicit prospective schema and plan rows.
