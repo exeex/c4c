@@ -9500,6 +9500,10 @@ void test_inline_asm_output_store_receipt_and_rejections(
     producer.asm_text = "presentation-only asm";
     producer.constraints = "presentation-only constraints";
     producer.args_str = "presentation-only arguments";
+    producer.result = lir::LirOperand::ssa("%compatibility-only-result",
+                                            lir::LirValueId{source_id + 999});
+    producer.original_asm_text = "presentation-only original asm";
+    producer.original_constraint_text.clear();
     producer.ordinary_results = {{
         lir::LirOperand::ssa("%presentation-output", lir::LirValueId{source_id}),
         lir::LirTypeRef::integer(width), lir::LirInlineAsmValueRole::Output, 0}};

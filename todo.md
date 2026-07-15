@@ -8,19 +8,27 @@ Current Step Title: Receive selected inline-assembly output-only authority
 
 ## Just Finished
 
-- None; plan resumed from closed 816's accepted receiver-ready handoff.
+- Step 7.33 completed: the selected scalar-integer output-only row now receives
+  only its structured `LirValueId`, Output/index-0 binding, and `LirTypeRef`;
+  its Raw-BIR source registration bypasses compatibility result/operand and
+  asm/constraint-text recovery. Nearby interface coverage proves i32/i64
+  receipt to Store plus missing, invalid, duplicate, role/index/type mismatch,
+  unknown/foreign use, and missing/duplicate-use rollback.
 
 ## Suggested Next
 
-- Execute Step 7.33 only.
+- Supervisor: select the next bounded active-plan packet.
 
 ## Watchouts
 
-- Consume only the native value ID, typed Output/index-0 binding, and
-  `LirTypeRef` from closed 816. Never use compatibility `result` or other
-  presentation text; keep every nonselected inline-assembly form fail closed.
+- The selected receiver intentionally accepts absent/misleading compatibility
+  result and original asm/constraint text; nonselected inline-asm forms retain
+  their existing fail-closed validation route.
 
 ## Proof
 
-- Fresh build, focused selected-row receiver proof, then supervisor-selected
-  broader proof.
+- Passed: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_lir_to_bir_interface$'`.
+- Passed: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_' > test_after.log`; proof log:
+  `test_after.log`.

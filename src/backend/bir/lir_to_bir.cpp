@@ -1876,6 +1876,32 @@ Result<void, ImportError> validate_inline_asm_shape(
                       block,
                       "parsed insn.r metadata is not Raw/Canonical BIR authority");
 
+  // This receiver row deliberately has no text-derived admission facts.  Its
+  // result identity and type come only from the structured binding; opaque asm
+  // text and constraint spellings are carried later as payload, not decoded to
+  // recover a value or type.
+  const auto selected_output_type = lower_lir_type(
+      module, inline_asm.ordinary_results.empty()
+                  ? codegen::lir::LirTypeRef{}
+                  : inline_asm.ordinary_results.front().type);
+  const bool selected_output = inline_asm.ordinary_inputs.empty() &&
+      inline_asm.ordinary_results.size() == 1 &&
+      inline_asm.ordinary_results.front().value.kind() ==
+          codegen::lir::LirOperandKind::SsaValue &&
+      inline_asm.ordinary_results.front().value.value_id() &&
+      inline_asm.ordinary_results.front().value.value_id()->valid() &&
+      inline_asm.ordinary_results.front().role == LirInlineAsmValueRole::Output &&
+      inline_asm.ordinary_results.front().constraint_index == 0 &&
+      selected_output_type && is_native_inline_asm_output_type(*selected_output_type);
+  if (selected_output) {
+    const auto id = inline_asm.ordinary_results.front().value.value_id()->value;
+    if (source_values.count(id) != 0 || !inline_asm_results.insert(id).second)
+      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function, block,
+                        "native inline-asm result LirValueId is duplicate");
+    source_values.emplace(id, *selected_output_type);
+    return Result<void, ImportError>::success();
+  }
+
   const bool has_structured_values = !inline_asm.ordinary_inputs.empty() ||
                                      !inline_asm.ordinary_results.empty();
   if (!has_structured_values &&
@@ -1947,24 +1973,6 @@ Result<void, ImportError> validate_inline_asm_shape(
                      }))
       return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function, block,
                         "read/write input lacks a distinct produced result");
-  }
-  const auto native_output_type = lower_lir_type(
-      module, inline_asm.ordinary_results.empty()
-                  ? codegen::lir::LirTypeRef{}
-                  : inline_asm.ordinary_results[0].type);
-  const bool native_output = inline_asm.ordinary_inputs.empty() &&
-      inline_asm.ordinary_results.size() == 1 &&
-      inline_asm.ordinary_results[0].role == LirInlineAsmValueRole::Output &&
-      inline_asm.ordinary_results[0].constraint_index == 0 &&
-      native_output_type && is_native_inline_asm_output_type(*native_output_type) &&
-      inline_asm.ordinary_results[0].value.value_id() &&
-      inline_asm.ordinary_results[0].value.value_id()->valid();
-  if (native_output) {
-    const auto id = inline_asm.ordinary_results[0].value.value_id()->value;
-    if (source_values.count(id) != 0 || !inline_asm_results.insert(id).second)
-      return fail<void>(ImportErrorCode::UnsupportedInlineAsmShape, function, block,
-                        "native inline-asm result LirValueId is duplicate");
-    source_values.emplace(id, *native_output_type);
   }
   for (const auto& result : inline_asm.ordinary_results)
     ordinary_values.emplace(result.value.str(), *lower_lir_type(module, result.type));
@@ -5093,15 +5101,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
               const auto native_output_type = lower_lir_type(
                   module, inline_asm.ordinary_results.empty()
                               ? codegen::lir::LirTypeRef{}
-                              : inline_asm.ordinary_results[0].type);
+                              : inline_asm.ordinary_results.front().type);
               const bool native_output = inline_asm.ordinary_inputs.empty() &&
                   inline_asm.ordinary_results.size() == 1 &&
-                  inline_asm.ordinary_results[0].role == LirInlineAsmValueRole::Output &&
-                  inline_asm.ordinary_results[0].constraint_index == 0 &&
+                  inline_asm.ordinary_results.front().value.kind() ==
+                      codegen::lir::LirOperandKind::SsaValue &&
+                  inline_asm.ordinary_results.front().value.value_id() &&
+                  inline_asm.ordinary_results.front().value.value_id()->valid() &&
+                  inline_asm.ordinary_results.front().role == LirInlineAsmValueRole::Output &&
+                  inline_asm.ordinary_results.front().constraint_index == 0 &&
                   native_output_type &&
-                  is_native_inline_asm_output_type(*native_output_type) &&
-                  inline_asm.ordinary_results[0].value.value_id() &&
-                  inline_asm.ordinary_results[0].value.value_id()->valid();
+                  is_native_inline_asm_output_type(*native_output_type);
               if (native_output)
                 spec.source_result_id =
                     inline_asm.ordinary_results.front().value.value_id()->value;
