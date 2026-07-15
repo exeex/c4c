@@ -971,9 +971,23 @@ void test_native_body_parameter_authority_verifier_boundary() {
   const auto& definition = valid.functions[0].native_body_parameter_definitions.front();
   expect(definition.value.valid() && definition.parameter_index == 0 &&
              definition.type.kind() == lir::LirTypeKind::Pointer &&
-             definition.owner == valid.functions[0].link_name_id,
-         "native parameter authority must retain value/index/type/current-function ownership");
+             definition.owner == valid.functions[0].link_name_id &&
+             definition.abi == lir::LirNativeBodyParameterAbi::DirectPointer,
+         "native parameter authority must retain direct-pointer ABI/value/index/type/current-function ownership");
+  auto& function = valid.functions[0];
+  function.blocks[0].insts.push_back(lir::LirGepOp{
+      .result = lir::LirOperand::ssa("%selected.pointer.gep", valid.alloc_value()),
+      .element_type = lir::LirTypeRef::integer(8),
+      .ptr = lir::LirOperand::ssa("%presentation_is_not_authority", definition.value),
+      .indices = {lir::LirGepIndex::typed(lir::LirTypeRef::integer(64),
+                                          lir::LirOperand::integer("0", 0))},
+  });
   lir::verify_module(valid);
+
+  auto missing = valid;
+  missing.functions[0].native_body_parameter_definitions.clear();
+  expect_rejected(std::move(missing),
+                  "selected GEP base must reject missing native direct-pointer authority");
 
   auto malformed = valid;
   malformed.functions[0].native_body_parameter_definitions.front().value =
@@ -992,6 +1006,18 @@ void test_native_body_parameter_authority_verifier_boundary() {
       lir::LirTypeRef::integer(64);
   expect_rejected(std::move(incoherent),
                   "native parameter authority must reject an incoherent non-pointer type");
+
+  auto malformed_abi = valid;
+  malformed_abi.functions[0].native_body_parameter_definitions.front().abi =
+      lir::LirNativeBodyParameterAbi::Invalid;
+  expect_rejected(std::move(malformed_abi),
+                  "native parameter authority must reject a missing direct-pointer ABI class");
+
+  auto duplicate = valid;
+  duplicate.functions[0].native_body_parameter_definitions.push_back(
+      duplicate.functions[0].native_body_parameter_definitions.front());
+  expect_rejected(std::move(duplicate),
+                  "native parameter authority must reject duplicate parameter authority");
 }
 
 void test_selected_memcpy_raw_bir_receipt_and_rollback() {

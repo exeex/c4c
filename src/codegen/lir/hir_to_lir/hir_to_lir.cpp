@@ -1417,6 +1417,7 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
               .parameter_index = static_cast<uint32_t>(i),
               .type = LirTypeRef(LirBuiltinType::Pointer),
               .owner = lir_function.link_name_id,
+              .abi = LirNativeBodyParameterAbi::DirectPointer,
           });
     }
     if (const auto hfa = is_aarch64_fixed_hfa_param(mod, param_ts)

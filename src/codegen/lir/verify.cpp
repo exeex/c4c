@@ -2131,8 +2131,10 @@ void verify_native_body_parameter_definitions(
         definition.parameter_index >= function.params.size() ||
         definition.parameter_index >= function.signature_param_type_refs.size() ||
         definition.type.kind() != LirTypeKind::Pointer ||
+        definition.abi != LirNativeBodyParameterAbi::DirectPointer ||
         function.signature_param_type_refs[definition.parameter_index] != definition.type) {
-      fail_verify(field, "requires a native current-function pointer parameter identity and type");
+      fail_verify(field,
+                  "requires a native direct-pointer current-function parameter identity and type");
     }
     if (!parameter_indices.insert(definition.parameter_index).second) {
       fail_verify(field, "must not duplicate a native body parameter index");
@@ -3063,7 +3065,8 @@ void verify_function_value_ownership(const LirModule& mod,
             function.native_body_parameter_definitions.begin(),
             function.native_body_parameter_definitions.end(), [&](const auto& parameter) {
               return parameter.value == *gep->ptr.value_id() &&
-                     parameter.type.kind() == LirTypeKind::Pointer;
+                     parameter.type.kind() == LirTypeKind::Pointer &&
+                     parameter.abi == LirNativeBodyParameterAbi::DirectPointer;
             });
         if (base_definition == definition_insts.end() ||
             (!native_body_parameter &&

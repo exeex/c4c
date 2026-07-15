@@ -881,14 +881,24 @@ struct LirSelectedMemcpyPointerAuthority {
   LirCurrentFunctionPointerDefinition destination_alloca;
 };
 
+// The only body-parameter ABI class currently admitted to native body-use
+// authority. Other ABI forms must remain unrepresented until they have their
+// own explicit contract.
+enum class LirNativeBodyParameterAbi : uint8_t {
+  Invalid,
+  DirectPointer,
+};
+
 // Native fixed pointer parameters that are directly usable by the current
 // function body.  This is a definition carrier, not a spelling table: the
-// parameter index, exact pointer type, owner, and value identity must agree.
+// parameter index, exact pointer type, owner, value identity, and ABI class
+// must agree.
 struct LirCurrentFunctionBodyParameterDefinition {
   LirValueId value = LirValueId::invalid();
   uint32_t parameter_index = 0;
   LirTypeRef type;
   LinkNameId owner = kInvalidLinkName;
+  LirNativeBodyParameterAbi abi = LirNativeBodyParameterAbi::Invalid;
 };
 
 struct LirFunction {
