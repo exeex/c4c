@@ -522,7 +522,7 @@ struct NodeKindSchema {
 
 namespace detail {
 
-constexpr std::uint16_t variable_arity = UINT16_MAX;
+constexpr std::uint16_t unbounded_arity = UINT16_MAX;
 constexpr std::uint8_t semantic_node_stages =
     static_cast<std::uint8_t>(NodeStage::Raw) |
     static_cast<std::uint8_t>(NodeStage::Canonical) |
@@ -538,6 +538,60 @@ constexpr std::uint8_t phi_refinement =
     static_cast<std::uint8_t>(NodeKindRefinement::PhiMergeForm);
 constexpr std::uint8_t known_refinements = binary_refinement | phi_refinement;
 
+struct OperandAritySpec {
+  OperandArityPolicy policy;
+  std::uint16_t minimum;
+  std::uint16_t maximum;
+};
+
+struct StageSet {
+  std::uint8_t bits;
+};
+
+struct RefinementSet {
+  std::uint8_t bits;
+};
+
+consteval OperandAritySpec fixed_arity(std::uint16_t count) noexcept {
+  return {OperandArityPolicy::Fixed, count, count};
+}
+
+consteval OperandAritySpec
+variable_arity(std::uint16_t minimum = 0,
+               std::uint16_t maximum = unbounded_arity) noexcept {
+  return {OperandArityPolicy::Variable, minimum, maximum};
+}
+
+template <NodeStage... Stages> consteval StageSet stages() noexcept {
+  return {(std::uint8_t{0} | ... | static_cast<std::uint8_t>(Stages))};
+}
+
+template <NodeKindRefinement... Refinements>
+consteval RefinementSet refinements() noexcept {
+  return {(std::uint8_t{0} | ... | static_cast<std::uint8_t>(Refinements))};
+}
+
+inline constexpr auto semantic_stages =
+    stages<NodeStage::Raw, NodeStage::Canonical, NodeStage::Prepared>();
+
+struct NodeKindSpec {
+  NodeKind kind;
+  NodeFamily legacy_family;
+  NodeValueModel value_model;
+  NodeSsaParticipation ssa;
+  NodeSemanticFamily semantic_family;
+  RefinementSet refinements;
+  OperandAritySpec operands;
+  ResultArityPolicy results;
+  NodeEffect effects;
+  NodeControlBehavior control;
+  NodeTrapBehavior trap;
+  NodeStage stage_owner;
+  StageSet admitted_stages;
+  NodeTypePolicy type_policy;
+  NodeMirDisposition mir;
+};
+
 template <class... Payloads>
 bool accepts_one_of(const InstPayload& payload) noexcept {
   return (std::holds_alternative<Payloads>(payload) || ...);
@@ -550,180 +604,362 @@ struct NodeKindRegistryEntry {
   PayloadAcceptance accepts_payload;
 };
 
+constexpr bool valid_authoring_spec(const NodeKindSpec &spec) noexcept {
+  const bool enums_valid =
+      static_cast<std::size_t>(spec.kind) <
+          static_cast<std::size_t>(NodeKind::Count) &&
+      static_cast<std::uint8_t>(spec.legacy_family) <
+          static_cast<std::uint8_t>(NodeFamily::Count) &&
+      static_cast<std::uint8_t>(spec.value_model) <
+          static_cast<std::uint8_t>(NodeValueModel::Count) &&
+      static_cast<std::uint8_t>(spec.ssa) <
+          static_cast<std::uint8_t>(NodeSsaParticipation::Count) &&
+      static_cast<std::uint8_t>(spec.semantic_family) <
+          static_cast<std::uint8_t>(NodeSemanticFamily::Count) &&
+      static_cast<std::uint8_t>(spec.operands.policy) <
+          static_cast<std::uint8_t>(OperandArityPolicy::Count) &&
+      static_cast<std::uint8_t>(spec.results) <
+          static_cast<std::uint8_t>(ResultArityPolicy::Count) &&
+      static_cast<std::uint8_t>(spec.effects) <
+          static_cast<std::uint8_t>(NodeEffect::Count) &&
+      static_cast<std::uint8_t>(spec.control) <
+          static_cast<std::uint8_t>(NodeControlBehavior::Count) &&
+      static_cast<std::uint8_t>(spec.trap) <
+          static_cast<std::uint8_t>(NodeTrapBehavior::Count) &&
+      static_cast<std::uint8_t>(spec.type_policy) <
+          static_cast<std::uint8_t>(NodeTypePolicy::Count) &&
+      static_cast<std::uint8_t>(spec.mir) <
+          static_cast<std::uint8_t>(NodeMirDisposition::Count);
+  const bool arity_valid =
+      (spec.operands.policy == OperandArityPolicy::Fixed &&
+       spec.operands.minimum == spec.operands.maximum) ||
+      (spec.operands.policy == OperandArityPolicy::Variable &&
+       (spec.operands.maximum == unbounded_arity ||
+        spec.operands.minimum <= spec.operands.maximum));
+  const auto stage_owner = static_cast<std::uint8_t>(spec.stage_owner);
+  const bool stage_owner_valid =
+      stage_owner != 0 && (stage_owner & (stage_owner - 1)) == 0 &&
+      (stage_owner & known_node_stages) != 0;
+  const bool stages_valid =
+      spec.admitted_stages.bits != 0 &&
+      (spec.admitted_stages.bits & ~known_node_stages) == 0 &&
+      (spec.admitted_stages.bits & stage_owner) != 0;
+  const bool refinements_valid =
+      (spec.refinements.bits & ~known_refinements) == 0 &&
+      ((spec.refinements.bits & binary_refinement) == 0 ||
+       (spec.operands.policy == OperandArityPolicy::Fixed &&
+        spec.operands.minimum == 2)) &&
+      ((spec.refinements.bits & phi_refinement) == 0 ||
+       spec.semantic_family == NodeSemanticFamily::PhiMerge);
+  const bool result_valid =
+      (spec.value_model == NodeValueModel::NoOrdinaryResult &&
+       spec.results == ResultArityPolicy::Zero &&
+       spec.type_policy == NodeTypePolicy::NoResultType &&
+       spec.ssa == NodeSsaParticipation::NeverSsa) ||
+      (spec.value_model == NodeValueModel::SingleOrdinaryResult &&
+       spec.results == ResultArityPolicy::One &&
+       spec.type_policy != NodeTypePolicy::NoResultType) ||
+      (spec.value_model == NodeValueModel::MultipleResults &&
+       spec.results == ResultArityPolicy::Many &&
+       spec.type_policy != NodeTypePolicy::NoResultType);
+  const bool mir_valid = spec.mir != NodeMirDisposition::MachineOnly ||
+                         (spec.semantic_family == NodeSemanticFamily::Machine &&
+                          spec.stage_owner == NodeStage::MirReadyMachine);
+  const bool family_stage_valid =
+      (spec.semantic_family != NodeSemanticFamily::Preparation ||
+       spec.stage_owner == NodeStage::Prepared) &&
+      (spec.semantic_family != NodeSemanticFamily::Pseudo ||
+       spec.stage_owner == NodeStage::PseudoPreallocation) &&
+      (spec.semantic_family != NodeSemanticFamily::AllocationAction ||
+       spec.stage_owner == NodeStage::Allocated) &&
+      (spec.semantic_family != NodeSemanticFamily::Machine ||
+       spec.stage_owner == NodeStage::MirReadyMachine);
+  return enums_valid && arity_valid && stage_owner_valid && stages_valid &&
+         refinements_valid && result_valid && mir_valid && family_stage_valid;
+}
+
 template <class... Payloads>
-constexpr NodeKindRegistryEntry make_node_kind_entry(
-    NodeKind kind, NodeFamily legacy_family, NodeValueModel value_model,
-    NodeSsaParticipation ssa, NodeSemanticFamily semantic_family,
-    std::uint8_t refinements, OperandArityPolicy operand_policy,
-    std::uint16_t minimum_operands, std::uint16_t maximum_operands,
-    ResultArityPolicy result_policy, NodeEffect effects,
-    NodeControlBehavior control, NodeTrapBehavior trap, NodeStage stage_owner,
-    std::uint8_t admitted_stages, NodeTypePolicy type_policy,
-    NodeMirDisposition mir) noexcept {
-  return {{kind,
-           {legacy_family, (refinements & binary_refinement) != 0,
-            operand_policy, minimum_operands, maximum_operands, result_policy,
-            effects, admitted_stages},
-           value_model,
-           ssa,
-           semantic_family,
-           refinements,
-           control,
-           trap,
-           stage_owner,
-           type_policy,
-           sizeof...(Payloads) == 1
-               ? NodePayloadPolicy::OneClosedPayload
-               : NodePayloadPolicy::ClosedPayloadAlternatives,
-           mir},
-          &accepts_one_of<Payloads...>};
+consteval NodeKindRegistryEntry make_node_kind_entry(NodeKindSpec spec) {
+  if (!valid_authoring_spec(spec))
+    throw "invalid NodeKind authoring specification";
+  return {
+      {spec.kind,
+       {spec.legacy_family, (spec.refinements.bits & binary_refinement) != 0,
+        spec.operands.policy, spec.operands.minimum, spec.operands.maximum,
+        spec.results, spec.effects, spec.admitted_stages.bits},
+       spec.value_model,
+       spec.ssa,
+       spec.semantic_family,
+       spec.refinements.bits,
+       spec.control,
+       spec.trap,
+       spec.stage_owner,
+       spec.type_policy,
+       sizeof...(Payloads) == 1 ? NodePayloadPolicy::OneClosedPayload
+                                : NodePayloadPolicy::ClosedPayloadAlternatives,
+       spec.mir},
+      &accepts_one_of<Payloads...>};
 }
 
 inline constexpr std::array<NodeKindRegistryEntry,
                             static_cast<std::size_t>(NodeKind::Count)>
     node_kind_registry{{
         make_node_kind_entry<InlineAsmNode>(
-            NodeKind::InlineAsm, NodeFamily::Semantic,
-            NodeValueModel::MultipleResults, NodeSsaParticipation::SsaEligible,
-            NodeSemanticFamily::Intrinsic, 0, OperandArityPolicy::Variable, 0,
-            variable_arity, ResultArityPolicy::Many, NodeEffect::Unknown,
-            NodeControlBehavior::FallsThrough, NodeTrapBehavior::MayTrap,
-            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::StoredValueType,
-            NodeMirDisposition::RequiresExpansion),
+            {.kind = NodeKind::InlineAsm,
+             .legacy_family = NodeFamily::Semantic,
+             .value_model = NodeValueModel::MultipleResults,
+             .ssa = NodeSsaParticipation::SsaEligible,
+             .semantic_family = NodeSemanticFamily::Intrinsic,
+             .refinements = refinements<>(),
+             .operands = variable_arity(),
+             .results = ResultArityPolicy::Many,
+             .effects = NodeEffect::Unknown,
+             .control = NodeControlBehavior::FallsThrough,
+             .trap = NodeTrapBehavior::MayTrap,
+             .stage_owner = NodeStage::Raw,
+             .admitted_stages = semantic_stages,
+             .type_policy = NodeTypePolicy::StoredValueType,
+             .mir = NodeMirDisposition::RequiresExpansion}),
         make_node_kind_entry<StoreNode, LocalStoreAuthorityNode>(
-            NodeKind::Store, NodeFamily::Memory,
-            NodeValueModel::NoOrdinaryResult,
-            NodeSsaParticipation::NeverSsa, NodeSemanticFamily::Memory, 0,
-            OperandArityPolicy::Fixed, 1, 1, ResultArityPolicy::Zero,
-            NodeEffect::WritesMemory, NodeControlBehavior::FallsThrough,
-            NodeTrapBehavior::MayTrap, NodeStage::Raw, semantic_node_stages,
-            NodeTypePolicy::NoResultType,
-            NodeMirDisposition::OneRecordRealizable),
+            {.kind = NodeKind::Store,
+             .legacy_family = NodeFamily::Memory,
+             .value_model = NodeValueModel::NoOrdinaryResult,
+             .ssa = NodeSsaParticipation::NeverSsa,
+             .semantic_family = NodeSemanticFamily::Memory,
+             .refinements = refinements<>(),
+             .operands = fixed_arity(1),
+             .results = ResultArityPolicy::Zero,
+             .effects = NodeEffect::WritesMemory,
+             .control = NodeControlBehavior::FallsThrough,
+             .trap = NodeTrapBehavior::MayTrap,
+             .stage_owner = NodeStage::Raw,
+             .admitted_stages = semantic_stages,
+             .type_policy = NodeTypePolicy::NoResultType,
+             .mir = NodeMirDisposition::OneRecordRealizable}),
         make_node_kind_entry<LoadNode, LocalLoadAuthorityNode>(
-            NodeKind::Load, NodeFamily::Memory,
-            NodeValueModel::SingleOrdinaryResult,
-            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Memory, 0,
-            OperandArityPolicy::Variable, 0, 1, ResultArityPolicy::One,
-            NodeEffect::ReadsMemory, NodeControlBehavior::FallsThrough,
-            NodeTrapBehavior::MayTrap, NodeStage::Raw, semantic_node_stages,
-            NodeTypePolicy::StoredValueType,
-            NodeMirDisposition::OneRecordRealizable),
+            {.kind = NodeKind::Load,
+             .legacy_family = NodeFamily::Memory,
+             .value_model = NodeValueModel::SingleOrdinaryResult,
+             .ssa = NodeSsaParticipation::SsaEligible,
+             .semantic_family = NodeSemanticFamily::Memory,
+             .refinements = refinements<>(),
+             .operands = variable_arity(0, 1),
+             .results = ResultArityPolicy::One,
+             .effects = NodeEffect::ReadsMemory,
+             .control = NodeControlBehavior::FallsThrough,
+             .trap = NodeTrapBehavior::MayTrap,
+             .stage_owner = NodeStage::Raw,
+             .admitted_stages = semantic_stages,
+             .type_policy = NodeTypePolicy::StoredValueType,
+             .mir = NodeMirDisposition::OneRecordRealizable}),
         make_node_kind_entry<GetElementPtrNode, LocalArrayGepAuthorityNode>(
-            NodeKind::GetElementPtr, NodeFamily::Semantic,
-            NodeValueModel::SingleOrdinaryResult,
-            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Aggregate, 0,
-            OperandArityPolicy::Variable, 1, variable_arity,
-            ResultArityPolicy::One, NodeEffect::None,
-            NodeControlBehavior::FallsThrough, NodeTrapBehavior::CannotTrap,
-            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::StoredValueType,
-            NodeMirDisposition::OneRecordRealizable),
+            {.kind = NodeKind::GetElementPtr,
+             .legacy_family = NodeFamily::Semantic,
+             .value_model = NodeValueModel::SingleOrdinaryResult,
+             .ssa = NodeSsaParticipation::SsaEligible,
+             .semantic_family = NodeSemanticFamily::Aggregate,
+             .refinements = refinements<>(),
+             .operands = variable_arity(1),
+             .results = ResultArityPolicy::One,
+             .effects = NodeEffect::None,
+             .control = NodeControlBehavior::FallsThrough,
+             .trap = NodeTrapBehavior::CannotTrap,
+             .stage_owner = NodeStage::Raw,
+             .admitted_stages = semantic_stages,
+             .type_policy = NodeTypePolicy::StoredValueType,
+             .mir = NodeMirDisposition::OneRecordRealizable}),
         make_node_kind_entry<AbsNode>(
-            NodeKind::Abs, NodeFamily::Semantic,
-            NodeValueModel::SingleOrdinaryResult,
-            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Arithmetic, 0,
-            OperandArityPolicy::Fixed, 1, 1, ResultArityPolicy::One,
-            NodeEffect::None, NodeControlBehavior::FallsThrough,
-            NodeTrapBehavior::CannotTrap, NodeStage::Raw, semantic_node_stages,
-            NodeTypePolicy::StoredValueType,
-            NodeMirDisposition::OneRecordRealizable),
+            {.kind = NodeKind::Abs,
+             .legacy_family = NodeFamily::Semantic,
+             .value_model = NodeValueModel::SingleOrdinaryResult,
+             .ssa = NodeSsaParticipation::SsaEligible,
+             .semantic_family = NodeSemanticFamily::Arithmetic,
+             .refinements = refinements<>(),
+             .operands = fixed_arity(1),
+             .results = ResultArityPolicy::One,
+             .effects = NodeEffect::None,
+             .control = NodeControlBehavior::FallsThrough,
+             .trap = NodeTrapBehavior::CannotTrap,
+             .stage_owner = NodeStage::Raw,
+             .admitted_stages = semantic_stages,
+             .type_policy = NodeTypePolicy::StoredValueType,
+             .mir = NodeMirDisposition::OneRecordRealizable}),
         make_node_kind_entry<CallNode, IntrinsicCallNode>(
-            NodeKind::Call, NodeFamily::Call, NodeValueModel::MultipleResults,
-            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Call, 0,
-            OperandArityPolicy::Variable, 0, variable_arity,
-            ResultArityPolicy::Many, NodeEffect::Unknown,
-            NodeControlBehavior::FallsThrough, NodeTrapBehavior::MayTrap,
-            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::StoredValueType,
-            NodeMirDisposition::RequiresAllocationOrFrameFacts),
+            {.kind = NodeKind::Call,
+             .legacy_family = NodeFamily::Call,
+             .value_model = NodeValueModel::MultipleResults,
+             .ssa = NodeSsaParticipation::SsaEligible,
+             .semantic_family = NodeSemanticFamily::Call,
+             .refinements = refinements<>(),
+             .operands = variable_arity(),
+             .results = ResultArityPolicy::Many,
+             .effects = NodeEffect::Unknown,
+             .control = NodeControlBehavior::FallsThrough,
+             .trap = NodeTrapBehavior::MayTrap,
+             .stage_owner = NodeStage::Raw,
+             .admitted_stages = semantic_stages,
+             .type_policy = NodeTypePolicy::StoredValueType,
+             .mir = NodeMirDisposition::RequiresAllocationOrFrameFacts}),
         make_node_kind_entry<BinaryNode>(
-            NodeKind::Binary, NodeFamily::Semantic,
-            NodeValueModel::SingleOrdinaryResult,
-            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Arithmetic,
-            binary_refinement, OperandArityPolicy::Fixed, 2, 2,
-            ResultArityPolicy::One, NodeEffect::None,
-            NodeControlBehavior::FallsThrough, NodeTrapBehavior::MayTrap,
-            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::StoredValueType,
-            NodeMirDisposition::OneRecordRealizable),
+            {.kind = NodeKind::Binary,
+             .legacy_family = NodeFamily::Semantic,
+             .value_model = NodeValueModel::SingleOrdinaryResult,
+             .ssa = NodeSsaParticipation::SsaEligible,
+             .semantic_family = NodeSemanticFamily::Arithmetic,
+             .refinements = refinements<NodeKindRefinement::BinaryForm>(),
+             .operands = fixed_arity(2),
+             .results = ResultArityPolicy::One,
+             .effects = NodeEffect::None,
+             .control = NodeControlBehavior::FallsThrough,
+             .trap = NodeTrapBehavior::MayTrap,
+             .stage_owner = NodeStage::Raw,
+             .admitted_stages = semantic_stages,
+             .type_policy = NodeTypePolicy::StoredValueType,
+             .mir = NodeMirDisposition::OneRecordRealizable}),
         make_node_kind_entry<CompareNode>(
-            NodeKind::Compare, NodeFamily::Semantic,
-            NodeValueModel::SingleOrdinaryResult,
-            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Compare,
-            binary_refinement, OperandArityPolicy::Fixed, 2, 2,
-            ResultArityPolicy::One, NodeEffect::None,
-            NodeControlBehavior::FallsThrough, NodeTrapBehavior::CannotTrap,
-            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::StoredValueType,
-            NodeMirDisposition::OneRecordRealizable),
+            {.kind = NodeKind::Compare,
+             .legacy_family = NodeFamily::Semantic,
+             .value_model = NodeValueModel::SingleOrdinaryResult,
+             .ssa = NodeSsaParticipation::SsaEligible,
+             .semantic_family = NodeSemanticFamily::Compare,
+             .refinements = refinements<NodeKindRefinement::BinaryForm>(),
+             .operands = fixed_arity(2),
+             .results = ResultArityPolicy::One,
+             .effects = NodeEffect::None,
+             .control = NodeControlBehavior::FallsThrough,
+             .trap = NodeTrapBehavior::CannotTrap,
+             .stage_owner = NodeStage::Raw,
+             .admitted_stages = semantic_stages,
+             .type_policy = NodeTypePolicy::StoredValueType,
+             .mir = NodeMirDisposition::OneRecordRealizable}),
         make_node_kind_entry<SelectNode>(
-            NodeKind::Select, NodeFamily::Semantic,
-            NodeValueModel::SingleOrdinaryResult,
-            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Compare, 0,
-            OperandArityPolicy::Variable, 0, variable_arity,
-            ResultArityPolicy::One, NodeEffect::None,
-            NodeControlBehavior::FallsThrough, NodeTrapBehavior::CannotTrap,
-            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::StoredValueType,
-            NodeMirDisposition::OneRecordRealizable),
+            {.kind = NodeKind::Select,
+             .legacy_family = NodeFamily::Semantic,
+             .value_model = NodeValueModel::SingleOrdinaryResult,
+             .ssa = NodeSsaParticipation::SsaEligible,
+             .semantic_family = NodeSemanticFamily::Compare,
+             .refinements = refinements<>(),
+             .operands = variable_arity(),
+             .results = ResultArityPolicy::One,
+             .effects = NodeEffect::None,
+             .control = NodeControlBehavior::FallsThrough,
+             .trap = NodeTrapBehavior::CannotTrap,
+             .stage_owner = NodeStage::Raw,
+             .admitted_stages = semantic_stages,
+             .type_policy = NodeTypePolicy::StoredValueType,
+             .mir = NodeMirDisposition::OneRecordRealizable}),
         make_node_kind_entry<SelectedMemcpyNode>(
-            NodeKind::SelectedMemcpy, NodeFamily::Memory,
-            NodeValueModel::NoOrdinaryResult,
-            NodeSsaParticipation::NeverSsa, NodeSemanticFamily::Memory, 0,
-            OperandArityPolicy::Fixed, 0, 0, ResultArityPolicy::Zero,
-            NodeEffect::ReadsAndWritesMemory,
-            NodeControlBehavior::FallsThrough, NodeTrapBehavior::MayTrap,
-            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::NoResultType,
-            NodeMirDisposition::RequiresExpansion),
+            {.kind = NodeKind::SelectedMemcpy,
+             .legacy_family = NodeFamily::Memory,
+             .value_model = NodeValueModel::NoOrdinaryResult,
+             .ssa = NodeSsaParticipation::NeverSsa,
+             .semantic_family = NodeSemanticFamily::Memory,
+             .refinements = refinements<>(),
+             .operands = fixed_arity(0),
+             .results = ResultArityPolicy::Zero,
+             .effects = NodeEffect::ReadsAndWritesMemory,
+             .control = NodeControlBehavior::FallsThrough,
+             .trap = NodeTrapBehavior::MayTrap,
+             .stage_owner = NodeStage::Raw,
+             .admitted_stages = semantic_stages,
+             .type_policy = NodeTypePolicy::NoResultType,
+             .mir = NodeMirDisposition::RequiresExpansion}),
         make_node_kind_entry<Amd64SysVOverflowAggregateMemcpyNode>(
-            NodeKind::Amd64SysVOverflowAggregateMemcpy, NodeFamily::Memory,
-            NodeValueModel::NoOrdinaryResult,
-            NodeSsaParticipation::NeverSsa, NodeSemanticFamily::Memory, 0,
-            OperandArityPolicy::Fixed, 0, 0, ResultArityPolicy::Zero,
-            NodeEffect::ReadsAndWritesMemory,
-            NodeControlBehavior::FallsThrough, NodeTrapBehavior::MayTrap,
-            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::NoResultType,
-            NodeMirDisposition::RequiresExpansion),
+            {.kind = NodeKind::Amd64SysVOverflowAggregateMemcpy,
+             .legacy_family = NodeFamily::Memory,
+             .value_model = NodeValueModel::NoOrdinaryResult,
+             .ssa = NodeSsaParticipation::NeverSsa,
+             .semantic_family = NodeSemanticFamily::Memory,
+             .refinements = refinements<>(),
+             .operands = fixed_arity(0),
+             .results = ResultArityPolicy::Zero,
+             .effects = NodeEffect::ReadsAndWritesMemory,
+             .control = NodeControlBehavior::FallsThrough,
+             .trap = NodeTrapBehavior::MayTrap,
+             .stage_owner = NodeStage::Raw,
+             .admitted_stages = semantic_stages,
+             .type_policy = NodeTypePolicy::NoResultType,
+             .mir = NodeMirDisposition::RequiresExpansion}),
         make_node_kind_entry<CastNode>(
-            NodeKind::Cast, NodeFamily::Semantic,
-            NodeValueModel::SingleOrdinaryResult,
-            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Conversion, 0,
-            OperandArityPolicy::Fixed, 1, 1, ResultArityPolicy::One,
-            NodeEffect::None, NodeControlBehavior::FallsThrough,
-            NodeTrapBehavior::CannotTrap, NodeStage::Raw, semantic_node_stages,
-            NodeTypePolicy::StoredValueType,
-            NodeMirDisposition::OneRecordRealizable),
+            {.kind = NodeKind::Cast,
+             .legacy_family = NodeFamily::Semantic,
+             .value_model = NodeValueModel::SingleOrdinaryResult,
+             .ssa = NodeSsaParticipation::SsaEligible,
+             .semantic_family = NodeSemanticFamily::Conversion,
+             .refinements = refinements<>(),
+             .operands = fixed_arity(1),
+             .results = ResultArityPolicy::One,
+             .effects = NodeEffect::None,
+             .control = NodeControlBehavior::FallsThrough,
+             .trap = NodeTrapBehavior::CannotTrap,
+             .stage_owner = NodeStage::Raw,
+             .admitted_stages = semantic_stages,
+             .type_policy = NodeTypePolicy::StoredValueType,
+             .mir = NodeMirDisposition::OneRecordRealizable}),
         make_node_kind_entry<PhiNode>(
-            NodeKind::Phi, NodeFamily::Semantic,
-            NodeValueModel::SingleOrdinaryResult,
-            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::PhiMerge,
-            phi_refinement, OperandArityPolicy::Variable, 1, variable_arity,
-            ResultArityPolicy::One, NodeEffect::None,
-            NodeControlBehavior::FallsThrough, NodeTrapBehavior::CannotTrap,
-            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::StoredValueType,
-            NodeMirDisposition::ForbiddenAtMirBoundary),
+            {.kind = NodeKind::Phi,
+             .legacy_family = NodeFamily::Semantic,
+             .value_model = NodeValueModel::SingleOrdinaryResult,
+             .ssa = NodeSsaParticipation::SsaEligible,
+             .semantic_family = NodeSemanticFamily::PhiMerge,
+             .refinements = refinements<NodeKindRefinement::PhiMergeForm>(),
+             .operands = variable_arity(1),
+             .results = ResultArityPolicy::One,
+             .effects = NodeEffect::None,
+             .control = NodeControlBehavior::FallsThrough,
+             .trap = NodeTrapBehavior::CannotTrap,
+             .stage_owner = NodeStage::Raw,
+             .admitted_stages = semantic_stages,
+             .type_policy = NodeTypePolicy::StoredValueType,
+             .mir = NodeMirDisposition::ForbiddenAtMirBoundary}),
         make_node_kind_entry<AllocaAuthorityNode>(
-            NodeKind::AllocaAuthority, NodeFamily::Authority,
-            NodeValueModel::SingleOrdinaryResult,
-            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Authority, 0,
-            OperandArityPolicy::Fixed, 0, 0, ResultArityPolicy::One,
-            NodeEffect::None, NodeControlBehavior::FallsThrough,
-            NodeTrapBehavior::CannotTrap, NodeStage::Raw, semantic_node_stages,
-            NodeTypePolicy::StoredValueType,
-            NodeMirDisposition::RequiresAllocationOrFrameFacts),
+            {.kind = NodeKind::AllocaAuthority,
+             .legacy_family = NodeFamily::Authority,
+             .value_model = NodeValueModel::SingleOrdinaryResult,
+             .ssa = NodeSsaParticipation::SsaEligible,
+             .semantic_family = NodeSemanticFamily::Authority,
+             .refinements = refinements<>(),
+             .operands = fixed_arity(0),
+             .results = ResultArityPolicy::One,
+             .effects = NodeEffect::None,
+             .control = NodeControlBehavior::FallsThrough,
+             .trap = NodeTrapBehavior::CannotTrap,
+             .stage_owner = NodeStage::Raw,
+             .admitted_stages = semantic_stages,
+             .type_policy = NodeTypePolicy::StoredValueType,
+             .mir = NodeMirDisposition::RequiresAllocationOrFrameFacts}),
         make_node_kind_entry<StackSaveAuthorityNode>(
-            NodeKind::StackSaveAuthority, NodeFamily::Authority,
-            NodeValueModel::SingleOrdinaryResult,
-            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Authority, 0,
-            OperandArityPolicy::Fixed, 0, 0, ResultArityPolicy::One,
-            NodeEffect::Unknown, NodeControlBehavior::FallsThrough,
-            NodeTrapBehavior::MayTrap, NodeStage::Raw, semantic_node_stages,
-            NodeTypePolicy::StoredValueType,
-            NodeMirDisposition::RequiresAllocationOrFrameFacts),
+            {.kind = NodeKind::StackSaveAuthority,
+             .legacy_family = NodeFamily::Authority,
+             .value_model = NodeValueModel::SingleOrdinaryResult,
+             .ssa = NodeSsaParticipation::SsaEligible,
+             .semantic_family = NodeSemanticFamily::Authority,
+             .refinements = refinements<>(),
+             .operands = fixed_arity(0),
+             .results = ResultArityPolicy::One,
+             .effects = NodeEffect::Unknown,
+             .control = NodeControlBehavior::FallsThrough,
+             .trap = NodeTrapBehavior::MayTrap,
+             .stage_owner = NodeStage::Raw,
+             .admitted_stages = semantic_stages,
+             .type_policy = NodeTypePolicy::StoredValueType,
+             .mir = NodeMirDisposition::RequiresAllocationOrFrameFacts}),
         make_node_kind_entry<StackRestoreAuthorityNode>(
-            NodeKind::StackRestoreAuthority, NodeFamily::Authority,
-            NodeValueModel::NoOrdinaryResult,
-            NodeSsaParticipation::NeverSsa, NodeSemanticFamily::Authority, 0,
-            OperandArityPolicy::Fixed, 1, 1, ResultArityPolicy::Zero,
-            NodeEffect::Unknown, NodeControlBehavior::FallsThrough,
-            NodeTrapBehavior::MayTrap, NodeStage::Raw, semantic_node_stages,
-            NodeTypePolicy::NoResultType,
-            NodeMirDisposition::RequiresAllocationOrFrameFacts),
+            {.kind = NodeKind::StackRestoreAuthority,
+             .legacy_family = NodeFamily::Authority,
+             .value_model = NodeValueModel::NoOrdinaryResult,
+             .ssa = NodeSsaParticipation::NeverSsa,
+             .semantic_family = NodeSemanticFamily::Authority,
+             .refinements = refinements<>(),
+             .operands = fixed_arity(1),
+             .results = ResultArityPolicy::Zero,
+             .effects = NodeEffect::Unknown,
+             .control = NodeControlBehavior::FallsThrough,
+             .trap = NodeTrapBehavior::MayTrap,
+             .stage_owner = NodeStage::Raw,
+             .admitted_stages = semantic_stages,
+             .type_policy = NodeTypePolicy::NoResultType,
+             .mir = NodeMirDisposition::RequiresAllocationOrFrameFacts}),
     }};
 
 constexpr bool valid_stage(NodeStage stage) noexcept {
@@ -763,7 +999,7 @@ constexpr bool validate_node_kind_schema(const NodeKindSchema& schema) noexcept 
       descriptor.operand_arity != OperandArityPolicy::Fixed ||
       descriptor.minimum_operands == descriptor.maximum_operands;
   const bool bounds_valid =
-      descriptor.maximum_operands == variable_arity ||
+      descriptor.maximum_operands == unbounded_arity ||
       descriptor.minimum_operands <= descriptor.maximum_operands;
   const bool result_valid =
       (schema.value_model == NodeValueModel::NoOrdinaryResult &&
@@ -1014,7 +1250,7 @@ inline bool node_kind_accepts_arity(NodeKind kind, std::size_t operand_count,
 
   const bool operands_match =
       operand_count >= descriptor->minimum_operands &&
-      (descriptor->maximum_operands == detail::variable_arity ||
+      (descriptor->maximum_operands == detail::unbounded_arity ||
        operand_count <= descriptor->maximum_operands) &&
       (descriptor->operand_arity == OperandArityPolicy::Variable ||
        descriptor->minimum_operands == descriptor->maximum_operands);

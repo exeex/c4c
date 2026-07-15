@@ -63,6 +63,45 @@ int main() {
   static_assert(!bir::node_kind_admitted_in_v<
                 bir::NodeKind::Binary, bir::NodeStage::PseudoPreallocation>);
 
+  constexpr auto binary_authoring_spec = bir::detail::NodeKindSpec{
+      .kind = bir::NodeKind::Binary,
+      .legacy_family = bir::NodeFamily::Semantic,
+      .value_model = bir::NodeValueModel::SingleOrdinaryResult,
+      .ssa = bir::NodeSsaParticipation::SsaEligible,
+      .semantic_family = bir::NodeSemanticFamily::Arithmetic,
+      .refinements =
+          bir::detail::refinements<bir::NodeKindRefinement::BinaryForm>(),
+      .operands = bir::detail::fixed_arity(2),
+      .results = bir::ResultArityPolicy::One,
+      .effects = bir::NodeEffect::None,
+      .control = bir::NodeControlBehavior::FallsThrough,
+      .trap = bir::NodeTrapBehavior::MayTrap,
+      .stage_owner = bir::NodeStage::Raw,
+      .admitted_stages = bir::detail::semantic_stages,
+      .type_policy = bir::NodeTypePolicy::StoredValueType,
+      .mir = bir::NodeMirDisposition::OneRecordRealizable,
+  };
+  constexpr auto invalid_binary_authoring_spec = [=] {
+    auto spec = binary_authoring_spec;
+    spec.operands = bir::detail::fixed_arity(1);
+    return spec;
+  }();
+  constexpr auto invalid_stage_owner_spec = [=] {
+    auto spec = binary_authoring_spec;
+    spec.stage_owner = static_cast<bir::NodeStage>(
+        static_cast<std::uint8_t>(bir::NodeStage::Raw) |
+        static_cast<std::uint8_t>(bir::NodeStage::Canonical));
+    return spec;
+  }();
+  static_assert(bir::detail::valid_authoring_spec(binary_authoring_spec));
+  static_assert(
+      !bir::detail::valid_authoring_spec(invalid_binary_authoring_spec));
+  static_assert(!bir::detail::valid_authoring_spec(invalid_stage_owner_spec));
+  static_assert(bir::detail::variable_arity(1).maximum ==
+                bir::detail::unbounded_arity);
+  static_assert((bir::detail::semantic_stages.bits &
+                 static_cast<std::uint8_t>(bir::NodeStage::Prepared)) != 0);
+
   constexpr auto prepared = fixture_schema(
       bir::NodeSemanticFamily::Preparation, bir::NodeStage::Prepared,
       bir::NodeMirDisposition::RequiresExpansion);

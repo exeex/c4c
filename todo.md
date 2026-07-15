@@ -3,38 +3,39 @@
 Status: Active
 Source Idea Path: ideas/open/802_project_wide_cpp20_host_toolchain_contract.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Converge the NodeKind C++20 authoring surface
+Current Step ID: 5
+Current Step Title: Run final migration proof and closeout review
 
 ## Just Finished
 
-- Plan Step 3 published `docs/host_toolchain.md` as the durable contract for
-  strict non-extension C++20, the root CMake authority, configure-time
-  capability probes, fail-fast behavior, and future in-tree target authors.
-- Recorded the verified Clang 22.1.7, libc++ 220107, arm64 Darwin acceptance
-  host without claiming untested compiler families or versions.
-- Linked the contract from both the README build instructions and the
-  getting-started document, while keeping third-party boundaries and c4cll
-  language-under-test modes explicitly separate.
+- Plan Step 4 replaced the positional NodeKind registry authoring calls with
+  C++20 designated `NodeKindSpec` rows while preserving the ordered registry,
+  projected schema/descriptor, payload authority, storage, and pass-facing
+  compile-time/runtime helper APIs.
+- Added distinct typed builders for operand arity, stage sets, and refinements,
+  plus `consteval` per-row projection with local validation. Retained the
+  independent global completeness/order/relational `static_assert`.
+- Extended the schema test with valid and invalid authoring-spec outcomes and
+  typed-builder checks, and converged the normative Section 11 wording from
+  its former C++17 limitation to the landed C++20 authoring form.
 
 ## Suggested Next
 
-- Execute plan Step 4 by converging the NodeKind registry authoring surface on
-  the approved, named, locally validated C++20 form without changing its
-  semantics or pass-facing query API.
+- Execute plan Step 5 final migration proof and closeout review across the
+  project-wide C++20 authority and the converged NodeKind authoring surface.
 
 ## Watchouts
 
 - Do not touch idea 732.
-- Preserve the existing NodeKind tag algebra, stage vocabulary, one-registry
-  authority, and public compile-time/runtime helper behavior.
-- Keep the C++20 authoring syntax agent-readable; avoid turning the registry
-  into a template metaprogramming DSL or introducing unrelated modernization.
+- Do not treat `SsaEligible` as graph-level SSA proof; the B4 verifier contract
+  remains unchanged.
+- The C++20 builders and `NodeKindSpec` are private authoring plumbing; passes
+  should continue to use the existing helper API.
 
 ## Proof
 
-- `git diff --check` passed.
-- Focused search of `README.md`, `docs/getting_started.md`, and
-  `docs/host_toolchain.md` found no stale host C++17 build guidance.
-- This documentation-only packet required no build and did not rewrite the
-  supervisor-owned canonical `test_after.log`.
+- `cmake --preset default -DENABLE_C4C_BACKEND=ON && cmake --build --preset default`
+  passed.
+- `ctest --test-dir build -j --output-on-failure -R '^backend_'` passed 6/6.
+- Per the delegated packet, this step did not rewrite the supervisor-owned
+  canonical `test_after.log`.

@@ -401,7 +401,7 @@ define the complete future vocabulary.
 
 ## 11. Single schema and query authority
 
-### 11.1 One closed C++17 inventory
+### 11.1 One closed C++20 inventory
 
 The implementation has exactly one authoritative per-kind inventory. Its
 conceptual value type is the validated `KindSchema` from Section 2:
@@ -419,12 +419,15 @@ struct KindSchema {
 };
 ```
 
-In C++17 the preferred representation is one hidden `inline constexpr` closed
-registry of these records. A constexpr lookup by `NodeKind` serves both
-template queries and runtime wrappers. The public enum must expose a closed
-count/sentinel or another compile-time completeness proof so validation can
-show that every known enum value occurs exactly once and no registry entry is
-unknown.
+The implementation uses one hidden `inline constexpr` closed registry of these
+records. Each row is authored as a C++20 designated `NodeKindSpec`, so every
+axis is named at the edit site instead of being encoded by a long positional
+argument list. Small typed builders construct operand arity, stage sets, and
+refinement sets; their distinct types prevent raw masks and counts from being
+silently exchanged. A constexpr lookup by `NodeKind` serves both template
+queries and runtime wrappers. The public enum exposes a closed count sentinel
+so validation can show that every known enum value occurs exactly once and no
+registry entry is unknown.
 
 If enum spelling or ABI constraints make that representation impractical, one
 internal X-macro kind registry may emit both the enum inventory and the
@@ -446,9 +449,12 @@ machinery, bit encoding, nor validation implementation.
 
 ### 11.2 Validation precedes queryability
 
-A `consteval` facility is unavailable in C++17, so the complete registry is
-checked by `constexpr` validation plus namespace-scope `static_assert`. The
-validation pipeline is ordered:
+Every designated authoring row is projected by a `consteval` constructor. Its
+local validation rejects an invalid arity, result/SSA relationship, refinement,
+or stage set at that row's declaration. The complete projected registry is
+then checked independently by `constexpr` validation plus namespace-scope
+`static_assert`; local validation does not replace global completeness,
+ordering, payload, and relational proof. The validation pipeline is ordered:
 
 1. prove the registry contains every known `NodeKind` exactly once and no
    unknown kind;
@@ -995,7 +1001,7 @@ evidence passes 6/6 before and 6/6 after with zero new failures.
 | --- | --- |
 | Six closed axes, exclusive/composable groups, and invalid combinations | Sections 2 through 8 define every group, relational validator, extension rule, and rejection condition. |
 | Static SSA eligibility separated from graph validity | Sections 3 and 9 define `SsaEligible`, stage qualification/splitting, and B4-only dynamic proof. |
-| One compile-time/runtime authority with private plumbing | Section 11 specifies one validated C++17 registry, derived views/helpers, and private constexpr/X-macro mechanics. |
+| One compile-time/runtime authority with private plumbing | Section 11 specifies one validated C++20 registry, named designated authoring rows, local `consteval` construction, derived views/helpers, and independent global constexpr proof. |
 | Explicit B/C/D/E/F admitted sets and complete boundary matrix | Section 12 defines closed groups and all B-to-C, C-to-D, D-to-E, and E-to-F rows with tag deltas and outcomes. |
 | Identity preservation versus replacement/projection | Section 13 defines the eight-condition gate and every retain/lower/insert/delete/expand/project/split/merge consequence. |
 | Publication verifier obligations and no catch-all | Sections 12.11 and 14 define common plus Raw/Canonical/Prepared/Pseudo/Allocated/MIR-ready rejection gates. |
@@ -1017,9 +1023,9 @@ The reviewed artifact rejects every source-idea reject class:
 - **duplicate authority or exposed plumbing:** Section 11 forbids independent
   traits, runtime tables/switches, verifier lists, and pass lists; typelist,
   X-macro, registry, and validation details stay private;
-- **TableGen/generated DSL growth:** Section 11 permits only an internal C++17
-  registry mechanism and explicitly rejects `.td`, reflection, generation, or
-  a pass-visible schema language;
+- **TableGen/generated DSL growth:** Section 11 permits only the internal C++20
+  named registry mechanism and explicitly rejects `.td`, reflection,
+  generation, or a pass-visible schema language;
 - **broad-family arrows or catch-all transitions:** every Section 12 accepted
   group has an exact row, tag delta, prerequisite, outcome, and verifier;
   unknown, omitted, premature, stale, and unhandled vocabulary fails closed;
@@ -1050,9 +1056,10 @@ feasibility/convergence seam required by this contract:
   schema test changed. No pass, graph/storage, importer, allocation, MIR, or
   phase implementation entered the slice.
 - **One inventory:** every current production `NodeKind` appears exactly once
-  in one validated C++17 registry. Compile-time schema access, runtime
-  descriptor lookup, payload admission, and named helpers derive from it;
-  duplicate hand-maintained runtime inventories were removed.
+  in one validated C++20 registry, now authored with designated schema rows,
+  typed policies, and local `consteval` construction. Compile-time schema
+  access, runtime descriptor lookup, payload admission, and named helpers
+  derive from it; duplicate hand-maintained runtime inventories remain absent.
 - **Validated facts and stages:** all 16 current kinds have complete bounded
   axis facts and explicit admission over Raw, Canonical, Prepared,
   PseudoPreallocation, Allocated, and MirReadyMachine. Unknown kinds/stages,
