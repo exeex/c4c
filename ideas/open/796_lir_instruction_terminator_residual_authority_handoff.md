@@ -45,6 +45,30 @@ The same gate also has `frontend_lir_call_type_ref` (owned by 801) and
 absorb either. Once this cast family is accepted or separately split, return
 to 810's preserved Step 3 for the exact comparable full-baseline retry.
 
+## Resumption Record: accepted cast-result authority return to 810
+
+- Last accepted progress: Step 1, *Trace and select the native cast-result
+  authority family*, was accepted in `e92437aca`. Step 2, *Repair the selected
+  cast-result handoff*, was accepted in `387af7745`. The selected scalar
+  `StmtEmitter::coerce` cast paths now publish native `LirValueId` and
+  `LirTypeRef` authority; complex FPExt positive coverage and missing,
+  invalid, duplicate, and foreign-authority rejection coverage were added.
+  Vector and aggregate compatibility producers remain fail-closed.
+- Interrupted runbook step and disposition: Step 3, *Prove the bounded route
+  and return to 810*, is accepted for this bounded route. The fresh exact
+  focused proof `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1, and the
+  matching regression guard was accepted as non-decreasing (1/1 before/after).
+- Exact return point: resume
+  `ideas/open/810_lir_gep_producer_result_authority_baseline_blocker.md`
+  unchanged at Step 3, *Prove the blocker and return control to 801*, and run
+  exactly `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure`. This record does not claim that full gate passes or
+  that 801/806 residuals are cleared.
+- Remaining boundary: any nonselected cast producer family remains fail-closed
+  and requires separately evidenced scope before work resumes under 796; 801
+  structured-call and 806 PHI residual authority remain separate owners.
+
 ## Reviewer Reject Signals
 
 - Reject a catch-all instruction/terminator conversion, text parsing, receiver

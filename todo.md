@@ -1,36 +1,33 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/796_lir_instruction_terminator_residual_authority_handoff.md
+Source Idea Path: ideas/open/810_lir_gep_producer_result_authority_baseline_blocker.md
 Source Plan Path: plan.md
 Current Step ID: 3
-Current Step Title: Prove the bounded route and return to 810
+Current Step Title: Prove the blocker and return control to 801
 
 ## Just Finished
 
-796 Step 2 converted the selected scalar `StmtEmitter::coerce` residual cast
-producer seam to allocate a native `LirValueId`, use native `LirTypeRef`
-endpoints, and opt into `requires_native_result_authority`. Vector and
-aggregate compatibility producers remain fail-closed. Nearby complex-coercion
-coverage asserts both selected FPExt component results and verifies missing,
-invalid, duplicate, and foreign result IDs are rejected.
+796 completed its bounded native scalar cast-result authority handoff: Step 1
+was accepted in `e92437aca` and Step 2 in `387af7745`; its exact focused proof
+passed 1/1 and the matching regression guard was accepted non-decreasing.
+Return control now resumes 810 at its preserved Step 3 baseline gate.
 
 ## Suggested Next
 
-Supervisor: select the next 796 packet from the remaining residual inventory;
-do not widen this completed cast-producer packet into preserved 801/806 work.
+Supervisor: run exactly `cmake --build --preset default && ctest --test-dir
+build -j --output-on-failure` for 810 Step 3. Do not repeat accepted Steps
+1--2 or treat 796 focused proof as 3037/3037 clearance.
 
 ## Watchouts
 
-The selected admission is scalar-only because those cast kinds have complete
-native endpoint facts. Keep vector and aggregate compatibility producers
-fail-closed; do not parse `%t` text or weaken the cast verifier. Preserve the
-dirty 801 aggregate/direct-complex hunks, 810/795 accepted GEP/parameter work,
-and the 806 PHI route.
+Do not absorb the unrelated anonymous aggregate/direct-complex dirty hunks in
+`call/args.cpp`, `call/target.cpp`, `verify.cpp`, or
+`frontend_hir_tests.cpp`. The `20060910-1.c` PHI residual remains owned by
+806; nonselected 796 cast producers remain fail-closed.
 
 ## Proof
 
-Passed: `cmake --build --preset default && ctest --test-dir build -j
---output-on-failure -R '^frontend_lir_call_type_ref$'`. The delegated proof
-was sufficient for this packet. Per supervisor direction, no canonical root
-regression log was created or overwritten.
+Required: fresh build plus exactly `cmake --build --preset default && ctest
+--test-dir build -j --output-on-failure`. Existing 810/795/796 focused proof
+is supporting evidence only; do not claim the gate passes yet.
