@@ -73,3 +73,35 @@ Raw-BIR importer defect.
   that hides the `llvm_gcc_c_torture_src_20041011_1_c` verifier failure.
 - Reject expansion to generic BIR scalar parameters, other ABI forms, or a
   broader DirectScalar authority family without a separately scoped idea.
+
+## Resumption Record: independent frontend LIR switch-fixture blocker
+
+- Last accepted progress: Step 1 trace was accepted in `35cff0993`. Step 2,
+  *Publish and verify the typed DirectScalar authority*, was accepted in
+  `4bcc7c8ff`: the existing `ull` producer publishes current-function native
+  DirectScalar identity/type, and focused positive plus missing, foreign, and
+  type-incoherent authority coverage protects the fail-closed verifier
+  boundary.
+- Interrupted step: Step 3, *Prove the boundary and record the 734 handoff*,
+  remains incomplete. Its focused broader probe stopped before any
+  DirectScalar test at the manually constructed `frontend_lir_call_type_ref`
+  switch fixture: `LirSwitch.selector: must identify a current-function
+  integer value definition`.
+- Blocker and scope boundary: the fixture/modelled switch-result authority
+  correction is independent of `4bcc7c8ff` (the fixture and selector verifier
+  branch are unchanged from `4bcc7c8ff^`) and is outside this DirectScalar
+  producer/verifier idea. It is owned by
+  `ideas/open/821_frontend_lir_manual_switch_modelled_result_authority.md`.
+  That blocker must not change DirectScalar, Raw-BIR, importer, generic scalar
+  receipt, or generic switch feature scope.
+- Exact return point: after 821 has supervisor-accepted focused proof, resume
+  this idea at unchanged Step 3. Run the fresh build, focused
+  producer/verifier proof, the exact
+  `^llvm_gcc_c_torture_src_20041011_1_c$` test, and the supervisor-selected
+  matching broader checkpoint. Record only the existing selected 734
+  `LirBinOp.lhs` handoff; do not claim Step 3 complete before that checkpoint
+  succeeds.
+- Accepted proof references: the exact external gcc-torture pass and matching
+  exact before/after regression guard accepted with `4bcc7c8ff`; the current
+  `frontend_lir_call_type_ref` failure is diagnosis only and is not acceptance
+  proof for Step 3.
