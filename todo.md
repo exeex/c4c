@@ -3,44 +3,43 @@
 Status: Active
 Source Idea Path: ideas/open/746_bir_node_kind_centric_storage_pass_contract.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Establish the NodeKind schema and helper API
+Current Step ID: 3
+Current Step Title: Align core storage and one bounded pass/query consumer
 
 ## Just Finished
 
-- Completed `plan.md` Step 2 as one bounded schema/helper slice. `NodeKind` is
-  now the durable public name for the closed 16-kind BIR vocabulary, with
-  `Opcode` retained only as a compatibility alias.
-- Added one hidden C++ traits authority and public compile-time/runtime queries
-  for family and binary classification, operand/result arity policy, accepted
-  payload alternatives, effects, and legal stage masks. Runtime queries reject
-  invalid/unhandled kinds, and concrete `Type` remains outside kind traits.
-- Replaced verifier-local opcode/payload duplication with
-  `node_kind_accepts_payload`; builders, instruction/result storage, value
-  representation, and documentation remain unchanged.
-- Added nearby multi-kind coverage for semantic, memory, call, and authority
-  descriptors, alternate accepted payloads, mismatched payloads, compile-time
-  queries, stage legality, and invalid runtime kinds.
+- Completed `plan.md` Step 3 as one bounded verifier/storage-contract slice.
+  Added the public fail-closed `node_kind_accepts_arity` runtime helper over the
+  existing schema's fixed, bounded-variable, zero, one, and many policies.
+- FoundationVerifier now applies that helper as a generic operand/result-count
+  precondition beside payload acceptance. Existing payload-specific semantic
+  checks remain intact and continue to provide their stricter diagnostics.
+- Clarified in core declarations that operands are ordered input uses; results
+  and `InstResultDef::result_index` are bootstrap compatibility storage;
+  concrete type belongs to `ValueDef`; and the function arena/`InstId`, rather
+  than `InstData`, owns instruction identity. No field or layout changed.
+- Extended the nearby schema test across fixed zero-result, fixed one-result,
+  bounded-variable, many-result, and invalid-kind arity cases. The full backend
+  fixture set also exercised the verifier gate over builder-produced BIR.
 
 ## Suggested Next
 
-- Execute only the next `plan.md` Step 3 consumer/storage-alignment packet:
-  choose one bounded repeated verifier classification or arity consumer and
-  migrate it to the shared NodeKind authority while retaining the current
-  `InstData` and value/result compatibility storage.
+- Execute only `plan.md` Step 4 documentation: update the owned BIR core
+  contract documentation to describe NodeKind traits, fail-closed pass queries,
+  and the explicitly retained bootstrap storage boundaries.
 
 ## Watchouts
 
-- `InlineAsm` and `Call` retain conservative `Many` result and `Unknown`
-  effect policies because payload facts refine their concrete behavior; do not
-  infer concrete result `Type` or call/asm effects from kind alone.
-- All current kinds are legal across Raw, Canonical, and Prepared stages. The
-  stage mask is intentionally explicit so later passes can narrow legality in
-  the same traits authority instead of creating pass-local tables.
-- `GetElementPtr`, `Load`, and authority variants still share public kinds with
-  differing current operand shapes. Their descriptors therefore preserve the
-  present compatibility ranges rather than claiming a storage normalization
-  that Step 2 did not perform.
+- The generic gate deliberately checks only kind-level count policy. Payload
+  semantics such as Phi incoming parity, call signatures, and concrete value
+  types remain in their existing exact verifier checks.
+- `Many` currently means an open result-count policy, not a promise that every
+  count is constructible for every payload. `InlineAsm` and `Call` still need
+  payload/value facts to refine their concrete result contract.
+- No private malformed-`InstData` test seam exists in the focused schema test;
+  direct helper rejection is covered nearby, while the six backend tests prove
+  the verifier accepts current valid storage. Do not expose private storage
+  merely to manufacture a negative verifier fixture.
 
 ## Proof
 

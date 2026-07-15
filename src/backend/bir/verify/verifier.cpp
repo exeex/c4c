@@ -609,6 +609,13 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                inst_id,
                "instruction opcode and closed payload alternative disagree");
       }
+      if (!node_kind_accepts_arity(instruction.opcode,
+                                   instruction.operands.size(),
+                                   instruction.results.size())) {
+        report(result, VerificationRule::BoundedAlternative, function_id,
+               inst_id,
+               "instruction operand/result counts violate NodeKind schema");
+      }
       for (const auto operand : instruction.operands)
         if (operand.owner != function_id ||
             !function.values_.contains(function_id, operand))

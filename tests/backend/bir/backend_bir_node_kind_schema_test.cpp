@@ -74,4 +74,22 @@ int main() {
   expect(bir::node_kind_legal_in(bir::NodeKind::Binary,
                                  bir::NodeStage::Canonical),
          "schema must expose legal-stage policy");
+
+  expect(bir::node_kind_accepts_arity(bir::NodeKind::Store, 1, 0) &&
+             !bir::node_kind_accepts_arity(bir::NodeKind::Store, 0, 0) &&
+             !bir::node_kind_accepts_arity(bir::NodeKind::Store, 1, 1),
+         "fixed zero-result kinds must enforce both exact counts");
+  expect(bir::node_kind_accepts_arity(bir::NodeKind::Binary, 2, 1) &&
+             !bir::node_kind_accepts_arity(bir::NodeKind::Binary, 3, 1) &&
+             !bir::node_kind_accepts_arity(bir::NodeKind::Binary, 2, 0),
+         "fixed one-result kinds must enforce both exact counts");
+  expect(bir::node_kind_accepts_arity(bir::NodeKind::Load, 0, 1) &&
+             bir::node_kind_accepts_arity(bir::NodeKind::Load, 1, 1) &&
+             !bir::node_kind_accepts_arity(bir::NodeKind::Load, 2, 1),
+         "bounded variable inputs must preserve their compatibility range");
+  expect(bir::node_kind_accepts_arity(bir::NodeKind::InlineAsm, 0, 0) &&
+             bir::node_kind_accepts_arity(bir::NodeKind::InlineAsm, 5, 3),
+         "many-result kinds must accept their declared open result policy");
+  expect(!bir::node_kind_accepts_arity(invalid, 0, 0),
+         "invalid kinds must fail closed in the generic arity helper");
 }

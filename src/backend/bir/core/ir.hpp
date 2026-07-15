@@ -19,6 +19,9 @@ struct ParameterDef {
 };
 
 struct InstResultDef {
+  // Bootstrap compatibility storage: instruction identity lives in the
+  // function instruction arena, while this index selects one entry from the
+  // producer's ordered result list.
   InstId instruction{};
   std::uint16_t result_index = 0;
 };
@@ -141,6 +144,8 @@ struct SpecializationMetadata {
 
 struct ValueDef {
   ValueKind kind = ValueKind::Parameter;
+  // Concrete type is a value fact and is intentionally not inferred from the
+  // producer's NodeKind traits.
   Type type{};
   std::optional<SourceValueId> source_id;
   std::variant<UnresolvedDef, ParameterDef, InstResultDef, ConstantDef>
@@ -639,6 +644,26 @@ inline bool node_kind_accepts_payload(NodeKind kind,
   return false;
 }
 
+inline bool node_kind_accepts_arity(NodeKind kind, std::size_t operand_count,
+                                    std::size_t result_count) noexcept {
+  const auto descriptor = node_kind_descriptor(kind);
+  if (!descriptor) return false;
+
+  const bool operands_match =
+      operand_count >= descriptor->minimum_operands &&
+      (descriptor->maximum_operands == detail::variable_arity ||
+       operand_count <= descriptor->maximum_operands) &&
+      (descriptor->operand_arity == OperandArityPolicy::Variable ||
+       descriptor->minimum_operands == descriptor->maximum_operands);
+  const bool results_match =
+      descriptor->result_arity == ResultArityPolicy::Many ||
+      (descriptor->result_arity == ResultArityPolicy::Zero &&
+       result_count == 0) ||
+      (descriptor->result_arity == ResultArityPolicy::One &&
+       result_count == 1);
+  return operands_match && results_match;
+}
+
 class BlockView;
 class FunctionView;
 class ModuleView;
@@ -737,6 +762,10 @@ inline bool operator!=(const FunctionSignature& lhs,
 namespace detail {
 
 struct InstData {
+  // InstId is owned by FunctionData::insts_; it is deliberately not repeated
+  // in this arena payload. Operands are ordered input uses. Results are
+  // bootstrap compatibility storage paired with InstResultDef::result_index;
+  // their concrete types remain authoritative in ValueDef.
   Opcode opcode = Opcode::InlineAsm;
   InstPayload payload = InlineAsmNode{};
   std::vector<ValueId> operands;
