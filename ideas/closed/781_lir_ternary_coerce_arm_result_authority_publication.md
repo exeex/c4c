@@ -1,6 +1,6 @@
 # LIR Ternary/Coerce Arm Result Authority Publication
 
-Status: Open (active blocker for 775)
+Status: Closed (capability complete)
 Type: one-family typed expression-result producer successor
 Blocks: `ideas/open/775_lir_phi_producer_helper_result_identity.md`
 Downstream Consumer: `ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md`
@@ -66,3 +66,21 @@ either contract.
   test-only branch presented as native authority.
 - Reject positive-only coverage, malformed-authority weakening, expectation
   downgrades, or baseline edits in place of native fail-closed proof.
+
+## Completion Record
+
+Capability complete. Commit `22a4d555d` publishes native, valid,
+current-function-owned `LirCastOp.result` authority for the selected ternary
+`else` arm's i64-to-i32 coercion before compatibility spelling, through the
+bounded `emit_rval_operand` to `coerce_operand` path. Focused structural
+coverage proves that result and rejection of missing, invalid, duplicate, and
+foreign authority through the existing verifier. The accepted command
+`cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1, and the
+matching baseline/after regression guard passed with
+`--allow-non-decreasing-passed`.
+
+The accepted handoff is recorded in open 775. This source deliberately leaves
+the other ternary arm, raw ternary PHI result and incoming carriers, and raw
+later final-consumer input unresolved; those exclusions are not criteria of
+this selected-arm source and make no 751 or Raw-BIR claim.

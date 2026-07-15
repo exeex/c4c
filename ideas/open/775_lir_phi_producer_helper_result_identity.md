@@ -138,3 +138,21 @@ the remaining helper-result work has a bounded native producer contract that
 does not require generic `emit_rval_*`/`coerce` migration or PHI-carrier work;
 otherwise record the next separately scoped blocker and preserve 751's blocked
 return point.
+
+## Accepted 781 Ternary-Arm Coercion Producer Handoff
+
+Commit `22a4d555d` (“Publish ternary arm coercion result authority”) establishes
+that the selected ternary else arm's i64-to-i32 narrowing coercion now flows
+through `emit_rval_operand` to `coerce_operand`, where its `LirCastOp.result`
+has valid native current-function `LirValueId` authority before compatibility
+spelling. The exact accepted proof was `cmake --build --preset default && ctest
+--test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
+(1/1 passed); the non-regression guard passed with
+`--allow-non-decreasing-passed`. Focused structural coverage also proves that
+missing, invalid, duplicate, and foreign result IDs reject through the existing
+verifier.
+
+This is only the selected-arm producer fact: the other ternary arm, raw ternary
+PHI result and both incoming carriers, and raw later final-consumer input remain
+unresolved. It makes no PHI, 751, or Raw-BIR claim and does not reactivate 775
+or 751 or expand 775's scope.
