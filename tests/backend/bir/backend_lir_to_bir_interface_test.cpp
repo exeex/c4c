@@ -1678,6 +1678,7 @@ void test_anonymous_aggregate_layout_verifier_rejections() {
         .agg = lir::LirOperand::ssa("%pair", lir::LirValueId{1}),
         .index = 0,
         .requires_native_result_authority = true,
+        .result_element_type = lir::LirTypeRef("float"),
     });
     block.terminator = lir::LirRet{std::nullopt, lir::LirTypeRef("void")};
     auto function = void_definition("anonymous_layout_verifier", {std::move(block)});
