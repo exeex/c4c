@@ -112,3 +112,14 @@ The structured ids and refs should be the module-level source of truth.
   relaxed to make stale shadow text pass.
 - The result still allows stale module-level type strings to override
   `LirTypeRef`, `StructNameId`, or `LinkNameId` authority.
+
+## Completion Disposition
+
+Capability complete. Module-level structured authority is now established for
+struct declarations (`51ee839bc`), extern return types (`44ca942cf`),
+aggregate and general function-signature paths (`4211a9373`, `fbd67184e`),
+and globals (`cc24bfa30`). The accepted focused frontend/backend proofs cover
+misleading or stale shadows for each row; the struct and global checkpoints
+also passed the selected broader backend suites. Compatibility text remains
+only in documented output or absent-metadata paths, and no out-of-scope
+lowering or type-model work was absorbed.
