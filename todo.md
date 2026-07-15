@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/763_lir_composite_type_ref_model.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Establish structured composite representation
+Current Step ID: 2
+Current Step Title: Render and migrate the selected layout path
 
 ## Just Finished
 
