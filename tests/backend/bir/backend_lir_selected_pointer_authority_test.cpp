@@ -236,7 +236,7 @@ c4c::TypeSpec large_aggregate_type(c4c::TextId tag_id) {
   return type;
 }
 
-hir::Module local_aggregate_zero_memset_module() {
+hir::Module local_aggregate_zero_memset_module(int array_size = 4) {
   hir::Module module;
   module.target_profile = c4c::default_target_profile(c4c::TargetArch::X86_64);
 
@@ -246,8 +246,8 @@ hir::Module local_aggregate_zero_memset_module() {
   int_type.array_size = -1;
   c4c::TypeSpec array_type = int_type;
   array_type.array_rank = 1;
-  array_type.array_size = 4;
-  array_type.array_dims[0] = 4;
+  array_type.array_size = array_size;
+  array_type.array_dims[0] = array_size;
 
   hir::Expr zero;
   zero.id = module.alloc_expr_id();
@@ -306,6 +306,27 @@ void test_local_aggregate_zero_memset_populates_authority() {
              memset->size_authority->type == lir::LirTypeRef::integer(64) &&
              memset->size_authority->value.value == 16,
          "aggregate-zero local memset must retain pointer/object/owner/type/live and typed size facts");
+  lir::verify_module(module);
+}
+
+void test_zero_sized_local_aggregate_memset_remains_compatibility_only() {
+  const lir::LirModule module = lir::lower(local_aggregate_zero_memset_module(0));
+  const auto& function = module.functions.front();
+  const lir::LirMemsetOp* memset = nullptr;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* candidate = std::get_if<lir::LirMemsetOp>(&inst)) {
+        memset = candidate;
+        break;
+      }
+    }
+    if (memset) break;
+  }
+  expect(memset != nullptr, "zero-sized aggregate local lowering must emit compatibility memset");
+  expect(!memset->requires_native_memory_va_authority && !memset->dst_authority &&
+             !memset->byte_authority && !memset->size_authority &&
+             memset->size.str() == "0",
+         "zero-sized aggregate memset must remain compatibility-only");
   lir::verify_module(module);
 }
 
@@ -796,6 +817,7 @@ void test_selected_memcpy_raw_bir_receipt_and_rollback() {
 
 int main() {
   test_local_aggregate_zero_memset_populates_authority();
+  test_zero_sized_local_aggregate_memset_remains_compatibility_only();
   test_direct_local_va_lifecycle_populates_authority();
   test_native_memory_va_authority_verifier_boundary();
   test_selected_current_function_pointer_authority();
