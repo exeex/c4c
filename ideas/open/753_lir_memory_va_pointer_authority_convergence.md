@@ -147,3 +147,44 @@ semantic gaps unless the common memory/va pointer boundary is closed.
   receiver-ready handoff with native fields, guarantees, rejected forms, and
   accepted proof. Steps 1 and 2 remain complete; do not rerun them, republish
   carrier authority, or perform Raw-BIR receiver implementation.
+
+## Step 3 Receiver-Ready Handoff
+
+**Selected receiver: Raw-BIR receipt for the one selected AMD64 SysV aggregate
+`layout.needs_memory` overflow `va_arg` memcpy row.** This is a handoff-only
+boundary: it authorizes no Raw-BIR receipt, lowering, implementation, or
+republishing work in 753.
+
+- **Native fields the receiver may consume:** the checked
+  `LirAmd64SysVOverflowAggregateCarrier` carries the direct current-function,
+  live `va_list` local pointer/object/owner authority; the typed field-2 GEP
+  address; the pointer load from that address; explicit
+  `Amd64SysVOverflowArgArea` storage kind; the live destination local
+  temporary; the final load identity; the struct payload `LirTypeRef`; and a
+  positive typed i64 payload-size immediate. The selected `LirMemcpyOp`
+  source, destination, and immediate size are bound to those identities.
+- **Guarantees and authority boundary:** this carrier is present only on the
+  selected, non-volatile direct-local AMD64 SysV aggregate overflow memcpy
+  row. It expresses derived overflow storage rather than claiming that the
+  loaded overflow pointer is a local object. The LIR verifier is the gate
+  before receiver use: it requires canonical current-function owner/object/
+  liveness facts, the direct typed field-2 GEP-to-pointer-load chain, matching
+  memcpy source/destination/final-load identities, struct payload type, and
+  positive i64 byte-size agreement. It rejects partial or unselected/mixed
+  carrier fields, arbitrary or non-derived sources, foreign or dead locals,
+  destination disagreement, and type/size disagreement.
+- **Rejected forms:** the receiver must not recover pointer, object, lifetime,
+  size, storage, or row-selection facts from printed operands, rendered
+  LIR/LLVM, names, builtin spelling, or testcase shape. It must not treat an
+  unselected compatibility row as receipt-ready, reconstruct a carrier from
+  text, or extend this handoff to other aggregates, vectors, targets, scalar
+  `va_arg`, or generic memory rows.
+- **Accepted proof:** closed-799 implementation `c4e820a48`; a fresh
+  `cmake --build --preset default` and
+  `./build/tests/backend/bir/backend_lir_selected_pointer_authority_test`
+  passed, with the matching backend baseline 5/5. Blocker repair `18e67ea70`
+  then passed a fresh `cmake --build --preset default` and
+  `./build/tests/frontend/frontend_lir_call_type_ref_test`; the matching full
+  `ctest --test-dir build -j --output-on-failure` baseline passed 3037/3037,
+  and the supervisor guard found 0 new failures with
+  `--allow-non-decreasing-passed`.

@@ -8,20 +8,21 @@ Current Step Title: Document exactly one receiver-ready handoff with native fiel
 
 ## Just Finished
 
-- Resolved blocker 800 is complete: `18e67ea70` repaired only the unselected
-  typed alloca result. Its fresh build and focused frontend proof passed, and
-  the supervisor accepted the matching 3037/3037 full-baseline comparison.
-  753 Steps 1 and 2 remain complete.
+- Step 3 documentation is complete: the source now records exactly one
+  receiver-ready Raw-BIR handoff for the selected AMD64 aggregate overflow
+  carrier, including native fields, verifier-backed guarantees, rejected
+  text-recovery forms, and accepted proof. The runbook is exhausted-ready;
+  this packet does not close or switch the lifecycle.
 
 ## Suggested Next
 
-- Execute Step 3 only: document exactly one receiver-ready handoff with native
-  fields, guarantees, rejected forms, and accepted proof.
+- Supervisor: request the required explicit plan-owner completion decision;
+  do not infer source-idea closure from Step 3 exhaustion.
 
 ## Watchouts
 
 - Do not rerun accepted Steps 1/2, republish or generalize carrier authority,
-  or perform Raw-BIR receiver implementation.
+  or perform Raw-BIR receipt/lowering/implementation.
 
 ## Proof
 
