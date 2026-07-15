@@ -1,6 +1,6 @@
 # LIR Local Operation Receiver Handoff Completion
 
-Status: Open
+Status: Closed
 Type: bounded LIR local-operation authority handoff
 Predecessor: `ideas/closed/752_lir_local_object_pointer_authority_convergence.md`
 Consumer: `ideas/open/734_lir_to_new_bir_container_completeness.md`
@@ -61,3 +61,15 @@ typed contract first.
   a substitute for current-function object/pointer/lifetime facts.
 - Reject a handoff that does not name one exact 734 receiver row and its typed
   fields, rejected forms, and proof.
+
+## Closure Record
+
+Capability complete. The exact selected direct non-array/non-VLA local-scalar
+`LirLoadOp` contract is published in
+`docs/lir_local_operation_authority/handoff_to_734.md`. Commit `d48236bd9`
+selects the producer and `d290ffc21` enforces native result admission,
+pointer-definition binding, and pointee/load-type coherence. Its focused fresh
+build plus `^frontend_lir_call_type_ref$` proof passed 1/1; the matching
+canonical before/after regression guard passed non-decreasing. 734 resumes at
+Step 7.27 for only the documented receiver packet; every later local row stays
+out of scope.

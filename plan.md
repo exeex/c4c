@@ -1,73 +1,60 @@
-# LIR Local Operation Receiver Handoff Completion Runbook
+# LIR-To-New-BIR Container And Import Completeness Runbook
 
 Status: Active
-Source Idea: ideas/open/789_lir_local_operation_receiver_handoff_completion.md
-Activated from: exhausted 734 selected-alloca receiver route; 734 resumes only
-after this idea supplies one exact post-alloca local-operation handoff.
+Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
+Resumed from: closed 789 local scalar load authority handoff.
 
 ## Purpose
 
-Turn closed 752's representative local authority into one exact next
-receiver-ready contract without broadening producer or Raw-BIR scope.
-
-## Goal
-
-Name and prove one first post-alloca local operation that 734 can receive from
-typed current-function authority.
+Resume the typed Raw-BIR import route at its next authorized local-operation
+receiver row without repeating accepted alloca receipt.
 
 ## Core Rule
 
-Native pointer-definition, object, owner, type, and liveness facts decide
-admission. Local display spellings and rendered operands are mirrors only.
+Use only the native fields published by
+`docs/lir_local_operation_authority/handoff_to_734.md`; local display spelling,
+formatted operands, printer output, and LLVM text are never semantic input.
+
+## Historical Progress
+
+Steps 1 through 7.26 are accepted, including the selected alloca receiver in
+`2cce9da69`. Preserve `006d79aaf`, `7dc03f23a`, and `2cce9da69`; do not redo
+their work.
+
+## Current Scope
+
+- receive exactly the selected direct non-array/non-VLA local-scalar
+  `LirLoadOp` from its valid `result`, `type_str`, `ptr`, and checked
+  `local_object_authority` fields;
+- add the minimum target-independent Raw-BIR container/importer/reachable
+  verifier and transactional positive/negative coverage;
+- require native result admission, pointer-definition equality,
+  current-function valid/live authority, and pointee/load-type equality.
 
 ## Non-Goals
 
-- Raw-BIR receiver/container/importer work;
-- more than one local load/store/GEP/VLA row;
-- named/local-temporary variants, memory/va, aggregate/vector, body
-  parameters, CFG/PHI, target lowering, MIR, and emission;
-- presentation-derived semantic recovery.
+- all other direct/access/array/VLA loads, stores, GEPs, VLA lifetime, and
+  named/local-temporary variants;
+- memory/va, aggregate/vector, body parameters, module/type/global/metadata,
+  CFG/PHI, target lowering, MIR, emission, and every later family;
+- presentation-derived recovery or repeating Step 7.26.
 
 ## Ordered Steps
 
-### Step 1 - Select the first post-alloca authority row
+### Step 7.27 - Receive the selected direct local-scalar LirLoadOp authority
 
-Goal: identify exactly one selected local load/store/GEP or VLA lifetime row
-whose current structured facts can be made receiver-ready.
-
-Actions:
-
-- inspect closed-752 authority carriers, producers, and verifier admission;
-- establish the earliest admissible row and list its required typed fields;
-- keep every other local route outside this initiative.
-
-Completion check: one row, not a representative family, has an explicit
-structured authority contract independent of presentation text.
-
-### Step 2 - Verify and prove the selected producer boundary
-
-Goal: ensure malformed selected-row authority fails closed before consumption.
+Goal: transactionally import the one 789-authorized load row into a typed
+Raw-BIR destination.
 
 Actions:
 
-- add only necessary producer/verifier wiring for pointer/object ownership,
-  type coherence, and lifetime admission;
-- add nearby same-feature positive and malformed coverage;
-- run a fresh build and focused producer proof.
+- map only the documented result, type, pointer definition, object/owner,
+  pointer/pointee type, and liveness facts;
+- validate all producer contract fields before publication and reject malformed
+  rows transactionally;
+- add nearby positive and negative receiver coverage, then run a fresh build
+  and narrow proof before supervisor-selected broader acceptance proof.
 
-Completion check: the selected row and malformed variants have semantic proof
-without a testcase-shaped shortcut.
-
-### Step 3 - Publish the bounded 734 handoff
-
-Goal: finish with one reproducible receiver contract.
-
-Actions:
-
-- record the exact variant, fields, guarantees, rejections, proof, and commit;
-- state 734's Step 7.27 return action and retain every later local row outside
-  that packet;
-- obtain supervisor-selected broader acceptance proof.
-
-Completion check: 734 can resume at Step 7.27 without selecting semantics from
-text or repeating Step 7.26.
+Completion check: exactly this selected load row imports and verifies without
+presentation recovery; all excluded local and later families remain fail
+closed.
