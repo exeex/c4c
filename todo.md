@@ -3,20 +3,24 @@
 Status: Active
 Source Idea Path: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Verify row-specific index or mask facts
+Current Step ID: 4
+Current Step Title: Prove and hand off the bounded row
 
 ## Just Finished
 
-754 Step 3 complete: the selected native direct-complex `LirExtractValueOp`
-now carries a structured result-element type and verifies it against 801's
-ordered anonymous aggregate fields. Negative, out-of-range, missing-type, and
-type-conflict extracts reject; direct-complex positive coverage passes.
+754 Step 3 accepted in `a351cde2a`: the selected native direct-complex
+`LirExtractValueOp` carries a structured result-element type and verifies it
+against 801's ordered anonymous aggregate fields. Negative, out-of-range,
+missing-type, and type-conflict extracts reject; direct-complex positive
+coverage passes. Fresh targeted proof passed 3/3 and the non-regression guard
+passed.
 
 ## Suggested Next
 
-Step 4 only: obtain the bounded-row proof and handoff evidence; do not expand
-to other aggregate/vector rows or receiver work.
+Supervisor-owned Step 4: run the selected broader checkpoint and obtain a
+100% passing full baseline before any semantic closure decision. Record the
+bounded-row handoff evidence only if accepted; do not expand to other
+aggregate/vector rows, receiver work, or Raw BIR.
 
 ## Watchouts
 
