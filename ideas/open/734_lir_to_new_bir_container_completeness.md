@@ -696,3 +696,37 @@ alongside the already accepted 751 value/predecessor authority, with existing
 edge-occurrence and transactional requirements. The remaining action is the
 single bounded Step 7.25 receiver packet; do not repeat Steps 1 through 7.24
 or treat the baseline/interface test as PHI receipt proof.
+
+## Resumption Record: Step 7.25 parallel-CFG-edge verifier blocker
+
+Last accepted progress remains Steps 1 through 7.24, including the typed
+computed-goto receiver and the accepted producer handoffs from closed 751
+(`6ece9fe8f`) for PHI incoming value/predecessor authority and closed 786
+(`91b5bde43`) for native PHI SpecialToken semantic authority. Step 7.25,
+`Receive typed PHI incoming authority`, is interrupted and remains unaccepted.
+
+The current Raw-BIR PHI receiver worktree changes and its focused
+`test_after.log` result (1/1) are unaccepted WIP, not an implementation commit
+or acceptance evidence. `test_before.log` passed 1/1; the focused after result
+does not establish the required parallel-edge route and must not be treated as
+acceptance. Preserve this WIP without committing it, and do not repeat or
+retroactively accept any of it when this source resumes.
+
+The first blocking fact is outside this source's scope: the typed-LIR verifier
+in `src/codegen/lir/verify.cpp` rejects duplicate `LirCondBr` successors and
+duplicate `LirSwitch.case_successors` before Raw-BIR can receive them as
+distinct parallel CFG-edge occurrences. Idea 734 forbids LIR file/schema/
+producer edits, so it cannot admit or prove this required input itself.
+
+Classification: `separate-blocker`. Open
+`ideas/open/787_lir_parallel_cfg_edge_verifier_admission.md` owns only typed
+LIR verification/admission and handoff of duplicate conditional-branch and
+switch-case successor occurrences as distinct ordered CFG edges. It must not
+change Raw-BIR receiver/container behavior, broader producer semantics, target
+lowering, or source/presentation recovery.
+
+Exact return point: after 787 accepts its typed-LIR handoff, reactivate 734 at
+the unchanged Step 7.25 and reattempt only complete PHI receiver coverage,
+including exact parallel edge occurrences. The remaining action is that one
+bounded PHI receiver packet; preserve accepted Steps 1 through 7.24 and do not
+treat the current WIP as accepted.
