@@ -1,45 +1,26 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/820_lir_directscalar_parameter_producer_verifier_publication.md
+Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove the boundary and record the 734 handoff
+Current Step ID: 7.35
+Current Step Title: Receive the one 818-authorized body-parameter authority row
 
 ## Just Finished
 
-- Fresh `cmake --build --preset default --clean-first` completed. In the
-  protected composite worktree, the narrow `backend_lir_selected_pointer_authority`
-  proof (before that clean build) and the exact external
-  `llvm_gcc_c_torture_src_20041011_1_c` CTest passed. Neither result accepts
-  Step 3: the external pass depends on unaccepted Ideas 821/822 selector
-  patches and unaccepted 734-shaped Raw-BIR receiver work.
+- No 734 execution packet has started after resumption at Step 7.35.
 
 ## Suggested Next
 
-- Repair Step 3's proof route without modifying the protected composite:
-  obtain a supervisor-selected, executable matching checkpoint whose result is
-  attributable to accepted prerequisites and accepted 820 work. Do not resume
-  734 Step 7.35 or record its handoff until that checkpoint is accepted.
+- Execute Step 7.35 only: establish the bounded selected scalar `LirBinOp.lhs` Raw-BIR receipt with transactional positive/malformed coverage. The existing shared-worktree receiver patch is unaccepted starting material, not accepted progress.
 
 ## Watchouts
 
-- Ideas 821 and 822 each retain pending, unaccepted implementation work; do
-  not modify, discard, or claim acceptance for either slice during this route.
-- The existing 734-shaped Raw-BIR receiver patch is likewise unaccepted and
-  outside this idea. Do not modify, discard, or claim it as 820 progress.
-- `ctest --test-dir build -j --output-on-failure -R '^backend_'` is not an
-  acceptance command in this clean-build state: six registered executables
-  are missing, so its result is infrastructure-invalid rather than semantic.
-- Do not broaden into Raw-BIR receipt, generic scalar authority, or switch redesign.
+- Ideas 821 and 822 each retain pending, unaccepted implementation work; do not modify, discard, or claim acceptance for either slice.
+- The existing 734-shaped receiver patch is unaccepted. Do not claim it as prior progress or rely on its composite test result.
+- Do not broaden into generic scalar authority, other parameter forms, DirectScalar producer/verifier work, or switch redesign.
 
 ## Proof
 
-- Historical accepted DirectScalar implementation/proof: `4bcc7c8ff`.
-- Composite-only diagnostic evidence: the narrow backend proof passed before
-  the clean build; the exact external CTest passed after it. These are
-  non-accepting because they include unaccepted out-of-scope patches.
-- The frontend focused CTest remains red at the existing DirectScalar
-  authority abort, and its strict-count comparison is non-accepting.
-- The attempted broader `^backend_` command is non-accepting because six
-  registered executables are missing after the clean build.
+- Closed 820 accepted producer/verifier prerequisite: `4bcc7c8ff`, including the historical exact external guard and matching before/after regression evidence; a fresh independent focused LIR checkpoint passed 1/1.
+- Before accepting Step 7.35, run a fresh build, executable matching focused proof, and the full checkpoint selected by the supervisor. The current `^backend_` command is not usable while registered executables are missing.

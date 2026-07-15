@@ -1262,7 +1262,7 @@ Fresh full CTest nevertheless fails the external
 requires a native direct-pointer or direct-scalar current-function parameter
 identity and type. This missing `ull` DirectScalar producer/verifier
 publication is outside 734's Raw-BIR receiver scope. Open blocker
-`ideas/open/820_lir_directscalar_parameter_producer_verifier_publication.md`
+`ideas/closed/820_lir_directscalar_parameter_producer_verifier_publication.md`
 owns only that existing typed authority publication and fail-closed LIR
 validation; it does not authorize generic BIR scalar parameters or a broader
 DirectScalar family.
@@ -1272,3 +1272,27 @@ retain only the selected DirectScalar `LirBinOp.lhs` receiver, and rerun its
 fixed `^backend_` proof plus the full checkpoint. Do not treat the current
 uncommitted Step 7.35 work as accepted, repeat Step 7.34, receive any other
 parameter form, or classify presentation text as authority.
+
+## Resumption Record: closed 820 DirectScalar producer/verifier publication
+
+Closed idea 820 is capability-complete. Its accepted implementation
+`4bcc7c8ff` publishes the existing native `ull` DirectScalar current-function
+identity and matching typed mirror, while retaining fail-closed rejection for
+missing, foreign, and type-incoherent authority. That accepted slice included
+the exact external `^llvm_gcc_c_torture_src_20041011_1_c$` guard and matching
+before/after regression evidence. A fresh current build reported no work and
+the independently attributable focused
+`^frontend_lir_function_signature_type_ref$` checkpoint passed 1/1 with the
+DirectScalar alias-boundary coverage from `4bcc7c8ff`.
+
+The current composite external pass remains diagnosis only: it includes
+unaccepted Ideas 821/822 selector work and unaccepted 734-shaped receiver
+work. It grants no acceptance to those changes. The unavailable `^backend_`
+executables likewise provide no proof.
+
+Exact return action: reactivate 734 only at **Step 7.35 - Receive the one
+818-authorized body-parameter authority row**. Retain only the selected
+DirectScalar `LirBinOp.lhs` receiver authorization, preserve all uncommitted
+receiver and selector work as unaccepted, and rerun Step 7.35's fixed
+`^backend_` proof plus its full checkpoint when its implementation packet is
+ready. No generic scalar authority is granted.

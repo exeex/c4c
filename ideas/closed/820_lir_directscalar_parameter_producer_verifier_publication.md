@@ -1,6 +1,6 @@
 # LIR DirectScalar Body-Parameter Producer/Verifier Publication
 
-Status: Open (active blocker for 734 Step 7.35)
+Status: Closed (capability complete; 734 resumes at Step 7.35)
 Type: narrowly scoped codegen LIR producer/verifier correction
 Blocked Parent: `ideas/open/734_lir_to_new_bir_container_completeness.md`,
 Step 7.35
@@ -132,3 +132,25 @@ may this source record the narrow 734 handoff. The exact return point is Step
 3, *Prove the boundary and record the 734 handoff*; do not activate or accept
 734 Step 7.35 from the current composite evidence, and grant no generic scalar
 authorization.
+
+## Closure Decision: accepted independent DirectScalar checkpoint
+
+Close accepted: capability complete. The historical accepted external proof
+and matching before/after guard in `4bcc7c8ff` satisfy the exact external
+criterion under accepted prerequisites. The fresh current
+`cmake --build --preset default --target frontend_lir_function_signature_type_ref_test`
+reported no work, and the independently attributable focused
+`ctest --test-dir build --output-on-failure -R '^frontend_lir_function_signature_type_ref$'`
+passed 1/1 with the accepted DirectScalar authority alias-boundary coverage.
+Together these establish the executable matching producer/verifier checkpoint
+that the prior repair record required.
+
+Step 3 is complete. The current composite external result is retained only as
+diagnosis because it depends on unaccepted Ideas 821/822 selector work and
+unaccepted 734 receiver work; this closure accepts none of it. The invalid
+`^backend_` command with missing executables is not used as proof.
+
+Consumer handoff: 734 may resume only at Step 7.35 with its already selected
+DirectScalar `LirBinOp.lhs` receiver row. No Raw-BIR change, generic scalar
+receipt, other parameter form, or unaccepted composite patch is accepted by
+this closure.
