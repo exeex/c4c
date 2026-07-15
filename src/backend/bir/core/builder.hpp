@@ -191,6 +191,18 @@ struct GetElementPtrSpec {
   std::uint32_t source_result_id = 0;
 };
 
+struct LocalArrayGepAuthoritySpec {
+  SourceValueId result{};
+  SourceValueId pointer_definition{};
+  SourceObjectId object{};
+  LinkNameId owner{};
+  Type pointer_type{TypeKind::Pointer};
+  Type pointee_type{};
+  Type element_type{};
+  std::int64_t immediate_index = 0;
+  bool live = false;
+};
+
 struct AbsSpec {
   Type type{};
   ValueId operand{};
@@ -378,6 +390,8 @@ class FunctionBuilder {
                                          LocalStoreAuthoritySpec spec);
   Result<BuildResult, BuildError> append(BlockId block,
                                          GetElementPtrSpec spec);
+  Result<BuildResult, BuildError> append(BlockId block,
+                                         LocalArrayGepAuthoritySpec spec);
   Result<BuildResult, BuildError> append(BlockId block, AbsSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, CallSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, BinarySpec spec);

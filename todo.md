@@ -8,20 +8,24 @@ Current Step Title: Receive the selected direct static-local-array LirGepOp auth
 
 ## Just Finished
 
-- Closed 791 accepted the producer authority handoff in `ea579c648`; no Raw-BIR
-  receiver work is included in that producer slice.
+- Step 7.29 received the one selected direct static-local-array `LirGepOp` as
+  a typed Raw-BIR authority payload with importer dispatch, reachable
+  verification, and transactional positive/malformed interface coverage.
 
 ## Suggested Next
 
-- Execute Step 7.29 using only the documented result, element type, base,
-  immediate index, and local-object authority fields.
+- Supervisor: review this coherent Step 7.29 slice and select broader
+  acceptance proof or the next bounded packet.
 
 ## Watchouts
 
-- Presentation is nonsemantic. Nonselected GEPs and every other local/later
-  family remain fail closed.
+- Presentation is nonsemantic. The receiver accepts only native result,
+  SSA base, one i64 immediate, exact element type, and coherent live local
+  authority; nonselected GEPs and every other local/later family fail closed.
 
 ## Proof
 
-- Run a fresh build and narrow receiver proof; supervisor selects broader
-  acceptance proof.
+- Passed: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_lir_to_bir_interface$'`. The delegated
+  proof was sufficient for this packet; no canonical root log was written by
+  executor instruction.

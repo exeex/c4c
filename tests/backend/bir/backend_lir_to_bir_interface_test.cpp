@@ -12046,6 +12046,84 @@ void test_selected_local_scalar_load_authority_receipt_and_rejections() {
            "dead local load authority must reject transactionally");
 }
 
+void test_selected_direct_static_local_array_gep_receipt_and_rejections() {
+  lir::LirModule module;
+  auto texts = std::make_shared<c4c::TextTable>();
+  module.link_name_texts = texts;
+  module.link_names.attach_text_table(texts.get());
+  const auto owner = module.link_names.intern("typed_local_array_gep_owner");
+  lir::LirBlock entry = return_block(0, "entry");
+  entry.insts.push_back(lir::LirGepOp{
+      lir::LirOperand::ssa("%misleading.local.array.result", lir::LirValueId{42}),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::ssa("%misleading.local.array.base", lir::LirValueId{41}), true,
+      {lir::LirGepIndex::typed(lir::LirTypeRef::integer(64),
+                               lir::LirOperand::integer("misleading-index", 1))},
+      true,
+      lir::LirCurrentFunctionLocalObjectPointer{
+          lir::LirValueId{41}, lir::LirObjectId{7}, owner,
+          lir::LirTypeRef(lir::LirBuiltinType::Pointer), lir::LirTypeRef("[2 x i32]"), true,
+          lir::LirTypeRef::integer(32)},
+      true});
+  lir::LirFunction function = void_definition("typed_local_array_gep_owner", {entry});
+  function.link_name_id = owner;
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      lir::LirOperand::ssa("%misleading.local.array.alloca", lir::LirValueId{41}),
+      lir::LirTypeRef("[2 x i32]"), {}, 0,
+      lir::LirCurrentFunctionLocalObjectPointer{
+          lir::LirValueId{41}, lir::LirObjectId{7}, owner,
+          lir::LirTypeRef(lir::LirBuiltinType::Pointer), lir::LirTypeRef("[2 x i32]"), true}});
+  module.functions.push_back(std::move(function));
+
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "one selected direct static-local-array GEP must publish verified Raw BIR");
+  const auto view = raw.value().view();
+  const auto function_view = view.function(view.functions()[0]).value();
+  const auto instructions = function_view.instructions(function_view.blocks()[0]).value();
+  const auto local_gep = function_view.instruction(instructions[1]).value().local_array_gep_authority();
+  expect(local_gep && local_gep->result == bir::SourceValueId{function_view.id(), 42} &&
+             local_gep->pointer_definition == bir::SourceValueId{function_view.id(), 41} &&
+             local_gep->object.owner == function_view.id() && local_gep->object.value == 7 &&
+             local_gep->pointer_type == bir::Type{bir::TypeKind::Pointer} &&
+             local_gep->pointee_type == bir::Type{bir::TypeKind::Array, 0, "[2 x i32]"} &&
+             local_gep->element_type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+             local_gep->immediate_index == 1 && local_gep->live,
+         "Raw BIR local-array GEP must retain typed result, base, i64 immediate, and local-object authority");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = module;
+    auto& gep = std::get<lir::LirGepOp>(candidate.functions[0].blocks[0].insts[0]);
+    mutate(candidate, gep);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value() &&
+               !bir::lower_lir_to_canonical_bir(candidate).has_value(), message);
+  };
+  rejected([](auto&, auto& gep) { gep.requires_native_local_gep_authority = false; },
+           "local-array GEP without native-local admission must reject transactionally");
+  rejected([](auto&, auto& gep) { gep.local_object_authority.reset(); },
+           "local-array GEP without local authority must reject transactionally");
+  rejected([](auto&, auto& gep) { gep.result = lir::LirOperand::ssa("%bad", lir::LirValueId::invalid()); },
+           "local-array GEP with invalid result must reject transactionally");
+  rejected([](auto&, auto& gep) { gep.ptr = lir::LirOperand::ssa("%bad", lir::LirValueId{99}); },
+           "local-array GEP base must equal its native pointer definition");
+  rejected([](auto&, auto& gep) { gep.indices[0] = lir::LirGepIndex::raw("i64 1"); },
+           "raw local-array GEP index must reject transactionally");
+  rejected([](auto&, auto& gep) { gep.indices[0] = lir::LirGepIndex::typed(lir::LirTypeRef::integer(64), lir::LirOperand::ssa("%index", lir::LirValueId{41})); },
+           "SSA local-array GEP index must reject transactionally");
+  rejected([](auto&, auto& gep) { gep.indices[0] = lir::LirGepIndex::typed(lir::LirTypeRef::integer(32), lir::LirOperand::integer("1", 1)); },
+           "non-i64 local-array GEP index must reject transactionally");
+  rejected([](auto&, auto& gep) { gep.element_type = lir::LirTypeRef::integer(64); },
+           "local-array GEP element type must match authority");
+  rejected([](auto& candidate, auto& gep) { gep.local_object_authority->owner = candidate.link_names.intern("foreign_local_array_gep_owner"); },
+           "foreign local-array GEP owner must reject transactionally");
+  rejected([](auto&, auto& gep) { gep.local_object_authority->object = lir::LirObjectId{8}; },
+           "incoherent local-array GEP object must reject transactionally");
+  rejected([](auto&, auto& gep) { gep.local_object_authority->pointee_type = lir::LirTypeRef("[3 x i32]"); },
+           "local-array GEP pointee authority must match its alloca");
+  rejected([](auto&, auto& gep) { gep.local_object_authority->live = false; },
+           "dead local-array GEP authority must reject transactionally");
+}
+
 void test_typed_phi_edge_authority_receipt_and_rejections() {
   lir::LirBlock left;
   left.id = lir::LirBlockId{1}; left.label = "left";
@@ -12250,6 +12328,7 @@ int main() {
   test_selected_global_array_gep_builder_contract();
   test_label_address_gep_base_builder_contract();
   test_selected_global_array_gep_rejections();
+  test_selected_direct_static_local_array_gep_receipt_and_rejections();
   test_scalar_integer_return_receipt();
   test_scalar_integer_ssa_return_receipt();
   test_scalar_integer_return_builder_contract();

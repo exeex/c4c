@@ -34,6 +34,9 @@ class InstView {
   const GetElementPtrNode* get_element_ptr() const noexcept {
     return std::get_if<GetElementPtrNode>(&data_->payload);
   }
+  const LocalArrayGepAuthorityNode* local_array_gep_authority() const noexcept {
+    return std::get_if<LocalArrayGepAuthorityNode>(&data_->payload);
+  }
   const AbsNode* abs() const noexcept {
     return std::get_if<AbsNode>(&data_->payload);
   }

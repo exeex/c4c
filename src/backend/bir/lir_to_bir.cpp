@@ -2675,6 +2675,62 @@ Result<void, ImportError> validate_function(const LirModule& module,
         continue;
       }
       if (const auto* gep = std::get_if<LirGepOp>(&instruction)) {
+        if (gep->requires_native_local_gep_authority) {
+          const auto* authority = gep->local_object_authority
+              ? &*gep->local_object_authority : nullptr;
+          const auto* result = gep->result.value_id();
+          const auto* base = gep->ptr.value_id();
+          const auto index_type = gep->indices.size() == 1
+              ? lower_lir_type(module, gep->indices.front().type_ref())
+              : std::optional<Type>{};
+          const auto element_type = lower_lir_type(module, gep->element_type);
+          const auto indexed_element_type = authority && authority->indexed_element_type
+              ? lower_lir_type(module, *authority->indexed_element_type)
+              : std::optional<Type>{};
+          const auto pointer_type = authority
+              ? lower_lir_type(module, authority->pointer_type) : std::optional<Type>{};
+          const auto pointee_type = authority
+              ? lower_lir_type(module, authority->pointee_type) : std::optional<Type>{};
+          const auto* selected_alloca = function.alloca_insts.size() == 1
+              ? std::get_if<LirAllocaOp>(&function.alloca_insts.front()) : nullptr;
+          const auto* alloca_authority = selected_alloca &&
+                  selected_alloca->local_object_authority
+              ? &*selected_alloca->local_object_authority : nullptr;
+          const auto base_value = base ? source_values.find(base->value) : source_values.end();
+          const auto immediate = gep->indices.size() == 1 &&
+                  gep->indices.front().is_authoritative()
+              ? gep->indices.front().value().integer_immediate() : nullptr;
+          const bool authority_coherent = authority && alloca_authority &&
+              authority->pointer_definition == alloca_authority->pointer_definition &&
+              authority->object == alloca_authority->object &&
+              authority->owner == alloca_authority->owner &&
+              authority->pointer_type == alloca_authority->pointer_type &&
+              authority->pointee_type == alloca_authority->pointee_type &&
+              authority->live == alloca_authority->live;
+          const bool selected_local = gep->requires_native_result_authority && authority &&
+              gep->result.kind() == codegen::lir::LirOperandKind::SsaValue &&
+              result && result->valid() && gep->ptr.kind() ==
+                  codegen::lir::LirOperandKind::SsaValue && base && base->valid() &&
+              base->value == authority->pointer_definition.value &&
+              base_value != source_values.end() &&
+              base_value->second.kind == TypeKind::Pointer && gep->indices.size() == 1 &&
+              gep->indices.front().is_authoritative() &&
+              gep->indices.front().type_ref() == codegen::lir::LirTypeRef::integer(64) &&
+              index_type == Type{TypeKind::Integer, 64, "i64"} && immediate &&
+              element_type && indexed_element_type && *element_type == *indexed_element_type &&
+              pointer_type == Type{TypeKind::Pointer} && pointee_type &&
+              pointee_type->kind == TypeKind::Array && authority->object.valid() &&
+              function.link_name_id != c4c::kInvalidLinkName &&
+              authority->owner == function.link_name_id && authority_coherent && authority->live;
+          if (!selected_local)
+            return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                              block.label,
+                              "local-array getelementptr requires the one selected native result, SSA base, i64 immediate, and live current-function authority shape");
+          if (!source_values.emplace(result->value, Type{TypeKind::Pointer}).second)
+            return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                              block.label, "duplicate authoritative LirValueId definition");
+          continue;
+        }
         const auto* result = gep->result.value_id();
         const auto* global_base = gep->ptr.link_name_id();
         const auto* direct_base = gep->ptr.value_id();
@@ -4024,6 +4080,44 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 continue;
               }
               if (const auto* gep = std::get_if<LirGepOp>(&instruction)) {
+                if (gep->requires_native_local_gep_authority) {
+                  const auto& authority = *gep->local_object_authority;
+                  const auto base = source_values.find(authority.pointer_definition.value);
+                  const auto owner = imported_link_names.find(authority.owner);
+                  const auto immediate = gep->indices.front().value().integer_immediate();
+                  if (base == source_values.end() || owner == imported_link_names.end() || !immediate) {
+                    edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                                             block.label, "validated local-array getelementptr authority disappeared"};
+                    return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                  }
+                  auto appended = function_builder.append(
+                      blocks.at(block.id.value), LocalArrayGepAuthoritySpec{
+                          SourceValueId{function_ids[function_index], gep->result.value_id()->value},
+                          SourceValueId{function_ids[function_index], authority.pointer_definition.value},
+                          SourceObjectId{function_ids[function_index], authority.object.value}, owner->second,
+                          *lower_lir_type(module, authority.pointer_type),
+                          *lower_lir_type(module, authority.pointee_type),
+                          *lower_lir_type(module, gep->element_type),
+                          static_cast<std::int64_t>(immediate->value), authority.live});
+                  if (!appended) {
+                    edit_error = builder_failure(name, block.label,
+                                                 "append local-array getelementptr", appended.error());
+                    return Result<void, BuildError>::failure(appended.error());
+                  }
+                  if (appended.value().results.size() != 1) {
+                    edit_error = ImportError{ImportErrorCode::BuilderFailure, name, block.label,
+                                             "local-array getelementptr builder returned an inconsistent result count"};
+                    return Result<void, BuildError>::failure(BuildError::StorageExhausted);
+                  }
+                  const auto registered = source_values.emplace(
+                      gep->result.value_id()->value, appended.value().results[0]);
+                  if (!registered.second) {
+                    edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                                             "local-array getelementptr result collided in the current-function source registry"};
+                    return Result<void, BuildError>::failure(BuildError::DuplicateSourceValue);
+                  }
+                  continue;
+                }
                 GetElementPtrBase base;
                 std::optional<Type> element_type;
                 if (gep->ptr.kind() == codegen::lir::LirOperandKind::Global) {

@@ -72,7 +72,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
       return std::holds_alternative<LoadNode>(instruction.payload) ||
              std::holds_alternative<LocalLoadAuthorityNode>(instruction.payload);
     case Opcode::GetElementPtr:
-      return std::holds_alternative<GetElementPtrNode>(instruction.payload);
+      return std::holds_alternative<GetElementPtrNode>(instruction.payload) ||
+             std::holds_alternative<LocalArrayGepAuthorityNode>(instruction.payload);
     case Opcode::Abs:
       return std::holds_alternative<AbsNode>(instruction.payload);
     case Opcode::Call:
@@ -899,6 +900,45 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           report(result, VerificationRule::ValueDefinition, function_id,
                  inst_id,
                  "getelementptr must have one exact global-array or current-function label-address base, nonempty ordered integer indices, and one source-backed pointer result");
+      }
+      if (const auto* gep =
+              std::get_if<LocalArrayGepAuthorityNode>(&instruction.payload)) {
+        const ValueDef* pointer = nullptr;
+        const ValueDef* result_value = nullptr;
+        if (instruction.operands.size() == 1) {
+          const auto resolved = function.values_.get(function_id, instruction.operands[0]);
+          if (resolved) pointer = &resolved.value().get();
+        }
+        if (instruction.results.size() == 1) {
+          const auto resolved = function.values_.get(function_id, instruction.results[0]);
+          if (resolved) result_value = &resolved.value().get();
+        }
+        const auto* pointer_result = pointer
+            ? std::get_if<InstResultDef>(&pointer->definition) : nullptr;
+        const auto pointer_inst = pointer_result
+            ? function.insts_.get(function_id, pointer_result->instruction)
+            : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(ResolveError::OutOfRange);
+        const auto* alloca = pointer_inst
+            ? std::get_if<AllocaAuthorityNode>(&pointer_inst.value().get().payload) : nullptr;
+        const bool owner_resolves = gep->owner.valid() && gep->owner.epoch == module.epoch_ &&
+            gep->owner.slot < module.link_names_.size();
+        const bool exact = gep->result.valid() && gep->pointer_definition.valid() &&
+            gep->object.valid() && gep->result.owner == function_id &&
+            gep->pointer_definition.owner == function_id && gep->object.owner == function_id &&
+            owner_resolves && gep->pointer_type == Type{TypeKind::Pointer} &&
+            is_well_formed(gep->pointee_type) && gep->pointee_type.kind == TypeKind::Array &&
+            is_well_formed(gep->element_type) && gep->element_type.kind != TypeKind::Array &&
+            gep->live && pointer && pointer->source_id == gep->pointer_definition &&
+            pointer->type == gep->pointer_type && result_value &&
+            result_value->source_id == gep->result &&
+            result_value->type == Type{TypeKind::Pointer} && alloca &&
+            alloca->result == gep->pointer_definition &&
+            alloca->pointer_definition == gep->pointer_definition &&
+            alloca->object.owner == gep->object.owner && alloca->object.value == gep->object.value &&
+            alloca->owner == gep->owner && alloca->pointer_type == gep->pointer_type &&
+            alloca->pointee_type == gep->pointee_type && alloca->live;
+        if (!exact) report(result, VerificationRule::ValueDefinition, function_id, inst_id,
+                           "local-array GEP must retain one live typed current-function array pointer/object authority, immediate index, and exact result");
       }
       if (const auto* abs = std::get_if<AbsNode>(&instruction.payload)) {
         const Type i32{TypeKind::Integer, 32, "i32"};

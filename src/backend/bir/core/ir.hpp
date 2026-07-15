@@ -227,6 +227,21 @@ struct GetElementPtrNode {
   bool inbounds = false;
 };
 
+// Receipt of the producer-selected direct static-local-array GEP.  The native
+// local-object binding and i64 immediate remain explicit; no local spelling is
+// reconstructed as a generic GEP base.
+struct LocalArrayGepAuthorityNode {
+  SourceValueId result{};
+  SourceValueId pointer_definition{};
+  SourceObjectId object{};
+  LinkNameId owner{};
+  Type pointer_type{TypeKind::Pointer};
+  Type pointee_type{};
+  Type element_type{};
+  std::int64_t immediate_index = 0;
+  bool live = false;
+};
+
 struct AbsNode {
   Type type{};
 };
@@ -322,7 +337,7 @@ using InstPayload =
     std::variant<InlineAsmNode, StoreNode, LoadNode, GetElementPtrNode,
     AbsNode, CallNode, BinaryNode, CompareNode, SelectNode, SelectedMemcpyNode,
     IntrinsicCallNode, CastNode, PhiNode, AllocaAuthorityNode,
-    LocalLoadAuthorityNode, LocalStoreAuthorityNode>;
+    LocalLoadAuthorityNode, LocalStoreAuthorityNode, LocalArrayGepAuthorityNode>;
 
 class BlockView;
 class FunctionView;
