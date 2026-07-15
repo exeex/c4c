@@ -169,3 +169,59 @@ Actions:
 
 Completion check: either a precise next one-row repair/blocker route exists or
 all source acceptance criteria and closure proof are evidenced.
+
+Accepted reassessment: source closure remains rejected. `LirInsertElementOp`,
+`LirExtractElementOp`, and `LirShuffleVectorOp` still lack representative
+structured authority and row-specific vector type/index/mask proof. The
+accepted `LirInsertValueOp` packet is `8fe6c3569`, following the Step 5 audit
+`270c6a93e`; its focused frontend proof, matching `^backend_` 5/5
+before/after guard, and supervisor-accepted hook-generated 3037/3037 full
+baseline are preserved. Step 5 identified native vector facts as a potential
+separate prerequisite but did not establish that every remaining row needs one,
+so a bounded vector-only audit is required before switching plans.
+
+### Step 8 - Audit and select one remaining vector authority row
+
+Goal: establish whether one remaining vector row has an existing structured,
+row-local authority route, or produce the exact evidence required for a
+separate blocker.
+
+Actions:
+
+- inspect only `LirInsertElementOp`, `LirExtractElementOp`, and
+  `LirShuffleVectorOp` producer/use seams;
+- select exactly one row only when its current-function result/use ID and exact
+  vector type/index/mask facts already exist as checked structured carriers;
+- record in `todo.md` the selected concrete seam, required positive and
+  malformed matrix, and the two excluded rows before implementation;
+- if the candidate requires generic vector layout, provenance, or mask fact
+  publication, do not widen 754: record the missing fact and route a separate
+  blocker whose completion returns here for Step 9.
+
+Completion check: exactly one vector row has a row-local implementation
+contract, or precise out-of-scope prerequisite evidence exists for an atomic
+separate-blocker switch.
+
+### Step 9 - Implement and prove the Step 8 selection
+
+Goal: implement only the one selected vector row using its checked structured
+authority and row-local typed facts.
+
+Actions:
+
+- publish and verify the selected result/use authority without display-text
+  recovery;
+- add nearby valid plus missing/foreign authority and selected type/index/mask
+  malformed coverage;
+- obtain a fresh build, selected same-feature proof, and matching regression
+  guard; request a full baseline when shared-code accumulation requires it.
+
+Completion check: the selected row alone is structurally authoritative and
+proven; the unselected rows remain unchanged.
+
+### Step 10 - Reassess remaining source completion
+
+Goal: repeat the explicit lifecycle decision after the Step 9 bounded packet.
+
+Completion check: repair to another one-row audit, an atomic separately scoped
+blocker switch, or source-closure evidence; never silently widen Step 9.
