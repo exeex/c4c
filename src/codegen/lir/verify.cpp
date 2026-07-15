@@ -220,11 +220,18 @@ StructNameId find_declared_struct_name_id(const LirModule& mod,
   return struct_name_id;
 }
 
+void verify_declared_struct_type_ref_mirror(const LirModule& mod,
+                                            const LirTypeRef& mirror,
+                                            std::string_view field);
+
 void verify_known_struct_type_ref_mirror(const LirModule& mod,
                                          const LirTypeRef& type,
                                          std::string_view field,
                                          std::string_view type_role) {
-  if (type.has_struct_name_id()) return;
+  if (type.has_struct_name_id()) {
+    verify_declared_struct_type_ref_mirror(mod, type, field);
+    return;
+  }
 
   if (find_declared_struct_name_id(mod, type.str()) != kInvalidStructName) {
     std::ostringstream detail;
@@ -259,7 +266,7 @@ bool call_arg_type_matches_byval_pointee(std::string_view formatted_type,
 void verify_call_return_type_ref_mirror(const LirModule& mod,
                                         const LirTypeRef& mirror) {
   const std::string& shadow =
-      require_module_type_ref(mod, mirror, "LirCallOp.return_type", true);
+      require_type_ref(mirror, "LirCallOp.return_type", true);
   const StructNameId formatted_struct_name_id =
       find_declared_struct_name_id(mod, shadow);
 
@@ -534,12 +541,27 @@ void verify_call_callee_signature(const LirModule& mod, const LirCallOp& call,
 
   if (structured_authority_complete) {
     for (size_t index = 0; index < sig.fixed_param_type_refs.size(); ++index) {
-      require_module_type_ref(mod, sig.fixed_param_type_refs[index],
-                              "LirCallOp.callee_signature.fixed_param_type_refs");
-      require_module_type_ref(mod, call.arg_type_refs[index],
-                              "LirCallOp.arg_type_refs");
-      require_module_type_ref(mod, call.structured_args[index].type_ref,
-                              "LirCallOp.structured_args.type_ref");
+      const auto verify_native_param_type = [&](const LirTypeRef& type,
+                                                std::string_view field,
+                                                std::string_view role) {
+        require_type_ref(type, field);
+        if (type.has_anonymous_struct_layout()) {
+          require_module_type_ref(mod, type, field);
+        }
+        verify_known_struct_type_ref_mirror(mod, type, field, role);
+        if (type.has_struct_name_id() &&
+            type.str() != mod.struct_names.spelling(type.struct_name_id())) {
+          fail_verify(field,
+                      "native structured call type text must match its StructNameId");
+        }
+      };
+      verify_native_param_type(
+          sig.fixed_param_type_refs[index],
+          "LirCallOp.callee_signature.fixed_param_type_refs", "parameter");
+      verify_native_param_type(call.arg_type_refs[index], "LirCallOp.arg_type_refs",
+                               "argument");
+      verify_native_param_type(call.structured_args[index].type_ref,
+                               "LirCallOp.structured_args.type_ref", "argument");
       if (call.arg_type_refs[index] != sig.fixed_param_type_refs[index] ||
           call.structured_args[index].type_ref != sig.fixed_param_type_refs[index]) {
         fail_verify("LirCallOp.structured_args.type_ref",

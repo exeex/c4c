@@ -272,3 +272,27 @@ unaccepted structured-call repair; rerun the required fresh build, focused
 call/frontend/backend ladder, and supervisor-accepted comparable full gate
 before Step 3. Do not repeat Step 1 or claim the 7/7 subset as Step 2
 acceptance.
+
+## Progress Update: accepted Step 2; Step 3 handoff pending
+
+Step 2, `Repair anonymous layout / structured-call compatibility`, is
+supervisor-accepted. The direct-complex by-value call now shares one native
+anonymous `{ float, float }` layout across its callee signature,
+`arg_type_refs`, and `structured_args`. Recursive anonymous-layout validation
+and rejection of incoherent named structured `LirCallOp` carriers remain
+fail-closed; no compatibility-text parsing, weakened contracts, extractvalue
+validation, or Raw-BIR work was accepted.
+
+The fresh focused command
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_lir_call_type_ref|frontend_lir_function_signature_type_ref|backend_)$'`
+passed 3/3. The supervisor's fresh comparable full command completed 3035/3037
+with only pre-existing `cpp_qualified_template_call_template_arg_perf` and the
+806-owned `llvm_gcc_c_torture_src_20060910_1_c` failure; the former baseline
+failure `llvm_gcc_c_torture_src_pr28982b_c` no longer fails, and the failure
+set did not expand.
+
+801 advances to Step 3, `Prove and publish the 754 handoff`. The receiver is
+`ideas/open/754_lir_aggregate_vector_value_identity_convergence.md` at its
+unchanged Step 3. This records only a prospective native field-layout contract
+for 754 to consume: it does not begin extractvalue-row work and does not claim
+that 754's handoff is accepted.

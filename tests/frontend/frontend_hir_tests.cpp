@@ -7230,6 +7230,7 @@ int call_helper(int value) { return helper(value); }
 void test_hir_direct_complex_call_unary_extract_keeps_aggregate_ssa_authority() {
   const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 extern __complex__ float complex_source(int value);
+extern __complex__ float complex_round_trip(__complex__ float value);
 
 float extract_real(int value) {
   return __real__ complex_source(value);
@@ -7237,6 +7238,10 @@ float extract_real(int value) {
 
 float extract_imag(int value) {
   return __imag__ complex_source(value);
+}
+
+float pass_complex(int value) {
+  return __real__ complex_round_trip(complex_source(value));
 }
 )cpp");
   const c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
@@ -7274,6 +7279,35 @@ float extract_imag(int value) {
                     extract->agg_type == aggregate_call->return_type,
                 "direct complex call and unary extractvalue must retain one native aggregate SSA authority");
   }
+
+  const auto function = std::find_if(
+      lir_module.functions.begin(), lir_module.functions.end(),
+      [](const c4c::codegen::lir::LirFunction& candidate) { return candidate.name == "pass_complex"; });
+  expect_true(function != lir_module.functions.end() && !function->blocks.empty(),
+              "complex by-value call fixture should emit its caller function");
+  const auto call = std::find_if(
+      function->blocks.front().insts.begin(), function->blocks.front().insts.end(),
+      [](const c4c::codegen::lir::LirInst& inst) {
+        const auto* candidate = std::get_if<c4c::codegen::lir::LirCallOp>(&inst);
+        return candidate && candidate->callee == "@complex_round_trip";
+      });
+  const auto* round_trip = call == function->blocks.front().insts.end()
+                               ? nullptr
+                               : std::get_if<c4c::codegen::lir::LirCallOp>(&*call);
+  expect_true(round_trip && round_trip->callee_signature &&
+                  round_trip->callee_signature->fixed_param_type_refs.size() == 1 &&
+                  round_trip->arg_type_refs.size() == 1 &&
+                  round_trip->structured_args.size() == 1 &&
+                  round_trip->callee_signature->fixed_param_type_refs[0].has_anonymous_struct_layout() &&
+                  round_trip->callee_signature->fixed_param_type_refs[0]
+                          .anonymous_struct_field_types() != nullptr &&
+                  *round_trip->callee_signature->fixed_param_type_refs[0]
+                       .anonymous_struct_field_types() ==
+                      std::vector<c4c::codegen::lir::LirTypeRef>{"float", "float"} &&
+                  round_trip->callee_signature->fixed_param_type_refs[0] ==
+                      round_trip->arg_type_refs[0] &&
+                  round_trip->arg_type_refs[0] == round_trip->structured_args[0].type_ref,
+              "direct complex by-value call must share its native anonymous carrier across signature and argument");
 }
 
 void test_lir_printer_resolves_extern_decl_link_names_at_emission_boundary() {

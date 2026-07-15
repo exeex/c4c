@@ -42,7 +42,7 @@ Completion check: accepted in `827dae5bd3`; one bounded native layout contract
 is explicit and no compatibility-text parsing or extractvalue-row work is
 selected.
 
-### Step 2 - Repair anonymous layout / structured-call compatibility
+### Step 2 - Repair anonymous layout / structured-call compatibility (accepted)
 
 Goal: evaluate and repair the preserved anonymous-layout implementation so
 native ordered field facts remain checked without making a direct-complex
@@ -67,6 +67,15 @@ signature contracts remain fail-closed; the required fresh build, focused
 call/frontend/backend proof, and supervisor-accepted full baseline pass before
 Step 3. Do not advance on a narrow focused result alone.
 
+Acceptance record: supervisor accepted the direct-complex by-value call repair:
+the callee signature, `arg_type_refs`, and `structured_args` share one native
+anonymous `{ float, float }` layout; recursive anonymous-layout verification
+and incoherent named structured `LirCallOp` carrier rejection remain
+fail-closed. The focused 3/3 command passed, and the fresh comparable full
+gate completed 3035/3037 with only the pre-existing
+`cpp_qualified_template_call_template_arg_perf` and 806-owned
+`llvm_gcc_c_torture_src_20060910_1_c` failures; the failure set did not expand.
+
 ### Step 3 - Prove and publish the 754 handoff
 
 Goal: establish positive and malformed proof and record the exact field-layout
@@ -74,4 +83,4 @@ contract that 754 Step 3 may consume.
 
 Completion check: accepted proof supports reactivation of 754 at unchanged
 Step 3 without treating this blocker as extractvalue-row validation. Do not
-advance while Step 2 remains unaccepted.
+claim extractvalue-row validation or 754 handoff acceptance as 801 progress.

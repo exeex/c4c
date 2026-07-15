@@ -135,8 +135,14 @@ void append_call_signature_param(LirCallSignature& out,
   const std::string rendered_type =
       rendered_call_signature_param_type(mod, lir_module, param_ts);
   out.fixed_param_types.push_back(rendered_type);
+  // The ABI spelling for an AMD64 by-value aggregate is a pointer attribute,
+  // while its structured call fact remains the aggregate pointee type shared
+  // by the prepared argument.
+  const std::string type_ref_text = amd64_fixed_aggregate_byval(mod, param_ts)
+                                        ? llvm_value_ty(mod, param_ts)
+                                        : rendered_type;
   out.fixed_param_type_refs.push_back(
-      lir_call_type_ref(rendered_type, lir_module, mod, param_ts));
+      lir_call_type_ref(type_ref_text, lir_module, mod, param_ts));
 }
 
 LirCallSignature lir_call_signature_from_fn_ptr_sig(const c4c::hir::Module& mod,

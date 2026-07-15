@@ -40,6 +40,10 @@ StructNameId call_aggregate_structured_name_id(const c4c::hir::Module& mod,
 
 LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_module,
                              const c4c::hir::Module& mod, const TypeSpec& type) {
+  if (is_complex_base(type.base) && type.ptr_level == 0 && type.array_rank == 0) {
+    const LirTypeRef component_type(llvm_ty(complex_component_ts(type.base)));
+    return LirTypeRef::anonymous_struct({component_type, component_type});
+  }
   if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
       type.array_rank > 0 || !lir_module) {
     return LirTypeRef();
