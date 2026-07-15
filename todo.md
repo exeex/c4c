@@ -1,32 +1,27 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/793_lir_to_new_bir_remaining_coverage_umbrella.md
+Source Idea Path: ideas/open/794_lir_next_local_vla_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Generate the bounded successor queue and close the umbrella
+Current Step ID: 1
+Current Step Title: Establish the candidate evidence boundary
 
 ## Just Finished
 
-- Step 2 classified all required remaining families in
-  `docs/lir_to_new_bir_remaining_coverage/first_owner_matrix.md`, including
-  first owner, structured evidence, dependency order, and explicit evidence
-  gaps. No unreceived row gained receiver authorization.
+- Plan activated from the order-1 793 successor route; no implementation
+  packet has run.
 
 ## Suggested Next
 
-- Execute Step 3: generate the ordered bounded successor queue from the matrix
-  and prepare the umbrella closure route.
+- Execute Step 1: establish native structured evidence for one local/VLA
+  candidate, or return an evidence-backed separate-blocker route.
 
 ## Watchouts
 
-- Keep 792's selected VLA stack-save handoff separate. The local/VLA,
-  body-parameter, and residual instruction rows retain explicit producer or
-  type-model gaps; do not turn the matrix into receiver authorization.
+- Closed 792 authorizes only VLA stack-save. Do not select from presentation,
+  `monostate`, or unresolved classifications, and do not change Raw-BIR.
 
 ## Proof
 
-- Passed: `git diff --check`; structural check confirmed all required families
-  have first-owner/dependency fields in the owned handoff directory and only
-  that documentation plus `todo.md` changed. No build or test applies to this
-  documentation-only packet.
+- Activation-only structural validation: active plan/todo linkage and
+  `git diff --check`.

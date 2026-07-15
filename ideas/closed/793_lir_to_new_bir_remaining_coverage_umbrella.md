@@ -188,3 +188,24 @@ deferred.
 - Reject testcase-shaped shortcuts, expectation rewrites, unsupported
   downgrades, allowlist filtering, presentation-derived identity recovery, or
   weaker runtime/verifier checks as progress.
+
+## Closure Record
+
+Disposition: intentionally concluded (queue-generation capability complete),
+not LIR-to-new-BIR implementation complete.  The post-792/post-7.30 baseline
+in `docs/lir_to_new_bir_remaining_coverage/post_792_post_730_evidence_baseline.md`
+and the first-owner matrix in
+`docs/lir_to_new_bir_remaining_coverage/first_owner_matrix.md` used closed
+792, `docs/lir_local_operation_authority/handoff_to_734.md`, 734's accepted
+Step 7.30 commit `2323afb91`, and existing type-model routes 761–763.
+
+`docs/lir_to_new_bir_remaining_coverage/successor_queue.md` records the
+dependency-ordered, single-owner queue.  It reuses existing 753, 754, and
+761–763; creates 794 (next local/VLA producer handoff), 795 (body parameter
+authority), 796 (one residual instruction/terminator/inline-asm authority
+family), and 797 (terminal dispatcher/proof/documentation convergence).  794
+is the first future parent route: only its accepted exact one-row typed handoff
+may reactivate 734.  No receiver-ready row is otherwise assigned because the
+matrix's remaining classifications are unresolved/text/monostate or lack a
+checked handoff.  The durable remaining implementation intent stays with open
+734 and the named successors.

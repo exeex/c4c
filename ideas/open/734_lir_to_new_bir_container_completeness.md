@@ -1037,7 +1037,12 @@ changes. This source is paused after accepted Steps 1 through 7.30, including
 receiver commits `006d79aaf`, `7dc03f23a`, `2cce9da69`, `eabf7a3b8`,
 `f5cda70ee`, `4ab2deb7e`, and `2323afb91`.
 
-Exact return point: after 793 closes with its evidence summary, ownership
-classification, and ordered bounded successor ideas, reactivate 734 only for
-the first successor's exact typed handoff. Repair the runbook for one
-handed-off receiver row and preserve Steps 1 through 7.30.
+Exact return point: 793 concluded with its evidence summary, ownership
+classification, and ordered bounded successor queue in
+`docs/lir_to_new_bir_remaining_coverage/successor_queue.md`. The first
+successor is `ideas/open/794_lir_next_local_vla_authority_handoff.md`; do not
+reactivate 734 until 794 has accepted one exact typed local/VLA handoff. Then
+repair the runbook for only that handoff's one receiver row, preserving Steps
+1 through 7.30. The queue deliberately does not preselect stack restore,
+dynamic VLA allocation, VLA GEP, or any other row from unresolved or
+text/monostate classifications.

@@ -1,58 +1,68 @@
-# LIR-To-New-BIR Remaining Coverage Umbrella Runbook
+# Next Local/VLA Authority Handoff Runbook
 
 Status: Active
-Source Idea: ideas/open/793_lir_to_new_bir_remaining_coverage_umbrella.md
-Activated from: exhausted 734 Step 7.30 receiver runbook.
+Source Idea: ideas/open/794_lir_next_local_vla_authority_handoff.md
+Activated from: 793 successor queue order 1.
 
 ## Purpose
 
-Classify the post-Step 7.30 remaining coverage space before selecting the next
-bounded owner; direct receiver work would invent ordering and scope.
+Establish one, and only one, remaining local/VLA producer-side authority
+handoff before 734 can receive another Raw-BIR row.
 
 ## Core Rule
 
-Use current structured evidence and first-owner analysis. Do not implement
-code, and do not derive semantic authority from presentation text.
+Select a row only from checked native current-function structured evidence.
+Do not infer value, object, owner, type, liveness, or row identity from names,
+formatted operands, LLVM text, testcase identity, `monostate`, or an unresolved
+classification.
 
 ## Read First
 
-- `ideas/open/793_lir_to_new_bir_remaining_coverage_umbrella.md`
-- `ideas/open/734_lir_to_new_bir_container_completeness.md`
+- `ideas/open/794_lir_next_local_vla_authority_handoff.md`
+- `docs/lir_to_new_bir_remaining_coverage/successor_queue.md`
+- `docs/lir_to_new_bir_remaining_coverage/first_owner_matrix.md`
 - `docs/lir_local_operation_authority/handoff_to_734.md`
-- `ideas/open/761_lir_call_signature_type_mirror_convergence.md`
-- `ideas/open/762_lir_module_declaration_type_shadow_convergence.md`
-- `ideas/open/763_lir_composite_type_ref_model.md`
+- `ideas/closed/792_lir_next_local_operation_receiver_handoff.md`
+- `ideas/open/734_lir_to_new_bir_container_completeness.md`
 
 ## Non-Goals
 
-- Raw-BIR, importer, verifier, LIR producer/schema, test, expectation,
-  lowering, MIR, or emission changes;
-- treating closed 792's stack save as authority for another local/VLA row;
-- one catch-all implementation successor.
+- Raw-BIR destinations, importer dispatch, receiver verification, target
+  lowering, MIR, or 734 receipt;
+- more than one local/VLA row; memory/va, aggregate/vector, body parameter,
+  type-model, or residual instruction work;
+- presentation-derived recovery or weaker verifier/test contracts.
 
 ## Ordered Steps
 
-### Step 1 - Establish the post-Step 7.30 evidence baseline
+### Step 1 - Establish the candidate evidence boundary
 
-Goal: create a current evidence summary under
-`docs/lir_to_new_bir_remaining_coverage/` that distinguishes accepted 734 work
-from remaining fail-closed rows.
+Goal: inspect the remaining local/VLA variants and select no candidate unless
+native structured fields can support one row.
 
-Completion check: the handoff directory has a post-792/post-7.30 baseline with
-no stale active-792 claim.
+Actions:
 
-### Step 2 - Classify remaining families by first owner
+- Record the row candidates, their current value/object/owner/type/liveness
+  evidence, and why all nonselected rows remain fail closed.
+- If no candidate has an admissible native route, stop and send the exact
+  first missing owner fact to plan-owner for a separate blocker decision.
 
-Goal: produce a matrix separating producer authority, Raw-BIR receiver,
-type-model, dispatcher/proof, and documentation ownership.
+Completion check: exactly one candidate is selected with a structured-evidence
+rationale, or an evidence-backed separate-blocker route is recorded.
 
-Completion check: every remaining family has a first-owner classification or
-explicit evidence gap, with dependency order.
+### Step 2 - Publish and verify the selected producer authority
 
-### Step 3 - Generate the bounded successor queue and close the umbrella
+Goal: implement only the minimum producer/schema/verifier facts for the
+selected row and reject malformed or foreign authority before downstream use.
 
-Goal: create ordered single-owner follow-up ideas and record the exact 734
-return path.
+Completion check: the selected row has native current-function authority and
+focused nearby positive/negative producer proof; every other row remains fail
+closed.
 
-Completion check: docs and open ideas agree on first owners, order, and the
-future one-row 734 handoff route.
+### Step 3 - Write the exact 734 handoff and obtain acceptance disposition
+
+Goal: document selected variant, typed fields, guarantees, rejected forms, and
+proof so 734 can later receive one matching row.
+
+Completion check: the handoff lets plan-owner reactivate 734 for one receiver
+packet without re-deriving authority or extending scope.
