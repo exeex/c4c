@@ -37,8 +37,16 @@ struct LabelAddressConstant {
   BlockId target{};
 };
 
+enum class SpecialConstantKind : std::uint8_t {
+  Null, Undef, Poison, ZeroInitializer, True, False,
+};
+
+struct SpecialConstant {
+  SpecialConstantKind kind = SpecialConstantKind::Undef;
+};
+
 using ConstantPayload = std::variant<IntegerConstant, FloatingConstant,
-                                     LabelAddressConstant>;
+                                     LabelAddressConstant, SpecialConstant>;
 
 struct ConstantDefinition {
   Type type{};
@@ -151,6 +159,7 @@ enum class Opcode : std::uint8_t {
   Select,
   SelectedMemcpy,
   Cast,
+  Phi,
 };
 
 struct InlineAsmNode {
@@ -255,10 +264,28 @@ struct CastNode {
   Type to_type{};
 };
 
+// Edge identity includes the successor occurrence: a conditional branch may
+// legitimately contribute two distinct edges to the same destination.
+struct PhiEdge {
+  BlockId predecessor{};
+  BlockId destination{};
+  std::uint32_t occurrence = 0;
+};
+
+struct PhiIncoming {
+  ValueId value{};
+  PhiEdge edge{};
+};
+
+struct PhiNode {
+  Type type{};
+  std::vector<PhiIncoming> incoming;
+};
+
 using InstPayload =
     std::variant<InlineAsmNode, StoreNode, LoadNode, GetElementPtrNode,
     AbsNode, CallNode, BinaryNode, CompareNode, SelectNode, SelectedMemcpyNode,
-    IntrinsicCallNode, CastNode>;
+    IntrinsicCallNode, CastNode, PhiNode>;
 
 class BlockView;
 class FunctionView;

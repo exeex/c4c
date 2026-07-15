@@ -49,6 +49,9 @@ class InstView {
   const CastNode* cast() const noexcept {
     return std::get_if<CastNode>(&data_->payload);
   }
+  const PhiNode* phi() const noexcept {
+    return std::get_if<PhiNode>(&data_->payload);
+  }
   const std::vector<ValueId>& operands() const noexcept { return data_->operands; }
   const std::vector<ValueId>& results() const noexcept { return data_->results; }
 

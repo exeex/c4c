@@ -736,6 +736,30 @@ Result<void, BuildError> FunctionBuilder::define_label_address_constant(
   return Result<void, BuildError>::success();
 }
 
+Result<void, BuildError> FunctionBuilder::define_special_constant(
+    ValueId value, SpecialConstantKind kind) {
+  auto function = mutable_function();
+  if (!function) return Result<void, BuildError>::failure(function.error());
+  if (!same_owner(function_, value)) return Result<void, BuildError>::failure(BuildError::ForeignOwner);
+  auto resolved = function.value().get().values_.get_mut(function_, value);
+  if (!resolved) return Result<void, BuildError>::failure(BuildError::InvalidValue);
+  auto& definition = resolved.value().get();
+  if (definition.kind != ValueKind::Ordinary || !is_well_formed(definition.type) ||
+      !std::holds_alternative<UnresolvedDef>(definition.definition))
+    return Result<void, BuildError>::failure(BuildError::DefinitionTypeMismatch);
+  if ((kind == SpecialConstantKind::True || kind == SpecialConstantKind::False) &&
+      definition.type != Type{TypeKind::I1, 1, "i1"})
+    return Result<void, BuildError>::failure(BuildError::DefinitionTypeMismatch);
+  if (kind == SpecialConstantKind::Null && definition.type.kind != TypeKind::Pointer)
+    return Result<void, BuildError>::failure(BuildError::DefinitionTypeMismatch);
+  if (parent_->data_->constants_.size() > static_cast<std::size_t>(std::numeric_limits<SlotIndex>::max()))
+    return Result<void, BuildError>::failure(BuildError::StorageExhausted);
+  const ConstantId constant{parent_->data_->epoch_, static_cast<SlotIndex>(parent_->data_->constants_.size())};
+  parent_->data_->constants_.push_back(ConstantDefinition{definition.type, SpecialConstant{kind}});
+  definition.definition = ConstantDef{constant};
+  return Result<void, BuildError>::success();
+}
+
 Result<BlockId, BuildError> FunctionBuilder::create_block(
     std::string debug_name) {
   auto function = mutable_function();
@@ -1873,6 +1897,58 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, CastSpec 
   return Result<BuildResult, BuildError>::success(BuildResult{instruction_id, {result_id}});
 }
 
+Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, PhiSpec spec) {
+  auto function = mutable_function();
+  if (!function) return Result<BuildResult, BuildError>::failure(function.error());
+  if (!same_owner(function_, block)) return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
+  auto& data = function.value().get();
+  if (!data.blocks_.contains(function_, block) || !is_well_formed(spec.type) ||
+      spec.type.kind == TypeKind::Void || spec.incoming.empty())
+    return Result<BuildResult, BuildError>::failure(BuildError::InvalidValueType);
+  const auto result = data.values_by_source_id_.find(spec.source_result_id);
+  if (result == data.values_by_source_id_.end())
+    return Result<BuildResult, BuildError>::failure(BuildError::InvalidSourceValueId);
+  auto result_def = data.values_.get_mut(function_, result->second);
+  if (!result_def || result_def.value().get().type != spec.type ||
+      !std::holds_alternative<UnresolvedDef>(result_def.value().get().definition))
+    return Result<BuildResult, BuildError>::failure(BuildError::DefinitionTypeMismatch);
+  detail::InstData instruction;
+  instruction.opcode = Opcode::Phi;
+  PhiNode node{spec.type, {}};
+  node.incoming.reserve(spec.incoming.size());
+  instruction.operands.reserve(spec.incoming.size());
+  for (const auto& incoming : spec.incoming) {
+    if (!same_owner(function_, incoming.value) || !same_owner(function_, incoming.predecessor) ||
+        incoming.destination != block || !data.values_.contains(function_, incoming.value) ||
+        !data.blocks_.contains(function_, incoming.predecessor))
+      return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
+    const auto value = data.values_.get(function_, incoming.value);
+    if (!value || value.value().get().type != spec.type)
+      return Result<BuildResult, BuildError>::failure(BuildError::DefinitionTypeMismatch);
+    for (const auto& prior : node.incoming)
+      if (prior.edge.predecessor == incoming.predecessor &&
+          prior.edge.occurrence == incoming.occurrence)
+        return Result<BuildResult, BuildError>::failure(BuildError::DuplicateSourceValue);
+    node.incoming.push_back({incoming.value, {incoming.predecessor, block, incoming.occurrence}});
+    instruction.operands.push_back(incoming.value);
+  }
+  instruction.payload = std::move(node);
+  auto inserted = data.insts_.emplace(function_, std::move(instruction));
+  if (!inserted) return Result<BuildResult, BuildError>::failure(storage_error(inserted.error()));
+  const auto instruction_id = inserted.value();
+  auto stored = data.insts_.get_mut(function_, instruction_id);
+  if (!stored) { data.insts_.erase(function_, instruction_id); return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted); }
+  stored.value().get().results = {result->second};
+  result_def.value().get().definition = InstResultDef{instruction_id, 0};
+  auto block_data = data.blocks_.get_mut(function_, block);
+  if (!block_data || !block_data.value().get().instruction_order_.append(instruction_id)) {
+    result_def.value().get().definition = UnresolvedDef{};
+    data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  return Result<BuildResult, BuildError>::success(BuildResult{instruction_id, {result->second}});
+}
+
 Result<void, BuildError> FunctionBuilder::set_terminator(
     BlockId block, TerminatorSpec terminator) {
   auto function_result = mutable_function();
@@ -1907,8 +1983,7 @@ Result<void, BuildError> FunctionBuilder::set_terminator(
             return Result<void, BuildError>::failure(
                 BuildError::InvalidConditionType);
           if (!function.blocks_.contains(function_, term.true_target) ||
-              !function.blocks_.contains(function_, term.false_target) ||
-              term.true_target == term.false_target)
+              !function.blocks_.contains(function_, term.false_target))
             return Result<void, BuildError>::failure(BuildError::InvalidBlock);
         } else if constexpr (std::is_same_v<Term, IndirectJumpTerm>) {
           if (!same_owner(function_, term.address))
@@ -1939,14 +2014,10 @@ Result<void, BuildError> FunctionBuilder::set_terminator(
             return Result<void, BuildError>::failure(BuildError::InvalidValueType);
           if (!function.blocks_.contains(function_, term.default_target))
             return Result<void, BuildError>::failure(BuildError::InvalidBlock);
-          std::unordered_set<std::uint32_t> targets;
-          if (!targets.insert(term.default_target.slot).second)
-            return Result<void, BuildError>::failure(BuildError::InvalidBlock);
           for (const auto target : term.case_targets) {
             if (!same_owner(function_, target))
               return Result<void, BuildError>::failure(BuildError::ForeignOwner);
-            if (!function.blocks_.contains(function_, target) ||
-                !targets.insert(target.slot).second)
+            if (!function.blocks_.contains(function_, target))
               return Result<void, BuildError>::failure(BuildError::InvalidBlock);
           }
         } else if constexpr (std::is_same_v<Term, ReturnTerm>) {

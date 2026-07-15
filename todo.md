@@ -8,36 +8,37 @@ Current Step Title: Receive typed PHI incoming authority
 
 ## Just Finished
 
-- Closed 787 accepted duplicate typed conditional and switch successor IDs as
-  distinct ordered parallel CFG-edge occurrences (`a889ce33f`); it accepted no
-  Raw-BIR PHI receiver work. Steps 1 through 7.24 remain accepted historical
-  progress. Existing PHI receiver changes and focused 1/1 WIP proof remain
-  unaccepted.
+- Step 7.25: received one typed `LirPhiOp` result and ordered typed incoming
+  value/predecessor rows into Raw-BIR `PhiNode` transactionally. The receiver
+  reserves PHI results for loop backedges, preserves native SpecialToken
+  authority without inspecting its display mirror, and binds a row only to its
+  uniquely selected semantic CFG edge.
+  Raw BIR retains duplicate conditional/switch successor occurrences, while a
+  predecessor-only PHI row facing parallel occurrences rejects rather than
+  inventing an occurrence from input order.
 
 ## Suggested Next
 
-- Reattempt Step 7.25 only: receive the typed `LirPhiOp` result and ordered
-  incoming value/predecessor (including newly authorized SpecialToken) authority
-  into Raw BIR with exact ordinary and parallel CFG-edge occurrence validation
-  and transactional coverage.
+- Supervisor: assess the Step 7.25 exact-parallel boundary. The current
+  `LirPhiIncoming` schema carries a predecessor but no occurrence identity, so
+  semantic receipt of a particular parallel edge requires a separately scoped
+  authority extension; do not assign it from PHI input order.
 
 ## Watchouts
 
 - Do not recover values, predecessors, edges, or semantics from labels,
   spellings, printer output, LLVM text, or instruction order.
-- Preserve parallel edge/incoming multiplicity and order. Do not repeat or
-  accept the preserved Raw-BIR WIP merely because its prior interface test
-  passed.
+- The verifier requires every Raw-BIR PHI edge occurrence exactly once. The
+  importer accepts only a unique source edge and rejects ambiguous parallel
+  predecessor-only rows before publication.
+- PHI SpecialTokens are accepted or rejected exclusively by their native
+  carrier domain and type; display text is non-semantic.
 - PHI, local/object, memory/va, aggregate/vector, body-parameter, and all
   other later families remain fail-closed outside this packet.
 
 ## Proof
 
-- 751 accepted: focused `^frontend_lir_call_type_ref$` proof 1/1; matching
-  full regression guard and full after proof 3037/3037.
-- 786 accepted: native PHI SpecialToken authority handoff (`91b5bde43`).
-- 787 accepted: focused typed parallel CFG-successor coverage (`a889ce33f`);
-  no Raw-BIR acceptance follows from that proof.
-- Executor: run a fresh build and focused positive/negative Raw-BIR PHI
-  receiver proof for Step 7.25, including parallel-edge occurrence coverage.
-- Supervisor: select and record broader/full acceptance separately.
+- Executor ran `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_'`; passed 5/5. `test_after.log` contains
+  the full proof output. Supervisor owns broader acceptance and any separately
+  scoped edge-occurrence authority work.

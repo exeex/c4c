@@ -3818,11 +3818,16 @@ void test_switch_terminator_receipt_and_rejections() {
     sw.default_successor = lir::LirBlockId::invalid();
   }, bir::ImportErrorCode::MissingBranchTarget,
   "missing switch default authority must reject transactionally");
-  rejected([](lir::LirModule& candidate) {
-    auto& sw = std::get<lir::LirSwitch>(candidate.functions[0].blocks[0].terminator);
-    sw.case_successors = {lir::LirBlockId{2}};
-  }, bir::ImportErrorCode::MissingBranchTarget,
-  "duplicate switch target authority must reject transactionally");
+  auto parallel_switch = switch_module();
+  std::get<lir::LirSwitch>(parallel_switch.functions[0].blocks[0].terminator)
+      .case_successors = {lir::LirBlockId{2}};
+  const auto parallel_switch_raw = bir::lower_lir_to_raw_bir(parallel_switch);
+  expect(parallel_switch_raw.has_value() &&
+             parallel_switch_raw.value().view().function(
+                 parallel_switch_raw.value().view().functions()[0]).value()
+                 .successors(parallel_switch_raw.value().view().function(
+                     parallel_switch_raw.value().view().functions()[0]).value().blocks()[0]).value().size() == 2,
+         "parallel switch successor occurrences must remain distinct Raw-BIR CFG edges");
   rejected([](lir::LirModule& candidate) {
     auto& sw = std::get<lir::LirSwitch>(candidate.functions[0].blocks[0].terminator);
     sw.case_successors.clear();
@@ -3910,10 +3915,18 @@ void test_conditional_branch_terminator_receipt_and_rejections() {
     auto& branch = std::get<lir::LirCondBr>(candidate.functions[0].blocks[0].terminator);
     branch.false_successor = lir::LirBlockId{999};
   }, "invalid conditional successor authority must reject transactionally");
-  rejected([](lir::LirModule& candidate) {
-    auto& branch = std::get<lir::LirCondBr>(candidate.functions[0].blocks[0].terminator);
-    branch.false_successor = branch.true_successor;
-  }, "duplicate conditional successor authority must reject transactionally");
+  auto parallel_conditional = conditional_branch_module();
+  auto& parallel_branch = std::get<lir::LirCondBr>(
+      parallel_conditional.functions[0].blocks[0].terminator);
+  parallel_branch.false_successor = parallel_branch.true_successor;
+  parallel_branch.false_label = parallel_branch.true_label;
+  const auto parallel_conditional_raw = bir::lower_lir_to_raw_bir(parallel_conditional);
+  expect(parallel_conditional_raw.has_value() &&
+             parallel_conditional_raw.value().view().function(
+                 parallel_conditional_raw.value().view().functions()[0]).value()
+                 .successors(parallel_conditional_raw.value().view().function(
+                     parallel_conditional_raw.value().view().functions()[0]).value().blocks()[0]).value().size() == 2,
+         "parallel conditional successor occurrences must remain distinct Raw-BIR CFG edges");
   rejected([](lir::LirModule& candidate) {
     candidate.functions[0].blocks[2].id = lir::LirBlockId{1};
   }, "ambiguous conditional successor authority must reject transactionally");
@@ -11871,6 +11884,104 @@ void test_mixed_accepted_row_dispatcher_transactionality() {
          "a malformed final admitted compare must reject the whole mixed module without Raw-BIR publication");
 }
 
+void test_typed_phi_edge_authority_receipt_and_rejections() {
+  lir::LirBlock left;
+  left.id = lir::LirBlockId{1}; left.label = "left";
+  left.insts.push_back(lir::LirConstInt{lir::LirValueId{11}, scalar_type(c4c::TB_INT), 7});
+  left.terminator = lir::LirBr{"join", lir::LirBlockId{3}};
+  lir::LirBlock right;
+  right.id = lir::LirBlockId{2}; right.label = "right";
+  right.insts.push_back(lir::LirConstInt{lir::LirValueId{12}, scalar_type(c4c::TB_INT), 9});
+  right.terminator = lir::LirBr{"join", lir::LirBlockId{3}};
+  lir::LirBlock join;
+  join.id = lir::LirBlockId{3}; join.label = "join";
+  join.insts.push_back(lir::LirPhiOp{lir::LirOperand::ssa("%misleading_phi", lir::LirValueId{13}), lir::LirTypeRef::integer(32), {
+      {lir::LirOperand::ssa("%not-authoritative", lir::LirValueId{11}), "not-left", lir::LirBlockId{1}},
+      {lir::LirOperand::ssa("%not-authoritative", lir::LirValueId{12}), "not-right", lir::LirBlockId{2}}}});
+  join.terminator = lir::LirRet{lir::LirOperand::ssa("%also-misleading", lir::LirValueId{13}), lir::LirTypeRef::integer(32)};
+  lir::LirFunction function; function.name = "typed_phi"; function.return_type = scalar_type(c4c::TB_INT);
+  function.blocks = {left, right, join}; function.entry = lir::LirBlockId{1};
+  lir::LirModule module; module.functions.push_back(function);
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value(), "typed PHI rows must publish without trusting presentation mirrors");
+  const auto view = raw.value().view(); const auto function_view = view.function(view.functions()[0]).value();
+  const auto instructions = function_view.instructions(function_view.blocks()[2]).value();
+  const auto phi = function_view.instruction(instructions[0]).value();
+  expect(phi.phi() && phi.phi()->incoming.size() == 2 && phi.phi()->incoming[0].edge.predecessor == function_view.blocks()[0] &&
+             phi.phi()->incoming[1].edge.predecessor == function_view.blocks()[1] &&
+             phi.phi()->incoming[0].edge.destination == function_view.blocks()[2],
+         "Raw BIR PHI must retain ordered exact predecessor-to-destination edge authority");
+  auto malformed = module;
+  auto& incoming = std::get<lir::LirPhiOp>(malformed.functions[0].blocks[2].insts[0]).incoming[1];
+  incoming.predecessor = lir::LirBlockId{1};
+  const auto rejected = bir::lower_lir_to_raw_bir(malformed);
+  expect(!rejected.has_value(), "duplicate PHI edge authority must reject transactionally");
+
+  auto ambiguous_parallel = module;
+  auto& parallel_left = ambiguous_parallel.functions[0].blocks[0];
+  parallel_left.terminator = lir::LirCondBr{"%ignored", "join", "join",
+      lir::LirBlockId{3}, lir::LirBlockId{3}, lir::LirValueId{11}};
+  auto& parallel_incoming = std::get<lir::LirPhiOp>(
+      ambiguous_parallel.functions[0].blocks[2].insts[0]).incoming;
+  parallel_incoming.insert(parallel_incoming.begin() + 1,
+      {lir::LirOperand::ssa("%not-authoritative", lir::LirValueId{11}),
+       "not-left", lir::LirBlockId{1}});
+  expect(!bir::lower_lir_to_raw_bir(ambiguous_parallel).has_value(),
+         "a predecessor-only PHI row must reject an ambiguous parallel CFG edge transactionally");
+
+  auto special = module;
+  auto& special_incoming = std::get<lir::LirPhiOp>(
+      special.functions[0].blocks[2].insts[0]).incoming[0];
+  special_incoming.value = lir::LirOperand::special_token(lir::LirSpecialToken::Undef);
+  const auto special_raw = bir::lower_lir_to_raw_bir(special);
+  expect(special_raw.has_value(),
+         "an authorized PHI SpecialToken carrier must publish without text recovery");
+  const auto special_function = special_raw.value().view().function(
+      special_raw.value().view().functions()[0]).value();
+  const auto special_phi = special_function.instruction(
+      special_function.instructions(special_function.blocks()[2]).value()[0]).value();
+  const auto special_value = special_function.value(special_phi.phi()->incoming[0].value).value();
+  const auto* special_constant = std::get_if<bir::ConstantDef>(&special_value.definition);
+  expect(special_constant && std::holds_alternative<bir::SpecialConstant>(
+             special_raw.value().view().constant(special_constant->constant).value().payload),
+         "Raw BIR must retain the PHI SpecialToken as a closed semantic constant");
+  auto misleading_special = special;
+  std::get<lir::LirPhiOp>(misleading_special.functions[0].blocks[2].insts[0])
+      .incoming[0].value = lir::LirOperand::special_token(
+          "not-undef", lir::LirSpecialToken::Undef);
+  expect(bir::lower_lir_to_raw_bir(misleading_special).has_value(),
+         "PHI SpecialToken materialization must use native authority, not its display mirror");
+  auto invalid_special = special;
+  std::get<lir::LirPhiOp>(invalid_special.functions[0].blocks[2].insts[0])
+      .incoming[0].value = lir::LirOperand::special_token(
+          "invalid", static_cast<lir::LirSpecialToken>(255));
+  expect(!bir::lower_lir_to_raw_bir(invalid_special).has_value(),
+         "an out-of-domain PHI SpecialToken carrier must reject transactionally");
+}
+
+void test_typed_phi_loop_and_parallel_edge_occurrences() {
+  lir::LirBlock entry;
+  entry.id = lir::LirBlockId{1}; entry.label = "entry";
+  entry.insts.push_back(lir::LirConstInt{lir::LirValueId{21}, scalar_type(c4c::TB_INT), 1});
+  entry.terminator = lir::LirBr{"header", lir::LirBlockId{2}};
+  lir::LirBlock header;
+  header.id = lir::LirBlockId{2}; header.label = "header";
+  header.insts.push_back(lir::LirPhiOp{lir::LirOperand::ssa("%phi", lir::LirValueId{23}), lir::LirTypeRef::integer(32), {
+      {lir::LirOperand::ssa("%entry", lir::LirValueId{21}), "entry", lir::LirBlockId{1}},
+      {lir::LirOperand::ssa("%body", lir::LirValueId{22}), "body", lir::LirBlockId{3}}}});
+  header.terminator = lir::LirBr{"body", lir::LirBlockId{3}};
+  lir::LirBlock body;
+  body.id = lir::LirBlockId{3}; body.label = "body";
+  body.insts.push_back(lir::LirConstInt{lir::LirValueId{22}, scalar_type(c4c::TB_INT), 2});
+  body.terminator = lir::LirBr{"header", lir::LirBlockId{2}};
+  lir::LirFunction loop; loop.name = "phi_loop"; loop.return_type = scalar_type(c4c::TB_INT);
+  loop.blocks = {entry, header, body}; loop.entry = lir::LirBlockId{1};
+  lir::LirModule loop_module; loop_module.functions.push_back(loop);
+  const auto loop_raw = bir::lower_lir_to_raw_bir(loop_module);
+  expect(loop_raw.has_value(), "loop PHI must bind the later backedge value by native authority");
+
+}
+
 }  // namespace
 
 int main() {
@@ -11970,5 +12081,7 @@ int main() {
   test_selected_global_i32_slt_compare_receipt_and_rejections();
   test_selected_global_i32_abs_receipt_and_rejections();
   test_mixed_accepted_row_dispatcher_transactionality();
+  test_typed_phi_edge_authority_receipt_and_rejections();
+  test_typed_phi_loop_and_parallel_edge_occurrences();
   return 0;
 }

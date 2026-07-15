@@ -40,11 +40,43 @@ using codegen::lir::LirIntrinsicKind;
 using codegen::lir::LirModule;
 using codegen::lir::LirLoadOp;
 using codegen::lir::LirMemcpyOp;
+using codegen::lir::LirPhiOp;
 using codegen::lir::LirRet;
 using codegen::lir::LirSelectOp;
 using codegen::lir::LirStoreOp;
 using codegen::lir::LirSwitch;
 using codegen::lir::LirUnreachable;
+
+// A LirPhiIncoming names its predecessor, but deliberately does not carry a
+// presentation-derived successor-slot index.  It can therefore select an edge
+// only when that predecessor has exactly one semantic successor occurrence to
+// the PHI block.  Parallel occurrences must remain fail-closed until LIR
+// carries distinct edge authority for each incoming.
+std::optional<std::uint32_t> unique_phi_edge_occurrence(
+    const codegen::lir::LirTerminator& terminator,
+    codegen::lir::LirBlockId destination) {
+  std::size_t matches = 0;
+  const auto count = [&](codegen::lir::LirBlockId successor) {
+    if (successor == destination) ++matches;
+  };
+  std::visit(
+      [&](const auto& term) {
+        using Term = std::decay_t<decltype(term)>;
+        if constexpr (std::is_same_v<Term, LirBr>) {
+          count(term.successor);
+        } else if constexpr (std::is_same_v<Term, LirCondBr>) {
+          count(term.true_successor);
+          count(term.false_successor);
+        } else if constexpr (std::is_same_v<Term, LirSwitch>) {
+          count(term.default_successor);
+          for (const auto successor : term.case_successors) count(successor);
+        } else if constexpr (std::is_same_v<Term, LirIndirectBr>) {
+          for (const auto successor : term.targets) count(successor);
+        }
+      },
+      terminator);
+  return matches == 1 ? std::optional<std::uint32_t>{0} : std::nullopt;
+}
 
 template <class T>
 Result<T, ImportError> fail(ImportErrorCode code, std::string function = {},
@@ -2363,6 +2395,30 @@ Result<void, ImportError> validate_function(const LirModule& module,
       return fail<void>(ImportErrorCode::DuplicateBlockId, name, block.label,
                         "LirBlockId values must be unique within a function");
     block_labels_by_id.emplace(block.id.value, block.label);
+    for (const auto& instruction : block.insts) {
+      const auto* phi = std::get_if<LirPhiOp>(&instruction);
+      if (!phi) continue;
+      const auto type = lower_lir_type(module, phi->type_str);
+      const auto* result = phi->result.value_id();
+      if (!type || !result || !result->valid() || phi->result.kind() !=
+              codegen::lir::LirOperandKind::SsaValue || phi->incoming.empty() ||
+          !source_values.emplace(result->value, *type).second)
+        return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                          block.label,
+                          "phi requires one unique authoritative typed SSA result and incoming rows");
+      for (const auto& incoming : phi->incoming) {
+        const bool ssa_value = incoming.value.kind() ==
+                codegen::lir::LirOperandKind::SsaValue &&
+            incoming.value.value_id() && incoming.value.value_id()->valid();
+        const bool special_value = incoming.value.kind() ==
+                codegen::lir::LirOperandKind::SpecialToken &&
+            incoming.value.special_token();
+        if (!incoming.predecessor.valid() || (!ssa_value && !special_value))
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                            block.label,
+                            "phi incoming requires current-function SSA value and predecessor authority");
+      }
+    }
     for (std::size_t index = 0; index < block.insts.size(); ++index) {
       if (!std::get_if<LirIndirectBrOp>(&block.insts[index])) continue;
       if (index + 1 != block.insts.size() ||
@@ -2372,6 +2428,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
                           "LirIndirectBrOp must be the final instruction carrier with an unreachable terminator sentinel");
     }
     for (const auto& instruction : block.insts) {
+      if (std::get_if<LirPhiOp>(&instruction)) continue;
       if (std::get_if<LirMemcpyOp>(&instruction)) continue;
       if (const auto* indirect_br = std::get_if<LirIndirectBrOp>(&instruction)) {
         const auto address = indirect_br->addr_value && indirect_br->addr_value->valid()
@@ -3103,11 +3160,10 @@ Result<void, ImportError> validate_function(const LirModule& module,
                                                 terminator.false_successor.value)
                                           : block_labels_by_id.end();
             if (true_target == block_labels_by_id.end() ||
-                false_target == block_labels_by_id.end() ||
-                terminator.true_successor == terminator.false_successor)
+                false_target == block_labels_by_id.end())
               return fail<void>(ImportErrorCode::MissingBranchTarget, name,
                                 block.label,
-                                "LirCondBr successors must be distinct and resolve exactly once in their current function");
+                                "LirCondBr successors must resolve exactly once in their current function");
           } else if constexpr (std::is_same_v<Term, LirSwitch>) {
             const auto selector = terminator.selector.valid()
                                       ? source_values.find(terminator.selector.value)
@@ -3120,23 +3176,21 @@ Result<void, ImportError> validate_function(const LirModule& module,
               return fail<void>(ImportErrorCode::MissingBranchTarget, name,
                                 block.label,
                                 "LirSwitch ordered case successor authority is incoherent");
-            std::unordered_set<std::uint32_t> targets;
             const auto validate_target = [&](codegen::lir::LirBlockId target_id) {
               const auto target = target_id.valid()
                                       ? block_labels_by_id.find(target_id.value)
                                       : block_labels_by_id.end();
-              return target != block_labels_by_id.end() &&
-                     targets.insert(target_id.value).second;
+              return target != block_labels_by_id.end();
             };
             if (!validate_target(terminator.default_successor))
               return fail<void>(ImportErrorCode::MissingBranchTarget, name,
                                 block.label,
-                                "LirSwitch.default_successor must resolve uniquely in its current function");
+                                "LirSwitch.default_successor must resolve in its current function");
             for (const auto target : terminator.case_successors)
               if (!validate_target(target))
                 return fail<void>(ImportErrorCode::MissingBranchTarget, name,
                                   block.label,
-                                  "LirSwitch.case_successors must resolve uniquely in current-function order");
+                                  "LirSwitch.case_successors must resolve in current-function order");
           } else if constexpr (std::is_same_v<Term, LirIndirectBr>) {
             const auto address = terminator.addr.valid()
                                      ? source_values.find(terminator.addr.value)
@@ -3553,6 +3607,26 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
             }
           }
 
+          // Reserve PHI definitions before lowering bodies so a loop backedge
+          // can refer to its join result without any name-based recovery.
+          for (const LirBlock& block : function.blocks) {
+            for (const auto& instruction : block.insts) {
+              const auto* phi = std::get_if<LirPhiOp>(&instruction);
+              if (!phi) continue;
+              const auto* result = phi->result.value_id();
+              auto reserved = function_builder.reserve_source_value(
+                  result->value, *lower_lir_type(module, phi->type_str));
+              if (!reserved || !source_values.emplace(result->value, reserved.value()).second) {
+                edit_error = reserved
+                    ? ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                                  block.label, "phi result registration collided"}
+                    : builder_failure(name, block.label, "reserve phi result", reserved.error());
+                return Result<void, BuildError>::failure(
+                    reserved ? BuildError::DuplicateSourceValue : reserved.error());
+              }
+            }
+          }
+
           for (const LirBlock& block : function.blocks) {
             for (const auto& instruction : block.insts) {
               if (const auto* constant = std::get_if<LirConstInt>(&instruction)) {
@@ -3578,6 +3652,67 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                                "define floating constant",
                                                defined.error());
                   return defined;
+                }
+                continue;
+              }
+              if (const auto* phi = std::get_if<LirPhiOp>(&instruction)) {
+                PhiSpec spec;
+                spec.type = *lower_lir_type(module, phi->type_str);
+                spec.source_result_id = phi->result.value_id()->value;
+                spec.incoming.reserve(phi->incoming.size());
+                for (const auto& incoming : phi->incoming) {
+                  const auto predecessor = blocks.find(incoming.predecessor.value);
+                  const auto predecessor_source = std::find_if(
+                      function.blocks.begin(), function.blocks.end(),
+                      [&](const LirBlock& candidate) {
+                        return candidate.id == incoming.predecessor;
+                      });
+                  const auto occurrence = predecessor_source == function.blocks.end()
+                      ? std::optional<std::uint32_t>{}
+                      : unique_phi_edge_occurrence(predecessor_source->terminator,
+                                                   block.id);
+                  if (predecessor == blocks.end() || !occurrence) {
+                    edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                                             name, block.label,
+                                             "phi incoming must select one unambiguous current-function CFG edge occurrence"};
+                    return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                  }
+                  ValueId incoming_value;
+                  if (incoming.value.kind() == codegen::lir::LirOperandKind::SpecialToken) {
+                    const auto* token = incoming.value.special_token();
+                    if (!token || static_cast<unsigned>(*token) >
+                                      static_cast<unsigned>(codegen::lir::LirSpecialToken::False)) {
+                      edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                                               "phi special token must retain a closed native semantic carrier"};
+                      return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                    }
+                    auto reserved = function_builder.reserve_value(spec.type);
+                    auto defined = reserved ? function_builder.define_special_constant(
+                        reserved.value(), static_cast<SpecialConstantKind>(*token))
+                        : Result<void, BuildError>::failure(reserved.error());
+                    if (!reserved || !defined) {
+                      edit_error = builder_failure(name, block.label, "materialize phi special token",
+                          reserved ? defined.error() : reserved.error());
+                      return Result<void, BuildError>::failure(reserved ? defined.error() : reserved.error());
+                    }
+                    incoming_value = reserved.value();
+                  } else {
+                    const auto value = source_values.find(incoming.value.value_id()->value);
+                    if (value == source_values.end()) {
+                      edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                                               "phi SSA incoming authority did not resolve in the current function"};
+                      return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                    }
+                    incoming_value = value->second;
+                  }
+                  spec.incoming.push_back(PhiIncomingSpec{
+                      incoming_value, predecessor->second, blocks.at(block.id.value),
+                      *occurrence});
+                }
+                auto appended = function_builder.append(blocks.at(block.id.value), std::move(spec));
+                if (!appended) {
+                  edit_error = builder_failure(name, block.label, "append phi", appended.error());
+                  return Result<void, BuildError>::failure(appended.error());
                 }
                 continue;
               }

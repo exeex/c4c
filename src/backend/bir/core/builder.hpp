@@ -236,6 +236,19 @@ struct CastSpec {
   std::uint32_t source_result_id = 0;
 };
 
+struct PhiIncomingSpec {
+  ValueId value{};
+  BlockId predecessor{};
+  BlockId destination{};
+  std::uint32_t occurrence = 0;
+};
+
+struct PhiSpec {
+  Type type{};
+  std::uint32_t source_result_id = 0;
+  std::vector<PhiIncomingSpec> incoming;
+};
+
 using TerminatorSpec = Terminator;
 
 class FunctionBuilder;
@@ -323,6 +336,8 @@ class FunctionBuilder {
                                                       std::uint64_t exact_bits);
   Result<void, BuildError> define_label_address_constant(ValueId value,
                                                          BlockId target);
+  Result<void, BuildError> define_special_constant(ValueId value,
+                                                   SpecialConstantKind kind);
   Result<BlockId, BuildError> create_block(std::string debug_name = {});
   Result<BuildResult, BuildError> append(BlockId block, InlineAsmSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, StoreSpec spec);
@@ -337,6 +352,7 @@ class FunctionBuilder {
   Result<BuildResult, BuildError> append(BlockId block, SelectedMemcpySpec spec);
   Result<BuildResult, BuildError> append(BlockId block, IntrinsicCallSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, CastSpec spec);
+  Result<BuildResult, BuildError> append(BlockId block, PhiSpec spec);
   Result<void, BuildError> set_terminator(BlockId block,
                                           TerminatorSpec terminator);
 

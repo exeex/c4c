@@ -86,6 +86,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
       return std::holds_alternative<SelectedMemcpyNode>(instruction.payload);
     case Opcode::Cast:
       return std::holds_alternative<CastNode>(instruction.payload);
+    case Opcode::Phi:
+      return std::holds_alternative<PhiNode>(instruction.payload);
   }
   return false;
 }
@@ -193,12 +195,21 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
              "constant identity, type, and payload must be well formed");
       continue;
     }
-    if ((std::holds_alternative<IntegerConstant>(constant.payload) !=
+    const bool special = std::holds_alternative<SpecialConstant>(constant.payload);
+    if ((!special && std::holds_alternative<IntegerConstant>(constant.payload) !=
              integer_type(constant.type)) ||
-        (std::holds_alternative<FloatingConstant>(constant.payload) !=
+        (!special && std::holds_alternative<FloatingConstant>(constant.payload) !=
              floating_type(constant.type)) ||
         (std::holds_alternative<LabelAddressConstant>(constant.payload) &&
-             constant.type.kind != TypeKind::Pointer))
+             constant.type.kind != TypeKind::Pointer) ||
+        (std::holds_alternative<SpecialConstant>(constant.payload) &&
+             [&] {
+               const auto kind = std::get<SpecialConstant>(constant.payload).kind;
+               if (kind == SpecialConstantKind::Null) return constant.type.kind != TypeKind::Pointer;
+               if (kind == SpecialConstantKind::True || kind == SpecialConstantKind::False)
+                 return constant.type != Type{TypeKind::I1, 1, "i1"};
+               return static_cast<unsigned>(kind) > static_cast<unsigned>(SpecialConstantKind::False);
+             }()))
       report(result, VerificationRule::ConstantDefinition, {}, id,
              "constant payload alternative must match its exact type domain");
   }
@@ -587,12 +598,14 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
     }
 
     std::unordered_map<InstId, std::size_t> instruction_membership;
+    std::unordered_map<InstId, BlockId> instruction_blocks;
     for (const auto block_id : function.block_order_.ids_) {
       const auto resolved_block = function.blocks_.get(function_id, block_id);
       if (!resolved_block) continue;
       for (const auto instruction :
            resolved_block.value().get().instruction_order_.ids_) {
         ++instruction_membership[instruction];
+        instruction_blocks.emplace(instruction, block_id);
         if (instruction.owner != function_id ||
             !function.insts_.contains(function_id, instruction))
           report(result, VerificationRule::InstructionStorageAndOrder,
@@ -616,6 +629,7 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                function_id, inst_id,
                "live instruction must appear once in exactly one block order");
       const auto& instruction = *inst_storage.value;
+      const auto containing_block = instruction_blocks.find(inst_id);
       if (instruction.payload.valueless_by_exception() ||
           !opcode_matches_payload(instruction)) {
         report(result, VerificationRule::BoundedAlternative, function_id,
@@ -627,6 +641,61 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
             !function.values_.contains(function_id, operand))
           report(result, VerificationRule::ValueDefinition, function_id,
                  operand, "instruction operand does not resolve in its owner");
+      if (const auto* phi = std::get_if<PhiNode>(&instruction.payload)) {
+        bool exact = is_well_formed(phi->type) && phi->type.kind != TypeKind::Void &&
+            instruction.results.size() == 1 &&
+            instruction.operands.size() == phi->incoming.size() && !phi->incoming.empty();
+        const auto result_value = exact
+            ? function.values_.get(function_id, instruction.results[0])
+            : Result<std::reference_wrapper<const ValueDef>, ResolveError>::failure(ResolveError::OutOfRange);
+        exact = exact && result_value && result_value.value().get().type == phi->type &&
+            result_value.value().get().source_id.has_value() &&
+            result_value.value().get().source_id->owner == function_id;
+        std::unordered_set<std::uint64_t> seen;
+        for (std::size_t index = 0; exact && index < phi->incoming.size(); ++index) {
+          const auto& incoming = phi->incoming[index];
+          const auto value = function.values_.get(function_id, incoming.value);
+          const auto predecessor = function.blocks_.get(function_id, incoming.edge.predecessor);
+          exact = value && value.value().get().type == phi->type && predecessor &&
+              containing_block != instruction_blocks.end() &&
+              incoming.edge.destination == containing_block->second && instruction.operands[index] == incoming.value;
+          if (!exact) break;
+          const auto term = predecessor.value().get().terminator_;
+          std::vector<BlockId> successors;
+          if (term) successors = std::visit([](const auto& item) {
+            using T = std::decay_t<decltype(item)>;
+            if constexpr (std::is_same_v<T, JumpTerm>) return std::vector<BlockId>{item.target};
+            else if constexpr (std::is_same_v<T, CondJumpTerm>) return std::vector<BlockId>{item.true_target, item.false_target};
+            else if constexpr (std::is_same_v<T, IndirectJumpTerm>) return item.targets;
+            else if constexpr (std::is_same_v<T, SwitchTerm>) { std::vector<BlockId> r{item.default_target}; r.insert(r.end(), item.case_targets.begin(), item.case_targets.end()); return r; }
+            else return std::vector<BlockId>{};
+          }, *term);
+          const auto occurrence_count = static_cast<std::size_t>(std::count(
+              successors.begin(), successors.end(), containing_block->second));
+          exact = incoming.edge.occurrence < occurrence_count;
+          const auto key = (static_cast<std::uint64_t>(incoming.edge.predecessor.slot) << 32) | incoming.edge.occurrence;
+          exact = exact && seen.insert(key).second;
+        }
+        if (exact) {
+          std::size_t expected = 0;
+          for (const auto predecessor_id : function.block_order_.ids_) {
+            const auto predecessor = function.blocks_.get(function_id, predecessor_id);
+            if (!predecessor || !predecessor.value().get().terminator_) continue;
+            const auto successors = std::visit([](const auto& item) {
+              using T = std::decay_t<decltype(item)>;
+              if constexpr (std::is_same_v<T, JumpTerm>) return std::vector<BlockId>{item.target};
+              else if constexpr (std::is_same_v<T, CondJumpTerm>) return std::vector<BlockId>{item.true_target, item.false_target};
+              else if constexpr (std::is_same_v<T, IndirectJumpTerm>) return item.targets;
+              else if constexpr (std::is_same_v<T, SwitchTerm>) { std::vector<BlockId> r{item.default_target}; r.insert(r.end(), item.case_targets.begin(), item.case_targets.end()); return r; }
+              else return std::vector<BlockId>{};
+            }, *predecessor.value().get().terminator_);
+            expected += static_cast<std::size_t>(std::count(successors.begin(), successors.end(), containing_block->second));
+          }
+          exact = expected == phi->incoming.size();
+        }
+        if (!exact) report(result, VerificationRule::ValueDefinition, function_id, inst_id,
+                           "phi must bind each typed incoming to one exact current CFG edge occurrence");
+      }
       if (const auto* store = std::get_if<StoreNode>(&instruction.payload)) {
         const bool destination_resolves =
             store->destination.valid() &&
@@ -1313,11 +1382,10 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
               if (term.true_target.owner != function_id ||
                   !function.blocks_.contains(function_id, term.true_target) ||
                   term.false_target.owner != function_id ||
-                  !function.blocks_.contains(function_id, term.false_target) ||
-                  term.true_target == term.false_target)
+                  !function.blocks_.contains(function_id, term.false_target))
                 report(result, VerificationRule::Terminator, function_id,
                        block_id,
-                       "conditional jump targets must be distinct and resolve in their owner");
+                       "conditional jump targets must resolve in their owner");
             } else if constexpr (std::is_same_v<Term, IndirectJumpTerm>) {
               const auto address = function.values_.get(function_id, term.address);
               if (term.address.owner != function_id || !address ||
@@ -1344,21 +1412,19 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                 report(result, VerificationRule::Terminator, function_id,
                        block_id,
                        "switch selector must resolve to a local integer value");
-              std::unordered_set<std::uint32_t> targets;
               const auto check_target = [&](BlockId target) {
                 return target.owner == function_id &&
-                       function.blocks_.contains(function_id, target) &&
-                       targets.insert(target.slot).second;
+                       function.blocks_.contains(function_id, target);
               };
               if (!check_target(term.default_target))
                 report(result, VerificationRule::Terminator, function_id,
                        block_id,
-                       "switch default target must resolve uniquely in its owner");
+                       "switch default target must resolve in its owner");
               for (const auto target : term.case_targets)
                 if (!check_target(target))
                   report(result, VerificationRule::Terminator, function_id,
                          block_id,
-                         "switch case targets must be distinct and resolve in their owner");
+                         "switch case targets must resolve in their owner");
             } else if constexpr (std::is_same_v<Term, ReturnTerm>) {
               const bool returns_void =
                   function.signature_.return_type.kind == TypeKind::Void;
