@@ -5,7 +5,6 @@ Source Idea Path: ideas/open/753_lir_memory_va_pointer_authority_convergence.md
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Establish the bounded native memory/VA authority boundary
-你該做code review了
 
 ## Just Finished
 
