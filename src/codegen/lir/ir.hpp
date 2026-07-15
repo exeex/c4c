@@ -350,6 +350,10 @@ struct LirExtractValueOp {
   int index = 0;          // field index
   // Opt-in result/use identity for the closed-798 aggregate operand handoff.
   bool requires_native_result_authority = false;
+  // Opt-in selected-field type fact for native aggregate extraction.  This is
+  // independent of the rendered aggregate spelling and exists only on the
+  // direct-complex row that publishes structured extraction semantics.
+  std::optional<LirTypeRef> result_element_type;
 };
 
 struct LirInsertValueOp {

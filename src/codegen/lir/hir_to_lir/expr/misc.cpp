@@ -210,10 +210,13 @@ LirOperand StmtEmitter::emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u,
       const bool native_aggregate_use = val.value_id() != nullptr;
       const LirOperand tmp = native_aggregate_use ? fresh_value(ctx) :
                                                    LirOperand(fresh_tmp(ctx));
+      const std::optional<LirTypeRef> result_element_type = native_aggregate_use
+          ? std::optional<LirTypeRef>(LirTypeRef(llvm_ty(complex_component_ts(op_ts.base))))
+          : std::nullopt;
       emit_lir_op(ctx, lir::LirExtractValueOp{
           tmp, unary_complex_aggregate_type(op_ts, llvm_ty(op_ts), native_aggregate_use), val,
                                               u.op == UnaryOp::ImagPart ? 1 : 0,
-                                              native_aggregate_use});
+                                              native_aggregate_use, result_element_type});
       return tmp;
     }
   }

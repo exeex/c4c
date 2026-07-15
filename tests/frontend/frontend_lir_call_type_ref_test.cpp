@@ -8538,6 +8538,26 @@ void test_selected_aggregate_producer_authority_boundary() {
   namespace lir = c4c::codegen::lir;
   const lir::LirTypeRef pair = lir::LirTypeRef::anonymous_struct(
       {lir::LirTypeRef("float"), lir::LirTypeRef("float")});
+  lir::LirModule direct_complex = lower_lir_module_for_target(R"c(
+extern __complex__ float complex_source(int value);
+float extract_real(int value) { return __real__ complex_source(value); }
+)c", "x86_64-linux-gnu");
+  lir::LirFunction& direct_complex_function = require_function(direct_complex, "extract_real");
+  const lir::LirExtractValueOp* direct_complex_extract = nullptr;
+  for (const auto& inst : direct_complex_function.blocks.front().insts) {
+    if (const auto* extract = std::get_if<lir::LirExtractValueOp>(&inst)) {
+      direct_complex_extract = extract;
+      break;
+    }
+  }
+  expect_true(direct_complex_extract &&
+                  direct_complex_extract->requires_native_result_authority &&
+                  direct_complex_extract->agg_type.has_anonymous_struct_layout() &&
+                  direct_complex_extract->result_element_type &&
+                  *direct_complex_extract->result_element_type == lir::LirTypeRef("float"),
+              "selected direct-complex extract must publish its native result element type");
+  lir::verify_module(direct_complex);
+
   const auto make_module = [&](bool terminal_insert) {
     lir::LirModule module;
     lir::LirFunction function;
@@ -8558,7 +8578,8 @@ void test_selected_aggregate_producer_authority_boundary() {
     }
     insts.push_back(lir::LirExtractValueOp{
         lir::LirOperand::ssa("%field", lir::LirValueId{3}), pair,
-        lir::LirOperand::ssa("%aggregate", lir::LirValueId{2}), 0, true});
+        lir::LirOperand::ssa("%aggregate", lir::LirValueId{2}), 0, true,
+        lir::LirTypeRef("float")});
     module.functions.push_back(std::move(function));
     return module;
   };
@@ -8600,6 +8621,22 @@ void test_selected_aggregate_producer_authority_boundary() {
         insert->aggregate_result_type = lir::LirTypeRef::integer(32);
       }
     }, "selected aggregate producer must reject type-incoherent receipt");
+    check_rejects(terminal_insert, [](auto& insts, unsigned) {
+      auto& extract = std::get<lir::LirExtractValueOp>(insts.back());
+      extract.index = -1;
+    }, "selected aggregate extract must reject a negative field index");
+    check_rejects(terminal_insert, [](auto& insts, unsigned) {
+      auto& extract = std::get<lir::LirExtractValueOp>(insts.back());
+      extract.index = 2;
+    }, "selected aggregate extract must reject an out-of-range field index");
+    check_rejects(terminal_insert, [](auto& insts, unsigned) {
+      auto& extract = std::get<lir::LirExtractValueOp>(insts.back());
+      extract.result_element_type = lir::LirTypeRef::integer(32);
+    }, "selected aggregate extract must reject a conflicting field result type");
+    check_rejects(terminal_insert, [](auto& insts, unsigned) {
+      auto& extract = std::get<lir::LirExtractValueOp>(insts.back());
+      extract.result_element_type.reset();
+    }, "selected aggregate extract must reject missing native result type authority");
   }
 }
 
