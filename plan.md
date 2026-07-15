@@ -1,124 +1,82 @@
-# LIR Logical RHS Result Authority Publication Runbook
+# LIR Cross-Function `LirValueId` Ownership Restoration Runbook
 
 Status: Active
-Source Idea: ideas/open/778_lir_logical_rhs_result_authority_publication.md
-Resumed from: closed 779's accepted standalone cast-result authority prerequisite.
+Source Idea: ideas/open/780_lir_cross_function_value_id_ownership_restoration.md
+Activated from: 778's rejected full-suite baseline candidate after `b4685da80`.
 
 ## Goal
 
-Publish one native logical RHS conversion result ID without migrating generic
-expression APIs or changing the downstream PHI receiver.
+Restore correct shared cross-function native value-ID allocation and ownership
+without weakening standalone cast-result authority or expanding into PHI or
+generic expression migration.
 
 ## Core Rule
 
-Allocate authority with `fresh_value` before rendering; raw display text must
-not be used to create or recover a value ID.
+Follow the evidence from allocation through ownership registration and
+verification. Do not add logical-only exemptions or change the verifier's
+flag-gated malformed-authority contract.
 
 ## Read First
 
+- `ideas/open/780_lir_cross_function_value_id_ownership_restoration.md`
 - `ideas/open/778_lir_logical_rhs_result_authority_publication.md`
-- `ideas/closed/779_lir_cast_result_authority_contract.md`
-- `ideas/closed/776_lir_typed_expression_result_carrier_decomposition.md`
-- `ideas/open/775_lir_phi_producer_helper_result_identity.md`
-- `ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md`
-- `src/codegen/lir/hir_to_lir/expr/binary.cpp`
-- `tests/frontend/frontend_lir_call_type_ref_test.cpp`
+- `src/codegen/lir/` allocation, `LirFunction`, and verifier ownership paths
+- `build/Testing/Temporary/LastTest.log` around `pr52129.c`
 
 ## Non-Goals
 
-- no logical PHI/incoming/result carrier work or final logical consumer claim
-- no ternary/coerce, vaarg, or generic expression migration
-- no text recovery, maps, side tables, Raw-BIR/importer, backend, target
-  lowering, MIR, or emission work
+- no PHI, generic expression, ternary/coerce, vaarg, or other-family migration
+- no verifier weakening, testcase-specific exception, or baseline edit
+- no parent handoff work for 775
 
 ## Ordered Steps
 
-### Step 1 - Publish the logical RHS conversion result allocation
+### Step 1 - Diagnose cross-function native-ID ownership
 
-Goal: replace only the non-`i1` RHS conversion result allocation in
-`emit_logical` with a native `fresh_value` result.
-
-Primary target:
-
-- `src/codegen/lir/hir_to_lir/expr/binary.cpp`
+Goal: establish the exact allocation, registration, and verification path that
+makes a selected opt-in cast ID collide with or appear foreign in a separate
+`LirFunction`.
 
 Actions:
 
-- preserve the existing typed RHS boolean operand and conversion type;
-- allocate the RHS `LirCastOp.result` as `LirOperand::ssa` with an owning
-  current-function ID;
-- leave the raw PHI result/incoming and final logical consumer unchanged.
+- trace `fresh_value` and native-ID ownership state through two functions;
+- reduce the evidence to the smallest nearby multi-function reproduction and
+  identify the shared seam that owns the repair;
+- record why the defect cannot be fixed by a logical-only exception.
 
 Completion check:
 
-- accepted allocation fact: commit `3b716c12d` changes only the selected RHS
-  conversion to use `fresh_value(ctx)` and retains the native result ID,
-  without PHI, generic API, or other-family changes. Its focused proof is not
-  complete: the old test assertion is expected to fail until Steps 2–3.
+- a bounded repair target and proof case are identified without changing code,
+  PHI, generic APIs, or verifier requirements.
 
-### Step 2 - Opt the selected logical RHS cast into native result authority
+### Step 2 - Repair the bounded shared ownership model
 
-Goal: make only the selected RHS conversion subject to the existing standalone
-cast-result verifier contract.
-
-Primary target:
-
-- `src/codegen/lir/hir_to_lir/expr/binary.cpp`
-
-Actions:
-
-- at construction of the selected non-`i1` RHS `LirCastOp`, set its existing
-  `requires_native_result_authority` field to `true`;
-- retain the `fresh_value(ctx)` result allocation from accepted commit
-  `3b716c12d`;
-- do not alter verifier or IR contracts: the existing flag-gated contract is
-  already accepted and must remain the authority for missing, invalid,
-  duplicate, and foreign IDs;
-- do not touch PHI result/incoming, final logical consumer, generic expression
-  APIs, or any other producer family.
+Goal: implement the smallest evidence-backed allocation/ownership repair.
 
 Completion check:
 
-- precisely the selected RHS cast opts in, so existing verifier ownership and
-  duplicate/foreign checks require its native result authority.
+- distinct functions allocate/register native IDs so selected opt-in casts are
+  current-function-owned, while genuine malformed authority still fails closed.
 
-### Step 3 - Prove the logical RHS result authority contract
+### Step 3 - Prove nearby multi-function authority behavior
 
-Goal: add focused positive and fail-closed malformed proof for the selected
-RHS conversion result only, using the accepted standalone-cast verifier
-contract from closed 779.
-
-Primary target:
-
-- `tests/frontend/frontend_lir_call_type_ref_test.cpp`
-
-Actions:
-
-- require the RHS `LirCastOp.result` native ID without rendered-text or order
-  matching;
-- prove missing, invalid, duplicate, and foreign RHS-result authority rejects;
-- keep PHI and final logical consumer expectations explicitly outside this
-  packet.
+Goal: add focused positive and malformed coverage for the repaired shared model.
 
 Completion check:
 
-- focused logical RHS result proof passes and malformed authority fails closed
-  through the accepted verifier contract.
+- nearby multi-function tests pass and do not rely on an external named case.
 
-### Step 4 - Publish the bounded 775 handoff
+### Step 4 - Restore regression confidence and return to 778
 
-Goal: record the logical RHS field, proof, unresolved PHI boundary, and 775
-return point without reactivating 775 or 751.
+Goal: prove non-regression and preserve the parent return point.
 
 Completion check:
 
-- 775 may consume this logical-RHS-only producer fact while PHI and other
-  family work remain separate.
+- fresh build, matching focused guard, and fresh full-suite candidate restore
+  non-regression; then return 778 to baseline acceptance and Step 4.
 
 ## Proof
 
-- For Steps 2–3: `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^frontend_lir_call_type_ref$'`
-- The supervisor owns final regression and baseline acceptance; this runbook
-  does not write root logs. A full-suite candidate is rejected until the
-  obsolete assertion is repaired and it adds no failure.
+- Each code packet: fresh build plus its matching focused test subset.
+- Before return: supervisor-owned fresh full-suite candidate; do not write or
+  roll forward canonical root logs from this runbook.

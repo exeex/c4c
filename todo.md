@@ -1,34 +1,30 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/778_lir_logical_rhs_result_authority_publication.md
+Source Idea Path: ideas/open/780_lir_cross_function_value_id_ownership_restoration.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Publish the bounded 775 handoff
+Current Step ID: 1
+Current Step Title: Diagnose cross-function native-ID ownership
 
 ## Just Finished
 
-- Plan Step 3 complete: the selected logical RHS `zext` is located structurally
-  by kind, types, and its typed operand, then proves native result authority
-  and its authority opt-in. Focused malformed missing, invalid, same-function
-  duplicate, and foreign-function result-ID cases all reject through the
-  existing verifier. PHI result/incoming and final logical consumer remain
-  outside this claim.
+- Switched from 778 after its full-suite candidate for `b4685da80` was
+  rejected (3037 total; 2883 passed; 154 failed) for cross-function foreign-ID
+  verifier failures. No blocker implementation packet has run.
 
 ## Suggested Next
 
-- Dispatch Plan Step 4: publish the bounded 775 handoff for this logical-RHS
-  result-authority fact only; do not widen into PHI or other producer families.
+- Trace `fresh_value`, `LirFunction` ownership registration, and the
+  standalone cast verifier across two functions; identify the narrow shared
+  repair seam before editing code.
 
 ## Watchouts
 
-- The selected RHS cast alone now has native result authority. The verifier/IR
-  contracts, PHI result/incoming, final logical consumer, generic expression
-  APIs, and all other producer families remain excluded.
+- Keep the standalone verifier flag-gated and fail-closed. Do not special-case
+  logical casts or absorb PHI/generic producer migration.
 
 ## Proof
 
-- Step 3 proof: `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^frontend_lir_call_type_ref$'`; build and focused
-  test pass (1/1). The supervisor owns `test_after.log`; this packet directs no
-  root-log writes.
+- Diagnostic packet: record a reproducible multi-function ownership trace or
+  focused reproduction. Later code packets require a fresh build and matching
+  focused test; Step 4 requires a fresh full-suite candidate.

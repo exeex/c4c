@@ -110,3 +110,32 @@ Current return point: restart Step 1, `Publish the logical RHS conversion
 result`, with a clean producer reattempt. Do not reuse the former unaccepted
 `binary.cpp` diff. PHI result/incoming and generic logical migration remain
 excluded.
+
+## Resumption Record: cross-function `LirValueId` ownership blocker
+
+Last accepted progress: Step 1, `Publish the logical RHS conversion result`,
+was accepted in `3b716c12d`; Step 2, `Opt the selected logical RHS cast into
+native result authority`, was accepted in `54ebfa4df`; and Step 3, `Prove the
+logical RHS result authority contract`, was accepted in `b4685da80`. The
+focused build and guard passed: `cmake --build --preset default && ctest
+--test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
+(0 failures to 1 pass).
+
+Interrupted step: Step 4 — `Publish the bounded 775 handoff`.
+
+Blocker: the full-suite baseline candidate for `b4685da80` is rejected: 3037
+total tests, 2883 passed and 154 failed. The established direct cause is that
+the selected RHS cast now opts into the accepted standalone authority verifier,
+but native IDs allocated on this route collide with or appear foreign across
+`LirFunction`s. For example, `pr52129.c` fails with
+`LirCastOp.result: standalone native cast result LirValueId is owned by another
+LirFunction`. Repairing the shared allocation/ownership model, verifier/IR
+contract, or other producer families would exceed this source's logical-RHS
+only producer scope. The separate successor is
+`ideas/open/780_lir_cross_function_value_id_ownership_restoration.md`.
+
+Exact return point after 780 is accepted: resume at 778's
+baseline-acceptance/Step-4 boundary. First rerun the focused build/test, the
+matching focused guard, and a fresh full-suite candidate; accept no parent
+handoff or closure unless that candidate restores non-regression. Only then
+publish the bounded 775 handoff. PHI/generic migration remains excluded.
