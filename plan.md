@@ -1,82 +1,77 @@
-# LIR Aggregate and Vector Value Identity Convergence Runbook
+# LIR PHI Incoming Producer Authority Repair Runbook
 
 Status: Active
-Source Idea: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
-Resumed from: satisfied bounded prerequisite 803 at unchanged Step 2. Step 1
-was accepted in `d8e5ed3a8` and is not to be repeated.
+Source Idea: ideas/open/804_lir_phi_incoming_producer_authority_repair.md
+Activated from: 754 full-baseline blocker switch; resume 754 Step 2 only after
+this bounded route and its full-baseline gate are accepted.
 
 ## Purpose
 
-Repair the selected `LirExtractValueOp` result/use authority route, then retain
-the existing bounded aggregate/vector row sequence.
+Repair the one PHI incoming authority handoff preventing the clean full
+baseline, while preserving the accepted CFG/PHI authority contract.
 
 ## Core Rule
 
-Use checked current-function structured IDs and row-specific typed facts as
-authority. Do not infer result, operand, index, or mask identity from rendered
-LLVM text, instruction order, or testcase naming. Keep unselected rows
-fail-closed.
+Native checked current-function IDs are authority. Do not use display text,
+instruction order, or testcase identity, and do not weaken PHI verification.
 
 ## Read First
 
+- `ideas/open/804_lir_phi_incoming_producer_authority_repair.md`
 - `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`
-- `ideas/closed/803_lir_aggregate_ssa_producer_authority_publication.md`
-- `ideas/closed/798_lir_operand_provenance_authority_publication.md`
-- `ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md` resumption record
-- `src/codegen/lir/ir.hpp`, `src/codegen/lir/verify.cpp`, and aggregate lowering seams
+- the accepted CFG/PHI authority history around `6ece9fe8f`
+- the PHI lowering, producer-handoff, and verifier surfaces reached by the
+  failing `llvm_gcc_c_torture_src_vrp_2_c` trace
 
 ## Non-Goals
 
-- Anonymous aggregate layout, field-index, or result-element validation; these
-  remain 801/754 Step 3 work after Step 2 acceptance.
-- CFG/PHI, pointer/object, memory/VA authority, Raw-BIR, target lowering, MIR,
-  emission, broad aggregate/vector conversion, or display-text recovery.
-- Weakening `LirExtractValueOp.agg` verification merely to restore a baseline.
+- Reopening CFG/PHI schema, predecessor, edge, or verifier semantics.
+- Aggregate/vector row work, Raw-BIR, generic provenance, text recovery, or
+  residual-family conversion.
 
 ## Ordered Steps
 
-### Step 1 - Audit and select one aggregate/vector authority row — complete
+### Step 1 - Trace the failing PHI incoming producer handoff
 
-Accepted in `d8e5ed3a8`: only `LirExtractValueOp` is selected. Do not repeat
-this audit or widen to other aggregate/vector rows.
-
-### Step 2 - Repair structured result and aggregate operand authority
-
-Goal: repair the selected row so every supported aggregate SSA
-`LirExtractValueOp.agg` use carries valid current-function `LirValueId`
-authority without text recovery.
+Goal: identify the exact native authority fact lost before the existing PHI
+incoming verifier check.
 
 Actions:
 
-- consume 798's checked direct-composite operand handoff and 803's checked
-  local-load/terminal-insertvalue producer handoff only at the selected row;
-- retain the unary lowering's fresh `LirExtractValueOp` result ID and verify
-  that result structurally for missing, unknown, and foreign authority;
-- verify aggregate-operand producer authority, aggregate type coherence, and
-  the existing producer display mirror; reject stale display only for that
-  operand mirror, not for the result definition itself;
-- add nearby same-feature positive and malformed coverage without a generic
-  use-to-definition display mechanism or rendered-text authority;
-- obtain a fresh build, focused aggregate/frontend/backend proof, and the
-  supervisor-owned 100% full baseline. Do not advance on a partial baseline.
+- Reproduce and narrow the supplied `vrp_2.c` diagnostic without broadening
+  into a full-suite acceptance attempt.
+- Trace its producer, immediate lowering handoff, and PHI construction against
+  the accepted contract; distinguish missing, stale, and foreign authority.
+- Record the bounded seam and reject any route requiring a CFG/PHI contract
+  rewrite or text recovery.
 
-Completion check: the selected result has a valid current-function ID, its
-aggregate operand has checked producer authority independent of display
-spelling, focused proof passes, and the full baseline is 100% accepted by the
-supervisor.
+Completion check: one concrete producer-to-PHI handoff seam and authority
+failure mode are evidenced, or the route is returned for lifecycle repair.
 
-### Step 3 - Verify row-specific index facts — blocked on 801 handoff
+### Step 2 - Repair only the selected producer-side handoff
 
-Goal: enforce `LirExtractValueOp` field-index and selected result-type
-coherence using 801's native anonymous aggregate facts.
+Goal: publish the checked current-function ID required by the existing PHI
+incoming contract.
 
-Completion check: start only after 801's required handoff is accepted; retain
-unrelated rows fail-closed.
+Actions:
 
-### Step 4 - Prove and hand off the bounded row
+- Implement the smallest native producer/immediate-lowering handoff repair.
+- Preserve existing PHI verifier, predecessor, and edge rules.
+- Add nearby positive and malformed-authority coverage for this producer family.
 
-Goal: obtain accepted producer-side proof for the selected row without a
-Raw-BIR receiver change.
+Completion check: the selected incoming has valid authority; missing, unknown,
+foreign, and stale forms reject; no generic conversion or text identity exists.
 
-Completion check: a 100% full baseline and accepted one-row handoff are
-recorded; otherwise preserve an executable repair route.
+### Step 3 - Prove the blocker and return it to 754
+
+Goal: produce accepted bounded evidence and restore the parent baseline gate.
+
+Actions:
+
+- Obtain a fresh build and focused same-feature proof.
+- Have the supervisor run and accept the 100% full baseline before declaring
+  the blocker clear.
+- Record the accepted handoff, proof references, and 754 return point.
+
+Completion check: the supervisor has accepted the full baseline and 754 can be
+reactivated at unchanged Step 2; otherwise keep an executable repair route.

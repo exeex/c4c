@@ -188,6 +188,34 @@ selected `LirExtractValueOp` result/use contract. Do not repeat Step 1 or
 begin Step 3 index/layout/result validation; retain the Step 2 fresh-build,
 focused-proof, and supervisor-owned 100% full-baseline gate.
 
+## Resumption Update: full-baseline PHI authority blocker
+
+Last accepted progress: Step 1 remains accepted in `d8e5ed3a8`. The 803
+prerequisite is capability-complete at `3d2e8ddd1`, with its accepted Step 3
+proof recorded in `17d221ccb`. No Step 2 implementation change was accepted
+after this route resumed.
+
+Interrupted step: Step 2, `Repair structured result and aggregate operand
+authority`.
+
+Blocker evidence: before any Step 2 implementation, a clean-HEAD build
+succeeded, but `ctest --test-dir build -j --output-on-failure` stopped at
+1447/3037 on `llvm_gcc_c_torture_src_vrp_2_c`. The failure is
+`LirPhiIncoming.value: must identify a known current-function LirValueId`.
+`git blame` attributes the verifier enforcement to `6ece9fe8f` (`Publish typed
+LIR PHI incoming authority`); this is evidence only, not a root-cause claim.
+
+Classification: `separate-blocker`. CFG/PHI authority is expressly outside
+this idea. Open `ideas/open/804_lir_phi_incoming_producer_authority_repair.md`
+owns the narrow producer-handoff diagnosis and repair needed to restore the
+mandatory full-baseline gate without reopening accepted CFG/PHI work.
+
+Exact return point: after 804 has an accepted bounded producer-side repair and
+the supervisor accepts a 100% full baseline, reactivate 754 at unchanged Step
+2. Then perform only the selected `LirExtractValueOp` result/aggregate-operand
+authority repair using 798/803; do not repeat Step 1, begin Step 3, or absorb
+PHI work.
+
 ## Reviewer Reject Signals
 
 - Reject recovery of aggregate-use identity from `%t`, `std::string`, printer

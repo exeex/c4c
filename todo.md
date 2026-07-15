@@ -1,37 +1,29 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
+Source Idea Path: ideas/open/804_lir_phi_incoming_producer_authority_repair.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair structured result and aggregate operand authority
+Current Step ID: 1
+Current Step Title: Trace the failing PHI incoming producer handoff
 
 ## Just Finished
 
-- Lifecycle closure/resume: 803 is capability-complete at `3d2e8ddd1`, with
-  its accepted Step 3 proof recorded in `17d221ccb`. 754 Step 1 remains
-  accepted in `d8e5ed3a8`; Step 2 tracing found no accepted code change. The
-  unary extract result already has a fresh valid ID; a stale result display
-  with that same ID is not a distinct structural fact.
+- Lifecycle switch from 754: clean-HEAD full baseline stopped at 1447/3037 on
+  `llvm_gcc_c_torture_src_vrp_2_c` with the PHI incoming authority diagnostic;
+  no 754 Step 2 implementation change was accepted.
 
 ## Suggested Next
 
-- Step 2 only: retain structural result-ID validation and consume 798/803 for
-  aggregate-operand authority. Test stale display at the operand's existing
-  producer mirror; do not require result-display equality. Then obtain fresh
-  build, focused proof, and supervisor-owned 100% full-baseline acceptance.
+- Trace only the failing PHI incoming producer-to-consumer authority handoff.
+  Preserve accepted CFG/PHI verifier semantics and do not begin 754 work.
 
 ## Watchouts
 
-- Do not add a generic use-to-definition display mirror, use rendered text as
-  authority, or treat result display as a separately checkable fact. Do not
-  repeat Step 1, weaken the verifier, begin Step 3 index/layout/result
-  validation, touch Raw-BIR, or widen producer families. Preserve 801's
-  unaccepted repair and the preserved 802 worktree hunk.
+- Do not use display text as identity, weaken PHI verification, reopen CFG/PHI
+  edge or predecessor semantics, or touch unrelated dirty implementation files.
 
 ## Proof
 
-- 803 prerequisite evidence: fresh build passed; its matching canonical guard
-  moved from 6/8 (the runtime and direct-complex positives failed) to 8/8,
-  guard PASS; `^backend_` passed 5/5. This does not satisfy 754 Step 2's
-  required fresh focused proof or supervisor-owned 100% full baseline.
+- Supplied prebaseline evidence: clean build passed; the full suite stopped at
+  1447/3037 on `llvm_gcc_c_torture_src_vrp_2_c` with
+  `LirPhiIncoming.value: must identify a known current-function LirValueId`.
