@@ -2691,9 +2691,14 @@ void verify_function_value_ownership(const LirModule& mod,
       fail_verify("LirSwitch.selector_name",
                   "display name must match the selector-selected value definition");
     }
-    if (sw.selector_type != type->str()) {
+    if (sw.selector_type_ref.kind() != LirTypeKind::Integer ||
+        sw.selector_type_ref != *type) {
+      fail_verify("LirSwitch.selector_type_ref",
+                  "must match the selector-selected integer value definition");
+    }
+    if (sw.selector_type != sw.selector_type_ref.str()) {
       fail_verify("LirSwitch.selector_type",
-                  "display type must match the selector-selected value definition");
+                  "display type must match the structured selector type authority");
     }
   };
   const auto verify_indirect_br_address = [&](const LirIndirectBrOp& op) {
@@ -2929,8 +2934,9 @@ void verify_terminator(const LirFunction& function, const LirTerminator& termina
     return;
   }
   if (const auto* sw = std::get_if<LirSwitch>(&terminator)) {
-    if (sw->selector_name.empty() || sw->selector_type.empty()) {
-      fail_verify("LirSwitch", "must carry both selector name and selector type");
+    if (sw->selector_name.empty() || sw->selector_type.empty() ||
+        sw->selector_type_ref.str().empty()) {
+      fail_verify("LirSwitch", "must carry selector name and structured selector type");
     }
     verify_successor(sw->default_successor, sw->default_label,
                      "LirSwitch.default_successor", "LirSwitch.default_label");

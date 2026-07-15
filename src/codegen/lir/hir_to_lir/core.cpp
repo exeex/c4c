@@ -1393,6 +1393,7 @@ void StmtEmitter::emit_term_switch(
   }
   sw.selector = selector.value_id() ? *selector.value_id()
                                    : lir::LirValueId::invalid();
+  sw.selector_type_ref = lir::LirTypeRef(sel_type);
   (void)set_terminator_if_open(ctx, std::move(sw));
 }
 

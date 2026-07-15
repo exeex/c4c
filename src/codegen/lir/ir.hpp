@@ -743,6 +743,9 @@ struct LirSwitch {
   // Semantic selector authority; selector_name and selector_type are checked
   // display mirrors only. Kept last for aggregate-producer field order.
   LirValueId selector = LirValueId::invalid();
+  // Structured selector type authority.  Keep this after selector so legacy
+  // aggregate producers retain their existing field order.
+  LirTypeRef selector_type_ref;
 };
 
 struct LirIndirectBr {

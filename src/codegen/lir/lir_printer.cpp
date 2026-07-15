@@ -526,10 +526,10 @@ void render_terminator(std::ostringstream& os, const LirTerminator& term) {
          << "\n";
     }
   } else if (const auto* sw = std::get_if<LirSwitch>(&term)) {
-    os << "  switch " << sw->selector_type << " " << sw->selector_name
+    os << "  switch " << sw->selector_type_ref.str() << " " << sw->selector_name
        << ", label %" << sw->default_label << " [\n";
     for (const auto& [val, label] : sw->cases) {
-      os << "    " << sw->selector_type << " " << val << ", label %" << label << "\n";
+      os << "    " << sw->selector_type_ref.str() << " " << val << ", label %" << label << "\n";
     }
     os << "  ]\n";
   } else if (std::get_if<LirUnreachable>(&term)) {

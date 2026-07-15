@@ -3757,14 +3757,77 @@ void test_typed_computed_goto_receipt_and_rejections() {
 
 lir::LirModule selected_global_i32_slt_compare_module();
 
+void test_switch_selector_type_authority_and_display_mirror() {
+  lir::LirModule module;
+  lir::LirFunction function;
+  function.name = "switch_selector_type_authority";
+  function.signature_text = "define void @switch_selector_type_authority()";
+
+  lir::LirBlock entry;
+  entry.id = lir::LirBlockId{0};
+  entry.label = "entry";
+  const auto selector_id = lir::LirValueId{0};
+  entry.insts.push_back(lir::LirBinOp{
+      .result = lir::LirOperand::ssa("%selector", selector_id),
+      .opcode = lir::LirBinaryOpcode::Add,
+      .type_str = lir::LirTypeRef::integer(32),
+      .lhs = lir::LirOperand::integer("7", 7),
+      .rhs = lir::LirOperand::integer("0", 0),
+  });
+  entry.terminator = lir::LirSwitch{
+      .selector_name = "%selector",
+      .selector_type = "i64",
+      .default_label = "default",
+      .cases = {{7, "case"}},
+      .default_successor = lir::LirBlockId{1},
+      .case_successors = {lir::LirBlockId{2}},
+      .selector = selector_id,
+      .selector_type_ref = lir::LirTypeRef::integer(32),
+  };
+  lir::LirBlock default_block;
+  default_block.id = lir::LirBlockId{1};
+  default_block.label = "default";
+  default_block.terminator = lir::LirRet{std::nullopt, lir::LirTypeRef("void")};
+  lir::LirBlock case_block;
+  case_block.id = lir::LirBlockId{2};
+  case_block.label = "case";
+  case_block.terminator = lir::LirRet{std::nullopt, lir::LirTypeRef("void")};
+  function.blocks = {std::move(entry), std::move(default_block), std::move(case_block)};
+  module.functions.push_back(std::move(function));
+
+  try {
+    lir::verify_module(module);
+    fail("stale switch selector_type text must not override structured i32 authority");
+  } catch (const lir::LirVerifyError&) {
+  }
+
+  auto& sw = std::get<lir::LirSwitch>(module.functions[0].blocks[0].terminator);
+  sw.selector_type = "i32";
+  try {
+    lir::verify_module(module);
+  } catch (const lir::LirVerifyError& error) {
+    fail(std::string("structured i32 switch selector facts must verify: ") + error.what());
+  }
+  const std::string llvm = lir::print_llvm(module);
+  expect(llvm.find("switch i32 %selector") != std::string::npos,
+         "switch printer must render the verified structured i32 selector authority");
+  sw.selector_type_ref = lir::LirTypeRef::integer(64);
+  try {
+    lir::verify_module(module);
+    fail("structured switch selector type mismatch must fail verification");
+  } catch (const lir::LirVerifyError&) {
+  }
+}
+
 void test_switch_terminator_receipt_and_rejections() {
   auto switch_module = [] {
     auto module = selected_global_i32_slt_compare_module();
     auto& function = module.functions[0];
     function.blocks[0].terminator = lir::LirSwitch{
-        "%misleading-selector-display", "misleading-selector-type",
-        "misleading-default-label", {{7, "misleading-case-label"}},
-        lir::LirBlockId{2}, {lir::LirBlockId{1}}, lir::LirValueId{33}};
+        "%presentation-only-slt-result", "i1",
+        "default-display", {{7, "case-display"}},
+        lir::LirBlockId{2}, {lir::LirBlockId{1}}, lir::LirValueId{33},
+        lir::LirTypeRef::integer(1)};
     function.blocks.push_back(return_block(1, "case-display"));
     function.blocks.push_back(return_block(2, "default-display"));
     return module;
@@ -12565,6 +12628,7 @@ int main() {
   test_indirect_branch_terminator_receipt_and_rejections();
   test_direct_label_address_constant_receipt_and_rejections();
   test_typed_computed_goto_receipt_and_rejections();
+  test_switch_selector_type_authority_and_display_mirror();
   test_switch_terminator_receipt_and_rejections();
   test_conditional_branch_terminator_receipt_and_rejections();
   test_selected_global_array_gep_ssa_index_receipt();
