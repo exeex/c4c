@@ -1187,6 +1187,17 @@ void test_conditional_and_switch_successor_identity_contract() {
   expect_true(cbr.condition.value == 7,
               "conditional branch should carry its native condition value ID");
 
+  lir::LirModule parallel_conditional;
+  parallel_conditional.functions.push_back(make_conditional());
+  auto& parallel_cbr =
+      std::get<lir::LirCondBr>(parallel_conditional.functions[0].blocks[0].terminator);
+  parallel_cbr.false_successor = parallel_cbr.true_successor;
+  parallel_cbr.false_label = parallel_cbr.true_label;
+  lir::verify_module(parallel_conditional);
+  expect_true(parallel_cbr.true_successor == parallel_cbr.false_successor &&
+                  parallel_cbr.true_label == parallel_cbr.false_label,
+              "conditional branches should admit repeated ordered successor occurrences");
+
   lir::LirModule switch_module;
   switch_module.functions.push_back(make_switch());
   lir::verify_module(switch_module);
@@ -1196,6 +1207,18 @@ void test_conditional_and_switch_successor_identity_contract() {
               "switch default and case targets should carry native block IDs");
   expect_true(sw.selector.value == 7,
               "switch selector should carry its native value ID");
+
+  lir::LirModule parallel_switch;
+  parallel_switch.functions.push_back(make_switch());
+  auto& parallel_sw =
+      std::get<lir::LirSwitch>(parallel_switch.functions[0].blocks[0].terminator);
+  parallel_sw.case_successors[1] = parallel_sw.case_successors[0];
+  parallel_sw.cases[1].second = parallel_sw.cases[0].second;
+  lir::verify_module(parallel_switch);
+  expect_true(parallel_sw.case_successors.size() == 2 &&
+                  parallel_sw.case_successors[0] == parallel_sw.case_successors[1] &&
+                  parallel_sw.cases[0].second == parallel_sw.cases[1].second,
+              "switch cases should admit repeated ordered successor occurrences");
 
   lir::LirModule missing_conditional;
   missing_conditional.functions.push_back(make_conditional());
