@@ -887,12 +887,37 @@ void test_direct_scalar_signature_receipt() {
   definition.entry = definition.blocks.front().id;
   module.functions.push_back(std::move(definition));
 
+  const auto add_stale_signature_shadow = [&](lir::LirFunction* function) {
+    function->params.emplace_back("%logical", integer);
+    function->signature_params.push_back({"%structured", integer, false});
+    function->signature_param_type_refs.push_back(lir::LirTypeRef::integer(32));
+    function->signature_return_type_ref = lir::LirTypeRef::integer(32);
+  };
+  auto stale_declaration = declaration(
+      "stale_scalar_declaration", integer, lir::LirTypeRef::integer(32));
+  add_stale_signature_shadow(&stale_declaration);
+  stale_declaration.signature_text =
+      "declare i64 @stale_scalar_declaration(double %legacy)";
+  module.functions.push_back(std::move(stale_declaration));
+
+  lir::LirFunction stale_definition;
+  stale_definition.name = "stale_scalar_definition";
+  stale_definition.return_type = integer;
+  stale_definition.blocks.push_back(unreachable_block(0, "entry"));
+  stale_definition.entry = stale_definition.blocks.front().id;
+  add_stale_signature_shadow(&stale_definition);
+  stale_definition.signature_text =
+      "define i64 @stale_scalar_definition(double %legacy) {";
+  module.functions.push_back(std::move(stale_definition));
+
   const std::vector<bir::Type> expected = {
       {bir::TypeKind::Integer, 32, "i32"},
       {bir::TypeKind::Floating, 64, "double"},
       {bir::TypeKind::Integer, 32, "i32"},
       {bir::TypeKind::Floating, 80, "x86_fp80"},
       {bir::TypeKind::Integer, 16, "i16"},
+      {bir::TypeKind::Integer, 32, "i32"},
+      {bir::TypeKind::Integer, 32, "i32"},
       {bir::TypeKind::Integer, 32, "i32"},
   };
   const auto expect_signatures = [&](const auto& view,
@@ -905,6 +930,14 @@ void test_direct_scalar_signature_receipt() {
       expect(function.has_value() &&
                  function.value().signature().return_type == expected[index],
              layer + " must retain exact scalar return kind, width, and spelling");
+    }
+    for (const std::size_t index : {std::size_t{6}, std::size_t{7}}) {
+      const auto function = view.function(functions[index]).value();
+      expect(function.signature().parameter_types.size() == 1 &&
+                 function.signature().parameter_types.front() ==
+                     bir::Type{bir::TypeKind::Integer, 32, "i32"},
+             layer +
+                 " must lower complete scalar parameter facts before stale signature text");
     }
   };
 
