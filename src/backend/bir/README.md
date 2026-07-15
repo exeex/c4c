@@ -126,6 +126,11 @@ entries in that same pre-allocation chain.
 | `F2` | Machine verification | private target-MIR candidate | verified machine instruction graph; allocation repair is forbidden | BIR-local [F2 gate owner](machine_verification/README.md) defines required exact verification; external MIR/target verifiers own target rules |
 | `F3` | Assembly, object, and link emission | verified machine graph, opaque inline-asm text, concrete operand mappings, relocation/object facts | encoded instructions, relocations, object file, and linked output | BIR-local [F3 handoff owner](emission/README.md) defines routing/output accounting; target assemblers/linkers and external [object boundary](../mir/object/README.md) retain domain semantics |
 
+Idea 803's six hard-design areas are provisionally assigned by the normative
+[placement and conflict baseline](../../../docs/backend/bir_803_audit/step1_placement_and_conflict_baseline.md).
+That matrix refines ownership within the unchanged rows above; it does not add
+a stage or claim that the detailed contracts or their implementations exist.
+
 Every use, definition, fixed-home requirement, and clobber introduced by `D2`
 continues through target legalization, out-of-SSA, allocation liveness, the
 shared allocator, and spill/reload. Call lowering cannot bypass those stages or
