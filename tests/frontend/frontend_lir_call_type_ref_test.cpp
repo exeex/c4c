@@ -1581,9 +1581,21 @@ int read_counter_again(void) { return g_counter; }
       require_function(lowered, "read_counter_again");
   const std::vector<lir::LirLoadOp*> again_loads = loads_in(read_again);
   expect_true(again_loads.size() == 1 && again_loads[0]->result.value_id() &&
-                  *again_loads[0]->result.value_id() ==
-                      *counter_loads[0]->result.value_id(),
-              "the same numeric load ID should remain legal in separate functions");
+                  again_loads[0]->result.value_id()->valid() &&
+                  *again_loads[0]->result.value_id() !=
+                      *counter_loads[0]->result.value_id() &&
+                  *again_loads[0]->result.value_id() !=
+                      *pair_loads[0]->result.value_id() &&
+                  *again_loads[0]->result.value_id() !=
+                      *pair_loads[1]->result.value_id(),
+              "separately lowered functions must receive distinct module-wide native load IDs");
+  expect_eq(again_loads[0]->result.str(), "%t0",
+            "separate lowering should preserve the current function result display");
+  expect_eq(again_loads[0]->type_str.str(), "i32",
+            "separate lowering should preserve the current function load type");
+  expect_eq(lowered.link_names.spelling(*again_loads[0]->ptr.link_name_id()),
+            "g_counter",
+            "separate lowering should retain the current function selected global");
   lir::verify_module(lowered);
 
   lir::LirModule misleading;
