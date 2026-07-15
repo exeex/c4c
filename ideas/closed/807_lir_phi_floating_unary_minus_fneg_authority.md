@@ -1,6 +1,6 @@
 # LIR PHI Floating Unary-Minus `fneg` Authority
 
-Status: Open
+Status: Closed
 Type: bounded PHI producer-handoff successor
 Blocked Parent: `ideas/open/806_lir_phi_residual_producer_family_authority_trace.md`
 
@@ -56,29 +56,24 @@ handoff.
 - Reject weakening PHI verification or accepting missing, foreign, stale, or
   unknown native authority merely to make `ieee/pr50310.c` pass.
 
-## Resumption Record: ternary PHI-incoming operand-authority blocker
+## Completion Record
 
-Last accepted progress: Step 1 established the bounded floating
-`UnaryOp::Minus` / `fneg` producer route and selected the nearby focused
-coverage direction. No 807 implementation slice is accepted or committed.
+Disposition: capability complete.
 
-Interrupted step: Step 2, `Publish native authority for the `fneg` result`.
+- Step 1 bounded the route to the scalar floating `UnaryOp::Minus` / `fneg`
+  producer handoff. The intervening ternary PHI-incoming consumer authority
+  blocker was separately completed in `6cf72bd9e`; it did not expand this
+  source's scope.
+- Step 2 is accepted in `8f31e2535` (`Publish floating fneg PHI authority`):
+  the scalar floating-minus producer uses `fresh_value(ctx)` so its `fneg`
+  result carries the checked current-function `LirValueId`. Nearby positive
+  and malformed-authority coverage exercise the unchanged verifier contract.
+- Step 3 acceptance evidence: fresh `cmake --build --preset default`; focused
+  `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`;
+  and the matching `test_before.log`/`test_after.log` monotonic guard accepted
+  with `--allow-non-decreasing-passed` because this CTest scope is one binary
+  containing the added coverage cases.
 
-Blocking evidence: the scoped, unaccepted change from `fresh_tmp(ctx)` to
-`fresh_value(ctx)` in `src/codegen/lir/hir_to_lir/expr/misc.cpp` gives the
-`fneg` result a native `LirValueId{1}` for `condition ? -input : 0.0`, but the
-matching `%t6` PHI incoming is recreated without `value_id`. The authority is
-therefore lost in ternary lowering's PHI-incoming construction, not at the
-floating-minus producer. A fresh `cmake --build --preset default` succeeds;
-the focused `frontend_lir_call_type_ref` CTest fails only the temporary
-positive assertion, and those temporary test edits were removed.
-
-This handoff is out of 807 scope because 807 explicitly excludes ternary/
-PHI-consumer changes. It is owned first by
-`ideas/open/809_lir_ternary_phi_incoming_operand_authority_handoff.md`.
-
-Return point after blocker: resume 807 Step 2 with the existing scoped
-`misc.cpp` hunk retained; add the floating-`fneg` positive and
-malformed-authority coverage, then run the focused proof. Do not claim 807
-acceptance, create a commit, or clear the 806/804 full-baseline gate until
-that route completes.
+This closure does not clear 806 or 804. 806 remains parked at Step 3,
+*Prove the blocker and return to 804*, pending the separately scoped 808
+scalar bit-not `xor` route and the required follow-on 100% full baseline.
