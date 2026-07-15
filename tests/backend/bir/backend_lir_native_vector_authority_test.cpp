@@ -43,7 +43,12 @@ lir::LirNativeVectorAuthority authority(c4c::LinkNameId owner, lir::LirValueId r
       .second_vector_shape = second ? std::optional(vector_shape()) : std::nullopt,
       .index = std::move(index),
   };
-  if (second) value.mask_lanes.assign(4, {});
+  if (second) {
+    value.mask_lanes.assign(4, {
+                                   .kind = lir::LirShuffleMaskLane::Kind::Selected,
+                                   .selected_lane = 0,
+                               });
+  }
   return value;
 }
 
@@ -206,20 +211,26 @@ void test_native_vector_authority_verifier_boundary() {
       .mask_type = lir::LirTypeRef("<5 x i32>");
   expect_rejected(std::move(incoherent_mask_mirror), "shuffle carrier must reject an incoherent mask mirror");
 
-  auto selected_mask_lane = vector_authority_module();
-  std::get<lir::LirShuffleVectorOp>(selected_mask_lane.functions[0].blocks[0].insts[2])
+  auto raw_mask_token = vector_authority_module();
+  std::get<lir::LirShuffleVectorOp>(raw_mask_token.functions[0].blocks[0].insts[2])
+      .mask = lir::LirOperand::raw("zeroinitializer");
+  expect_rejected(std::move(raw_mask_token),
+                  "zero-initializer shuffle mask must reject an unstructured mask token");
+
+  auto inactive_mask_lane = vector_authority_module();
+  std::get<lir::LirShuffleVectorOp>(inactive_mask_lane.functions[0].blocks[0].insts[2])
       .native_vector_authority->mask_lanes[0] = {
-          .kind = lir::LirShuffleMaskLane::Kind::Selected,
+          .kind = lir::LirShuffleMaskLane::Kind::Inactive,
           .selected_lane = 0,
       };
-  expect_rejected(std::move(selected_mask_lane),
-                  "zero-initializer shuffle mask must reject selected native lanes");
+  expect_rejected(std::move(inactive_mask_lane),
+                  "zero-initializer shuffle mask must reject inactive native lanes");
 
-  auto inactive_mask_lane_payload = vector_authority_module();
-  std::get<lir::LirShuffleVectorOp>(inactive_mask_lane_payload.functions[0].blocks[0].insts[2])
+  auto selected_mask_lane_payload = vector_authority_module();
+  std::get<lir::LirShuffleVectorOp>(selected_mask_lane_payload.functions[0].blocks[0].insts[2])
       .native_vector_authority->mask_lanes[0].selected_lane = 1;
-  expect_rejected(std::move(inactive_mask_lane_payload),
-                  "zero-initializer shuffle mask must reject inactive native lane payloads");
+  expect_rejected(std::move(selected_mask_lane_payload),
+                  "zero-initializer shuffle mask must reject nonzero native lane payloads");
 
   auto invalid_mask_lane_kind = vector_authority_module();
   std::get<lir::LirShuffleVectorOp>(invalid_mask_lane_kind.functions[0].blocks[0].insts[2])

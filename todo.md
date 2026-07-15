@@ -8,45 +8,33 @@ Current Step Title: Repair and cover bounded mask-lane coherence
 
 ## Just Finished
 
-Step 2 diagnostic action completed: the delegated LLVM-path command,
-`./build/c4cll --codegen llvm tests/c/external/gcc_torture/src/scal-to-vec1.c
--o /tmp/scal-to-vec1.ll`, reproduces the verifier failure before emission.
-Both scalar-to-vector splat constructors in
-`src/codegen/lir/hir_to_lir/expr/binary.cpp` (the vector-result and ordinary
-binary paths) construct `mask_lanes` with `std::vector<LirShuffleMaskLane>(lanes)`.
-That value-initializes every lane as `{kind = Inactive, selected_lane = 0}`.
-
-The concrete mismatch is `kind`: LLVM `shufflevector ... zeroinitializer`
-uses an all-zero integer mask, so each output lane selects first-vector lane
-0; its coherent native value is `{kind = Selected, selected_lane = 0}`, not
-an inactive lane. `0d8e74852` instead made the verifier require `Inactive, 0`,
-so it rejects the actual structured carrier. The unit fixture shares that
-incorrect default and is not representative of the semantic mask.
+Step 2 repair completed: both existing scalar-to-vector splat constructors in
+`src/codegen/lir/hir_to_lir/expr/binary.cpp` now publish one structured
+`{Selected, 0}` lane per output lane and an explicit native
+`ZeroInitializer` token, while retaining the `zeroinitializer` display mirror.
+The verifier now demands that exact selected-zero contract. Nearby
+`backend_lir_native_vector_authority` coverage accepts the valid carrier and
+rejects missing lanes, bad count/type mirror, unstructured mask token,
+inactive lanes, nonzero selected payloads, and invalid lane kinds. The actual
+`scal-to-vec1.c` LLVM route reaches emission and retains its zero-initializer
+shuffle display.
 
 ## Suggested Next
 
-Implement the bounded Step 2 coherence repair at the existing scalar-splat
-construction seam: publish one `{Selected, 0}` `LirShuffleMaskLane` per lane
-in both duplicate splat emitters in `binary.cpp`, and make the zero-mask
-verifier require that exact structured value. Update nearby coverage so the
-valid fixture and malformed cases use the same selected-zero contract, with a
-representative `scal-to-vec1.c` lowering-path test.
+Supervisor-owned Step 3: perform the blocker-handoff proof and return
+decision, including the required fresh full-baseline acceptance before any
+parent reactivation.
 
 ## Watchouts
 
-Do not describe `zeroinitializer` as an inactive shuffle mask: it is the
-display mirror for a vector of integer zero selection indices. Preserve
-fail-closed rejection for wrong lane count, wrong mask type/token, inactive
-lanes, nonzero selected payloads, and invalid enum values. This remains a
-structured carrier repair only; it introduces no text recovery or shuffle-row
-semantic selection.
+`zeroinitializer` is the display mirror for a vector of zero selection
+indices; it must also retain native `ZeroInitializer` authority. This remains
+a structured carrier repair only: no text recovery or shuffle-row semantics.
 
 ## Proof
 
-No build or test proof was delegated for this diagnostic-only packet, and no
-canonical regression log was written. Reproduction/observation only:
+Passed: `cmake --build --preset default`; representative route:
 `./build/c4cll --codegen llvm tests/c/external/gcc_torture/src/scal-to-vec1.c
--o /tmp/scal-to-vec1.ll` failed with
-`LirShuffleVectorOp.native_vector_authority.mask_lanes: must mirror the
-structured shuffle mask`. The implementation packet must receive its exact
-fresh-build and focused-proof command from the supervisor.
+-o /tmp/scal-to-vec1.ll`; and delegated matching proof:
+`ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log
+2>&1` (6/6 passed). Proof log: `test_after.log`.

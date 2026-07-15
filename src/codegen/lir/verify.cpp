@@ -2727,7 +2727,7 @@ void verify_function_value_ownership(const LirModule& mod,
            std::any_of(op->native_vector_authority->mask_lanes.begin(),
                        op->native_vector_authority->mask_lanes.end(),
                        [](const LirShuffleMaskLane& lane) {
-                         return lane.kind != LirShuffleMaskLane::Kind::Inactive || lane.selected_lane != 0;
+                         return lane.kind != LirShuffleMaskLane::Kind::Selected || lane.selected_lane != 0;
                        })))
         fail_verify("LirShuffleVectorOp.native_vector_authority.mask_lanes", "must mirror the structured shuffle mask");
     }
