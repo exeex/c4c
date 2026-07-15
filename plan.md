@@ -1,81 +1,79 @@
-# LIR Ternary PHI-Incoming Operand-Authority Handoff Runbook
+# LIR PHI Floating Unary-Minus `fneg` Authority Runbook
 
 Status: Active
-Source Idea: ideas/open/809_lir_ternary_phi_incoming_operand_authority_handoff.md
-Activated from: 807 Step 2 blocker; 807 is parked for resumption after this
-returned-operand authority handoff is resolved.
+Source Idea: ideas/open/807_lir_phi_floating_unary_minus_fneg_authority.md
+Activated from: 806 Step 3 full-baseline gate; 806 is parked for resumption
+after 807 and 808 resolve their separately scoped producer families.
 
 ## Purpose
 
-Repair the narrow ternary lowering seam that drops a returned operand's native
-value authority while constructing a PHI incoming.
+Repair the one traced floating unary-minus `fneg` result-authority handoff
+that reaches a PHI incoming in `ieee/pr50310.c`.
 
 ## Core Rule
 
-Retain/pass the returned `LirOperand` native ID at the ternary PHI-incoming
-construction seam. Keep producer creation and the existing PHI verifier
-contract unchanged.
+The producer result must carry a native checked current-function `LirValueId`.
+Keep the existing PHI verifier contract; do not recover authority from display
+text or move the repair to a PHI or ternary consumer.
 
 ## Read First
 
-- `ideas/open/809_lir_ternary_phi_incoming_operand_authority_handoff.md`
 - `ideas/open/807_lir_phi_floating_unary_minus_fneg_authority.md`
-- ternary lowering and its `LirPhiOp::incoming` construction
-- `src/codegen/lir/hir_to_lir/expr/misc.cpp` only as the parked 807 producer
-  evidence; do not edit it for this blocker
+- `ideas/open/806_lir_phi_residual_producer_family_authority_trace.md`
+- `src/codegen/lir/hir_to_lir/expr/misc.cpp` floating `UnaryOp::Minus` branch
+- `review/806_step1_phi_producer_trace.md`
 
 ## Non-Goals
 
-- `fneg` or any other producer creation, unary-family work, postfix, scalar
-  bit-not, PHI schema/verifier changes, CFG/edge semantics, Raw-BIR, or text
-  identity recovery.
+- Postfix old-value authority, scalar-integer-minus `sub`, scalar bit-not
+  `xor`, other unary operators, generic provenance, and PHI/CFG semantics.
+- Rendered `%t` recovery, testcase-name paths, or expectation downgrades.
 
 ## Ordered Steps
 
-### Step 1 - Trace the returned-operand to PHI-incoming construction seam
+### Step 1 - Reconfirm the bounded floating-minus handoff and choose coverage
 
-Goal: locate the exact ternary lowering construction that recreates `%t6`
-without the returned operand's native ID and choose nearby preservation and
-rejection coverage.
-
-Actions:
-
-- Reproduce `condition ? -input : 0.0` using the existing unaccepted 807
-  producer hunk as evidence, without accepting or expanding that hunk.
-- Trace the returned `LirOperand` through ternary lowering into
-  `LirPhiOp::incoming` and identify the field/constructor boundary where
-  `value_id` is omitted.
-- Identify nearest coverage that proves native-ID preservation and retains
-  missing, unknown, foreign, and stale rejection under the existing verifier.
-
-Completion check: the single incoming-construction seam and focused coverage
-targets are recorded, with no producer or verifier change proposed.
-
-### Step 2 - Retain returned operand authority in ternary PHI construction
-
-Goal: make the smallest construction-side change that preserves native
-authority on the PHI incoming.
+Goal: verify the `fneg` producer-to-PHI authority route and select nearby
+positive and malformed-authority coverage before changing code.
 
 Actions:
 
-- Pass/retain the returned `LirOperand` ID when constructing the ternary PHI
-  incoming.
-- Add only nearby preservation and rejection coverage required for this seam.
-- Do not edit producer creation, PHI schema, or verification rules.
+- Reproduce `ieee/pr50310.c` narrowly and trace the returned `fneg` operand
+  from floating `UnaryOp::Minus` lowering to the PHI incoming construction.
+- Confirm the `fresh_tmp(ctx)` result lacks the native ID required by the
+  existing current-function verifier and that this is distinct from 804/806.
+- Identify a nearby same-family positive check and a malformed-authority check
+  that exercise the existing verifier contract.
 
-Completion check: valid returned operands retain their IDs at the incoming and
-all existing malformed-authority rejection categories remain rejected.
+Completion check: the exact producer handoff and focused coverage targets are
+recorded without expanding to another unary or residual producer family.
 
-### Step 3 - Prove the blocker and return to 807
+### Step 2 - Publish native authority for the `fneg` result
 
-Goal: obtain accepted focused proof and make 807's exact continuation clear.
+Goal: make the floating-minus producer return a checked current-function
+`LirValueId` while preserving existing verifier behavior.
 
 Actions:
 
-- Run the fresh build and focused same-feature proof selected by the
-  supervisor.
-- Record accepted blocker evidence and return control to 807 Step 2 for its
-  parked `fneg` hunk and producer-family coverage.
+- Apply the smallest change at the traced floating `UnaryOp::Minus` lowering
+  handoff.
+- Add nearby same-family positive and malformed-authority coverage.
+- Keep missing, unknown, foreign, and stale authority rejected; do not change
+  PHI schema, verifier, ternary lowering, or text identity behavior.
 
-Completion check: blocker proof is accepted and 807 can resume at its recorded
-Step 2 return point without reconstructing this diagnosis.
+Completion check: valid floating-minus PHI input carries native authority and
+the focused positive plus malformed cases pass.
+
+### Step 3 - Prove the focused successor and hand off the parent gate
+
+Goal: provide accepted focused proof for 807 and preserve the remaining
+full-baseline sequence.
+
+Actions:
+
+- Obtain a fresh build and focused same-feature proof.
+- Have the supervisor accept the focused evidence and record any remaining
+  808/full-baseline dependency without claiming 806 or 804 clearance.
+
+Completion check: 807 has accepted focused proof; 806 remains parked at Step
+3 until 808 and the required follow-on full baseline are resolved.

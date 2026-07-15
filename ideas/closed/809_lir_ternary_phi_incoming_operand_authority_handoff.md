@@ -56,3 +56,27 @@ contract intact.
   pass a positive ternary case.
 - Reject broad ternary/CFG/PHI rewrites outside the returned-operand to
   incoming-construction seam, or coverage that proves only one named fixture.
+
+## Closure Record
+
+Disposition: capability complete.
+
+Accepted implementation evidence: commit `6cf72bd9e` (`lir: retain ternary
+phi operand authority`) retains a returned operand's native ID at the ternary
+PHI-incoming construction seam and adds stale-authority rejection coverage;
+the existing missing, unknown, and foreign rejection cases remain intact.
+No producer, PHI schema, or verifier contract changed.
+
+Accepted proof: fresh `cmake --build --preset default` passed (warnings only).
+The exact focused before/after command `ctest --test-dir build -j
+--output-on-failure -R '^frontend_lir_call_type_ref$'` passed, its monotonic
+guard ran with `--allow-non-decreasing-passed`, and broader `ctest --test-dir
+build -j --output-on-failure -R '^backend_'` passed 5/5. Canonical evidence is
+in supervisor-owned `test_before.log` and `test_after.log`.
+
+Parent handoff: resume
+`ideas/open/807_lir_phi_floating_unary_minus_fneg_authority.md` at Step 2,
+`Publish native authority for the `fneg` result`, retaining its existing
+uncommitted `src/codegen/lir/hir_to_lir/expr/misc.cpp` `fresh_value(ctx)` hunk.
+807 owns its producer-family coverage and acceptance; this closure does not
+claim that parent work complete.
