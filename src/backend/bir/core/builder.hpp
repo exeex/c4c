@@ -173,6 +173,16 @@ struct LocalLoadAuthoritySpec {
   bool live = false;
 };
 
+struct LocalStoreAuthoritySpec {
+  SourceValueId pointer_definition{};
+  SourceObjectId object{};
+  LinkNameId owner{};
+  Type pointer_type{TypeKind::Pointer};
+  Type stored_type{};
+  std::int64_t immediate = 0;
+  bool live = false;
+};
+
 struct GetElementPtrSpec {
   GetElementPtrBase base{};
   Type element_type{};
@@ -364,6 +374,8 @@ class FunctionBuilder {
   Result<BuildResult, BuildError> append(BlockId block, LoadSpec spec);
   Result<BuildResult, BuildError> append(BlockId block,
                                          LocalLoadAuthoritySpec spec);
+  Result<BuildResult, BuildError> append(BlockId block,
+                                         LocalStoreAuthoritySpec spec);
   Result<BuildResult, BuildError> append(BlockId block,
                                          GetElementPtrSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, AbsSpec spec);

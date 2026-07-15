@@ -2544,6 +2544,25 @@ Result<void, ImportError> validate_function(const LirModule& module,
             inline_asm_results.count(source->value) != 0 &&
             source_values.find(source->value) != source_values.end() &&
             source_values.at(source->value) == *type;
+        const auto* authority = store->local_object_authority
+            ? &*store->local_object_authority : nullptr;
+        const auto* pointer = store->ptr.value_id();
+        const auto pointer_type = authority ? lower_lir_type(module, authority->pointer_type)
+                                             : std::optional<Type>{};
+        const auto pointee_type = authority ? lower_lir_type(module, authority->pointee_type)
+                                             : std::optional<Type>{};
+        const bool local_store = store->requires_native_store_authority && authority && type &&
+            is_integer_type(*type) && store->type_str.kind() == codegen::lir::LirTypeKind::Integer &&
+            immediate && store->type_str.integer_bit_width() &&
+            integer_immediate_representable(immediate->value, *store->type_str.integer_bit_width()) &&
+            store->ptr.kind() == codegen::lir::LirOperandKind::SsaValue && pointer && pointer->valid() &&
+            authority->pointer_definition == *pointer && authority->object.valid() &&
+            authority->owner == function.link_name_id && pointer_type &&
+            *pointer_type == Type{TypeKind::Pointer} && pointee_type && *pointee_type == *type && authority->live;
+        if (local_store) continue;
+        if (store->requires_native_store_authority || authority)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                            "local store authority must form the one selected native local-scalar store shape");
         if (!type || !is_integer_type(*type) ||
             store->type_str.kind() !=
                 codegen::lir::LirTypeKind::Integer ||
@@ -3859,6 +3878,22 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
               }
               if (const auto* store = std::get_if<LirStoreOp>(&instruction)) {
                 const Type type = *lower_lir_type(module, store->type_str);
+                if (store->requires_native_store_authority) {
+                  const auto& authority = *store->local_object_authority;
+                  const auto owner = imported_link_names.find(authority.owner);
+                  if (owner == imported_link_names.end()) {
+                    edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                        "validated local store authority owner disappeared from imported name identities"};
+                    return Result<void, BuildError>::failure(BuildError::InvalidNameId);
+                  }
+                  auto appended = function_builder.append(blocks.at(block.id.value), LocalStoreAuthoritySpec{
+                      SourceValueId{function_ids[function_index], authority.pointer_definition.value},
+                      SourceObjectId{function_ids[function_index], authority.object.value}, owner->second,
+                      Type{TypeKind::Pointer}, type, store->val.integer_immediate()->value, authority.live});
+                  if (!appended) { edit_error = builder_failure(name, block.label, "append local store authority", appended.error());
+                    return Result<void, BuildError>::failure(appended.error()); }
+                  continue;
+                }
                 ValueId stored_value{};
                 if (const auto* immediate = store->val.integer_immediate()) {
                   auto reserved = function_builder.reserve_value(type);

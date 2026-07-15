@@ -28,6 +28,9 @@ class InstView {
   const LocalLoadAuthorityNode* local_load_authority() const noexcept {
     return std::get_if<LocalLoadAuthorityNode>(&data_->payload);
   }
+  const LocalStoreAuthorityNode* local_store_authority() const noexcept {
+    return std::get_if<LocalStoreAuthorityNode>(&data_->payload);
+  }
   const GetElementPtrNode* get_element_ptr() const noexcept {
     return std::get_if<GetElementPtrNode>(&data_->payload);
   }

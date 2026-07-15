@@ -11899,6 +11899,12 @@ void test_selected_hoisted_alloca_authority_receipt_and_rejections() {
       lir::LirCurrentFunctionLocalObjectPointer{
           lir::LirValueId{41}, lir::LirObjectId{7}, owner,
           lir::LirTypeRef(lir::LirBuiltinType::Pointer), lir::LirTypeRef::integer(32), true}});
+  function.blocks[0].insts.push_back(lir::LirStoreOp{
+      lir::LirTypeRef::integer(32), lir::LirOperand::integer("misleading", 7),
+      lir::LirOperand::ssa("%misleading.store.pointer", lir::LirValueId{41}),
+      lir::LirCurrentFunctionLocalObjectPointer{
+          lir::LirValueId{41}, lir::LirObjectId{7}, owner,
+          lir::LirTypeRef(lir::LirBuiltinType::Pointer), lir::LirTypeRef::integer(32), true}, true});
   module.functions.push_back(function);
   const auto& source_alloca = std::get<lir::LirAllocaOp>(module.functions[0].alloca_insts[0]);
   expect(source_alloca.count.str().empty() && source_alloca.result.value_id() &&
@@ -11923,6 +11929,23 @@ void test_selected_hoisted_alloca_authority_receipt_and_rejections() {
              alloca->pointee_type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
              alloca->live,
          "Raw BIR alloca receipt must retain only typed result and local-object authority");
+  const auto local_store = function_view.instruction(entry_insts[1]).value().local_store_authority();
+  expect(local_store && local_store->pointer_definition == bir::SourceValueId{function_view.id(), 41} &&
+             local_store->object.owner == function_view.id() && local_store->object.value == 7 &&
+             local_store->stored_type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+             local_store->immediate == 7 && local_store->live,
+         "Raw BIR local store receipt must retain typed immediate and local-object authority");
+
+  auto invalid_store_immediate = module;
+  std::get<lir::LirStoreOp>(invalid_store_immediate.functions[0].blocks[0].insts[0]).val =
+      lir::LirOperand::raw("7");
+  expect(!bir::lower_lir_to_raw_bir(invalid_store_immediate).has_value(),
+         "raw selected local store value must reject transactionally");
+  auto invalid_store_type = module;
+  std::get<lir::LirStoreOp>(invalid_store_type.functions[0].blocks[0].insts[0]).type_str =
+      lir::LirTypeRef::integer(64);
+  expect(!bir::lower_lir_to_raw_bir(invalid_store_type).has_value(),
+         "mismatched selected local store type must reject transactionally");
 
   auto missing_definition = module;
   std::get<lir::LirAllocaOp>(missing_definition.functions[0].alloca_insts[0])

@@ -1122,6 +1122,46 @@ Result<BuildResult, BuildError> FunctionBuilder::append(
 }
 
 Result<BuildResult, BuildError> FunctionBuilder::append(
+    BlockId block, LocalStoreAuthoritySpec spec) {
+  auto function = mutable_function();
+  if (!function) return Result<BuildResult, BuildError>::failure(function.error());
+  if (!same_owner(function_, block) || !spec.pointer_definition.valid() || !spec.object.valid() ||
+      spec.pointer_definition.owner != function_ || spec.object.owner != function_ || !spec.owner.valid() ||
+      spec.owner.epoch != parent_->data_->epoch_ || spec.owner.slot >= parent_->data_->link_names_.size() ||
+      spec.pointer_type != Type{TypeKind::Pointer} || !is_well_formed(spec.stored_type) ||
+      !integer_type(spec.stored_type) || !spec.live)
+    return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  auto& data = function.value().get();
+  if (!data.blocks_.contains(function_, block)) return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
+  const auto pointer = data.values_by_source_id_.find(spec.pointer_definition.value);
+  if (pointer == data.values_by_source_id_.end()) return Result<BuildResult, BuildError>::failure(BuildError::InvalidSourceValueId);
+  const auto pointer_def = data.values_.get(function_, pointer->second);
+  const auto* result = pointer_def ? std::get_if<InstResultDef>(&pointer_def.value().get().definition) : nullptr;
+  const auto pointer_inst = result ? data.insts_.get(function_, result->instruction)
+      : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(ResolveError::OutOfRange);
+  const auto* alloca = pointer_inst ? std::get_if<AllocaAuthorityNode>(&pointer_inst.value().get().payload) : nullptr;
+  if (!pointer_def || pointer_def.value().get().type != spec.pointer_type || !alloca ||
+      alloca->pointer_definition != spec.pointer_definition || alloca->object.owner != spec.object.owner ||
+      alloca->object.value != spec.object.value || alloca->owner != spec.owner ||
+      alloca->pointee_type != spec.stored_type || !alloca->live)
+    return Result<BuildResult, BuildError>::failure(BuildError::DefinitionTypeMismatch);
+  detail::InstData instruction;
+  instruction.opcode = Opcode::Store;
+  instruction.payload = LocalStoreAuthorityNode{spec.pointer_definition, spec.object, spec.owner,
+      spec.pointer_type, spec.stored_type, spec.immediate, spec.live};
+  instruction.operands = {pointer->second};
+  auto inserted = data.insts_.emplace(function_, std::move(instruction));
+  if (!inserted) return Result<BuildResult, BuildError>::failure(storage_error(inserted.error()));
+  const auto id = inserted.value();
+  auto block_data = data.blocks_.get_mut(function_, block);
+  if (!block_data || !block_data.value().get().instruction_order_.append(id)) {
+    data.insts_.erase(function_, id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  return Result<BuildResult, BuildError>::success(BuildResult{id, {}});
+}
+
+Result<BuildResult, BuildError> FunctionBuilder::append(
     BlockId block, GetElementPtrSpec spec) {
   auto function = mutable_function();
   if (!function)

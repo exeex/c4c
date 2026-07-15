@@ -175,6 +175,16 @@ struct StoreNode {
   Type stored_type{};
 };
 
+struct LocalStoreAuthorityNode {
+  SourceValueId pointer_definition{};
+  SourceObjectId object{};
+  LinkNameId owner{};
+  Type pointer_type{TypeKind::Pointer};
+  Type stored_type{};
+  std::int64_t immediate = 0;
+  bool live = false;
+};
+
 struct LoadNode {
   GlobalObjectId source{};
   Type loaded_type{};
@@ -312,7 +322,7 @@ using InstPayload =
     std::variant<InlineAsmNode, StoreNode, LoadNode, GetElementPtrNode,
     AbsNode, CallNode, BinaryNode, CompareNode, SelectNode, SelectedMemcpyNode,
     IntrinsicCallNode, CastNode, PhiNode, AllocaAuthorityNode,
-    LocalLoadAuthorityNode>;
+    LocalLoadAuthorityNode, LocalStoreAuthorityNode>;
 
 class BlockView;
 class FunctionView;

@@ -8,21 +8,25 @@ Current Step Title: Receive the selected direct local-scalar LirStoreOp authorit
 
 ## Just Finished
 
-- Closed 790 after accepted `727949c9c` and resumed 734 at Step 7.28 to receive
-  the one documented direct local-scalar declaration store authority.
+- Step 7.28 received the one selected native integer-immediate local scalar
+  declaration `LirStoreOp` into typed Raw-BIR with pointer/object/owner/type/
+  liveness validation, reachable verifier coverage, and transactional
+  malformed cases.
 
 ## Suggested Next
 
-- Execute Step 7.28 only from the published native store authority contract.
+- Supervisor selects the next lifecycle action after this completed receiver
+  slice.
 
 ## Watchouts
 
-- Do not derive semantics from presentation. Assignment/SSA/pointer/aggregate/
-  vector/array/VLA stores, GEP, later loads, and every later family remain out
-  of scope and fail-closed.
+- Only the selected declaration immediate store is admitted. Presentation is
+  nonsemantic; assignment/SSA/pointer/aggregate/vector/array/VLA stores, GEP,
+  later loads, and every later family remain fail-closed.
 
 ## Proof
 
-- Closed 790 producer proof: fresh build plus `^frontend_lir_call_type_ref$`
-  passed 1/1 with a matching non-decreasing canonical guard. First obtain a
-  fresh receiver build and narrow proof; supervisor owns broader acceptance.
+- `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_'` passed 5/5. Output is preserved in
+  `test_after.log`; supervisor owns broader acceptance and canonical regression
+  comparison.

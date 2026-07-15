@@ -66,7 +66,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
     case Opcode::InlineAsm:
       return std::holds_alternative<InlineAsmNode>(instruction.payload);
     case Opcode::Store:
-      return std::holds_alternative<StoreNode>(instruction.payload);
+      return std::holds_alternative<StoreNode>(instruction.payload) ||
+             std::holds_alternative<LocalStoreAuthorityNode>(instruction.payload);
     case Opcode::Load:
       return std::holds_alternative<LoadNode>(instruction.payload) ||
              std::holds_alternative<LocalLoadAuthorityNode>(instruction.payload);
@@ -736,6 +737,28 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           report(result, VerificationRule::ValueDefinition, function_id,
                  inst_id,
                  "store must have one typed integer value use, no results, and one exact global destination");
+      }
+      if (const auto* store = std::get_if<LocalStoreAuthorityNode>(&instruction.payload)) {
+        const ValueDef* pointer = nullptr;
+        if (instruction.operands.size() == 1) {
+          const auto resolved = function.values_.get(function_id, instruction.operands[0]);
+          if (resolved) pointer = &resolved.value().get();
+        }
+        const auto* pointer_result = pointer ? std::get_if<InstResultDef>(&pointer->definition) : nullptr;
+        const auto pointer_inst = pointer_result ? function.insts_.get(function_id, pointer_result->instruction)
+            : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(ResolveError::OutOfRange);
+        const auto* alloca = pointer_inst ? std::get_if<AllocaAuthorityNode>(&pointer_inst.value().get().payload) : nullptr;
+        const bool owner = store->owner.valid() && store->owner.epoch == module.epoch_ && store->owner.slot < module.link_names_.size();
+        const bool exact = instruction.results.empty() && store->pointer_definition.valid() && store->object.valid() &&
+            store->pointer_definition.owner == function_id && store->object.owner == function_id && owner &&
+            store->pointer_type == Type{TypeKind::Pointer} && is_well_formed(store->stored_type) &&
+            integer_type(store->stored_type) && store->live && pointer &&
+            pointer->source_id == store->pointer_definition && pointer->type == store->pointer_type && alloca &&
+            alloca->pointer_definition == store->pointer_definition && alloca->object.owner == store->object.owner &&
+            alloca->object.value == store->object.value && alloca->owner == store->owner &&
+            alloca->pointee_type == store->stored_type && alloca->live;
+        if (!exact) report(result, VerificationRule::ValueDefinition, function_id, inst_id,
+                           "local store must retain one live typed current-function pointer/object authority and native immediate");
       }
       if (const auto* load = std::get_if<LoadNode>(&instruction.payload)) {
         const bool source_resolves =
