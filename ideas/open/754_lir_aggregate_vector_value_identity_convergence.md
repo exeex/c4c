@@ -224,3 +224,21 @@ PHI work.
   vector row idea; that prerequisite belongs to 798.
 - Reject expectation weakening, named-case-only behavior, or accepting the
   reverted prototype as structured-authority progress.
+
+## Resumption Update: accepted 801 native-layout handoff
+
+801 is capability-complete and has published its accepted Step 2--3 native
+anonymous aggregate layout handoff. For the selected direct-complex carrier,
+the callee signature, `arg_type_refs`, and `structured_args` structurally share
+one checked `{ float, float }` layout with ordered `float`, `float` fields;
+malformed or incoherent native structured `LirCallOp` carriers reject fail
+closed. Its fresh focused proof
+`cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^(frontend_hir_tests|frontend_lir_call_type_ref|frontend_lir_function_signature_type_ref)$'`
+passed 3/3.
+
+Resume unchanged at Step 3, `Verify row-specific index or mask facts`. Consume
+only those native field-layout/type facts to validate the selected
+`LirExtractValueOp` field/index/result coherence. Do not repeat Steps 1--2,
+claim 801 as extractvalue-row validation, widen to other rows, or recover any
+fact from display text.

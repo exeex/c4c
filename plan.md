@@ -1,86 +1,85 @@
-# LIR Anonymous Aggregate Layout Type Facts Runbook
+# LIR Aggregate and Vector Value Identity Convergence Runbook
 
 Status: Active
-Source Idea: ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md
-Resumed from: accepted 796 bounded cast-result recurrence return; unchanged
-Step 2.
+Source Idea: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
+Resumed from: accepted 801 native anonymous aggregate layout/type-fact handoff;
+unchanged Step 3. Steps 1--2 are accepted and must not be repeated.
 
 ## Purpose
 
-Provide native anonymous aggregate field-layout/type facts needed by the
-selected extractvalue row without letting compatibility text become authority.
+Publish native structured value, type, index, and mask authority for bounded
+aggregate and vector LIR operations. Rendered `%t` spellings remain output only
+and cannot recover semantic identity.
 
 ## Core Rule
 
-Native structured field facts are authority. `LirTypeRef` rendering may mirror
-an anonymous aggregate but must not be parsed to create or repair its layout.
+Use checked current-function structured IDs and row-specific typed facts as
+authority. For the selected direct-complex extract, consume 801's native
+anonymous `{ float, float }` layout, never compatibility text, instruction
+order, or testcase naming.
 
 ## Read First
 
-- `ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md`
-- `ideas/open/796_lir_instruction_terminator_residual_authority_handoff.md`
-- `ideas/closed/810_lir_gep_producer_result_authority_baseline_blocker.md`
-- `ideas/closed/802_lir_switch_selector_type_reference_verifier.md`
 - `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`
-- direct-complex aggregate lowering plus nearby focused tests
+- `ideas/closed/801_lir_anonymous_aggregate_layout_type_facts.md`
+- `ideas/closed/798_lir_operand_provenance_authority_publication.md`
+- `ideas/closed/803_lir_aggregate_ssa_producer_authority_publication.md`
+- `src/codegen/lir/ir.hpp`, `src/codegen/lir/verify.cpp`, and aggregate
+  lowering plus nearby focused tests
 
 ## Non-Goals
 
-- `LirExtractValueOp` result/use/index/result-type row validation.
-- Reopening accepted 796 cast-result, 810 GEP, or 802 selector verifier work.
-- Raw-BIR, other aggregate/vector rows, broad type rewrite, lowering, MIR,
-  emission, and all text-derived layout recovery.
+- Repeating Steps 1--2, reopening 798/803/801, or generalizing to other
+  aggregate/vector rows.
+- Raw-BIR, CFG/PHI, target lowering, MIR, emission, or any text-derived
+  identity/layout recovery.
+- Weakening existing result/use/layout contracts or accepting named-case-only
+  coverage as semantic progress.
 
 ## Ordered Steps
 
-### Step 1 - Trace and select anonymous aggregate layout facts (accepted)
+### Step 1 - Audit and select one aggregate/vector authority row — complete
 
-Goal: identify the exact anonymous aggregate construction and verification
-boundary and select the smallest checked native field-layout carrier.
+Accepted in `d8e5ed3a8`: select only `LirExtractValueOp`; retain all other
+aggregate/vector rows fail-closed. Do not repeat this audit.
 
-Completion check: accepted in `827dae5bd3`; one bounded native layout contract
-is explicit and no compatibility-text parsing or extractvalue-row work is
-selected.
+### Step 2 - Publish structured result and operand authority — complete
 
-### Step 2 - Repair anonymous layout / structured-call compatibility (accepted)
+Accepted in `da07100d0` with the recorded prerequisite returns. The selected
+direct-complex extract publishes/consumes checked native result and aggregate
+authority. Do not reopen this step while performing Step 3.
 
-Goal: evaluate and repair the preserved anonymous-layout implementation so
-native ordered field facts remain checked without making a direct-complex
-`LirCallOp`'s structured callee signature or argument type mirror disagree
-with its call arguments.
+### Step 3 - Verify row-specific index or mask facts
+
+Goal: validate only the selected `LirExtractValueOp` aggregate field/index and
+result-element coherence at the verifier boundary.
 
 Actions:
 
-- start from rejected implementation commit `201f229d3` and the preserved
-  unaccepted in-progress Step 2 repair; locate the ownership/type construction
-  mismatch rather than weakening verifier contracts;
-- retain the native `arg_type_refs` argument-mirror and callee-signature
-  contracts without treating rendered diagnostic/call text as type authority;
-- retain checked native field-count/field-type access and malformed-layout
-  rejection; leave named structs, arrays, unrelated calls, and all
-  extractvalue-row validation unchanged;
-- keep accepted 802 selector, 810 GEP, and 796 cast-result contracts as
-  environmental prerequisites, not 801 progress or scope.
+- consume 801's checked native anonymous ordered field facts for the selected
+  direct-complex `{ float, float }` carrier;
+- reject malformed values, out-of-range or incoherent indices, and
+  field/result-type conflicts without parsing rendered type or instruction
+  text;
+- add nearby positive and negative coverage; preserve unrelated rows and
+  existing result/use authority contracts unchanged.
 
-Completion check: the native carrier remains authoritative; mirror and
-signature contracts remain fail-closed; the required fresh build, focused
-call/frontend/backend proof, and supervisor-accepted full baseline pass before
-Step 3. Do not advance on a narrow focused result alone.
+Completion check: the selected row rejects malformed structured facts and
+stale display text cannot repair field/index/result coherence. This is 754
+work, not a re-acceptance of 801's prerequisite.
 
-Acceptance record: supervisor accepted the direct-complex by-value call repair:
-the callee signature, `arg_type_refs`, and `structured_args` share one native
-anonymous `{ float, float }` layout; recursive anonymous-layout verification
-and incoherent named structured `LirCallOp` carrier rejection remain
-fail-closed. The focused 3/3 command passed, and the fresh comparable full
-gate completed 3035/3037 with only the pre-existing
-`cpp_qualified_template_call_template_arg_perf` and 806-owned
-`llvm_gcc_c_torture_src_20060910_1_c` failures; the failure set did not expand.
+### Step 4 - Prove and hand off the bounded row
 
-### Step 3 - Prove and publish the 754 handoff
+Goal: obtain the producer-side proof required for a future one-row receiver
+handoff without editing Raw BIR.
 
-Goal: establish positive and malformed proof and record the exact field-layout
-contract that 754 Step 3 may consume.
+Actions:
 
-Completion check: accepted proof supports reactivation of 754 at unchanged
-Step 3 without treating this blocker as extractvalue-row validation. Do not
-claim extractvalue-row validation or 754 handoff acceptance as 801 progress.
+- run a fresh build, selected same-feature subset, and supervisor-selected
+  broader checkpoint;
+- require a 100% passing full baseline before source closure;
+- record one-row authority fields, rejected forms, and focused proof only if
+  accepted.
+
+Completion check: accepted producer/verifier evidence exists with no broader
+Raw-BIR receipt implied.

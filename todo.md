@@ -1,40 +1,34 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md
+Source Idea Path: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
 Source Plan Path: plan.md
 Current Step ID: 3
-Current Step Title: Prove and publish the 754 handoff
+Current Step Title: Verify row-specific index or mask facts
 
 ## Just Finished
 
-Step 2 is supervisor-accepted. The direct-complex by-value call shares one
-native anonymous `{ float, float }` layout across the callee signature,
-`arg_type_refs`, and `structured_args`. The verifier recursively validates
-anonymous layouts and rejects incoherent named structured `LirCallOp` carriers.
-The fresh focused proof passed 3/3; the comparable full gate added no failures.
+Lifecycle switch: 801 is capability-complete. Its accepted Step 2--3 handoff
+publishes the native anonymous `{ float, float }` layout shared structurally
+by the direct-complex call callee signature, `arg_type_refs`, and
+`structured_args`; the supplied fresh focused proof passed 3/3. No 754 Step 3
+code or test work has been performed.
 
 ## Suggested Next
 
-Step 3: prove the positive and malformed native field-layout contract, then
-publish the precise handoff for 754 Step 3. 754 is the receiver only; do not
-perform its extractvalue-row work or claim its handoff accepted.
+Step 3 only: validate selected `LirExtractValueOp` field/index/result
+coherence using 801's native ordered field facts, with nearby positive and
+malformed coverage.
 
 ## Watchouts
 
-Do not parse `LirTypeRef` display text, use rendered diagnostics as argument
-type authority, weaken `LirCallOp` mirror/signature checks, or add
-extractvalue field/index/result validation, Raw-BIR, or generic aggregate
-work. Keep the 754 handoff limited to native layout facts that its unchanged
-Step 3 may consume.
+Do not repeat Steps 1--2; recover facts from display text; widen to other
+aggregate/vector rows; reopen 801; weaken result/use/layout checks; or perform
+Raw-BIR, CFG/PHI, lowering, MIR, or emission work.
 
 ## Proof
 
-Accepted Step 2 proof: `cmake --build --preset default && ctest --test-dir
-build -j --output-on-failure -R '^(frontend_hir_tests|frontend_lir_call_type_ref|
-frontend_lir_function_signature_type_ref|backend_)$'`: 3/3 passed
-(`frontend_hir_tests`, `frontend_lir_call_type_ref`,
-`frontend_lir_function_signature_type_ref`). The fresh comparable full command
-completed 3035/3037; its only failures were pre-existing
-`cpp_qualified_template_call_template_arg_perf` and the 806-owned
-`llvm_gcc_c_torture_src_20060910_1_c`, so the failure set did not expand.
+801 prerequisite proof accepted by the supervisor:
+`cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^(frontend_hir_tests|frontend_lir_call_type_ref|frontend_lir_function_signature_type_ref)$'`
+passed 3/3. It is prerequisite evidence only, not 754 Step 3 proof.

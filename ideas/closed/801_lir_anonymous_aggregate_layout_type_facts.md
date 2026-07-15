@@ -296,3 +296,24 @@ set did not expand.
 unchanged Step 3. This records only a prospective native field-layout contract
 for 754 to consume: it does not begin extractvalue-row work and does not claim
 that 754's handoff is accepted.
+
+## Completion Record: accepted 754 layout-fact handoff
+
+801 is capability-complete. Step 2 remains accepted as recorded above:
+the direct-complex by-value `LirCallOp` has one native anonymous `{ float,
+float }` layout, ordered `float`, `float`, shared structurally by its callee
+signature, `arg_type_refs`, and `structured_args`; recursive layout checking
+and malformed or incoherent native structured-call carriers reject fail
+closed.
+
+Step 3 is accepted on the supervisor-provided fresh proof:
+`cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^(frontend_hir_tests|frontend_lir_call_type_ref|frontend_lir_function_signature_type_ref)$'`
+passed 3/3 (`frontend_hir_tests`, `frontend_lir_call_type_ref`, and
+`frontend_lir_function_signature_type_ref`). This publishes only the native
+anonymous field-layout/type-fact handoff. It performs no `LirExtractValueOp`
+field/index/result validation and does not accept 754's receiver work.
+
+Disposition: close 801 as capability-complete and resume
+`ideas/open/754_lir_aggregate_vector_value_identity_convergence.md` at its
+unchanged Step 3, `Verify row-specific index or mask facts`.
