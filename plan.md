@@ -31,10 +31,11 @@ authority from rendered text, instruction order, or a testcase-specific path.
 
 ## Ordered Steps
 
-### Step 1 - Define native standalone cast result ownership
+### Step 1 - Repair native standalone cast result ownership
 
-Goal: identify and implement the smallest verifier/IR rule that distinguishes a
-result-producing standalone cast and requires a valid native result ID.
+Goal: complete the smallest verifier/IR rule that distinguishes a
+result-producing standalone cast, requires a valid native result ID, and
+rejects an ID whose defining result belongs to another function.
 
 Primary targets:
 
@@ -43,16 +44,24 @@ Primary targets:
 
 Actions:
 
+- retain the partial Step 1 commit `5a9888938`: its explicit standalone-cast
+  selection and missing-result rejection are accepted but incomplete;
+- add native definition provenance or an equivalent module-level ownership
+  check so `verify_function_value_ownership` can distinguish a fresh local
+  definition from a `LirValueId` already defined as a result in another
+  `LirFunction`;
+- require selected standalone casts to reject cross-function result reuse
+  while retaining existing invalid-ID and same-function duplicate behavior;
 - retain existing cast kind and endpoint-type validation;
-- require result authority only for the bounded standalone result-producing
-  cast contract, without altering PHI or logical producer lowering;
-- ensure invalid, duplicate, and foreign IDs are checked through the existing
-  ownership model rather than a parallel lookup.
+- keep the ownership rule native and bounded: do not alter PHI or logical
+  producer lowering, and do not introduce rendered-text, result-name-map,
+  side-table, or testcase-specific authority.
 
 Completion check:
 
-- the verifier has one native fail-closed path for all four malformed
-  standalone cast-result cases.
+- the verifier has a native fail-closed path for missing, invalid, duplicate,
+  and cross-function foreign standalone cast-result IDs; a foreign ID cannot
+  be accepted merely because the current function has not yet defined it.
 
 ### Step 2 - Add focused positive and malformed cast coverage
 
@@ -67,7 +76,9 @@ Actions:
 
 - use a standalone cast fixture and native IDs, not rendered-result matching;
 - preserve a valid positive cast case;
-- add one malformed mutation for each required failure family;
+- add one malformed mutation for each required failure family only after Step
+  1 proves cross-function provenance: missing, invalid, same-function
+  duplicate, and foreign reuse from a different `LirFunction`;
 - keep PHI and logical-RHS fixtures out of this packet.
 
 Completion check:
