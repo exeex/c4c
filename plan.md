@@ -1,66 +1,83 @@
-# LIR-To-New-BIR Direct-Pointer Body-Parameter Receiver Runbook
+# LIR Next Body-Parameter Authority Handoff Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Resumed from: closed 817 direct-pointer body-parameter authority handoff
-(`613f947b5`).
+Source Idea: ideas/open/818_lir_next_body_parameter_authority_handoff.md
+Activated from: exhausted 734 Step 7.34 receiver route (`8418036b1`).
 
 ## Purpose
 
-Receive exactly closed 817's one checked direct non-expanded pointer
-function-body parameter row. This is a single bounded Raw-BIR receiver packet
-and does not complete 734's coverage matrix.
-
-## Historical Progress
-
-Steps 1 through 7.33 are accepted historical 734 work, most recently the
-inline-assembly output-only receipt (`3b8870e2b`). Do not repeat any completed
-receiver row or producer-authority work.
+Publish one exact, receiver-ready structured authority contract for a remaining
+function-body parameter use, then return control to 734 without implementing
+the Raw-BIR receipt.
 
 ## Core Rule
 
-Use only the structured current-function `LirValueId`, parameter index,
-pointer `LirTypeRef`, current `LinkNameId` owner, and explicit
-`LirNativeBodyParameterAbi::DirectPointer` from closed 817. Do not derive
-authority from spelling, signature text, raw operands, diagnostics, or any
-other presentation field.
+Select only native current-function facts that production and verification can
+structurally establish. Presentation text, parameter names, signature
+rendering, raw operands, diagnostics, and testcase shape are never authority.
 
 ## Read First
 
-- `ideas/closed/817_lir_body_parameter_receiver_authority_handoff.md`
-- `ideas/open/734_lir_to_new_bir_container_completeness.md` (closed-817
+- `ideas/open/818_lir_next_body_parameter_authority_handoff.md`
+- `ideas/open/734_lir_to_new_bir_container_completeness.md` (post-Step 7.34
   resumption record)
-- `docs/lir_to_new_bir_remaining_coverage/successor_queue.md`
+- `ideas/closed/817_lir_body_parameter_receiver_authority_handoff.md`
+- `ideas/open/795_lir_body_parameter_authority_handoff.md` (separate accepted
+  route; do not reuse it as 734 authority)
 
 ## Non-Goals
 
-- Scalar, byval/aggregate, HFA/vector, array, variadic, or any other parameter
-  form;
-- producer/schema/verifier republishing, broad ABI work, declaration-only
-  publication, target lowering, MIR/emission, or importer/dispatcher sweeps;
-- remaining memory/VA, aggregate/vector, module/type/global, instruction,
-  terminator, inline-assembly, and documentation-convergence work.
+- Raw-BIR, importer, dispatcher, or receiver-test changes;
+- reopening accepted direct-pointer or parameter-index contracts;
+- broad ABI work or multiple parameter forms; and
+- any non-parameter source family.
 
 ## Ordered Steps
 
-### Step 7.34 - Receive selected direct-pointer body-parameter authority
+### Step 1 - Trace and select one body-parameter use authority row
 
-Goal: transactionally import closed 817's single `LirGepOp.ptr` typed-GEP-base
-row for direct-pointer parameter `p[0]` into one typed Raw-BIR destination.
+Goal: identify one native body-parameter use whose value identity, position,
+type, owner, and ABI classification can be proven without presentation
+recovery.
 
 Actions:
 
-- consume exactly `LirValueId`, parameter index, pointer `LirTypeRef`, current
-  `LinkNameId` owner, and `LirNativeBodyParameterAbi::DirectPointer`;
-- add only the minimum typed Raw-BIR destination, importer dispatch, reachable
-  verifier work, and nearby positive/malformed-authority receiver coverage;
-- reject missing, invalid, foreign, duplicate, type-incoherent, malformed-ABI,
-  scalar, byval/aggregate, HFA/vector, array, variadic, and every other
-  parameter form transactionally;
-- run a fresh build and focused `^backend_lir_to_bir_interface$` receiver proof
-  before the supervisor-selected matching regression guard and broader proof.
+- inspect only the relevant production/schema/verifier seams;
+- document the exact selected row and rejected neighboring forms in the active
+  execution state before making a producer change;
+- if no receiver-ready row exists, stop and return a separately scoped blocker
+  rather than broadening this idea.
 
-Completion check: exactly the selected direct non-expanded pointer typed-GEP
-base imports and verifies from structured authority; no presentation recovery
-or other parameter receipt occurs. Reassess 734's source completion gate after
-this bounded receipt.
+Completion check: one bounded candidate and its structural authority sources
+are explicit; no Raw-BIR receiver work is selected.
+
+### Step 2 - Publish and verify the selected authority contract
+
+Goal: add only the selected native fields and verifier admission needed for a
+later 734 receiver handoff.
+
+Actions:
+
+- publish current-function identity, parameter position, type, owner, and ABI
+  classification only where the selected row proves them;
+- reject missing, invalid, foreign, duplicate, type-incoherent, or
+  ABI-incoherent forms before downstream use;
+- add nearby positive and malformed-authority producer coverage.
+
+Completion check: one selected row has a checked structured contract and all
+nonselected forms remain fail-closed.
+
+### Step 3 - Prove and hand off the bounded producer route
+
+Goal: record the exact receiver fields, rejection boundary, focused proof, and
+734 return point.
+
+Actions:
+
+- run a fresh build and focused same-feature producer proof;
+- provide the supervisor-selected matching regression guard if required;
+- update the source resumption record with the selected handoff and require
+  reactivation of 734 at Step 7.35 only.
+
+Completion check: accepted proof and an exact one-row handoff exist; no
+Raw-BIR receipt or source-wide completion claim is made.

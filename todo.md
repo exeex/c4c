@@ -1,35 +1,27 @@
 # Current Packet
 
-Status: Complete pending lifecycle decision
-Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
+Status: Active
+Source Idea Path: ideas/open/818_lir_next_body_parameter_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 7.34
-Current Step Title: Receive selected direct-pointer body-parameter authority
+Current Step ID: 1
+Current Step Title: Trace and select one body-parameter use authority row
 
 ## Just Finished
 
-- Step 7.34 received exactly the selected `LirGepOp.ptr` direct-pointer
-  body-parameter typed-GEP base into Raw-BIR, importer dispatch, and reachable
-  verification. The focused receiver test covers the accepted row plus missing,
-  invalid, foreign, duplicate, type-incoherent, malformed-ABI, byval, and
-  variadic transactional rejection.
+- Lifecycle switch: 734 Step 7.34 is accepted but source-incomplete; 818 now
+  owns selection of one distinct body-parameter producer handoff.
 
 ## Suggested Next
 
-- Send the exhausted Step 7.34 runbook to plan-owner for the required explicit
-  close, repair, replace, or conclude decision; this receipt does not prove
-  source idea 734 complete.
+- Execute plan Step 1 only; do not edit Raw-BIR/importer or reuse closed 817
+  or open 795 authority.
 
 ## Watchouts
 
-- The Raw-BIR GEP base retains only the selected value identity, parameter
-  index, pointer type, and owner; no spelling, signature text, raw operand, or
-  diagnostic recovery was introduced. The source completion matrix remains
-  outside this packet.
+- The selected row must have native current-function value, position, type,
+  owner, and ABI authority. Presentation fields are not admissible.
 
 ## Proof
 
-- Fresh `cmake --build --preset default`; focused
-  `ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$'`
-  passed 1/1; broader `ctest --test-dir build -j --output-on-failure -R
-  '^backend_'` passed 6/6. `test_after.log` contains the broader proof.
+- Select the exact fresh build and focused producer proof only after the row
+  is traced; no receiver proof is implied by this lifecycle transition.

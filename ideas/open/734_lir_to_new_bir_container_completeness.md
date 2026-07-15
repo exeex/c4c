@@ -1,7 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (parked after accepted Step 7.32 selected AMD64 SysV aggregate
-`va_arg` overflow receipt; composite type-model prerequisite active)
+Status: Open (parked after accepted Step 7.34 direct-pointer body-parameter
+receipt; 818 next body-parameter authority handoff active)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -1184,3 +1184,44 @@ Exact return action: reactivate 734 only for one later single Raw-BIR receipt
 of this structured row. Repair the runbook for that one receiver packet; do
 not repeat Step 7.33 and do not receive any other parameter form or perform
 producer/receiver work beyond this row.
+
+## Runbook Exhaustion Decision: post-Step 7.34 direct-pointer body-parameter receipt
+
+Close rejected. Commit `8418036b1` receives exactly closed 817's selected
+direct non-expanded pointer `LirGepOp.ptr` body-parameter authority into a
+typed Raw-BIR GEP-base destination, importer dispatch, reachable verifier, and
+transactional positive/malformed-authority coverage. The supervisor accepted a
+fresh `cmake --build --preset default`, focused
+`^backend_lir_to_bir_interface$` proof passing 1/1, and matching broader
+`^backend_` guard passing 6/6 without a regression. This proves one bounded
+body-parameter receiver row only.
+
+The source completion gate remains unmet: its checked no-omission matrix and
+per-row typed authority/destination/importer/verifier/proof dispositions;
+lossless verified receipt of every valid current-LIR semantic fact; complete
+explicit dispatcher and neighboring coverage; and final whole-module
+transactional, documentation-convergence, focused, and broader acceptance
+proof. Valid unreceived families include the remaining body-parameter forms,
+memory/VA, aggregate/vector, module/type/global/metadata, residual
+instruction/terminator, and inline-assembly forms. They remain fail-closed;
+no receiver may reconstruct authority from text, names, rendered operands,
+`monostate`, or unclassified values.
+
+Classification: `separate-blocker`. New open idea
+`ideas/open/818_lir_next_body_parameter_authority_handoff.md` owns tracing,
+publishing, verifying, and handing off exactly one next valid function-body
+parameter-use row. It must not edit Raw-BIR/importer code, choose a row from
+presentation fields, reopen the accepted direct-pointer row, or absorb any
+other family.
+
+Resumption record: Steps 1 through 7.34 are accepted historical work, most
+recently receiver commit `8418036b1`; Step 7.34's accepted proof is the fresh
+build, focused 1/1 `^backend_lir_to_bir_interface$` result, and broader 6/6
+`^backend_` guard stated above. After 818 closes with an exact structured
+one-row handoff and accepted focused producer proof, reactivate 734 and repair
+its runbook at **Step 7.35 - Receive the one 818-authorized body-parameter
+authority row**. Add only that row's typed Raw-BIR destination, importer
+dispatch, reachable verification, and transactional positive/negative
+coverage. Do not repeat Step 7.34 or absorb other parameter, memory/VA,
+aggregate/vector, module/type/global/metadata, instruction/terminator, or
+inline-assembly work.
