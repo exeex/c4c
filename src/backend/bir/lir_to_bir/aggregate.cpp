@@ -203,9 +203,12 @@ std::vector<std::pair<std::size_t, std::string>> BirFunctionLowerer::collect_sor
 BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_params() const {
   AggregateParamMap aggregate_params;
   const bool structured_params_available = has_structured_signature_params(function_);
+  const bool structured_params_complete =
+      structured_params_available &&
+      function_.signature_params.size() == function_.signature_param_type_refs.size();
   // Generated LIR carries structured signature params. The text parser remains
-  // only for legacy hand-built LIR fixtures that do not populate those fields.
-  const auto parsed_params = structured_params_available
+  // only for legacy hand-built LIR fixtures with absent or incomplete metadata.
+  const auto parsed_params = structured_params_complete
                                  ? structured_signature_params(function_)
                                  : parse_function_signature_params(function_.signature_text);
   if (!parsed_params.has_value()) {
@@ -213,7 +216,7 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
   }
 
   const bool use_declared_names =
-      !structured_params_available && !function_.params.empty() &&
+      !structured_params_complete && !function_.params.empty() &&
       function_.params.size() == parsed_params->size();
   const auto limit = use_declared_names ? function_.params.size() : parsed_params->size();
   for (std::size_t index = 0; index < limit; ++index) {
@@ -235,9 +238,9 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
     }
     const bool is_explicit_byval_param = parsed_param.is_byval;
     const bool type_ref_spells_byval =
-        structured_params_available &&
+        structured_params_complete &&
         parse_byval_pointee_type(function_.signature_param_type_refs[index].str()).has_value();
-    if (structured_params_available && type_ref_spells_byval && !is_explicit_byval_param) {
+    if (structured_params_complete && type_ref_spells_byval && !is_explicit_byval_param) {
       aggregate_params.emplace(std::move(name),
                                AggregateParamInfo{
                                    .type_text = normalized_type,
@@ -249,7 +252,7 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
         is_explicit_byval_param &&
         function_.signature_param_type_refs[index].has_struct_name_id();
     const auto layout =
-        structured_params_available && use_structured_byval_layout
+        structured_params_complete && use_structured_byval_layout
             ? selected_aggregate_type_ref_layout(function_.signature_param_type_refs[index],
                                                 type_decls_,
                                                 structured_layouts_)
@@ -266,7 +269,7 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
                                                     &structured_layouts_);
               }();
     if (!layout.has_value()) {
-      if (structured_params_available && use_structured_byval_layout) {
+      if (structured_params_complete && use_structured_byval_layout) {
         aggregate_params.emplace(std::move(name),
                                  AggregateParamInfo{
                                      .type_text = normalized_type,

@@ -181,7 +181,9 @@ lir::LirFunction stable_parameter_function(
   lir::LirFunction function =
       declaration ? void_declaration(std::move(name))
                   : void_definition(std::move(name), {return_block(0, "entry")});
-  function.signature_text = "presentation-only misleading signature";
+  // This syntactically valid but conflicting legacy shadow must not affect the
+  // complete structured parameter facts below.
+  function.signature_text = "define void @stale_signature_shadow(i64 %shadow)";
   for (std::size_t index = 0; index < bases.size(); ++index) {
     auto logical = scalar_type(bases[index]);
     logical.inner_rank = -1;
