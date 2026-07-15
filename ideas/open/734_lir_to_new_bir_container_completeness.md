@@ -1296,3 +1296,40 @@ DirectScalar `LirBinOp.lhs` receiver authorization, preserve all uncommitted
 receiver and selector work as unaccepted, and rerun Step 7.35's fixed
 `^backend_` proof plus its full checkpoint when its implementation packet is
 ready. No generic scalar authority is granted.
+
+## Runbook Exhaustion Decision: post-Step 7.35 DirectScalar binary-LHS receipt
+
+Close rejected. Commit `18443fc0f` receives exactly closed 818's selected
+DirectScalar `LirBinOp.lhs` body-parameter authority into the typed Raw-BIR
+binary destination, preserving current-function owner, parameter index,
+`LirTypeRef`, ABI, role, and matching lhs SSA value/type. The supervisor
+accepted a fresh focused
+`^backend_lir_selected_pointer_authority$` proof (1/1) and the matching full
+CTest `test_before.log`/`test_after.log` guard (3003/3038 passed, 35 failures
+in each, non-regressive). Malformed authority rejects transactionally.
+
+This bounded receiver row does not satisfy the source completion gate: the
+checked no-omission matrix and its per-row typed
+authority/destination/importer/verifier/proof dispositions remain incomplete,
+as do lossless receipt of every valid current-LIR semantic fact, explicit
+dispatcher completeness, whole-module transactional proof, and documentation
+convergence. Valid unreceived families include the remaining body-parameter
+forms, memory/VA, aggregate/vector, module/type/global/metadata, residual
+instruction/terminator, and inline-assembly forms. Presentation text, names,
+rendered operands, `monostate`, and unclassified values remain non-authority.
+
+Classification: `separate-blocker`. New open idea
+`ideas/open/823_lir_next_body_parameter_authority_handoff.md` owns only
+tracing, publishing, verifying, and handing off one next valid function-body
+parameter-use row. It must not edit Raw-BIR/importer code, reopen the accepted
+pointer or DirectScalar rows, choose from presentation fields, or absorb any
+other family.
+
+Resumption record: Steps 1 through 7.35 are accepted historical work, most
+recently receiver commit `18443fc0f` with the focused 1/1 and matching full
+CTest guard above. After 823 closes with an exact structured one-row handoff
+and accepted focused producer proof, reactivate 734 and repair its runbook for
+only that matching typed Raw-BIR receiver row. Do not repeat Step 7.35 or
+receive another parameter, memory/VA, aggregate/vector, module/type/global,
+instruction/terminator, or inline-assembly form without its separately scoped
+first-owner handoff.

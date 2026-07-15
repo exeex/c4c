@@ -1,37 +1,37 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
+Source Idea Path: ideas/open/823_lir_next_body_parameter_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 7.35
-Current Step Title: Receive the one 818-authorized body-parameter authority row
+Current Step ID: 1
+Current Step Title: Trace and select one distinct native parameter-use row
+你該做code review了
 
 ## Just Finished
 
-- Step 7.35 bounded receiver implementation: imported only the closed-818
-  DirectScalar `LirBinOp.lhs` authority into the typed Raw-BIR binary
-  destination, including current-function owner preservation and transactional
-  malformed-authority rejection coverage.
+- Parent 734 Step 7.35 accepted in `18443fc0f`: only the closed-818
+  DirectScalar `LirBinOp.lhs` authority was received into the typed Raw-BIR
+  binary destination. Focused proof passed 1/1; matching full CTest guard was
+  non-regressive at 3003/3038 pass and 35 failures before/after.
 
 ## Suggested Next
 
-- Supervisor acceptance packet: inspect this bounded Step 7.35 slice, choose
-  and run the required broader/full checkpoint, then decide acceptance without
-  widening into another parameter form.
+- Step 1 only: trace and select one distinct native function-body parameter
+  use with a complete structured authority tuple. Do not select from text or
+  begin Raw-BIR receiver work.
 
 ## Watchouts
 
-- Ideas 821 and 822 each retain pending, unaccepted implementation work; do not modify, discard, or claim acceptance for either slice.
-- This packet is still unaccepted until the supervisor's focused/full proof and
-  review of the shared-worktree slice; no generic scalar parameter receipt is
-  authorized.
-- Do not broaden into generic scalar authority, other parameter forms, DirectScalar producer/verifier work, or switch redesign.
+- Ideas 821 and 822 retain pending, unaccepted implementation work; do not
+  modify, discard, or claim acceptance for either slice.
+- No generic scalar/parameter admission, Raw-BIR/importer/builder work, or
+  presentation-derived recovery is authorized.
+- The accepted pointer and DirectScalar binary-LHS rows are historical
+  progress; do not reopen or repeat them.
 
 ## Proof
 
-- Fresh packet proof passed: `cmake --build --preset default --target
-  backend_lir_selected_pointer_authority_test` and `ctest --test-dir build
-  --output-on-failure -R '^backend_lir_selected_pointer_authority$'` (1/1).
-  Output: `test_after.log`.
-- The focused proof covers the selected receiver boundary. The supervisor still
-  owns broader/full checkpoint selection and acceptance.
+- Parent acceptance: fresh `^backend_lir_selected_pointer_authority$` 1/1;
+  matching full CTest `test_before.log`/`test_after.log` guard, 3003/3038 pass
+  and 35 failures before/after, non-regressive; receiver commit `18443fc0f`.
+- This successor must select a fresh focused producer proof after Step 1.

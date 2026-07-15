@@ -1,45 +1,80 @@
-# LIR-To-New-BIR Scalar Body-Parameter Receiver Runbook
+# LIR Next Body-Parameter Authority Handoff Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Resumed from: closed 820 DirectScalar producer/verifier publication
+Source Idea: ideas/open/823_lir_next_body_parameter_authority_handoff.md
+Activated from: 734 post-Step 7.35 separate-blocker decision
 
 ## Purpose
 
-Receive exactly the one already selected scalar `LirBinOp.lhs` body-parameter authority row. This is a bounded Raw-BIR receiver packet and does not complete 734's coverage matrix.
-
-## Historical Progress
-
-Steps 1 through 7.34 are accepted historical 734 work, most recently the direct-pointer body-parameter receipt (`8418036b1`). Closed 818 selected the sole scalar receiver row and closed 820 resolved its independent LIR producer/verifier prerequisite. Do not repeat completed receiver rows or producer-authority work.
+Produce one exact, checked future body-parameter authority handoff. This is a
+producer/schema/verifier route; it does not receive Raw-BIR data and does not
+complete the parent parameter family.
 
 ## Core Rule
 
-Receive only the structured current-function authority selected by closed 818: matching `LirValueId`, parameter index, scalar `LirTypeRef`, current `LinkNameId` owner, `LirNativeBodyParameterAbi::DirectScalar`, explicit `Lhs` role, and matching `LirBinOp.lhs` SSA value/type. Do not derive authority from presentation fields, text, operands, or diagnostics.
+Select no row until its current-function identity, owner, parameter index,
+type, ABI, role, and consuming operation are native structured facts. Never
+recover any of them from text, names, diagnostics, or rendered operands.
 
 ## Read First
 
-- `ideas/open/734_lir_to_new_bir_container_completeness.md` (the closed-818 and closed-820 resumption records)
+- `ideas/open/823_lir_next_body_parameter_authority_handoff.md`
+- `ideas/open/734_lir_to_new_bir_container_completeness.md` (post-Step 7.35
+  resumption record)
 - `ideas/closed/818_lir_next_body_parameter_authority_handoff.md`
 - `ideas/closed/820_lir_directscalar_parameter_producer_verifier_publication.md`
-- the existing unaccepted Step 7.35 receiver work, only for diagnosis; it is not accepted progress
 
 ## Non-Goals
 
-- Accepting, modifying, or relying on pending Ideas 821/822 selector work or the existing unaccepted Step 7.35-shaped receiver patch.
-- Generic scalar receipt, other parameter forms, DirectScalar producer or verifier work, Raw-BIR redesign, or presentation-derived recovery.
-- Repeating Steps 1 through 7.34 or claiming source-idea completion.
+- Raw-BIR/importer/builder/receiver work, generic parameter admission, or a
+  combined parameter sweep.
+- Repeating the accepted direct-pointer or DirectScalar binary-LHS rows.
+- Pending Ideas 821/822 selector work and every non-parameter family.
 
 ## Ordered Steps
 
-### Step 7.35 - Receive the one 818-authorized body-parameter authority row
+### Step 1 - Trace and select one distinct native parameter-use row
 
-Goal: transactionally import only closed 818's selected scalar `LirBinOp.lhs` body-parameter authority into its typed Raw-BIR destination.
+Goal: identify one candidate only when the complete structured authority tuple
+and its consumer operation can be demonstrated.
 
 Actions:
 
-- inspect the unaccepted receiver patch only as a starting diagnosis; retain it as unaccepted until a bounded implementation packet proves it;
-- add only the minimum typed Raw-BIR destination, importer dispatch, reachable verifier work, and nearby positive/malformed-authority coverage for the selected row;
-- reject missing, invalid, duplicate, foreign-owner, out-of-range, non-scalar, type- or ABI-incoherent, wrong-role, and lhs value/type-mismatch authority transactionally;
-- run a fresh build, the fixed executable `^backend_` proof, and the full checkpoint when the implementation packet is ready. Missing backend executables must be repaired or replaced by a supervisor-selected executable matching proof before acceptance.
+- inspect the native LIR producer and verifier seams for one unreceived
+  body-parameter use;
+- record why the candidate is distinct from the accepted pointer and scalar
+  rows, and fail closed if any required structured fact is missing;
+- define the exact rejected malformed forms before editing code.
 
-Completion check: exactly the selected scalar `LirBinOp.lhs` row imports and verifies from structured authority; no generic scalar or other parameter form is admitted, no presentation recovery occurs, and the supervisor accepts the fresh focused and full proof. Reassess 734's source completion gate after this bounded receipt.
+Completion check: one bounded row is selected with no presentation-derived
+authority and no expansion into other parameter forms.
+
+### Step 2 - Publish and verify the selected authority contract
+
+Goal: implement the minimum native producer/schema/verifier publication for
+the selected row.
+
+Actions:
+
+- preserve current-function ownership and the selected identity/type/ABI/role
+  contract;
+- add nearby positive and malformed/foreign/type- or ABI-incoherent coverage;
+- keep all nonselected forms fail closed.
+
+Completion check: the selected structured tuple verifies and malformed forms
+reject without a generic parameter path.
+
+### Step 3 - Prove and hand off to 734
+
+Goal: produce accepted focused evidence and an exact receiver contract.
+
+Actions:
+
+- run a fresh build and the focused same-feature producer proof selected by
+  the supervisor;
+- record the exact fields, rejected forms, proof, and return action in the
+  source idea;
+- return control to 734 only after supervisor acceptance.
+
+Completion check: 734 can be resumed for exactly one typed Raw-BIR receiver
+row without rediscovering authority or widening scope.
