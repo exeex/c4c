@@ -7150,8 +7150,8 @@ int expect_no_signature_structured_fabs_intrinsic_infers_arg_type() {
 
 int expect_complete_structured_call_args_override_stale_args_text() {
   LirCallOp call{
-      .result = LirOperand("%result"),
-      .return_type = "i32",
+      .result = LirOperand(""),
+      .return_type = "void",
       .callee = LirOperand("@callee"),
       .callee_type_suffix = "(i64)",
       .args_str = "i64 99",
@@ -7159,6 +7159,7 @@ int expect_complete_structured_call_args_override_stale_args_text() {
       .callee_signature = lir::LirCallSignature{
           .fixed_param_types = {"i64"},
           .fixed_param_type_refs = {lir::LirTypeRef::integer(32)},
+          .return_type_ref = lir::LirTypeRef("void"),
       },
       .structured_args = {
           lir::LirCallArg{
@@ -7174,6 +7175,34 @@ int expect_complete_structured_call_args_override_stale_args_text() {
       parsed->args.size() != 1 || parsed->param_types.front() != "i32" ||
       parsed->args.front().type != "i32" || parsed->args.front().operand != "%actual") {
     return fail("complete structured call type refs must override stale text mirrors");
+  }
+
+  LirModule module;
+  LirFunction function;
+  function.name = "complete_structured_call_type_authority";
+  function.signature_text = "define void @complete_structured_call_type_authority(i32 %actual)";
+  c4c::TypeSpec integer_type{};
+  integer_type.base = c4c::TB_INT;
+  function.params.push_back({"%actual", integer_type});
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(call);
+  entry.terminator = LirRet{.value_str = std::nullopt, .type_str = "void"};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  try {
+    lir::verify_module(module);
+  } catch (const lir::LirVerifyError&) {
+    return fail("complete structured i32 call facts must verify despite stale i64 text mirrors");
+  }
+
+  auto* verified_call = std::get_if<LirCallOp>(
+      &module.functions.front().blocks.front().insts.front());
+  verified_call->arg_type_refs[0] = lir::LirTypeRef::integer(64);
+  try {
+    lir::verify_module(module);
+    return fail("structured fixed-signature type mismatch must still fail verification");
+  } catch (const lir::LirVerifyError&) {
   }
   return 0;
 }

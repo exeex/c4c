@@ -349,7 +349,6 @@ bool has_complete_direct_void_integer_immediate_authority(
   const LirCallSignature& signature = *call.callee_signature;
   return signature.return_type_ref.has_value() &&
          *signature.return_type_ref == call.return_type &&
-         signature.fixed_param_types.size() == 1 &&
          call.structured_args.size() == 1 && call.arg_type_refs.size() == 1 &&
          call.structured_args[0].type_ref ==
              signature.fixed_param_type_refs[0] &&
@@ -364,7 +363,6 @@ bool has_complete_direct_void_integer_ssa_authority(const LirCallOp& call) {
   const LirCallSignature& signature = *call.callee_signature;
   return signature.return_type_ref.has_value() &&
          *signature.return_type_ref == call.return_type &&
-         signature.fixed_param_types.size() == 1 &&
          call.structured_args.size() == 1 && call.arg_type_refs.size() == 1 &&
          call.structured_args[0].type_ref ==
              signature.fixed_param_type_refs[0] &&
@@ -372,6 +370,28 @@ bool has_complete_direct_void_integer_ssa_authority(const LirCallOp& call) {
          call.structured_args[0].operand.value_id() &&
          call.structured_args[0].ext_attr == LirExtAttr::None &&
          call.result.empty() && !call.result.has_authority();
+}
+
+// Once every argument has the two native type mirrors and a fixed signature
+// supplies the corresponding native parameter mirrors, presentation text is
+// deliberately not part of type validation.  Older producers can still use
+// the raw path below while they fill these mirrors incrementally.
+bool has_complete_fixed_call_type_authority(const LirCallOp& call) {
+  if (!call.callee_signature.has_value()) return false;
+  const LirCallSignature& signature = *call.callee_signature;
+  if (signature.has_unspecified_params || signature.is_variadic ||
+      signature.has_void_param_list ||
+      signature.fixed_param_type_refs.size() != call.structured_args.size() ||
+      call.arg_type_refs.size() != call.structured_args.size()) {
+    return false;
+  }
+  for (size_t index = 0; index < call.structured_args.size(); ++index) {
+    if (call.structured_args[index].type_ref != call.arg_type_refs[index] ||
+        call.arg_type_refs[index] != signature.fixed_param_type_refs[index]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool is_native_scalar_floating_type(const LirTypeRef& type) {
@@ -389,7 +409,6 @@ bool is_direct_zero_arg_scalar_floating_result_claim(const LirCallOp& call) {
          !call.callee_signature->is_variadic &&
          !call.callee_signature->has_unspecified_params &&
          call.callee_signature->has_void_param_list &&
-         call.callee_signature->fixed_param_types.empty() &&
          call.callee_signature->fixed_param_type_refs.empty() &&
          call.structured_args.empty() && call.arg_type_refs.empty();
 }
@@ -413,7 +432,6 @@ void verify_direct_zero_arg_scalar_floating_result_call(const LirModule& mod,
       call.callee_signature->is_variadic ||
       call.callee_signature->has_unspecified_params ||
       !call.callee_signature->has_void_param_list ||
-      !call.callee_signature->fixed_param_types.empty() ||
       !call.callee_signature->fixed_param_type_refs.empty() ||
       !call.structured_args.empty() || !call.arg_type_refs.empty()) {
     fail_verify("LirCallOp.callee_signature",
@@ -473,7 +491,8 @@ void verify_call_callee_signature(const LirModule& mod, const LirCallOp& call,
   }
 
   if (sig.has_void_param_list) {
-    if (!sig.fixed_param_types.empty() || !sig.fixed_param_type_refs.empty()) {
+    if (!sig.fixed_param_type_refs.empty() ||
+        (!structured_authority_complete && !sig.fixed_param_types.empty())) {
       fail_verify("LirCallOp.callee_signature",
                   "void parameter list must not carry fixed parameter mirrors");
     }
@@ -483,7 +502,8 @@ void verify_call_callee_signature(const LirModule& mod, const LirCallOp& call,
     }
   }
 
-  if (sig.fixed_param_types.size() != sig.fixed_param_type_refs.size()) {
+  if (!structured_authority_complete &&
+      sig.fixed_param_types.size() != sig.fixed_param_type_refs.size()) {
     fail_verify("LirCallOp.callee_signature.fixed_param_type_refs",
                 "fixed parameter type mirrors must match fixed parameter count");
   }
@@ -492,6 +512,22 @@ void verify_call_callee_signature(const LirModule& mod, const LirCallOp& call,
     for (size_t index = 0; index < sig.fixed_param_type_refs.size(); ++index) {
       verify_call_arg_type_ref_mirror(
           mod, sig.fixed_param_type_refs[index], sig.fixed_param_types[index], index);
+    }
+  }
+
+  if (structured_authority_complete) {
+    for (size_t index = 0; index < sig.fixed_param_type_refs.size(); ++index) {
+      require_module_type_ref(mod, sig.fixed_param_type_refs[index],
+                              "LirCallOp.callee_signature.fixed_param_type_refs");
+      require_module_type_ref(mod, call.arg_type_refs[index],
+                              "LirCallOp.arg_type_refs");
+      require_module_type_ref(mod, call.structured_args[index].type_ref,
+                              "LirCallOp.structured_args.type_ref");
+      if (call.arg_type_refs[index] != sig.fixed_param_type_refs[index] ||
+          call.structured_args[index].type_ref != sig.fixed_param_type_refs[index]) {
+        fail_verify("LirCallOp.structured_args.type_ref",
+                    "structured argument type must match fixed parameter type");
+      }
     }
   }
 
@@ -875,7 +911,7 @@ bool has_complete_integer_boolean_flag_call_authority(const LirCallOp& call) {
   }
   const LirCallSignature& signature = *call.callee_signature;
   if (signature.is_variadic || signature.has_unspecified_params ||
-      signature.has_void_param_list || signature.fixed_param_types.size() != 2 ||
+      signature.has_void_param_list ||
       signature.fixed_param_type_refs.size() != 2 ||
       call.arg_type_refs.size() != 2 || call.structured_args.size() != 2) {
     return false;
@@ -909,11 +945,6 @@ void verify_integer_boolean_flag_call_authority(const LirModule& mod,
   }
   const LirCallSignature& signature = *call.callee_signature;
   if (call.callee.kind() != LirOperandKind::Global ||
-      !call.callee_type_suffix.empty() ||
-      signature.fixed_param_types[0] != call.return_type.str() ||
-      signature.fixed_param_types[1] != "i1" ||
-      call.structured_args[0].type != call.return_type.str() ||
-      call.structured_args[1].type != "i1" ||
       call.return_ext_attr != LirExtAttr::None ||
       signature.return_ext_attr != LirExtAttr::None ||
       call.structured_args[0].ext_attr != LirExtAttr::None ||
@@ -945,7 +976,7 @@ bool has_complete_integer_count_call_authority(const LirCallOp& call) {
   }
   const LirCallSignature& signature = *call.callee_signature;
   if (signature.is_variadic || signature.has_unspecified_params ||
-      signature.has_void_param_list || signature.fixed_param_types.size() != 1 ||
+      signature.has_void_param_list ||
       signature.fixed_param_type_refs.size() != 1 ||
       call.arg_type_refs.size() != 1 || call.structured_args.size() != 1) {
     return false;
@@ -970,9 +1001,6 @@ void verify_integer_count_call_authority(const LirModule& mod,
   }
   const LirCallSignature& signature = *call.callee_signature;
   if (call.callee.kind() != LirOperandKind::Global ||
-      !call.callee_type_suffix.empty() ||
-      signature.fixed_param_types[0] != call.return_type.str() ||
-      call.structured_args[0].type != call.return_type.str() ||
       call.return_ext_attr != LirExtAttr::None ||
       signature.return_ext_attr != LirExtAttr::None ||
       call.structured_args[0].ext_attr != LirExtAttr::None) {
@@ -1012,7 +1040,7 @@ void verify_direct_void_fixed_integer_immediate_call(const LirModule& mod,
     fail_verify("LirCallOp.callee_signature.return_type_ref",
                 "direct void immediate call requires exact void return type authority");
   }
-  if (signature.fixed_param_types.size() != 1) {
+  if (signature.fixed_param_type_refs.size() != 1) {
     fail_verify("LirCallOp.callee_signature.fixed_param_types",
                 "direct void immediate call requires one fixed parameter");
   }
@@ -1063,7 +1091,7 @@ void verify_direct_void_fixed_integer_ssa_call(const LirModule& mod,
     fail_verify("LirCallOp.callee_signature.return_type_ref",
                 "direct void SSA call requires exact void return type authority");
   }
-  if (signature.fixed_param_types.size() != 1) {
+  if (signature.fixed_param_type_refs.size() != 1) {
     fail_verify("LirCallOp.callee_signature.fixed_param_types",
                 "direct void SSA call requires one fixed parameter");
   }
@@ -1472,6 +1500,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
   }
   if (const auto* op = std::get_if<LirCallOp>(&inst)) {
     const bool structured_authority_complete =
+        has_complete_fixed_call_type_authority(*op) ||
         has_complete_direct_void_integer_immediate_authority(*op) ||
         has_complete_direct_void_integer_ssa_authority(*op) ||
         has_complete_integer_boolean_flag_call_authority(*op) ||

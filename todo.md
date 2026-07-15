@@ -1,32 +1,31 @@
 # Current Packet
 
-Status: Step 1 complete
+Status: Step 2 complete
 Source Idea Path: ideas/open/761_lir_call_signature_type_mirror_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Map selected call/signature authority seams
+Current Step ID: 2
+Current Step Title: Converge the selected typed call/signature path
 
 ## Just Finished
 
-- Step 1: made complete `LirCallOp.structured_args` plus matching
-  `arg_type_refs` authoritative in the shared typed-call helpers, rendering
-  argument and fixed-signature types from `LirTypeRef` rather than their text
-  mirrors; incomplete mirrors still use the raw `args_str` compatibility parser.
-  Added focused backend coverage where stale argument, suffix, and signature
-  type text cannot override the structured `i32 %actual` facts.
+- Step 2: made complete fixed call signatures and their matching structured
+  argument/type-reference mirrors authoritative in the LIR verifier. This path
+  now validates native `LirTypeRef` agreement without consulting `args_str`,
+  the callee suffix, `LirCallArg::type`, or `fixed_param_types`; incomplete
+  mirrors retain the raw compatibility validation path. Added backend coverage
+  that verifies structured `i32 %actual` facts despite stale `i64` text and
+  still rejects a real structured fixed-signature mismatch.
 
 ## Suggested Next
 
-- Select the next bounded Step 1 call/signature authority seam; do not widen
-  this completed call-argument helper packet into selector or inline-assembly work.
+- Select the next bounded runbook packet; do not widen this completed verifier
+  packet into printing, lowering, selector, or inline-assembly work.
 
 ## Watchouts
 
-- Do not treat `args_str`, fixed parameter type text, selector text, or inline
-  assembly template/constraint text as semantic authority when structured
-  facts exist; retain explicit raw fallbacks where structured data is absent.
-- Empty or partial structured argument mirrors intentionally remain on the raw
-  compatibility path because they cannot prove complete call-argument authority.
+- Empty, partial, variadic, or unspecified structured argument mirrors remain
+  on the explicit raw compatibility path because they cannot prove complete
+  fixed-call type authority.
 
 ## Proof
 
