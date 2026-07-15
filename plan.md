@@ -1,87 +1,78 @@
-# LIR Aggregate SSA Producer Authority Publication Runbook
+# LIR Aggregate and Vector Value Identity Convergence Runbook
 
 Status: Active
-Source Idea: ideas/open/803_lir_aggregate_ssa_producer_authority_publication.md
-Activated from: 754 Step 2 aggregate-use authority repair. Return to 754 only
-after this bounded producer/operand handoff is accepted.
+Source Idea: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
+Resumed from: satisfied bounded prerequisite 803 at unchanged Step 2. Step 1
+was accepted in `d8e5ed3a8` and is not to be repeated.
 
 ## Purpose
 
-Preserve native aggregate SSA producer authority for the two selected non-call
-paths required by 754's extractvalue use verification.
+Repair the selected `LirExtractValueOp` result/use authority route, then retain
+the existing bounded aggregate/vector row sequence.
 
 ## Core Rule
 
-Structured aggregate SSA values require checked current-function native
-authority. Do not recover it from text or evade it through a raw fallback.
+Use checked current-function structured IDs and row-specific typed facts as
+authority. Do not infer result, operand, index, or mask identity from rendered
+LLVM text, instruction order, or testcase naming. Keep unselected rows
+fail-closed.
 
 ## Read First
 
-- `ideas/open/803_lir_aggregate_ssa_producer_authority_publication.md`
-- `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md` resumption record
+- `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`
+- `ideas/closed/803_lir_aggregate_ssa_producer_authority_publication.md`
 - `ideas/closed/798_lir_operand_provenance_authority_publication.md`
-- local-load, `LirInsertValueOp`, and `LirExtractValueOp` lowering/verifier seams
+- `ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md` resumption record
+- `src/codegen/lir/ir.hpp`, `src/codegen/lir/verify.cpp`, and aggregate lowering seams
 
 ## Non-Goals
 
-- Generic operand or expression API conversion, broad producer-family work,
-  extractvalue row/index/layout/result-type validation, Raw-BIR, or text
-  recovery.
+- Anonymous aggregate layout, field-index, or result-element validation; these
+  remain 801/754 Step 3 work after Step 2 acceptance.
+- CFG/PHI, pointer/object, memory/VA authority, Raw-BIR, target lowering, MIR,
+  emission, broad aggregate/vector conversion, or display-text recovery.
+- Weakening `LirExtractValueOp.agg` verification merely to restore a baseline.
 
 ## Ordered Steps
 
-### Step 1 - Trace and select aggregate producer authority seams
+### Step 1 - Audit and select one aggregate/vector authority row — complete
 
-Goal: identify the minimal existing authority path for the failing aggregate
-local-load and constructed-insertvalue values, from producer creation through
-the extractvalue consumer/verifier boundary.
+Accepted in `d8e5ed3a8`: only `LirExtractValueOp` is selected. Do not repeat
+this audit or widen to other aggregate/vector rows.
 
-Actions:
+### Step 2 - Repair structured result and aggregate operand authority
 
-- reproduce and trace `positive_sema_ok_call_builtin_runtime_c` and the
-  direct-conjugate aggregate path;
-- identify which existing `LirValueId` is lost or rejected for each selected
-  producer and define the smallest shared-or-separate native carrier;
-- state exact type/ownership/display-mirror checks and malformed proof seams;
-- leave all unselected producer kinds and extractvalue row facts untouched.
-
-Completion check: an implementation-ready contract identifies both selected
-producer paths, their valid authority boundary, and rejection cases without
-text recovery or raw fallback.
-
-### Step 2 - Publish checked authority for selected aggregate producers
-
-Goal: carry the selected aggregate producer IDs natively to downstream uses
-and validate ownership/type coherence.
+Goal: repair the selected row so every supported aggregate SSA
+`LirExtractValueOp.agg` use carries valid current-function `LirValueId`
+authority without text recovery.
 
 Actions:
 
-- first restore the rejected 803-specific implementation hunks before the next
-  attempt; do not build further work on them and do not disturb preserved
-  unaccepted 801/802 changes in shared files;
-- gate the generalized producer verification on an explicit selected
-  `extract.requires_native_result_authority` contract, so legacy SSA extracts
-  such as `backend_lir_to_bir_interface` retain their existing route;
-- publish native result IDs only for the selected aggregate local loads and
-  terminal constructed insertvalues, preserving their operands through the
-  immediate unary extract path;
-- add a dedicated aggregate producer-type carrier for those opt-in producers
-  and compare it with `extract.agg_type`; leave the local-object raw pointee
-  and `LirAllocaOp.local_object_authority` equality contract unchanged;
-- verify only selected extracts against current-function producer ID, allowed
-  opted-in Call/Load/Insert kind, aggregate carrier/type equality, and exact
-  display mirror. All other kinds fail closed for selected extracts.
+- consume 798's checked direct-composite operand handoff and 803's checked
+  local-load/terminal-insertvalue producer handoff only at the selected row;
+- make the minimum schema/lowering/verifier repair for structured result/use
+  identity and aggregate type coherence;
+- add nearby same-feature positive and malformed coverage; reject missing,
+  unknown, foreign, stale, unselected, or type-incoherent authority;
+- obtain a fresh build, focused aggregate/frontend/backend proof, and the
+  supervisor-owned 100% full baseline. Do not advance on a partial baseline.
 
-Completion check: selected local-load and constructed-insertvalue aggregate
-uses retain checked current-function authority; legacy extracts remain
-ungated, local-object raw-pointee authority is unchanged, and unrelated
-producer families fail closed.
+Completion check: selected aggregate SSA uses have current-function authority
+independent of display spelling; focused proof passes and the full baseline is
+100% accepted by the supervisor.
 
-### Step 3 - Prove and publish the 754 handoff
+### Step 3 - Verify row-specific index facts — blocked on 801 handoff
 
-Goal: establish positive and malformed proof for the two selected paths and
-record the exact downstream contract.
+Goal: enforce `LirExtractValueOp` field-index and selected result-type
+coherence using 801's native anonymous aggregate facts.
 
-Completion check: fresh build, focused aggregate/frontend/backend proof, and
-supervisor-selected broader acceptance support resuming 754 Step 2; do not
-claim extractvalue index/layout/result validation.
+Completion check: start only after 801's required handoff is accepted; retain
+unrelated rows fail-closed.
+
+### Step 4 - Prove and hand off the bounded row
+
+Goal: obtain accepted producer-side proof for the selected row without a
+Raw-BIR receiver change.
+
+Completion check: a 100% full baseline and accepted one-row handoff are
+recorded; otherwise preserve an executable repair route.

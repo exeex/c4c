@@ -1,39 +1,34 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/803_lir_aggregate_ssa_producer_authority_publication.md
+Source Idea Path: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove and publish the 754 handoff
+Current Step ID: 2
+Current Step Title: Repair structured result and aggregate operand authority
 
 ## Just Finished
 
-- Step 2 is accepted at implementation commit `3d2e8ddd1` (`lir: publish
-  aggregate producer authority`): selected current-function local-load and
-  terminal-insertvalue producer IDs are checked with aggregate-carrier/type
-  equality and an exact display mirror. Coverage rejects missing, foreign,
-  stale-display, unselected, and type-incoherent authority; legacy extracts
-  remain ungated. This does not add extractvalue index, layout, or result
-  validation.
+- Lifecycle closure/resume: 803 is capability-complete at `3d2e8ddd1`, with
+  its accepted Step 3 proof recorded in `17d221ccb`. 754 Step 1 remains
+  accepted in `d8e5ed3a8`; 754 Step 2 is resumed and has no new accepted
+  implementation.
 
 ## Suggested Next
 
-- No executor packet is required. Supervisor should use the recorded Step 3
-  proof and bounded 754 handoff to make the lifecycle close decision (and, if
-  accepted, resume 754 Step 2); do not close or switch in this packet.
+- Step 2 only: consume the accepted 798 and 803 authority handoffs to repair
+  selected `LirExtractValueOp` result/use authority, then obtain fresh build,
+  focused proof, and supervisor-owned 100% full-baseline acceptance.
 
 ## Watchouts
 
-- The handoff is limited to checked current-function load/terminal-insertvalue
-  producer IDs, carrier/type equality, and display mirroring. Do not infer
-  extractvalue index, layout, or result validation, broaden producer families,
-  use text/raw fallback, touch Raw-BIR, or alter local-object raw-pointee
-  authority. Preserve 754 Step 2 as the exact post-handoff return.
+- Do not repeat Step 1, recover identity from display text, weaken the
+  verifier, begin Step 3 index/layout/result validation, touch Raw-BIR, or
+  widen producer families. Preserve 801's unaccepted repair and the preserved
+  802 worktree hunk.
 
 ## Proof
 
-- Fresh `cmake --build --preset default` passed. The matching guard
-  `ctest --test-dir build -j --output-on-failure -R '^(positive_sema_ok_call_builtin_runtime_c|llvm_gcc_c_torture_src_complex_2_c|frontend_hir_tests$|backend_)'`
-  moved from baseline 6 pass/2 fail (the two named positive tests) to 8/8
-  pass; guard PASS. Matching canonical `test_before.log` and `test_after.log`
-  record the 6/8 baseline and 8/8 after state. `^backend_` also passed 5/5.
+- 803 prerequisite evidence: fresh build passed; its matching canonical guard
+  moved from 6/8 (the runtime and direct-complex positives failed) to 8/8,
+  guard PASS; `^backend_` passed 5/5. This does not satisfy 754 Step 2's
+  required fresh focused proof or supervisor-owned 100% full baseline.

@@ -60,3 +60,22 @@ these values as raw evades the new authority rule and cannot be accepted.
   expectation downgrades, or named-case-only shortcuts.
 - Reject adding extractvalue row index/layout/result-type rules, Raw-BIR
   receipt, or unrelated aggregate/vector conversion.
+
+## Closure Record
+
+Disposition: capability complete as the bounded producer-authority prerequisite.
+
+Accepted implementation: `3d2e8ddd1` (`lir: publish aggregate producer
+authority`) publishes checked current-function native authority for only the
+selected aggregate local-load and terminal constructed-`LirInsertValueOp`
+paths, with aggregate carrier/type equality and an exact display mirror.
+Missing, foreign, stale-display, unselected, and type-incoherent authority is
+covered as rejecting; legacy extracts remain ungated.
+
+Accepted proof: fresh build passed; the matching guard recorded a 6/8 baseline
+(the two named positives failed) and 8/8 after in `test_before.log` and
+`test_after.log`, guard PASS; `^backend_` passed 5/5.
+
+754 handoff: resume 754 at its unchanged Step 2 to repair only selected
+`LirExtractValueOp` result/use authority using this handoff. This closure does
+not publish extractvalue index, layout, or result validation.

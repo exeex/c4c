@@ -167,6 +167,27 @@ producer paths, reactivate 754 at unchanged Step 2. Then repair only
 `LirExtractValueOp` result/use authority using that accepted handoff; do not
 begin Step 3 layout/index/result-type work or repeat Step 1.
 
+## Resumption Update: 803 aggregate producer-authority prerequisite satisfied
+
+803 is capability-complete and closed. Its accepted implementation is
+`3d2e8ddd1` (`lir: publish aggregate producer authority`), with Step 3 proof
+recorded in `17d221ccb`: selected current-function aggregate local-load and
+terminal constructed-`LirInsertValueOp` producers retain native IDs through
+the immediate extract path; their aggregate carrier/type equality and display
+mirror are checked. Missing, foreign, stale-display, unselected, and
+type-incoherent authority rejects, while legacy extracts remain ungated.
+
+Accepted proof is a fresh build; matching canonical guard logs from a 6/8
+baseline (the runtime and direct-complex positives failed) to 8/8 after, guard
+PASS; and `^backend_` 5/5. This is prerequisite proof, not 754 Step 2's
+required full-baseline acceptance.
+
+Exact return point: reactivate 754 at unchanged Step 2, `Repair structured
+result and aggregate operand authority`. Consume 803 only to repair the
+selected `LirExtractValueOp` result/use contract. Do not repeat Step 1 or
+begin Step 3 index/layout/result validation; retain the Step 2 fresh-build,
+focused-proof, and supervisor-owned 100% full-baseline gate.
+
 ## Reviewer Reject Signals
 
 - Reject recovery of aggregate-use identity from `%t`, `std::string`, printer
