@@ -467,6 +467,22 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
   }
 
   if (call_target.builtin_special) {
+    const auto native_direct_local_va_pointer = [&](ExprId arg)
+        -> std::optional<std::pair<lir::LirOperand,
+                                  lir::LirMemoryVaPointerAuthority>> {
+      const Expr& argument = get_expr(arg);
+      const auto* reference = std::get_if<DeclRef>(&argument.payload);
+      if (!reference || !reference->local) return std::nullopt;
+      const auto authority = ctx.local_object_authorities.find(reference->local->value);
+      const auto slot = ctx.local_slots.find(reference->local->value);
+      if (authority == ctx.local_object_authorities.end() ||
+          slot == ctx.local_slots.end()) {
+        return std::nullopt;
+      }
+      return std::make_pair(
+          lir::LirOperand::ssa(slot->second, authority->second.pointer_definition),
+          lir::LirMemoryVaPointerAuthority{authority->second});
+    };
     if (builtin_id == BuiltinId::Memcpy && call.args.size() >= 3) {
       TypeSpec dst_ts{};
       TypeSpec src_ts{};
@@ -482,17 +498,33 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
       return dst;
     }
     if (builtin_id == BuiltinId::VaStart && call.args.size() >= 1) {
-      TypeSpec ap_ts{};
-      const std::string ap_ptr = emit_va_list_obj_ptr(ctx, call.args[0], ap_ts);
       module_->need_va_start = true;
-      emit_lir_op(ctx, lir::LirVaStartOp{ap_ptr});
+      if (const auto authority = native_direct_local_va_pointer(call.args[0])) {
+        emit_lir_op(ctx, lir::LirVaStartOp{
+                             .ap_ptr = authority->first,
+                             .requires_native_memory_va_authority = true,
+                             .ap_authority = authority->second,
+                         });
+      } else {
+        TypeSpec ap_ts{};
+        emit_lir_op(ctx, lir::LirVaStartOp{
+                             emit_va_list_obj_ptr(ctx, call.args[0], ap_ts)});
+      }
       return "";
     }
     if (builtin_id == BuiltinId::VaEnd && call.args.size() >= 1) {
-      TypeSpec ap_ts{};
-      const std::string ap_ptr = emit_va_list_obj_ptr(ctx, call.args[0], ap_ts);
       module_->need_va_end = true;
-      emit_lir_op(ctx, lir::LirVaEndOp{ap_ptr});
+      if (const auto authority = native_direct_local_va_pointer(call.args[0])) {
+        emit_lir_op(ctx, lir::LirVaEndOp{
+                             .ap_ptr = authority->first,
+                             .requires_native_memory_va_authority = true,
+                             .ap_authority = authority->second,
+                         });
+      } else {
+        TypeSpec ap_ts{};
+        emit_lir_op(ctx, lir::LirVaEndOp{
+                             emit_va_list_obj_ptr(ctx, call.args[0], ap_ts)});
+      }
       return "";
     }
     if (builtin_id == BuiltinId::VaCopy && call.args.size() >= 2) {

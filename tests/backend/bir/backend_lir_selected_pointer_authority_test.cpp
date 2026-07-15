@@ -156,6 +156,34 @@ void test_native_memory_va_authority_verifier_boundary() {
       .dst_authority->local_pointer.live = false;
   expect_rejected(std::move(dead), "selected memset must reject dead authority");
 
+  const auto va_binding = std::get<lir::LirMemsetOp>(
+      native_memset_authority_module().functions[0].blocks[0].insts[0]).dst_authority;
+  auto selected_va_start = native_memset_authority_module();
+  selected_va_start.functions[0].blocks[0].insts.push_back(lir::LirVaStartOp{
+      .ap_ptr = lir::LirOperand::ssa("%slot", lir::LirValueId{1}),
+      .requires_native_memory_va_authority = true,
+      .ap_authority = va_binding,
+  });
+  lir::verify_module(selected_va_start);
+  auto missing_va_start = selected_va_start;
+  std::get<lir::LirVaStartOp>(missing_va_start.functions[0].blocks[0].insts.back())
+      .ap_authority.reset();
+  expect_rejected(std::move(missing_va_start),
+                  "selected va_start must reject missing pointer authority");
+
+  auto selected_va_end = native_memset_authority_module();
+  selected_va_end.functions[0].blocks[0].insts.push_back(lir::LirVaEndOp{
+      .ap_ptr = lir::LirOperand::ssa("%slot", lir::LirValueId{1}),
+      .requires_native_memory_va_authority = true,
+      .ap_authority = va_binding,
+  });
+  lir::verify_module(selected_va_end);
+  auto dead_va_end = selected_va_end;
+  std::get<lir::LirVaEndOp>(dead_va_end.functions[0].blocks[0].insts.back())
+      .ap_authority->local_pointer.live = false;
+  expect_rejected(std::move(dead_va_end),
+                  "selected va_end must reject dead pointer authority");
+
   auto wrong_size = native_memset_authority_module();
   std::get<lir::LirMemsetOp>(wrong_size.functions[0].blocks[0].insts[0])
       .size_authority->value = lir::LirIntegerImmediate{8};
@@ -278,6 +306,96 @@ void test_local_aggregate_zero_memset_populates_authority() {
              memset->size_authority->type == lir::LirTypeRef::integer(64) &&
              memset->size_authority->value.value == 16,
          "aggregate-zero local memset must retain pointer/object/owner/type/live and typed size facts");
+  lir::verify_module(module);
+}
+
+hir::Module direct_local_va_lifecycle_module() {
+  hir::Module module;
+  module.target_profile = c4c::default_target_profile(c4c::TargetArch::X86_64);
+
+  c4c::TypeSpec va_list_type{};
+  va_list_type.base = c4c::TB_VA_LIST;
+  va_list_type.enum_underlying_base = c4c::TB_VOID;
+  va_list_type.array_size = -1;
+  c4c::TypeSpec void_type{};
+  void_type.base = c4c::TB_VOID;
+  void_type.enum_underlying_base = c4c::TB_VOID;
+  void_type.array_size = -1;
+
+  hir::LocalDecl local;
+  local.id = module.alloc_local_id();
+  local.name = "ap";
+  local.type.spec = va_list_type;
+  local.type.category = hir::ValueCategory::LValue;
+
+  hir::Expr ap_ref;
+  ap_ref.id = module.alloc_expr_id();
+  ap_ref.type.spec = va_list_type;
+  ap_ref.type.category = hir::ValueCategory::LValue;
+  ap_ref.payload = hir::DeclRef{.name = "ap", .local = local.id};
+  hir::Expr va_start_callee;
+  va_start_callee.id = module.alloc_expr_id();
+  va_start_callee.type.spec = void_type;
+  va_start_callee.payload = hir::DeclRef{.name = "__builtin_va_start"};
+  hir::Expr va_end_callee;
+  va_end_callee.id = module.alloc_expr_id();
+  va_end_callee.type.spec = void_type;
+  va_end_callee.payload = hir::DeclRef{.name = "__builtin_va_end"};
+  hir::Expr va_start;
+  va_start.id = module.alloc_expr_id();
+  va_start.type.spec = void_type;
+  va_start.payload = hir::CallExpr{
+      .callee = va_start_callee.id, .args = {ap_ref.id}, .builtin_id = c4c::BuiltinId::VaStart};
+  hir::Expr va_end;
+  va_end.id = module.alloc_expr_id();
+  va_end.type.spec = void_type;
+  va_end.payload = hir::CallExpr{
+      .callee = va_end_callee.id, .args = {ap_ref.id}, .builtin_id = c4c::BuiltinId::VaEnd};
+
+  hir::Function function;
+  function.id = module.alloc_function_id();
+  function.name = "direct_local_va_lifecycle";
+  function.link_name_id = module.link_names.intern(function.name);
+  function.return_type.spec = void_type;
+  function.entry = module.alloc_block_id();
+  hir::Block entry;
+  entry.id = function.entry;
+  entry.stmts.push_back(hir::Stmt{.payload = local});
+  entry.stmts.push_back(hir::Stmt{.payload = hir::ExprStmt{va_start.id}});
+  entry.stmts.push_back(hir::Stmt{.payload = hir::ExprStmt{va_end.id}});
+  function.blocks.push_back(std::move(entry));
+  module.expr_pool.push_back(std::move(ap_ref));
+  module.expr_pool.push_back(std::move(va_start_callee));
+  module.expr_pool.push_back(std::move(va_end_callee));
+  module.expr_pool.push_back(std::move(va_start));
+  module.expr_pool.push_back(std::move(va_end));
+  module.index_function_decl(function);
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+void test_direct_local_va_lifecycle_populates_authority() {
+  const lir::LirModule module = lir::lower(direct_local_va_lifecycle_module());
+  const auto& function = module.functions.front();
+  const lir::LirVaStartOp* va_start = nullptr;
+  const lir::LirVaEndOp* va_end = nullptr;
+  for (const auto& block : function.blocks) for (const auto& inst : block.insts) {
+    if (const auto* candidate = std::get_if<lir::LirVaStartOp>(&inst)) va_start = candidate;
+    if (const auto* candidate = std::get_if<lir::LirVaEndOp>(&inst)) va_end = candidate;
+  }
+  expect(va_start && va_end, "direct local va-list lowering must emit va_start and va_end");
+  const auto check = [&](const auto& op, const char* message) {
+    expect(op->requires_native_memory_va_authority && op->ap_authority &&
+               op->ap_ptr.value_id() &&
+               *op->ap_ptr.value_id() == op->ap_authority->local_pointer.pointer_definition &&
+               op->ap_authority->local_pointer.owner == function.link_name_id &&
+               op->ap_authority->local_pointer.object.valid() &&
+               op->ap_authority->local_pointer.pointer_type.kind() == lir::LirTypeKind::Pointer &&
+               op->ap_authority->local_pointer.live,
+           message);
+  };
+  check(va_start, "direct local va_start must retain native pointer authority");
+  check(va_end, "direct local va_end must retain native pointer authority");
   lir::verify_module(module);
 }
 
@@ -678,6 +796,7 @@ void test_selected_memcpy_raw_bir_receipt_and_rollback() {
 
 int main() {
   test_local_aggregate_zero_memset_populates_authority();
+  test_direct_local_va_lifecycle_populates_authority();
   test_native_memory_va_authority_verifier_boundary();
   test_selected_current_function_pointer_authority();
   test_selected_byval_materialization_populates_authority();

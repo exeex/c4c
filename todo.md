@@ -8,27 +8,26 @@ Current Step Title: Publish and verify native pointer/object/lifetime authority
 
 ## Just Finished
 
--  753 Step 2 first admitted subpacket completed the native-only memory/VA
-  descriptor and verifier boundary for memcpy, memset, va_start, va_end,
-  va_copy, and va_arg. Native local aggregate-zero memset emission now
-  publishes its checked destination, i8 byte, and i64 positive size facts.
-  The verifier rejects missing, unselected, foreign, type-mismatched,
-  size-mismatched, and dead authority.
+-  753 Step 2 VA representative subpacket admitted direct-local `va_start`
+  and `va_end` only when the HIR DeclRef and current-function local map retain
+  the full 752 pointer/object/owner/type/live tuple. The existing verifier
+  rejects missing, foreign, type-mismatched, or dead selected VA authority;
+  no va-list lifecycle state was inferred.
 
 ## Suggested Next
 
 - Continue 753 Step 2 only: admit an additional representative memory or
-  va-list producer form only if it retains the complete native tuple. Keep VA
-  routes compatibility-only until then; do not begin Raw-BIR receiver work.
+  va-list producer form only if it retains the complete native tuple. Keep
+  builtin/indirect VA and all remaining routes compatibility-only until then;
+  do not begin Raw-BIR receiver work.
 
 ## Watchouts
 
-- The admitted producer is only local aggregate-zero memset where the emitter
-  retains the full 752 tuple. memcpy remains historical selected-only; builtin
-  memcpy, va_start, va_end, va_copy, and va_arg (including aggregate
-  memcpy-like vaarg moves) remain compatibility-only because they cannot yet
-  retain the complete tuple. Do not derive it from display text or widen the
-  historical memcpy descriptor.
+- Admitted producers are local aggregate-zero memset and direct-local
+  va_start/va_end. memcpy remains historical selected-only; builtin/indirect
+  VA, va_copy, and va_arg (including aggregate memcpy-like vaarg moves) remain
+  compatibility-only because they cannot yet retain the complete tuple. Do not
+  derive it from display text or widen the historical memcpy descriptor.
 
 ## Proof
 
