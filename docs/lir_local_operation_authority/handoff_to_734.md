@@ -102,3 +102,37 @@ importer dispatch, reachable verification, and transactional positive/negative
 coverage for the native result and local object/owner/pointer-type/pointee-type/
 liveness fields above. Do not receive stack restore, dynamic VLA allocation, or
 any other local operation, and do not recover authority from presentation.
+
+## 798 return handoff to 794: selected VLA stack restore only
+
+This is a return handoff to **794**, not a receipt for 734.  Commit
+`cdeacb2cd` publishes exactly one selected lifetime-consumer row:
+`LirStackRestoreOp` emitted for the backward-VLA-goto route.  Its selected
+admission is `requires_native_stack_restore_authority == true`; no name,
+rendered operand, LLVM text, or testcase identity selects the row.
+
+| Native field | Required selected fact |
+| --- | --- |
+| `saved_ptr` / `local_object_authority.pointer_definition` | A valid SSA saved-pointer ID, equal to the authority pointer definition and a modeled current-function pointer definition. |
+| `local_object_authority.object` / `owner` | A valid current-function object with the unique matching current-function owner. |
+| `local_object_authority.pointer_type` / `pointee_type` / `live` | Native `ptr` / `ptr` type facts and a live checkpoint binding. |
+| `lifetime_transition` | Present only for the selected row, with kind `RestoreSavedVlaStackCheckpoint` and `saved_pointer_definition` equal to both `saved_ptr` and the authority pointer definition. |
+
+The operation-local `RestoreSavedVlaStackCheckpoint` transition records the
+consumption of this saved VLA stack checkpoint.  It does not create a
+per-dynamic-VLA allocation-lifetime model or change `live` into a
+post-transition state.
+
+The verifier rejects malformed or unselected-field combinations, non-SSA,
+invalid, or unbound saved pointers, invalid object, foreign/non-unique owner,
+non-pointer pointer or pointee types, non-live authority, and invalid or
+mismatched transition kind/definition forms.  The focused proof was
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`;
+it passed with the focused guard non-decreasing at **1/1**.
+
+### Exact return action
+
+794 may now return at **Step 2 only** to publish and verify this selected
+native stack-restore authority, or complete its own handoff process.  This
+does not authorize Raw-BIR/importer/734 receipt, dynamic-VLA count work, VLA
+GEP, or any other local/VLA row.
