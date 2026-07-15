@@ -144,7 +144,7 @@ present `LirExternDecl::return_type` before consulting `return_type_str`.
 Focused frontend and backend stale-shadow proof passed 2/2 before and after;
 the matching regression guard was clean.
 
-### Step 5 - Prove aggregate parameter lowering uses structured function signatures — current
+### Step 5 - Prove aggregate parameter lowering uses structured function signatures — complete
 
 Goal: make the aggregate-parameter consumer seam in
 `src/backend/bir/lir_to_bir/aggregate.cpp` demonstrably authoritative on
@@ -170,3 +170,36 @@ Completion check: complete structured signature parameters and refs govern the
 aggregate ABI route; `signature_text` is unreachable as semantic authority in
 that case, legacy no-metadata fallback remains explicit, stale-shadow coverage
 is nearby and non-testcase-shaped, and valid output is preserved.
+
+Accepted in `4211a9373`: complete paired `signature_params` and
+`signature_param_type_refs` now govern aggregate parameter collection; the
+backend interface test uses a syntactically valid conflicting signature shadow
+and the targeted build/test proof passed 1/1.
+
+### Step 6 - Prove global type consumers use the structured global type ref — current
+
+Goal: close the remaining global acceptance row only if the existing
+`LirGlobal::llvm_type_ref` route is authoritative whenever exact identity is
+present, while keeping `llvm_type` as an explicitly checked compatibility and
+emission shadow.
+
+Actions:
+
+- Audit `lower_minimal_global`, the aggregate-layout and initializer routes,
+  and global verifier/printer seams. Distinguish exact `llvm_type_ref` cases
+  from deliberately legacy/no-metadata fallbacks.
+- Correct any selected global consumer that still chooses `llvm_type` while a
+  complete exact `llvm_type_ref` is present; fail closed rather than accepting
+  conflicting structured and rendered facts.
+- Add nearby stale-global-shadow coverage in the established LIR-to-BIR or
+  frontend global suite. The case must mutate only a rendered global type
+  shadow while retaining valid structured identity, and prove either rejection
+  or structured-authority behavior without weakening verifier contracts.
+- Build and run the exact affected test before and after the packet. Select a
+  broader LIR/frontend/backend checkpoint if the touched consumer is shared.
+
+Completion check: every selected exact-identity global route consumes
+`llvm_type_ref` before `llvm_type`; legacy text-only globals retain an explicit
+compatibility path; misleading global type text cannot override structured
+identity; and the focused proof preserves valid output. Reassess the source
+acceptance criteria after this step before attempting closure.

@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/762_lir_module_declaration_type_shadow_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Prove aggregate parameter lowering uses structured function signatures
+Current Step ID: 6
+Current Step Title: Prove global type consumers use the structured global type ref
 
 ## Just Finished
 
@@ -16,18 +16,19 @@ conflicting parameter shadow while preserving the complete structured ABI.
 
 ## Suggested Next
 
-Supervisor to select the next coherent packet from the active runbook.
+Execute Step 6: audit one exact-identity global consumer seam, correct it only
+if a present `llvm_type_ref` can be bypassed by `llvm_type`, and add nearby
+stale-shadow coverage with matching before/after proof.
 
 ## Watchouts
 
-This packet changed only aggregate parameter collection. `signature_text`
-remains a legacy fallback only for absent or incomplete parameter metadata;
-complete structured parameter pairs remain authoritative. Do not absorb
-signature rendering, function-reference reachability scans, globals, Raw-BIR,
-target lowering, or unrelated function consumers.
+Keep scope to global type authority. `llvm_type` may remain only for explicit
+legacy/no-metadata compatibility or emission; do not absorb signature
+rendering, function-reference reachability scans, Raw-BIR, target lowering, or
+unrelated global initializer semantics.
 
 ## Proof
 
-Passed: `cmake --build --preset default && ctest --test-dir build -j
---output-on-failure -R '^backend_lir_to_bir_interface$'` (1/1). Per packet
-authority, canonical regression logs were not modified.
+Required: fresh build plus selected exact global test before and after the
+packet; retain matching evidence for supervisor regression comparison when the
+selected route merits it.
