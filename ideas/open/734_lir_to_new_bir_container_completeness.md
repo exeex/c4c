@@ -1,8 +1,8 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (resumed after accepted Step 7.23 and closed computed-goto
-address-authority successor 757; the next packet is the bounded typed
-`LirIndirectBrOp` Raw-BIR receiver)
+Status: Open (resumed after accepted Step 7.24 and closed PHI incoming
+authority successor 751; the next packet is the bounded typed `LirPhiOp`
+Raw-BIR receiver)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -644,3 +644,23 @@ Return point: activate 751 now. After its accepted typed handoff, reactivate
 734 for plan-owner repair of one bounded Raw-BIR PHI receiver derived from that
 handoff; preserve accepted Steps 7.20 through 7.24 and do not absorb the later
 authority families into that receiver.
+
+## Resumption Update: accepted 751 PHI authority handoff
+
+Closed 751 is capability-complete in `6ece9fe8f`. Its typed
+`LirPhiIncoming` carrier publishes each incoming `LirOperand` value and
+current-function `LirBlockId` predecessor for ternary, logical, AArch64-vaarg,
+and AMD64-vaarg PHI producers; its verifier rejects missing, unknown,
+cross-function, and predecessor/edge-mismatched authority. The accepted
+focused proof passed 1/1, and the supervisor full after proof and matching
+full regression guard both passed 3037/3037.
+
+Repair and execute exactly one next receiver packet, Step 7.25: receive the
+typed `LirPhiOp` result/type and ordered closed-751 incoming value/predecessor
+pairs into a Raw-BIR PHI container. Bind every incoming to an exact existing
+predecessor-to-destination CFG edge occurrence, preserve multiplicity/order,
+verify ownership/type/coherence and transactional rollback, and never recover
+identity from value text, labels, printer output, LLVM text, or instruction
+order. Do not repeat Steps 7.20 through 7.24 or absorb local/object, memory/va,
+aggregate/vector, body-parameter, or any other remaining family. Return to
+the source completion gate after this one bounded receipt.
