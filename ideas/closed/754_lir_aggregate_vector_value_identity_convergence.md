@@ -516,3 +516,23 @@ row authority must instead become a separately scoped blocker that preserves
 this exact Step 13 return point. Do not repeat accepted Steps 1--12, reopen
 the ExtractElement route, generalize the ShuffleVector precursor, or recover
 identity from display text.
+
+## Closure Record
+
+Disposition: **capability complete; close accepted**.
+
+Step 14 is accepted in `1f139babf` (*lir: require splat insertelement
+authority*). It completes the final selected representative
+`LirInsertElementOp` row with native result/use authority and exact typed
+element/index/vector facts, while retaining the accepted ExtractValue,
+InsertValue, ExtractElement, and ShuffleVector rows. Its nearby positive and
+malformed coverage, fresh build, and matching `^backend_` before/after guard
+passed 6/6 with `--allow-non-decreasing-passed`.
+
+The supervisor then ran the required fresh full
+`ctest --test-dir build -j --output-on-failure` checkpoint immediately after
+`1f139babf`; all 3038/3038 tests passed (exit 0). This accepted 100% baseline
+is post-implementation and satisfies both Step 14's full-checkpoint condition
+and the source closure gate. The five representative aggregate/vector rows and
+the vector insert/extract/shuffle chain coverage are complete without display
+text recovery, expectation downgrades, or testcase-shaped shortcuts.
