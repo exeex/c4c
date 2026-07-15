@@ -104,3 +104,28 @@ Completion check:
 - a fresh build and focused producer/verifier proof establish native
   SpecialToken authority for the selected PHI rows; no Raw-BIR/importer change
   is present.
+
+## Completion Record
+
+Capability complete. Commit `91b5bde43` publishes `LirSpecialToken` as the
+native `LirOperandAuthority` alternative for all six existing classified
+SpecialToken forms: `null`, `undef`, `poison`, `zeroinitializer`, `true`, and
+`false`. The relevant ternary and logical PHI producers publish that authority;
+the PHI verifier rejects absent, kind-mismatched, invalid, and
+misleading-display authority without deriving identity from spelling.
+
+Supervisor-accepted fresh proof passed:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
+(1/1), with focused positive coverage for every classified form and malformed
+authority coverage. The matching narrow regression guard passed. This is
+producer/verifier acceptance only; no Raw-BIR receiver work was performed.
+
+## Handoff To 734
+
+Resume `ideas/open/734_lir_to_new_bir_container_completeness.md` unchanged at
+Step 7.25, `Receive typed PHI incoming authority`. Its receiver may consume
+the `LirSpecialToken` authority above alongside closed 751's ordered typed
+`LirPhiIncoming` value/predecessor pairs, while preserving its existing-edge,
+ownership, type/coherence, multiplicity/order, and transactional requirements.
+It must not recover token identity from display spelling or repeat Steps 1
+through 7.24.
