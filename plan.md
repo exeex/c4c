@@ -33,7 +33,7 @@ not be used to create or recover a value ID.
 
 ## Ordered Steps
 
-### Step 1 - Publish the logical RHS conversion result
+### Step 1 - Publish the logical RHS conversion result allocation
 
 Goal: replace only the non-`i1` RHS conversion result allocation in
 `emit_logical` with a native `fresh_value` result.
@@ -44,7 +44,6 @@ Primary target:
 
 Actions:
 
-- make a clean reattempt; do not reuse the prior unaccepted local diff;
 - preserve the existing typed RHS boolean operand and conversion type;
 - allocate the RHS `LirCastOp.result` as `LirOperand::ssa` with an owning
   current-function ID;
@@ -52,10 +51,38 @@ Actions:
 
 Completion check:
 
-- the selected RHS conversion produces a valid native result ID without PHI,
-  generic API, or other-family changes.
+- accepted allocation fact: commit `3b716c12d` changes only the selected RHS
+  conversion to use `fresh_value(ctx)` and retains the native result ID,
+  without PHI, generic API, or other-family changes. Its focused proof is not
+  complete: the old test assertion is expected to fail until Steps 2–3.
 
-### Step 2 - Prove the logical RHS result authority contract
+### Step 2 - Opt the selected logical RHS cast into native result authority
+
+Goal: make only the selected RHS conversion subject to the existing standalone
+cast-result verifier contract.
+
+Primary target:
+
+- `src/codegen/lir/hir_to_lir/expr/binary.cpp`
+
+Actions:
+
+- at construction of the selected non-`i1` RHS `LirCastOp`, set its existing
+  `requires_native_result_authority` field to `true`;
+- retain the `fresh_value(ctx)` result allocation from accepted commit
+  `3b716c12d`;
+- do not alter verifier or IR contracts: the existing flag-gated contract is
+  already accepted and must remain the authority for missing, invalid,
+  duplicate, and foreign IDs;
+- do not touch PHI result/incoming, final logical consumer, generic expression
+  APIs, or any other producer family.
+
+Completion check:
+
+- precisely the selected RHS cast opts in, so existing verifier ownership and
+  duplicate/foreign checks require its native result authority.
+
+### Step 3 - Prove the logical RHS result authority contract
 
 Goal: add focused positive and fail-closed malformed proof for the selected
 RHS conversion result only, using the accepted standalone-cast verifier
@@ -78,7 +105,7 @@ Completion check:
 - focused logical RHS result proof passes and malformed authority fails closed
   through the accepted verifier contract.
 
-### Step 3 - Publish the bounded 775 handoff
+### Step 4 - Publish the bounded 775 handoff
 
 Goal: record the logical RHS field, proof, unresolved PHI boundary, and 775
 return point without reactivating 775 or 751.
@@ -90,7 +117,8 @@ Completion check:
 
 ## Proof
 
-- For Steps 1–2: `cmake --build --preset default && ctest --test-dir build -j
+- For Steps 2–3: `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^frontend_lir_call_type_ref$'`
 - The supervisor owns final regression and baseline acceptance; this runbook
-  does not write root logs.
+  does not write root logs. A full-suite candidate is rejected until the
+  obsolete assertion is repaired and it adds no failure.
