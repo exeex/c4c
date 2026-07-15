@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/792_lir_next_local_operation_receiver_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish and verify the selected authority
+Current Step ID: 3
+Current Step Title: Record the 734 handoff and prove the bounded producer slice
 
 ## Just Finished
 
