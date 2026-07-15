@@ -1,6 +1,6 @@
 # LIR Local Object Pointer Authority Convergence
 
-Status: Open
+Status: Closed (capability complete)
 Type: bounded LIR local/object pointer authority repair
 Predecessor: `ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md`
 
@@ -49,3 +49,39 @@ that object is live.
 - Full baseline acceptance requires 100% passing tests. If a baseline run is
   below 100%, reject closure and trace `log/*` by time/commit to identify the
   first bad commit before continuing.
+
+## Accepted 734 Handoff And Closure Decision
+
+Capability complete; closure is accepted. The sole first Raw-BIR receiver row
+authorized for 734 is the
+selected hoisted `LirAllocaOp` row. Its receiver may consume only the alloca
+`result` and `local_object_authority` with typed
+`pointer_definition`, `object`, `owner`, `pointer_type`, `pointee_type`, and
+`live` fields. It must use those structured facts rather than the alloca's
+display spelling.
+
+The verifier guarantees that this authority binds that alloca result, names a
+current-function pointer definition, agrees with the alloca pointee type, and
+remains canonical when the same pointer is carried by repeated selected
+records. Missing, invalid, foreign, pointer/object/type-mismatched, dead, or
+disagreeing authority rejects before downstream use. The receiver must retain
+that fail-closed boundary and transactional publication.
+
+This is first because the accepted bounded route orders alloca before local
+load/store/GEP and VLA stack-save/restore lifetime rows. Those later rows,
+named/local-temporary variants beyond the selected alloca, memory/va,
+aggregate/vector, PHI/CFG, target lowering, and every other family remain
+outside the return packet.
+
+Producer evidence is `ca26a8242` (authority publication), `b200ac033` (VLA
+store alignment), and `0e8093025` (binding verification), with accepted
+focused coverage and `^backend_` 5/5 proof. The fresh supervisor acceptance
+proof is a build plus full `ctest --test-dir build -j --output-on-failure` at
+3037/3037 passing (100%), recorded in `test_after.log`.
+
+Exact return action: after 752 closes, reactivate 734 and repair its runbook
+for exactly one selected-hoisted-`LirAllocaOp` Raw-BIR receiver packet. Receive
+only the listed typed alloca/authority facts with importer dispatch, reachable
+verification, and transactional positive/negative coverage; do not derive
+semantics from displayed local names or `%t`, repeat prior 734 work, or absorb
+any excluded later row.
