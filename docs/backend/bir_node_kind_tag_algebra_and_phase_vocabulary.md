@@ -811,11 +811,181 @@ At every phase and boundary, the admission check rejects:
   shared `Node` storage or stable arena identity.
 
 Failure is atomic: no later-stage token or product is published, and the last
-verified input remains the rollback anchor. Detailed identity consequences and
-per-publication verifier obligations are fixed in Step 5.
+verified input remains the rollback anchor. The exact identity consequences and
+publication gates follow.
 
-## 13. Pending later steps
+## 13. Semantic identity across lowering
 
-Node identity and publication-verifier obligations remain pending Step 5.
-Final review, the bounded C++ proof decision, and adoption requirements for
-idea 732 remain pending Steps 6 through 8.
+### 13.1 `NodeId` preservation gate
+
+`NodeId` denotes one operation and, for a value-producing node, its ordinary
+result identity. It is not the address or index of storage. Reusing an arena
+slot, mutating a record in place, or preserving a generation does not prove
+semantic identity.
+
+A transformation may preserve a source `NodeId` only when it proves all of
+these facts remain exact:
+
+1. operation meaning and semantic-family ownership;
+2. ordinary result identity, result form/count, and concrete result type;
+3. operand count, order, roles, ownership, and the meaning of every use;
+4. kind-level and payload-refined memory, trap, call, and control effects;
+5. successor/terminator behavior and any edge ownership;
+6. stage owner and the operation's authority. Adding an explicit later-stage
+   admission without changing the node, as C does by reference, is not a node
+   rewrite; changing from Canonical to Pseudo/Allocated/Machine ownership is;
+7. payload semantics and every product reference, including exact revision and
+   target lineage;
+8. provenance meaning and all verifier obligations applicable to the result.
+
+Changing a kind spelling is insufficient evidence either way. A same-owner
+normalization may preserve `NodeId` only if all eight conditions hold. A change
+of result identity/count/type, operand roles, effects/control, stage owner,
+product authority, or operation meaning mandates replacement even when the
+replacement fits in the same bytes.
+
+Phase C is the important non-rewrite case. `PreparedBir` holds an immutable
+exact-revision reference to Canonical nodes and external products. Those nodes
+retain their Canonical `NodeKind`, `NodeId`, stage owner, and graph revision;
+they are merely admitted as read-only preparation inputs. C does not mutate
+them into Prepared-owned nodes and does not mint aliases with new semantic
+identity. A reviewed `C.PreparedAction`, if one is later implemented, is a new
+node with a new `NodeId` in its owning publication.
+
+MIR is the opposite boundary. Every F machine record has distinct
+machine-stage identity. A BIR `NodeId` may be copied into an optional
+provenance/debug link, but cannot serve as MIR identity, allocation authority,
+or a key whose continued liveness proves the machine record equivalent.
+
+### 13.2 Consequences by transformation shape
+
+| Shape | Identity rule | Uses and result mapping | Provenance | Revision and invalidation |
+| --- | --- | --- | --- | --- |
+| retain unchanged | Preserve `NodeId` only after the Section 13.1 gate; C admission-by-reference performs no mutation. | Existing uses remain exact; no remap is created. | Existing provenance remains attached. | A pure read/reference does not change graph revision; a no-semantic-change rewrite still follows editor revision policy and invalidates anything not explicitly preserved. |
+| lower/replace one-to-one | Preserve only for a same-owner normalization satisfying all eight conditions; stage-owner change or any semantic/shape/effect change creates a new node and retires the source. | Transaction rewrites every source-result use to the exact replacement result, with type and role checks; zero/multi-result mappings must be explicit. | Record source-to-replacement derivation; this link is not identity. | One successful transaction advances the owning graph revision once and invalidates all analyses/products affected by kind, operands, CFG, effects, types, or target facts. |
+| insert | Always allocate a fresh `NodeId`; insertion cannot borrow the identity of an adjacent/source node. | Add reciprocal uses and definitions atomically; inserted results begin with only explicitly created uses. | Record all contributing source IDs and the reason/phase. | Advance revision and invalidate dependencies named by the mutation summary. |
+| delete/disappear | Retire the source identity. Disappearance is legal only when no result use remains and all effect/control obligations are absent or explicitly realized by other output nodes/products. | Rewrite or remove all uses before retirement; a live ordinary result forbids deletion without an exact mapping. | Preserve a tombstone/derivation record when required for diagnostics; never leave a resolvable semantic alias. | Advance revision; invalidate def-use, CFG, effects, dominance, liveness and downstream products as applicable. |
+| expand one-to-many | Source identity is retired; every output gets a fresh ID. Arena-slot reuse is forbidden as proof that one output is the source. | Provide a total result mapping to one output or explicit projections; rewrite all uses only after the complete expansion validates. | Every output may cite the source plus its expansion role/ordinal. | Commit all outputs and rewrites in one revision; invalidate analyses/products for every affected semantic category. |
+| project | Projection nodes have fresh IDs and exact component types/roles. The aggregate source may retain its ID only if it remains a live unchanged operation; otherwise it is retired. | Each component use maps to one explicit projection result; generic operand-index output conventions are forbidden. | Projection records cite source and component role. | Advance revision for inserted projections/use rewrites; invalidate value-flow/type/liveness products. |
+| split | New operations and any new block/edge entities receive fresh identities; the split source is retired unless one unchanged survivor independently passes Section 13.1. | Partition operands/results/effects with a total mapping; redirect successor and phi/copy edge roles transactionally. | Each part cites the source and split role; block provenance records the source edge/block. | One atomic graph revision; invalidate CFG, dominance, phi/SSA, liveness and all target products derived from them. |
+| merge many-to-one | Create a fresh result ID unless exactly one survivor remains semantically unchanged and every other source is resultless/effectless or its obligations are already represented. | Map every consumed result use and prove no effect/control obligation is dropped or duplicated. | Result cites every source and the merge rule; provenance order cannot define semantics. | One atomic revision; invalidate union of all source mutation categories and their downstream products. |
+
+Copy elimination is a `disappear` only when source and destination denote the
+same exact allocated value/home and removal changes no ordering, liveness,
+effect, or debug obligation. Frame-action disappearance requires a proven
+zero-action frame. Phi disappearance requires the complete parallel-copy/edge
+realization; deletion alone is never out-of-SSA.
+
+### 13.3 Atomic rewriting and lineage
+
+All mutating shapes execute through an exclusive editor transaction. Before
+publication the transaction owns a total old-result-to-new-result mapping,
+reciprocal def-use updates, CFG/edge updates, and type/role checks. Verification
+occurs against the tentative complete output. On any error, no insertion,
+retirement, use rewrite, revision increment, provenance mapping, or product is
+observable.
+
+A successful transaction advances the owning graph revision exactly once and
+publishes a mutation summary. Analyses are either explicitly preserved by that
+summary or invalidated. Every preparation, pseudo, allocation, frame, and
+machine product names its exact input revision, target identity, and required
+predecessor product identities; any graph mutation makes a mismatching product
+stale and unobservable. Provenance maps survive only as diagnostic derivation
+facts and never authorize stale product reuse or semantic-ID equivalence.
+
+## 14. Publication verifier obligations
+
+### 14.1 Common gate
+
+Every publication verifier first performs the same fail-closed checks:
+
+- known `NodeKind`, tag, and stage values; one complete validated schema entry;
+- membership in exactly one admitted closed group and explicit legality at the
+  claimed stage;
+- valid tag combinations across all six axes;
+- payload alternative, operand arity/roles, result form/count, concrete type,
+  effects/control, and MIR disposition consistent with the schema;
+- valid owner/generation/order membership, reciprocal def-use, and no retired
+  identity still resolving;
+- exact revision/target/product lineage for every external fact consumed;
+- every node covered by an explicit transition outcome, with no unknown,
+  omitted, stale, premature, or catch-all-retained kind.
+
+Failure produces no stage token. A boolean convenience query returning false
+does not replace a diagnostic that distinguishes unknown kind, illegal stage,
+invalid combination, stale product, and unhandled transition.
+
+### 14.2 Raw publication
+
+Raw admits only the five `B.Raw*` groups. Its verifier proves stable ID
+ownership, closed payload/shape/type validity, explicit input-use roles,
+terminator/successor well-formedness at the Raw profile, and that every
+`B.RawImportOnly` form is documented for a B transition. It rejects Prepared,
+Pseudo, Allocated, and Machine owners and any target/allocation/frame fact in
+core nodes. Raw does not claim SSA validity; `SsaEligible` classification is not
+a dominance or single-definition proof.
+
+### 14.3 Canonical publication and B4 SSA
+
+Canonical admits only the five `B.Canonical*` groups. In addition to the common
+gate it rejects every residual Raw/import-only, preparation, pseudo,
+allocation, and machine form; proves canonical types and roles, exact
+terminator-derived CFG, reciprocal use-def, and target independence; and runs
+the B4 dynamic SSA proof for all admitted `SsaEligible` results. B4 checks one
+definition, dominance of non-phi uses, exact predecessor coverage and incoming
+edge ownership for phi/merge, and valid use-def across the whole publication.
+Static classification alone cannot mint the Canonical token.
+
+### 14.4 Prepared publication
+
+Prepared admits the five Canonical groups only as immutable exact-revision
+references plus an optional separately owned reviewed `C.PreparedAction` group.
+The verifier revalidates the Canonical token/revision, proves that Canonical
+node kinds, IDs, stage owners, payloads, and graph revision were not changed,
+and validates `TargetContext`, `AbiPlan`, `CallPlan`, `AddressPlan`, and any
+constraint product against that revision and target. Products must be complete,
+internally consistent, immutable, and external to Canonical nodes. Allocation,
+frame, pseudo, and machine facts are premature and rejected.
+
+### 14.5 PseudoPreallocation publication
+
+PseudoPreallocation admits only the five `D.*` groups. Its verifier proves a
+total explicit C-to-D transition for every consumed Canonical/prepared input,
+valid pseudo payloads/roles/types/effects/constraints, exact target/product
+lineage, and complete use/provenance mappings for replacements and expansions.
+It rejects all phi/merge nodes, ordinary SSA-only definitions or uses, residual
+Canonical ownership except diagnostic references, and missing/duplicate
+parallel copies. Critical-edge splitting, cyclic-copy temporaries, successor
+equivalence, and the absence of any post-out-of-SSA SSA-pass claim are dynamic
+publication checks.
+
+### 14.6 Allocated publication
+
+Allocated admits only the five `E.*` groups. Its verifier proves exact D input
+revision, liveness/interference and target-constraint lineage, a complete
+`AllocationPlan` and `FramePlan`, one legal home for every required virtual
+def/use, tied and register-class constraints, call clobbers, spill/reload and
+copy coverage, frame-object placement/alignment, stack effects, and all
+insert/replace/retire identity mappings. It rejects unresolved phi/SSA,
+unallocated required operands, stale plans, surviving expansion placeholders,
+and any claim of final machine opcode/encoding authority.
+
+### 14.7 MirReadyMachine publication
+
+MirReadyMachine admits only the five `F.*` groups. Its verifier proves distinct
+machine identities; legal target opcode, operand/constraint, width/type,
+memory/address, terminator/CFG, call/return/clobber, frame/unwind, symbol and
+relocation contracts; exact Allocation/Frame/Address/ABI/Call product lineage;
+and total realization of every E input and effect/result/control obligation.
+Every node is `TargetSpecific + MachineOnly` and admitted at
+`MirReadyMachine`; no Raw, Canonical, Prepared, Pseudo, Allocation-only,
+expansion, unresolved virtual-home, or SSA/phi kind survives. A source BIR
+`NodeId` may appear only as optional provenance and is rejected wherever a
+machine identity is required.
+
+## 15. Pending later steps
+
+Step 6 must review this complete artifact against idea 801, decide whether the
+bounded C++ schema/query proof is necessary, and record the decision. Any proof
+and final completion handoff remain Steps 7 and 8. Adoption requirements for
+idea 732 remain deferred to its later user-authorized lifecycle revision.
