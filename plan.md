@@ -1,85 +1,62 @@
-# LIR Aggregate and Vector Value Identity Convergence Runbook
+# LIR PHI Residual Producer-Family Authority Trace Runbook
 
 Status: Active
-Source Idea: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
-Resumed from: accepted 801 native anonymous aggregate layout/type-fact handoff;
-unchanged Step 3. Steps 1--2 are accepted and must not be repeated.
+Source Idea: ideas/open/806_lir_phi_residual_producer_family_authority_trace.md
+Resumed from: 754 Step 4's 3036/3037 full-baseline gate; preserve 806 Steps 1--2.
+Supersedes: 754 Step 4 until this separately scoped PHI producer-family blocker resolves.
 
 ## Purpose
 
-Publish native structured value, type, index, and mask authority for bounded
-aggregate and vector LIR operations. Rendered `%t` spellings remain output only
-and cannot recover semantic identity.
+Complete the required full-baseline gate after the bounded residual PHI
+producer-family repairs; do not reopen their accepted handoffs.
 
 ## Core Rule
 
-Use checked current-function structured IDs and row-specific typed facts as
-authority. For the selected direct-complex extract, consume 801's native
-anonymous `{ float, float }` layout, never compatibility text, instruction
-order, or testcase naming.
+Native checked current-function IDs are authority. A green focused successor
+does not clear the parent: only a supervisor-accepted 100% full baseline can
+return 804, then 754 through the recorded parent chain.
 
 ## Read First
 
-- `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`
-- `ideas/closed/801_lir_anonymous_aggregate_layout_type_facts.md`
-- `ideas/closed/798_lir_operand_provenance_authority_publication.md`
-- `ideas/closed/803_lir_aggregate_ssa_producer_authority_publication.md`
-- `src/codegen/lir/ir.hpp`, `src/codegen/lir/verify.cpp`, and aggregate
-  lowering plus nearby focused tests
+- `ideas/open/806_lir_phi_residual_producer_family_authority_trace.md`
+- `ideas/open/804_lir_phi_incoming_producer_authority_repair.md`
+- closed 807 floating `fneg` and 808 scalar bit-not `xor` authority records
+- accepted commits `961ce9fda`, `8f31e2535`, and `b86df3b9d`
+- the supervisor-selected fresh full-baseline procedure
 
 ## Non-Goals
 
-- Repeating Steps 1--2, reopening 798/803/801, or generalizing to other
-  aggregate/vector rows.
-- Raw-BIR, CFG/PHI, target lowering, MIR, emission, or any text-derived
-  identity/layout recovery.
-- Weakening existing result/use/layout contracts or accepting named-case-only
-  coverage as semantic progress.
+- Repeating accepted postfix, floating `fneg`, or scalar bit-not `xor` work;
+  reopening 804's unary-minus route; or changing PHI/verifier, CFG,
+  predecessor, or edge semantics.
+- Generic provenance, rendered-text recovery, expectation downgrades, or
+  declaring 804/754 clear from a partial baseline.
+
+## Completed Steps
+
+### Step 1 - Trace and classify the four residual PHI incoming paths
+
+Completed: evidence separated residual producer families and scoped 807/808
+successors rather than broadening 806.
+
+### Step 2 - Repair one evidenced producer handoff
+
+Completed in `961ce9fda`: only the postfix-increment old-value handoff was
+repaired with focused same-family authority coverage.
 
 ## Ordered Steps
 
-### Step 1 - Audit and select one aggregate/vector authority row — complete
+### Step 3 - Prove the blocker and return to 804
 
-Accepted in `d8e5ed3a8`: select only `LirExtractValueOp`; retain all other
-aggregate/vector rows fail-closed. Do not repeat this audit.
-
-### Step 2 - Publish structured result and operand authority — complete
-
-Accepted in `da07100d0` with the recorded prerequisite returns. The selected
-direct-complex extract publishes/consumes checked native result and aggregate
-authority. Do not reopen this step while performing Step 3.
-
-### Step 3 - Verify row-specific index or mask facts
-
-Goal: validate only the selected `LirExtractValueOp` aggregate field/index and
-result-element coherence at the verifier boundary.
+Goal: establish full-baseline acceptance before releasing the parent gate.
 
 Actions:
 
-- consume 801's checked native anonymous ordered field facts for the selected
-  direct-complex `{ float, float }` carrier;
-- reject malformed values, out-of-range or incoherent indices, and
-  field/result-type conflicts without parsing rendered type or instruction
-  text;
-- add nearby positive and negative coverage; preserve unrelated rows and
-  existing result/use authority contracts unchanged.
+- Obtain a fresh build and run the supervisor-selected full baseline.
+- Require a supervisor-accepted 100% result; focused successor proof does not
+  clear this parent gate.
+- Record the accepted proof and reactivate 804 at unchanged Step 3 only after
+  full-baseline acceptance.
 
-Completion check: the selected row rejects malformed structured facts and
-stale display text cannot repair field/index/result coherence. This is 754
-work, not a re-acceptance of 801's prerequisite.
-
-### Step 4 - Prove and hand off the bounded row
-
-Goal: obtain the producer-side proof required for a future one-row receiver
-handoff without editing Raw BIR.
-
-Actions:
-
-- run a fresh build, selected same-feature subset, and supervisor-selected
-  broader checkpoint;
-- require a 100% passing full baseline before source closure;
-- record one-row authority fields, rejected forms, and focused proof only if
-  accepted.
-
-Completion check: accepted producer/verifier evidence exists with no broader
-Raw-BIR receipt implied.
+Completion check: 100% full-baseline acceptance is recorded; otherwise retain
+this executable Step 3 route without reopening completed producer work.

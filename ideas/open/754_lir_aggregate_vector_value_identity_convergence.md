@@ -242,3 +242,38 @@ only those native field-layout/type facts to validate the selected
 `LirExtractValueOp` field/index/result coherence. Do not repeat Steps 1--2,
 claim 801 as extractvalue-row validation, widen to other rows, or recover any
 fact from display text.
+
+## Resumption Update: Step 4 full-baseline PHI residual blocker
+
+Last accepted progress: Steps 1--2 remain accepted in `d8e5ed3a8` and
+`da07100d0`; 801's native-layout handoff remains accepted. Step 3, *Verify
+row-specific index or mask facts*, is accepted in `a351cde2a` (`lir: verify
+extractvalue field coherence`). It verifies the selected direct-complex
+`LirExtractValueOp` result-element type against 801's ordered native anonymous
+aggregate fields. The Step 4 bookkeeping checkpoint is `c01affeba`.
+
+Interrupted step: Step 4, *Prove and hand off the bounded row*.
+
+Accepted proof and observed baseline: fresh selected same-feature proof
+`frontend_hir_tests|frontend_lir_call_type_ref|frontend_lir_function_signature_type_ref`
+passed 3/3. The initial `^backend_` checkpoint exposed a test-fixture issue;
+after the test-only `d69501785`, it passed 5/5. A fresh full command
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure`
+completed 3036/3037 with the sole failure
+`llvm_gcc_c_torture_src_20060910_1_c`:
+`LirPhiIncoming.value: must identify a known current-function LirValueId`
+(supervisor log `/tmp/754_step4_full.log`). Therefore Step 4 has not met its
+required 100% full-baseline closure gate.
+
+Classification: `separate-blocker`. This PHI producer-family failure is
+outside 754's aggregate/vector scope and is not claimed to be caused by its
+accepted Step 3. `ideas/open/804_lir_phi_incoming_producer_authority_repair.md`
+already records the residual PHI family successor
+`ideas/open/806_lir_phi_residual_producer_family_authority_trace.md`; 806 owns
+tracing and repairing its remaining producer cases.
+
+Exact return point: after 806 has an accepted same-family repair and the
+supervisor accepts a 100% full baseline, reactivate 804 at its unchanged Step
+3 as its source directs. Then return through that recorded dependency chain to
+754 Step 4's full-baseline/closure gate. Do not repeat Steps 1--3, absorb PHI
+producer work, or claim source closure from the partial baseline.
