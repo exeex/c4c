@@ -69,6 +69,34 @@ binary-LHS relation, not this direct switch-selector row. DirectPointer,
 DirectScalar binary-LHS, binary-RHS, ReturnValue, and every other parameter
 form remain fail closed.
 
+## Resumption Record: Preserved lowering-selector worktree collision
+
+Status: parked; there is no active runbook until the separately owned local
+Idea 822 slice has been isolated, accepted, or removed by its own authority.
+
+- Last accepted progress: Step 1 only, accepted in `7e6366cc9` (`plan: select
+  direct scalar switch selector authority row`). No Step 2 implementation,
+  proof, or acceptance commit exists.
+- Completed runbook steps: Step 1 selected the unchanged current-function
+  `DirectScalar` integer parameter consumed directly as `LirSwitch.selector`.
+- Interrupted step: Step 2, *Publish and verify the selected authority tuple*.
+- Blocker and scope boundary: the preserved dirty `stmt.cpp` change documented
+  by Idea 822 detects the same direct-scalar switch selector but materializes
+  an `add` carrying `LirBinOp.scalar_lhs_parameter_authority`. That is the
+  binary-LHS/materializing route Step 2 expressly rejects, and editing around
+  it would overwrite or blend an unaccepted Idea 822 slice. Its companion
+  dirty test patch and Idea 821 note remain preserved and unaccepted.
+- Exact return action: after separate authority has isolated, accepted, or
+  removed the local Idea 822 slice, reconstruct this runbook at Step 2 and
+  publish a dedicated optional `LirSwitch` selector authority with the
+  `SwitchSelector` role directly from the native parameter definition; do not
+  reuse `scalar_lhs_parameter_authority` or materialize an add. Then define
+  the focused producer proof before proceeding to Step 3.
+- Proof and commit status: `7e6366cc9` is the only accepted Idea 825 progress.
+  There is no Step 2 proof. The unresolved authority decision is whether the
+  local Idea 822 slice may be isolated, accepted, or removed; this must not be
+  assumed by Idea 825.
+
 ## Reviewer Reject Signals
 
 - Reject selection from rendered parameter names, types, signatures, operand
