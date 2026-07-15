@@ -3,12 +3,13 @@
 Status: Active
 Source Idea Path: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 11
-Current Step Title: Audit and select one remaining vector authority row
+Current Step ID: 12
+Current Step Title: Implement and prove the Step 11 selection
 
 ## Just Finished
 
-Step 11 audit selected exactly `LirExtractElementOp`, limited to the direct
+Step 11 is accepted and complete in `6f36d5437`. Its audit selected exactly
+`LirExtractElementOp`, limited to the direct
 vector-value `IndexExpr` lowering in `src/codegen/lir/hir_to_lir/expr/misc.cpp`
 (the native `fresh_value` result, `emit_rval_operand` vector/index uses,
 coerced `i32` index, vector shape, and `LirNativeVectorAuthority` construction

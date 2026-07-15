@@ -94,7 +94,7 @@ accepted shuffle route.
 
 ## Remaining Steps
 
-### Step 11 - Audit and select one remaining vector authority row
+### Step 11 - Audit and select one remaining vector authority row — complete
 
 Goal: inspect only `LirInsertElementOp` and `LirExtractElementOp` against the
 accepted 811 carrier. Select exactly one only after recording its concrete
@@ -105,7 +105,11 @@ separate-blocker route preserves this Step 11 return point. Do not infer facts
 from display text or reuse the accepted shuffle proof as an insert/extract
 claim.
 
-### Step 12 - Implement and prove the Step 11 selection
+Accepted in `6f36d5437`: selected only direct vector `IndexExpr`
+`LirExtractElementOp`; its verifier seam and full row-local matrix are
+preserved in `todo.md`. `LirInsertElementOp` remains excluded and unchanged.
+
+### Step 12 - Implement and prove the Step 11 selection — current
 
 Goal: publish and verify only the selected row's structured result/use
 authority and typed index/element facts, with fresh build, nearby same-feature
