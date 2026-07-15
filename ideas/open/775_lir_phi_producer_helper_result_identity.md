@@ -115,3 +115,26 @@ unresolved and excluded; this is not an accepted logical chain to the PHI
 input seam. This handoff does not reactivate 775 or 751, alter 751, or
 authorize generic expression API, PHI carrier/verifier, Raw-BIR/importer, or
 backend work.
+
+## Lifecycle Routing: ternary/coerce first-loss blocker
+
+Reassessment after the accepted 777 vaarg and 778 logical-RHS handoffs rejects
+direct 775 activation. 777 supplies the complete vaarg-only native result
+fact, and 778 supplies only the logical RHS cast result; neither makes the
+ternary/coerce producer route bounded. The ternary probe still loses its arm
+authority through `emit_rval_id` and string `coerce` before the raw PHI
+construction. Repairing every string expression API from this source would be
+a prohibited broad migration.
+
+Active blocker: `ideas/open/781_lir_ternary_coerce_arm_result_authority_publication.md`.
+It owns one scalar ternary arm/coercion publication seam and must hand back
+only the native typed field and its focused malformed-authority proof. It does
+not change `LirPhiOp`, make PHI incoming pairs typed, or claim the ternary PHI
+result/final consumer is authoritative.
+
+Exact 775 return point: after 781 closes, reassess the three named helper
+families from the accepted 777, 778, and 781 handoffs. Reactivate 775 only if
+the remaining helper-result work has a bounded native producer contract that
+does not require generic `emit_rval_*`/`coerce` migration or PHI-carrier work;
+otherwise record the next separately scoped blocker and preserve 751's blocked
+return point.
