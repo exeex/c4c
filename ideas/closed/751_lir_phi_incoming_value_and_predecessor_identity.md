@@ -1,6 +1,6 @@
 # LIR PHI Incoming Value And Predecessor Identity
 
-Status: Open
+Status: Closed — capability complete
 Type: bounded LIR PHI value/CFG carrier repair
 Predecessor: `ideas/open/750_lir_cfg_terminator_block_identity_completion.md`
 
@@ -92,3 +92,17 @@ the `aligned_stack_ptr` ptrmask call (>8 bytes) or `inttoptr` cast (<=8 bytes),
 and AMD64 selects final `reg_value` and `stack_value` loads. The handoff has
 focused structural/malformed proof and does not itself establish a PHI carrier,
 verification, predecessor/edge, CFG, or downstream consumer fact.
+
+## Closure Record
+
+Disposition: capability complete. Accepted implementation commit `6ece9fe8f`
+publishes typed `LirPhiIncoming` `LirOperand` values and current-function
+predecessor `LirBlockId`s for ternary, logical, AArch64 vaarg, and AMD64 vaarg
+PHI producers. Verification rejects missing, unknown, cross-function, and
+predecessor/edge-mismatched authority; labels remain rendering compatibility
+mirrors rather than identity.
+
+Accepted proof: the fresh focused command
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
+passed 1/1. Supervisor full after proof passed 3037/3037, and the matching
+full baseline guard passed at 3037/3037 with `--allow-non-decreasing-passed`.
