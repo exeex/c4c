@@ -1,7 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (parked after accepted Step 7.34 direct-pointer body-parameter
-receipt; 818 next body-parameter authority handoff active)
+Status: Open (active at the bounded post-Step 7.35 DirectScalar binary-RHS
+body-parameter receipt)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -1333,3 +1333,11 @@ only that matching typed Raw-BIR receiver row. Do not repeat Step 7.35 or
 receive another parameter, memory/VA, aggregate/vector, module/type/global,
 instruction/terminator, or inline-assembly form without its separately scoped
 first-owner handoff.
+
+## Resumption Record: closed 823 DirectScalar binary-RHS authority
+
+Closed idea 823 is capability-complete for one distinct producer/schema/verifier handoff in commit `83d7959f2`. It publishes only `LirBinOp.scalar_rhs_parameter_authority`: the RHS `LirValueId`, parameter index, `LirTypeRef`, current-function `LinkNameId` owner, `LirNativeBodyParameterAbi::DirectScalar`, explicit `Rhs` role, matching RHS SSA operand/value, and matching operation type. The native producer binds only when its current-function parameter definition agrees on value, type, and ABI; the verifier rejects absent carrier, invalid value, duplicate definition, foreign owner, wrong LHS role, type mismatch, ABI mismatch, and RHS operand/value mismatch. No Raw-BIR/importer/builder/receiver change was accepted in 823.
+
+Accepted proof is the fresh `cmake --build --preset default --target backend_lir_selected_pointer_authority_test` build and focused `ctest --test-dir build --output-on-failure -R '^backend_lir_selected_pointer_authority$'` pass, with matching `test_before.log`/`test_after.log` 1/1 passing and an accepted non-decreasing guard using `--allow-non-decreasing-passed`.
+
+Exact return action: resume at **Step 7.36 - Receive the one 823-authorized DirectScalar binary-RHS body-parameter authority row**. Add only that tuple's typed Raw-BIR destination, importer dispatch, reachable verifier path, and transactional positive/malformed-authority coverage. Do not repeat accepted Steps 1 through 7.35 (including `18443fc0f`), receive direct-pointer or binary-LHS rows again, or absorb any other parameter, memory/VA, aggregate/vector, module/type/global/metadata, instruction/terminator, or inline-assembly family. Reapply this source's completion gate after the one receipt.

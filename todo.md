@@ -1,37 +1,25 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/823_lir_next_body_parameter_authority_handoff.md
+Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish and verify one DirectScalar binary-RHS authority contract
+Current Step ID: 7.36
+Current Step Title: Receive the one 823-authorized DirectScalar binary-RHS body-parameter authority row
 
 ## Just Finished
 
-- Step 2 published one `LirBinOp.rhs` DirectScalar authority contract: the
-  producer binds a distinct RHS carrier only from a matching current-function
-  definition, and the verifier requires RHS role, value, owner, parameter
-  index, type, and ABI coherence. Nearby LIR-only coverage accepts the exact
-  tuple and rejects missing, foreign, wrong-role, type, ABI, and value-mismatch
-  variants; no Raw-BIR receipt was added.
+- Lifecycle switch completed: closed 823's accepted `83d7959f2` authority handoff is recorded in the 734 source; no 734 Step 7.36 implementation has started.
 
 ## Suggested Next
 
-- Complete Step 3 by recording this exact RHS producer/schema/verifier tuple,
-  rejected forms, and focused proof in the source idea, then hand the bounded
-  receiver contract back to 734. Do not begin Raw-BIR receiver work here.
+- Execute only Step 7.36's typed Raw-BIR receipt of the structured `LirBinOp.rhs` DirectScalar authority.
 
 ## Watchouts
 
-- Do not infer RHS authority from `LirBinOp.rhs`, operand spelling, or the LHS
-  carrier; the distinct RHS carrier is the only selected authority source.
-- Ideas 821 and 822 retain pending, unaccepted implementation work; do not
-  modify, discard, or claim acceptance for either slice.
-- No generic scalar/parameter admission, Raw-BIR/importer/builder work, or
-  presentation-derived recovery is authorized.
-- The accepted pointer and DirectScalar binary-LHS rows are historical
-  progress; do not reopen or repeat them.
+- Do not derive RHS authority from text, the RHS operand alone, or the LHS carrier; accept only closed 823's full structured tuple.
+- Do not repeat accepted Steps 1 through 7.35 or start another parameter row.
+- Ideas 821 and 822 remain pending and unaccepted; do not modify or claim their work.
 
 ## Proof
 
-- `cmake --build --preset default --target backend_lir_selected_pointer_authority_test && ctest --test-dir build --output-on-failure -R '^backend_lir_selected_pointer_authority$'` passed; output is preserved in `test_after.log`.
+- Closed 823 producer handoff: `83d7959f2`; fresh focused producer proof and matching 1/1 before/after non-decreasing regression guard are recorded in the source. Step 7.36 requires fresh receiver proof before acceptance.

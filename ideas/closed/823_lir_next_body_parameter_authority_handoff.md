@@ -74,3 +74,13 @@ is adjacent. Once it has an accepted exact handoff, reactivate 734 and repair
 its runbook for only that row's typed Raw-BIR receipt; otherwise record the
 evidence-backed split or no-change outcome without claiming parameter-family
 completion.
+
+## Completion Record: DirectScalar binary-RHS authority handoff
+
+Close accepted: this bounded producer/schema/verifier source is capability-complete. Commit `83d7959f2` publishes exactly one distinct native body-parameter authority for `LirBinOp.scalar_rhs_parameter_authority`. The sole receiver-consumable tuple is the RHS SSA `LirValueId`, parameter index, `LirTypeRef`, current-function `LinkNameId` owner, native `LirNativeBodyParameterAbi::DirectScalar`, explicit `Rhs` role, and matching `LirBinOp.rhs` operand/value and operation type. The producer binds it only from the native current-function parameter definition when value, type, and ABI agree; the verifier requires that same RHS role/value/type contract.
+
+Nearby coverage rejects absent carrier, invalid value, duplicate definition, foreign owner, wrong LHS role, type mismatch, ABI mismatch, and RHS operand/value mismatch. All nonselected forms remain fail closed and unreceived. No Raw-BIR destination, importer, builder, receiver, or generic parameter admission changed in this source.
+
+Accepted proof is the fresh `cmake --build --preset default --target backend_lir_selected_pointer_authority_test` build and focused `ctest --test-dir build --output-on-failure -R '^backend_lir_selected_pointer_authority$'` pass, with matching `test_before.log`/`test_after.log` 1/1 passing and the non-decreasing guard accepted using `--allow-non-decreasing-passed`.
+
+Exact return action: reactivate 734 at one new bounded receiver step only. Receive this `LirBinOp.rhs` DirectScalar tuple into typed Raw-BIR, importer dispatch, reachable verification, and transactional positive/malformed coverage. Do not repeat Step 7.35, receive the previously accepted pointer or binary-LHS rows, start any other parameter form, or broaden into other source families.
