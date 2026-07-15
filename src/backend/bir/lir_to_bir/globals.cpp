@@ -96,11 +96,12 @@ std::optional<LinkNameId> ImportedFunctionSymbolIndex::no_id_compatibility_link_
 namespace {
 
 std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGlobal& global,
+                                               std::string_view type_text,
                                                const TypeDeclMap& type_decls,
                                                const c4c::TargetProfile& target_profile,
                                                const BackendStructuredLayoutTable*
                                                    structured_layouts) {
-  const auto lowered_type = lower_scalar_global_type(global.llvm_type);
+  const auto lowered_type = lower_scalar_global_type(type_text);
   if (!lowered_type.has_value()) {
     return std::nullopt;
   }
@@ -117,7 +118,7 @@ std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGloba
   lowered.align_bytes = global.align_bytes > 0 ? static_cast<std::size_t>(global.align_bytes) : 0;
   if (!global.is_extern_decl) {
     if (*lowered_type == bir::TypeKind::Ptr) {
-      const auto trimmed_init = strip_typed_initializer_prefix(global.init_text, global.llvm_type);
+      const auto trimmed_init = strip_typed_initializer_prefix(global.init_text, type_text);
       if (const auto initializer = lower_global_initializer(trimmed_init, *lowered_type);
           initializer.has_value()) {
         lowered.initializer = *initializer;
@@ -136,7 +137,7 @@ std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGloba
         lowered.initializer_symbol_name = initializer_address->global_name;
       }
     } else {
-      const auto trimmed_init = strip_typed_initializer_prefix(global.init_text, global.llvm_type);
+      const auto trimmed_init = strip_typed_initializer_prefix(global.init_text, type_text);
       const auto initializer = lower_global_initializer(trimmed_init, *lowered_type);
       if (!initializer.has_value()) {
         return std::nullopt;
@@ -441,7 +442,15 @@ std::optional<bir::Global> lower_minimal_global_impl(
     const c4c::TargetProfile& target_profile,
     const BackendStructuredLayoutTable* structured_layouts,
     GlobalInfo* info) {
-  if (auto lowered = lower_scalar_global(global, type_decls, target_profile, structured_layouts);
+  // llvm_type_ref is the complete semantic type when present. llvm_type is an
+  // emission/compatibility mirror and remains authoritative only for legacy
+  // globals that do not carry that metadata.
+  const std::string authoritative_type = global.llvm_type_ref.has_value()
+                                             ? global.llvm_type_ref->render_llvm()
+                                             : global.llvm_type;
+
+  if (auto lowered = lower_scalar_global(global, authoritative_type, type_decls,
+                                         target_profile, structured_layouts);
       lowered.has_value()) {
     info->value_type = lowered->type;
     info->element_size_bytes = type_size_bytes(lowered->type);
@@ -450,7 +459,8 @@ std::optional<bir::Global> lower_minimal_global_impl(
     info->supports_direct_value = true;
     info->supports_linear_addressing = true;
     if (lowered->initializer_symbol_name.has_value()) {
-      const auto trimmed_init = strip_typed_initializer_prefix(global.init_text, global.llvm_type);
+      const auto trimmed_init =
+          strip_typed_initializer_prefix(global.init_text, authoritative_type);
       const auto initializer_address =
           structured_layouts != nullptr
               ? parse_global_address_initializer(trimmed_init, type_decls, *structured_layouts)
@@ -476,7 +486,7 @@ std::optional<bir::Global> lower_minimal_global_impl(
     return lowered;
   }
 
-  if (const auto integer_array = parse_integer_array_type(global.llvm_type);
+  if (const auto integer_array = parse_integer_array_type(authoritative_type);
       integer_array.has_value() && integer_array->element_type != bir::TypeKind::Ptr) {
     const auto element_size_bytes = type_size_bytes(integer_array->element_type);
     if (element_size_bytes == 0) {
@@ -504,7 +514,7 @@ std::optional<bir::Global> lower_minimal_global_impl(
         global.align_bytes > 0 ? static_cast<std::size_t>(global.align_bytes) : 0;
     if (!global.is_extern_decl) {
       const auto initializer_elements =
-          lower_integer_array_initializer(global.init_text, global.llvm_type);
+          lower_integer_array_initializer(global.init_text, authoritative_type);
       if (!initializer_elements.has_value()) {
         return std::nullopt;
       }
@@ -517,7 +527,7 @@ std::optional<bir::Global> lower_minimal_global_impl(
     info->storage_size_bytes = lowered.size_bytes;
     info->supports_direct_value = false;
     info->supports_linear_addressing = true;
-    info->type_text = global.llvm_type;
+    info->type_text = authoritative_type;
     return lowered;
   }
 
@@ -528,7 +538,7 @@ std::optional<bir::Global> lower_minimal_global_impl(
           ? lookup_structured_global_layout_result(*global.llvm_type_ref,
                                                    type_decls,
                                                    *structured_layouts)
-          : lookup_global_layout_result(global.llvm_type, type_decls, structured_layouts);
+          : lookup_global_layout_result(authoritative_type, type_decls, structured_layouts);
   const auto& layout = layout_lookup.layout;
   if ((layout.kind != AggregateTypeLayout::Kind::Struct &&
        layout.kind != AggregateTypeLayout::Kind::Array) ||
@@ -561,7 +571,7 @@ std::optional<bir::Global> lower_minimal_global_impl(
                   &pointer_value_indices)
             : lower_aggregate_initializer(
                   global.init_text,
-                  global.llvm_type,
+                  authoritative_type,
                   type_decls,
                   &pointer_offsets,
                   &pointer_value_indices);
@@ -585,7 +595,7 @@ std::optional<bir::Global> lower_minimal_global_impl(
   info->storage_size_bytes = layout.size_bytes;
   info->supports_direct_value = false;
   info->supports_linear_addressing = true;
-  info->type_text = global.llvm_type;
+  info->type_text = authoritative_type;
   return aggregate;
 }
 

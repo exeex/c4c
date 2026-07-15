@@ -8,27 +8,26 @@ Current Step Title: Prove global type consumers use the structured global type r
 
 ## Just Finished
 
-Step 5 complete — aggregate parameter collection now treats paired
-`signature_params`/`signature_param_type_refs` as structured authority only
-when complete; rendered `signature_text` is the legacy fallback for absent or
-incomplete metadata. Backend coverage supplies a syntactically valid,
-conflicting parameter shadow while preserving the complete structured ABI.
+Step 6 complete — `lower_minimal_global` now derives scalar, array, aggregate,
+and initializer type handling from `llvm_type_ref::render_llvm()` whenever
+metadata is present; `llvm_type` remains the explicit absent-metadata
+compatibility path. Nearby global coverage rejects a stale rendered scalar
+shadow against complete structured metadata transactionally.
 
 ## Suggested Next
 
-Execute Step 6: audit one exact-identity global consumer seam, correct it only
-if a present `llvm_type_ref` can be bypassed by `llvm_type`, and add nearby
-stale-shadow coverage with matching before/after proof.
+Select the next active-plan packet after reviewing Step 6's global-consumer
+result and any remaining structured type-reference consumers.
 
 ## Watchouts
 
-Keep scope to global type authority. `llvm_type` may remain only for explicit
-legacy/no-metadata compatibility or emission; do not absorb signature
-rendering, function-reference reachability scans, Raw-BIR, target lowering, or
-unrelated global initializer semantics.
+Keep `llvm_type` only as an explicit legacy/no-metadata compatibility or
+emission path. Do not absorb signature rendering, function-reference
+reachability scans, Raw-BIR, target lowering, or unrelated initializer
+semantics.
 
 ## Proof
 
-Required: fresh build plus selected exact global test before and after the
-packet; retain matching evidence for supervisor regression comparison when the
-selected route merits it.
+Passed: `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^(frontend_lir_global_type_ref|backend_lir_to_bir_interface)$'`
+(2/2). Proof log: `test_after.log`.

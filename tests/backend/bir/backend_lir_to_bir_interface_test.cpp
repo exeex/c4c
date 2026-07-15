@@ -5636,6 +5636,13 @@ void test_scalar_global_type_authority_without_mirror() {
   expect(!bir::lower_lir_to_raw_bir(malformed_i686).has_value() &&
              !bir::lower_lir_to_canonical_bir(malformed_i686).has_value(),
          "I686 long globals must reject i64 target-policy conflicts transactionally");
+
+  auto stale_type_shadow = module;
+  stale_type_shadow.globals.front().llvm_type_ref = lir::LirTypeRef::integer(32);
+  stale_type_shadow.globals.front().llvm_type = "i64";
+  expect(!bir::lower_lir_to_raw_bir(stale_type_shadow).has_value() &&
+             !bir::lower_lir_to_canonical_bir(stale_type_shadow).has_value(),
+         "a stale rendered global type must not override complete structured type authority");
 }
 
 void test_enum_storage_global_receipt_and_rejections() {
