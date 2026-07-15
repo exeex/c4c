@@ -8,27 +8,53 @@ Current Step Title: Audit and select one remaining vector authority row
 
 ## Just Finished
 
-Step 10 rejected source closure after accepted Step 9 (`88268afe6`): the
-selected scalar-to-vector zero-initializer splat ShuffleVector row has accepted
-nearby proof, matching backend guard 6/6, representative emission, and a
-supervisor-owned fresh full CTest 3038/3038. InsertElement and ExtractElement
-remain required source rows.
+Step 11 audit selected exactly `LirExtractElementOp`, limited to the direct
+vector-value `IndexExpr` lowering in `src/codegen/lir/hir_to_lir/expr/misc.cpp`
+(the native `fresh_value` result, `emit_rval_operand` vector/index uses,
+coerced `i32` index, vector shape, and `LirNativeVectorAuthority` construction
+at lines 367--388). Its verifier seam is the existing per-function
+`verify_vector_authority(*op, "LirExtractElementOp", ...)` path in
+`src/codegen/lir/verify.cpp` (lines 2662--2720): it checks the current-function
+result and vector-use IDs, native lane/element shape mirrors, and the exact
+structured index operand/type without display-text recovery.
+
+Required positive matrix for Step 12: (1) a direct vector `IndexExpr` whose
+vector and `i32` index are native current-function values; (2) the same route
+with an immediate/coerced `i32` index; in both forms the result ID, vector-use
+ID, native index value/type, and `<lanes x element>` shape must agree.
+Required malformed matrix: missing/invalid/foreign/undefined result ID;
+missing/foreign/undefined vector-use ID; missing native shape, zero lanes, or
+shape/display element mismatch; missing native index, index operand mismatch,
+undefined index SSA ID, or non-`i32` index type; and a misleading display
+mirror for any of those facts. These are row-local verifier cases, not
+rendered-LLVM or testcase-name probes.
+
+Explicitly excluded `LirInsertElementOp`: its only current lowering sites are
+the scalar-to-vector poison seed in `expr/binary.cpp` (lines 289--298 and
+410--416), which is the former rejected Step 9 InsertElement selection and is
+now only the accepted ShuffleVector precursor. Re-selecting it would violate
+the plan's no-reuse instruction; no distinct InsertElement native-carrier seam
+was found in the bounded audit.
 
 ## Suggested Next
 
-Audit only `LirInsertElementOp` and `LirExtractElementOp`; select exactly one
-complete row-local contract and record its seam, positive/malformed matrix,
-and excluded row here before implementation.
+Implement only the selected direct vector `IndexExpr` `LirExtractElementOp`
+contract: make its native carrier required for that route and add the listed
+row-local result/vector/index/shape coherence checks and nearby positive plus
+malformed coverage. Leave InsertElement unchanged.
 
 ## Watchouts
 
-Steps 1--10 remain accepted. Do not recover facts from display text, generalize
-the accepted zero-initializer shuffle splat, or turn its proof into an
-InsertElement/ExtractElement claim. Missing carrier facts require a separate
-blocker and return to this Step 11 audit.
+Steps 1--10 remain accepted. This selection relies on 811/814 only for their
+accepted reusable carrier handoff, not as ExtractElement proof. Do not recover
+facts from display text, generalize the accepted zero-initializer shuffle
+splat, or reuse the rejected scalar-to-vector InsertElement route. If the
+direct IndexExpr path cannot require the recorded carrier without widening
+into generic provenance, stop for a separate blocker and return to Step 11.
 
 ## Proof
 
-Accepted Step 9 proof: fresh build; representative `scal-to-vec1` emission;
-focused native-vector-authority coverage; matching `^backend_` 6/6; and
-supervisor-owned fresh full CTest 3038/3038. Step 11 proof selection is pending.
+Audit-only packet: no build or test was required or run. Step 12 needs a fresh
+build, nearby same-feature positive/malformed coverage, the matching backend
+guard, and supervisor-selected full checkpoint; `test_after.log` is not
+applicable to this audit-only packet.
