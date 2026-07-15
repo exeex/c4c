@@ -1,27 +1,29 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/818_lir_next_body_parameter_authority_handoff.md
+Source Idea Path: ideas/open/819_lir_scalar_binary_lhs_parameter_authority.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Trace and select one body-parameter use authority row
+Current Step Title: Discover the native scalar binary-LHS authority producer
 
 ## Just Finished
 
-- Lifecycle switch: 734 Step 7.34 is accepted but source-incomplete; 818 now
-  owns selection of one distinct body-parameter producer handoff.
+- None; lifecycle switch from 818 Step 1 trace-only blocker route.
 
 ## Suggested Next
 
-- Execute plan Step 1 only; do not edit Raw-BIR/importer or reuse closed 817
-  or open 795 authority.
+- Execute plan.md Step 1: map native current-function value, position, scalar
+  type, owner, ABI classification, and `LirBinOp.lhs` role without using
+  presentation fields.
 
 ## Watchouts
 
-- The selected row must have native current-function value, position, type,
-  owner, and ABI authority. Presentation fields are not admissible.
+- `param_slots`, rendered names/signatures, `LirOperand::raw`, and
+  `preserve_exact_binary_operand` string matching are forbidden authority.
+- Do not touch Raw-BIR/importer/dispatcher/receiver work; do not reuse closed
+  795/817 or byval-memcpy forms.
 
 ## Proof
 
-- Select the exact fresh build and focused producer proof only after the row
-  is traced; no receiver proof is implied by this lifecycle transition.
+- Not run; lifecycle-only switch. Step 1 discovery must select proof before
+  any producer change.

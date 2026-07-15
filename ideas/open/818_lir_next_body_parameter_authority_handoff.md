@@ -57,3 +57,31 @@ handoff returns to its separate 810 baseline route and does not authorize a
   combined multi-form parameter sweep claimed as one handoff.
 - Reject retaining the selected form's old text-only failure behind renamed
   helpers or classification-only changes claimed as producer capability.
+
+## Resumption Record: scalar binary-operand producer-authority blocker
+
+- Last accepted progress: Step 1 completed as a trace-only no-change packet.
+  No distinct receiver-ready body-parameter authority row exists in the
+  current route. `LirCurrentFunctionBodyParameterDefinition` is limited to the
+  closed-817 `LirGepOp.ptr` DirectPointer row; it does not authorize another
+  form.
+- Interrupted step: `Current Step ID: 1`; `Current Step Title: Trace and
+  select one body-parameter use authority row`.
+- Blocker: the nearest distinct scalar `LirBinOp` parameter use reaches
+  `preserve_exact_binary_operand` only as a raw display operand. Native
+  current-function parameter value identity, ABI definition, and the required
+  position/type/owner/ABI contract are absent. `param_slots`, rendered names,
+  and `LirOperand::raw` are forbidden authority. Closed-795 GEP-index and
+  closed-817 direct-pointer contracts must not be reused.
+- Successor: `ideas/open/819_lir_scalar_binary_lhs_parameter_authority.md`
+  owns the one exact scalar `LirBinOp.lhs` producer prerequisite. This is
+  outside 818 because 818 may only select/publish a row already structurally
+  establishable, not create the missing scalar producer authority.
+- Exact return point: after 819 is accepted, reactivate 818 at Step 1 and
+  re-evaluate only whether 819's published scalar contract makes a
+  receiver-ready row. Do not receive Raw-BIR in 819. The remaining parent
+  action is to select/trace only that new receiver-ready row, then continue
+  Steps 2–3 only as applicable.
+- Accepted proof and implementation commit references: none. The trace made no
+  code change and selected no producer contract; no proof or commit was
+  accepted.

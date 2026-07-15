@@ -1,83 +1,88 @@
-# LIR Next Body-Parameter Authority Handoff Runbook
+# LIR Scalar Binary-LHS Parameter Authority Runbook
 
 Status: Active
-Source Idea: ideas/open/818_lir_next_body_parameter_authority_handoff.md
-Activated from: exhausted 734 Step 7.34 receiver route (`8418036b1`).
+Source Idea: ideas/open/819_lir_scalar_binary_lhs_parameter_authority.md
+Supersedes: 818 Step 1 trace-only route pending its scalar producer prerequisite
 
 ## Purpose
 
-Publish one exact, receiver-ready structured authority contract for a remaining
-function-body parameter use, then return control to 734 without implementing
-the Raw-BIR receipt.
+Establish the one native producer authority tuple needed before 818 can decide
+whether a scalar binary-LHS parameter use is receiver-ready.
 
 ## Core Rule
 
-Select only native current-function facts that production and verification can
-structurally establish. Presentation text, parameter names, signature
-rendering, raw operands, diagnostics, and testcase shape are never authority.
+Authority must originate in native current-function facts. `param_slots`,
+rendered names/signatures, `LirOperand::raw`, diagnostics, and display-string
+matching are never authority.
 
 ## Read First
 
-- `ideas/open/818_lir_next_body_parameter_authority_handoff.md`
-- `ideas/open/734_lir_to_new_bir_container_completeness.md` (post-Step 7.34
-  resumption record)
+- `ideas/open/819_lir_scalar_binary_lhs_parameter_authority.md`
+- `ideas/open/818_lir_next_body_parameter_authority_handoff.md` (return record)
 - `ideas/closed/817_lir_body_parameter_receiver_authority_handoff.md`
-- `ideas/open/795_lir_body_parameter_authority_handoff.md` (separate accepted
-  route; do not reuse it as 734 authority)
+- `ideas/open/795_lir_body_parameter_authority_handoff.md`
+
+## Scope
+
+Only a scalar current-function parameter used as `LirBinOp.lhs`: native value,
+position, scalar type, owner, ABI classification, verifier admission, focused
+producer proof, and a handoff to 818.
 
 ## Non-Goals
 
-- Raw-BIR, importer, dispatcher, or receiver-test changes;
-- reopening accepted direct-pointer or parameter-index contracts;
-- broad ABI work or multiple parameter forms; and
-- any non-parameter source family.
+- Raw-BIR/importer/dispatcher/receiver changes or tests;
+- API-wide parameter work, presentation recovery, or ABI-wide conversion;
+- `LirBinOp.rhs`, other operand forms, closed 795/817 routes, or byval-memcpy.
+
+## Execution Rules
+
+- Keep the selected form fail-closed until all tuple fields are native and
+  structurally verifiable.
+- Do not generalize across operand roles or parameter forms.
+- Build before focused same-feature proof; do not claim receiver completion.
 
 ## Ordered Steps
 
-### Step 1 - Trace and select one body-parameter use authority row
+### Step 1 - Discover the native scalar binary-LHS authority producer
 
-Goal: identify one native body-parameter use whose value identity, position,
-type, owner, and ABI classification can be proven without presentation
-recovery.
-
-Actions:
-
-- inspect only the relevant production/schema/verifier seams;
-- document the exact selected row and rejected neighboring forms in the active
-  execution state before making a producer change;
-- if no receiver-ready row exists, stop and return a separately scoped blocker
-  rather than broadening this idea.
-
-Completion check: one bounded candidate and its structural authority sources
-are explicit; no Raw-BIR receiver work is selected.
-
-### Step 2 - Publish and verify the selected authority contract
-
-Goal: add only the selected native fields and verifier admission needed for a
-later 734 receiver handoff.
+Goal: locate the minimum producer/schema seam for the selected `LirBinOp.lhs`
+parameter form and map each required tuple field to a native source.
 
 Actions:
 
-- publish current-function identity, parameter position, type, owner, and ABI
-  classification only where the selected row proves them;
-- reject missing, invalid, foreign, duplicate, type-incoherent, or
-  ABI-incoherent forms before downstream use;
-- add nearby positive and malformed-authority producer coverage.
+- trace current-function value, parameter position, scalar type, owner, and ABI
+  classification through production and schema seams;
+- document any missing native fact and reject presentation-only substitutes;
+- name the exact verifier tuple and malformed cases before editing producers.
 
-Completion check: one selected row has a checked structured contract and all
-nonselected forms remain fail-closed.
+Completion check: one exact native-field map and fail-closed reject boundary
+are recorded; no alternate form or receiver work is selected.
 
-### Step 3 - Prove and hand off the bounded producer route
+### Step 2 - Publish and verify the one-form authority tuple
 
-Goal: record the exact receiver fields, rejection boundary, focused proof, and
-734 return point.
+Goal: add the minimum producer/schema/verifier support for the selected tuple.
+
+Actions:
+
+- publish native value/position/type/owner/ABI plus `lhs` role only for the
+  selected scalar current-function parameter form;
+- reject missing, invalid, duplicate, foreign, role/position/type/ABI-incoherent,
+  non-scalar, and display-derived forms transactionally;
+- add nearby focused positive and malformed-authority producer coverage.
+
+Completion check: selected-form authority verifies structurally and every
+nonselected or malformed form remains fail-closed.
+
+### Step 3 - Prove and return the exact producer handoff to 818
+
+Goal: accept proof and preserve the bounded return contract.
 
 Actions:
 
 - run a fresh build and focused same-feature producer proof;
-- provide the supervisor-selected matching regression guard if required;
-- update the source resumption record with the selected handoff and require
-  reactivation of 734 at Step 7.35 only.
+- provide the supervisor-selected matching regression guard when required;
+- record the exact tuple, allowed ABI class, rejects, proof, and 818 Step 1
+  return point in the source idea.
 
-Completion check: accepted proof and an exact one-row handoff exist; no
-Raw-BIR receipt or source-wide completion claim is made.
+Completion check: one accepted producer handoff exists for 818 re-evaluation;
+no Raw-BIR receipt, receiver claim, or wider parameter capability is made.
