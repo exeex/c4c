@@ -39,3 +39,29 @@ current-function authority, so 734 can later receive that single row.
   shape, `monostate`, or an unresolved classification.
 - Reject multiple rows, receiver/importer work, weakened verification, or an
   expectation downgrade claimed as this authority handoff.
+
+## Resumption Record: stack-restore lifetime-consumer authority blocker
+
+Status: parked at a separate-blocker switch after completed Step 1.
+
+Last accepted progress: Step 1, **Establish the candidate evidence boundary**,
+is complete with no candidate selected.  Commit `1cbad00d6` accepted
+`docs/lir_to_new_bir_remaining_coverage/794_local_vla_candidate_evidence_boundary.md`;
+its structural proof was `git diff --check` plus inspection of the documented
+candidate boundary.  The preceding umbrella evidence chain is `dc6b18421`,
+`248a0e39e`, and `fad426b23`.
+
+Interrupted step: Step 2, **Publish and verify the selected producer
+authority**.  The exact blocking fact is that `LirStackRestoreOp` has native
+saved-pointer/object/owner/type/liveness binding, but no selected-row
+admission and no structured lifetime-consumer or transition facts.  That
+producer/schema/verifier work is outside 794's candidate-selection boundary,
+so `ideas/open/798_lir_stack_restore_lifetime_consumer_authority.md` owns it
+as a separate blocker.
+
+Return condition and exact next action: after 798 publishes and verifies one
+exact native stack-restore handoff with accepted focused proof, resume 794 at
+Step 2 only to publish and verify that selected authority, or complete its
+handoff process.  Do not widen the return to dynamic VLA allocation/count,
+VLA GEP, other local rows, Raw-BIR/importer/734 receipt, or
+presentation-derived facts.

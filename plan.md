@@ -1,68 +1,65 @@
-# Next Local/VLA Authority Handoff Runbook
+# Stack-Restore Lifetime-Consumer Authority Runbook
 
 Status: Active
-Source Idea: ideas/open/794_lir_next_local_vla_authority_handoff.md
-Activated from: 793 successor queue order 1.
+Source Idea: ideas/open/798_lir_stack_restore_lifetime_consumer_authority.md
+Activated from: separate-blocker switch from 794 after commit `1cbad00d6`.
 
 ## Purpose
 
-Establish one, and only one, remaining local/VLA producer-side authority
-handoff before 734 can receive another Raw-BIR row.
+Publish and verify exactly one native stack-restore lifetime-consumer
+authority route so 794 can later resume its one-row handoff process.
 
 ## Core Rule
 
-Select a row only from checked native current-function structured evidence.
-Do not infer value, object, owner, type, liveness, or row identity from names,
-formatted operands, LLVM text, testcase identity, `monostate`, or an unresolved
-classification.
+Admit only `LirStackRestoreOp` through checked native current-function facts.
+Do not infer row identity, liveness, or lifetime transition from names,
+formatted operands, LLVM text, testcase identity, `monostate`, or an
+unresolved classification.
 
 ## Read First
 
+- `ideas/open/798_lir_stack_restore_lifetime_consumer_authority.md`
 - `ideas/open/794_lir_next_local_vla_authority_handoff.md`
-- `docs/lir_to_new_bir_remaining_coverage/successor_queue.md`
-- `docs/lir_to_new_bir_remaining_coverage/first_owner_matrix.md`
+- `docs/lir_to_new_bir_remaining_coverage/794_local_vla_candidate_evidence_boundary.md`
 - `docs/lir_local_operation_authority/handoff_to_734.md`
-- `ideas/closed/792_lir_next_local_operation_receiver_handoff.md`
-- `ideas/open/734_lir_to_new_bir_container_completeness.md`
 
 ## Non-Goals
 
-- Raw-BIR destinations, importer dispatch, receiver verification, target
-  lowering, MIR, or 734 receipt;
-- more than one local/VLA row; memory/va, aggregate/vector, body parameter,
-  type-model, or residual instruction work;
-- presentation-derived recovery or weaker verifier/test contracts.
+- Raw-BIR/importer/734 receipt, lowering, dynamic-VLA count work, VLA GEP,
+  other local rows, or a generic lifetime-model redesign;
+- rendered-text or testcase-derived authority, weaker verifier contracts, or
+  multiple operation admissions.
 
 ## Ordered Steps
 
-### Step 1 - Establish the candidate evidence boundary
+### Step 1 - Define the selected native stack-restore authority contract
 
-Goal: inspect the remaining local/VLA variants and select no candidate unless
-native structured fields can support one row.
+Goal: establish the exact producer/schema facts that select one
+`LirStackRestoreOp` and encode its lifetime-consumer transition alongside its
+existing saved-pointer binding.
 
 Actions:
 
-- Record the row candidates, their current value/object/owner/type/liveness
-  evidence, and why all nonselected rows remain fail closed.
-- If no candidate has an admissible native route, stop and send the exact
-  first missing owner fact to plan-owner for a separate blocker decision.
+- Identify the minimal operation-specific admission and structured transition
+  facts needed for this one restore row.
+- Keep all dynamic-VLA, VLA-GEP, other local, and receiver work fail closed.
 
-Completion check: exactly one candidate is selected with a structured-evidence
-rationale, or an evidence-backed separate-blocker route is recorded.
+Completion check: the selected schema/producer contract is explicit, native,
+and sufficient for verifier implementation without presentation-derived facts.
 
-### Step 2 - Publish and verify the selected producer authority
+### Step 2 - Verify the selected stack-restore authority
 
-Goal: implement only the minimum producer/schema/verifier facts for the
-selected row and reject malformed or foreign authority before downstream use.
+Goal: enforce the selected admission and reject malformed or foreign
+saved-pointer, owner, type, liveness, and transition facts.
 
-Completion check: the selected row has native current-function authority and
-focused nearby positive/negative producer proof; every other row remains fail
-closed.
+Completion check: focused same-feature positive/negative proof accepts the
+valid selected restore and rejects each invalid authority class.
 
-### Step 3 - Write the exact 734 handoff and obtain acceptance disposition
+### Step 3 - Publish the exact return handoff to 794
 
-Goal: document selected variant, typed fields, guarantees, rejected forms, and
-proof so 734 can later receive one matching row.
+Goal: record the exact native fields, rejected forms, and accepted focused
+proof needed for 794 to resume at its Step 2.
 
-Completion check: the handoff lets plan-owner reactivate 734 for one receiver
-packet without re-deriving authority or extending scope.
+Completion check: the handoff authorizes only 794's selected-authority
+publication process and explicitly does not authorize 734 receipt or another
+local/VLA row.
