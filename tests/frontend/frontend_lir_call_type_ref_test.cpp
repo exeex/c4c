@@ -651,6 +651,63 @@ int main(void) {
                   "AArch64 scalar stdarg should preserve structured va_list lowering");
 }
 
+void test_aarch64_gp_vaarg_gr_top_reg_addr_native_operand_contract() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+typedef __builtin_va_list va_list;
+int lir_aarch64_gp_vaarg_gr_top_reg_addr(int count, ...) {
+  va_list ap;
+  __builtin_va_start(ap, count);
+  return __builtin_va_arg(ap, int);
+}
+)c", "aarch64-linux-gnu");
+
+  const lir::LirFunction& function =
+      require_function(lowered, "lir_aarch64_gp_vaarg_gr_top_reg_addr");
+  const auto has_load_result = [&](const lir::LirOperand& value,
+                                   lir::LirTypeKind type_kind,
+                                   std::optional<std::size_t> bit_width = std::nullopt) {
+    return std::any_of(function.blocks.begin(), function.blocks.end(),
+                       [&](const lir::LirBlock& block) {
+      return std::any_of(block.insts.begin(), block.insts.end(),
+                         [&](const lir::LirInst& inst) {
+        const auto* load = std::get_if<lir::LirLoadOp>(&inst);
+        return load && value.value_id() && load->result.value_id() &&
+               *load->result.value_id() == *value.value_id() &&
+               load->type_str.kind() == type_kind &&
+               (!bit_width || load->type_str.integer_bit_width() == *bit_width);
+      });
+    });
+  };
+  const auto contract = std::find_if(
+      function.blocks.begin(), function.blocks.end(), [&](const lir::LirBlock& block) {
+        return std::any_of(block.insts.begin(), block.insts.end(),
+                           [&](const lir::LirInst& inst) {
+          const auto* gep = std::get_if<lir::LirGepOp>(&inst);
+          if (!gep || gep->element_type.kind() != lir::LirTypeKind::Integer ||
+              gep->element_type.integer_bit_width() != 8 ||
+              gep->result.kind() != lir::LirOperandKind::SsaValue ||
+              !gep->result.value_id() || !gep->result.value_id()->valid() ||
+              gep->ptr.kind() != lir::LirOperandKind::SsaValue || !gep->ptr.value_id() ||
+              !gep->ptr.value_id()->valid() || gep->indices.size() != 1 ||
+              !gep->indices[0].is_authoritative() ||
+              gep->indices[0].type_ref().kind() != lir::LirTypeKind::Integer ||
+              gep->indices[0].type_ref().integer_bit_width() != 32 ||
+              gep->indices[0].value().kind() != lir::LirOperandKind::SsaValue ||
+              !gep->indices[0].value().value_id() ||
+              !gep->indices[0].value().value_id()->valid()) {
+            return false;
+          }
+          return has_load_result(gep->ptr, lir::LirTypeKind::Pointer) &&
+                 has_load_result(gep->indices[0].value(), lir::LirTypeKind::Integer, 32);
+        });
+      });
+  expect_true(contract != function.blocks.end(),
+              "AArch64 GP gr_top load must carry a native ID into the indexed reg_addr GEP");
+  lir::verify_module(lowered);
+}
+
 void test_aarch64_fp_vaarg_ptrmask_result_identity_boundary() {
   namespace lir = c4c::codegen::lir;
 
@@ -685,81 +742,94 @@ long double lir_aarch64_fp_vaarg_ptrmask_identity(int count, ...) {
               "FP vaarg ptrmask must retain its native pointer return type");
   const auto consumer = std::find_if(
       geps.begin(), geps.end(), [&](const lir::LirGepOp* gep) {
-        return gep->ptr.kind() == lir::LirOperandKind::SsaValue && gep->ptr.value_id() &&
-               *gep->ptr.value_id() == *ptrmask_call->result.value_id();
+        return gep->element_type.kind() == lir::LirTypeKind::Integer &&
+               gep->element_type.integer_bit_width() == 8 &&
+               gep->ptr.kind() == lir::LirOperandKind::SsaValue && gep->ptr.value_id() &&
+               *gep->ptr.value_id() == *ptrmask_call->result.value_id() &&
+               gep->indices.size() == 1 && gep->indices[0].is_authoritative() &&
+               gep->indices[0].type_ref().kind() == lir::LirTypeKind::Integer &&
+               gep->indices[0].type_ref().integer_bit_width() == 64 &&
+               gep->indices[0].value().kind() == lir::LirOperandKind::Immediate &&
+               gep->indices[0].value().integer_immediate() &&
+               gep->indices[0].value().integer_immediate()->value == 16;
       });
   expect_true(consumer != geps.end(),
               "FP vaarg ptrmask result must preserve its exact ID into the immediate GEP consumer");
   lir::verify_module(lowered);
 }
 
-void test_vaarg_helper_native_operand_carriers() {
+void test_amd64_vaarg_register_stack_native_operand_contract() {
   namespace lir = c4c::codegen::lir;
-  const auto has_native_phi_join = [](const lir::LirFunction& function) {
-    for (const auto& block : function.blocks) {
-      for (const auto& inst : block.insts) {
-        const auto* phi = std::get_if<lir::LirPhiOp>(&inst);
-        if (!phi || phi->incoming.size() != 2 || !phi->result.value_id()) continue;
-        if (std::all_of(phi->incoming.begin(), phi->incoming.end(),
-                        [](const lir::LirPhiIncoming& incoming) {
-                          return incoming.value.value_id() && incoming.value.value_id()->valid();
-                        })) {
-          return true;
-        }
-      }
-    }
-    return false;
-  };
-  const auto has_native_gep_base_and_index = [](const lir::LirFunction& function) {
-    for (const auto& block : function.blocks) {
-      for (const auto& inst : block.insts) {
-        const auto* gep = std::get_if<lir::LirGepOp>(&inst);
-        if (!gep || !gep->result.value_id() || !gep->ptr.value_id() ||
-            gep->indices.empty()) {
-          continue;
-        }
-        if (std::all_of(gep->indices.begin(), gep->indices.end(),
-                        [](const lir::LirGepIndex& index) {
-                          return index.is_authoritative();
-                        })) {
-          return true;
-        }
-      }
-    }
-    return false;
-  };
-
-  lir::LirModule aarch64_gp = lower_lir_module_for_target(R"c(
-typedef __builtin_va_list va_list;
-int native_gp_vaarg(int count, ...) {
-  va_list ap; __builtin_va_start(ap, count); return __builtin_va_arg(ap, int);
-}
-)c", "aarch64-linux-gnu");
-  const lir::LirFunction& gp = require_function(aarch64_gp, "native_gp_vaarg");
-  expect_true(has_native_gep_base_and_index(gp) && has_native_phi_join(gp),
-              "AArch64 GP vaarg must retain native GEP base/index and PHI value authority");
-  lir::verify_module(aarch64_gp);
-
-  lir::LirModule aarch64_fp = lower_lir_module_for_target(R"c(
-typedef __builtin_va_list va_list;
-long double native_fp_vaarg(int count, ...) {
-  va_list ap; __builtin_va_start(ap, count); return __builtin_va_arg(ap, long double);
-}
-)c", "aarch64-linux-gnu");
-  const lir::LirFunction& fp = require_function(aarch64_fp, "native_fp_vaarg");
-  expect_true(has_native_gep_base_and_index(fp) && has_native_phi_join(fp),
-              "AArch64 FP vaarg must retain native alignment and PHI value authority");
-  lir::verify_module(aarch64_fp);
-
   lir::LirModule amd64 = lower_lir_module_for_target(R"c(
 typedef __builtin_va_list va_list;
-int native_amd64_vaarg(int count, ...) {
+int lir_amd64_vaarg_register_stack(int count, ...) {
   va_list ap; __builtin_va_start(ap, count); return __builtin_va_arg(ap, int);
 }
 )c", "x86_64-linux-gnu");
-  const lir::LirFunction& x64 = require_function(amd64, "native_amd64_vaarg");
-  expect_true(has_native_gep_base_and_index(x64) && has_native_phi_join(x64),
-              "AMD64 vaarg must retain native register/stack helper and PHI value authority");
+  const lir::LirFunction& x64 =
+      require_function(amd64, "lir_amd64_vaarg_register_stack");
+  std::vector<const lir::LirLoadOp*> loads;
+  std::vector<const lir::LirGepOp*> geps;
+  std::vector<const lir::LirMemcpyOp*> copies;
+  std::vector<const lir::LirPhiOp*> phis;
+  for (const auto& block : x64.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* load = std::get_if<lir::LirLoadOp>(&inst)) loads.push_back(load);
+      if (const auto* gep = std::get_if<lir::LirGepOp>(&inst)) geps.push_back(gep);
+      if (const auto* copy = std::get_if<lir::LirMemcpyOp>(&inst)) copies.push_back(copy);
+      if (const auto* phi = std::get_if<lir::LirPhiOp>(&inst)) phis.push_back(phi);
+    }
+  }
+  const auto load_defines = [&](const lir::LirOperand& value) {
+    return std::any_of(loads.begin(), loads.end(), [&](const lir::LirLoadOp* load) {
+      return value.value_id() && load->result.value_id() &&
+             *value.value_id() == *load->result.value_id() &&
+             load->type_str.kind() == lir::LirTypeKind::Pointer;
+    });
+  };
+  const auto memcpy_consumes = [&](const lir::LirOperand& value) {
+    return std::any_of(copies.begin(), copies.end(), [&](const lir::LirMemcpyOp* copy) {
+      return value.value_id() && copy->src.value_id() &&
+             *value.value_id() == *copy->src.value_id();
+    });
+  };
+  const bool register_contract = std::any_of(geps.begin(), geps.end(),
+      [&](const lir::LirGepOp* gep) {
+        return gep->result.value_id() && gep->result.value_id()->valid() &&
+               gep->ptr.value_id() && gep->ptr.value_id()->valid() &&
+               gep->indices.size() == 1 && gep->indices[0].is_authoritative() &&
+               gep->indices[0].value().value_id() &&
+               gep->indices[0].value().value_id()->valid() &&
+               load_defines(gep->ptr) && memcpy_consumes(gep->result);
+      });
+  const bool stack_contract = std::any_of(loads.begin(), loads.end(),
+      [&](const lir::LirLoadOp* load) {
+        return load->result.value_id() && load->result.value_id()->valid() &&
+               load->type_str.kind() == lir::LirTypeKind::Pointer &&
+               memcpy_consumes(load->result);
+      });
+  const bool native_join_values = std::any_of(phis.begin(), phis.end(),
+      [&](const lir::LirPhiOp* phi) {
+        return phi->result.value_id() && phi->result.value_id()->valid() &&
+               phi->incoming.size() == 2 &&
+               std::all_of(phi->incoming.begin(), phi->incoming.end(),
+                           [](const lir::LirPhiIncoming& incoming) {
+          return incoming.value.value_id() && incoming.value.value_id()->valid();
+        }) && std::all_of(phi->incoming.begin(), phi->incoming.end(),
+                          [&](const lir::LirPhiIncoming& incoming) {
+          return std::any_of(loads.begin(), loads.end(),
+                             [&](const lir::LirLoadOp* load) {
+            return load->result.value_id() &&
+                   *load->result.value_id() == *incoming.value.value_id();
+          });
+        });
+      });
+  expect_true(register_contract,
+              "AMD64 register helper must carry its native GEP result into memcpy");
+  expect_true(stack_contract,
+              "AMD64 stack helper must carry its native load result into memcpy");
+  expect_true(native_join_values,
+              "AMD64 register/stack helper results must retain native PHI value transport");
   lir::verify_module(amd64);
 }
 
@@ -7552,8 +7622,9 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_rv64_direct_variadic_integer_extension_attrs();
   test_rv64_scalar_stdarg_uses_pointer_cursor();
   test_aarch64_scalar_stdarg_preserves_structured_va_list();
+  test_aarch64_gp_vaarg_gr_top_reg_addr_native_operand_contract();
   test_aarch64_fp_vaarg_ptrmask_result_identity_boundary();
-  test_vaarg_helper_native_operand_carriers();
+  test_amd64_vaarg_register_stack_native_operand_contract();
   test_structured_operand_identity_foundation();
   test_standalone_cast_result_authority_contract();
   test_direct_branch_successor_identity_contract();
