@@ -74,34 +74,43 @@ vector carrier. The former Step 9 InsertElement attempt was rejected before
 implementation because unselected ShuffleVector carrier prerequisites broke
 the full baseline. Do not reuse that selection.
 
+### Step 9 - Implement and prove the Step 8 selection — complete
+
+Accepted in `88268afe6`: freshly selected only the scalar-to-vector
+zero-initializer splat `LirShuffleVectorOp` route. It requires a native
+carrier, the immediately preceding native InsertElement result as first vector
+use, structured poison-second shape, equal vector shapes, and selected-zero
+mask lanes. Nearby positive/malformed coverage and the matching backend guard
+passed 6/6; representative `scal-to-vec1` emission and the supervisor-owned
+fresh 3038/3038 full CTest baseline were accepted. InsertElement and
+ExtractElement remain unselected and unchanged.
+
+### Step 10 - Reassess remaining source completion — complete
+
+Closure is rejected: the source still requires representative InsertElement
+and ExtractElement structured-authority rows and vector insert/extract/shuffle
+chain coverage. Continue through a fresh one-row audit without widening the
+accepted shuffle route.
+
 ## Remaining Steps
 
-### Step 9 - Implement and prove the Step 8 selection
+### Step 11 - Audit and select one remaining vector authority row
 
-Goal: before implementation, make a fresh one-row vector audit/selection
-decision against the accepted 811/814 carrier handoffs, then implement only
-that selected row if it has a complete row-local contract.
+Goal: inspect only `LirInsertElementOp` and `LirExtractElementOp` against the
+accepted 811 carrier. Select exactly one only after recording its concrete
+seam, complete positive/malformed matrix, and excluded row in `todo.md`.
 
-Actions:
+Completion check: one complete row-local contract is selected, or an exact
+separate-blocker route preserves this Step 11 return point. Do not infer facts
+from display text or reuse the accepted shuffle proof as an insert/extract
+claim.
 
-- inspect only `LirInsertElementOp`, `LirExtractElementOp`, and
-  `LirShuffleVectorOp` seams; select exactly one only after recording the
-  concrete seam, positive/malformed matrix, and two excluded rows in `todo.md`;
-- do not reuse the rejected InsertElement selection; do not infer authority
-  from rendered text or treat 814's repair as a ShuffleVector row claim;
-- if no complete row-local contract exists, preserve this exact Step 9 return
-  point and route a separately scoped prerequisite rather than widening 754;
-- after a selection, publish and verify only its structured result/use
-  authority and typed facts; prove it with fresh build, same-feature test,
-  matching guard, and any supervisor-selected full checkpoint.
+### Step 12 - Implement and prove the Step 11 selection
 
-Completion check: one freshly selected row alone is structurally authoritative
-and proven, or an exact out-of-scope blocker route is recorded. The two
-unselected rows remain unchanged.
+Goal: publish and verify only the selected row's structured result/use
+authority and typed index/element facts, with fresh build, nearby same-feature
+coverage, matching backend guard, and a supervisor-selected full checkpoint.
 
-### Step 10 - Reassess remaining source completion
-
-Goal: make the explicit lifecycle decision after the bounded Step 9 packet.
-
-Completion check: repair to a one-row audit, switch to an atomic blocker, or
-source-closure evidence; never silently widen Step 9.
+Completion check: the selected row is structurally authoritative and proven;
+the unselected row remains unchanged. Then return for an explicit source
+completion decision.

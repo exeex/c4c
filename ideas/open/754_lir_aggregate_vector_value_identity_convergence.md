@@ -450,3 +450,32 @@ record the selected seam, positive/malformed matrix, and two excluded rows in
 `todo.md`. Do not reuse the rejected scalar-to-vector `LirInsertElementOp`
 selection, silently choose `LirExtractElementOp` or `LirShuffleVectorOp`, or
 repeat the completed Steps 1--8.
+
+## Resumption Update: Step 10 source closure rejected; continue remaining vector rows
+
+Step 9 is accepted in `88268afe6` (*lir: require scalar splat shuffle
+authority*). It freshly selected and implemented only the scalar-to-vector
+zero-initializer splat `LirShuffleVectorOp` route: structured carrier presence,
+the preceding native `LirInsertElementOp` first-vector use, poison-second
+shape, equal vector shapes, and selected-zero mask lanes are checked without
+display-text recovery. Nearby positive and malformed coverage passed; the
+matching `^backend_` guard passed 6/6; representative `scal-to-vec1` emission
+was observed; and the supervisor accepted a fresh full CTest baseline at
+3038/3038.
+
+Closure disposition: **close rejected**. The source still requires
+representative vector insertion and extraction rows with structured result/use
+identity and exact typed index/element facts. `LirInsertElementOp` and
+`LirExtractElementOp` remain unchanged, and the source's required vector
+insert/extract/shuffle chain coverage is consequently incomplete. The accepted
+shuffle splat is one representative shuffle row, not a substitute for those
+two rows.
+
+Classification: `repair-current-route`. Continue with a fresh one-row audit
+at Step 11, selecting exactly one of the remaining `LirInsertElementOp` or
+`LirExtractElementOp` routes only if 811's carrier supports its complete
+row-local contract. Record the selected seam, positive/malformed matrix, and
+the excluded row in `todo.md`; then implement and prove only that row. Do not
+reopen Steps 1--9, generalize the shuffle splat, recover facts from display
+text, or absorb a missing carrier fact: any such prerequisite is a separately
+scoped blocker that returns to this Step 11 selection point.
