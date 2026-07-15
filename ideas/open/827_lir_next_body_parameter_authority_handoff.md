@@ -63,3 +63,34 @@ signatures, rendered operands, or compatibility fields.
   type, role, or consumer coherence.
 - Reject retaining the exact missing authority behind a renamed carrier, or
   accepting a row without malformed/foreign/duplicate rejection coverage.
+
+## Resumption Record: shared-worktree isolation prerequisite
+
+Status: deactivated at selected Step 2 for a separately scoped shared-worktree
+isolation owner.
+
+- Last accepted progress: Step 1 selected only the native DirectScalar
+  current-function parameter used unchanged as fixed direct-call argument 0.
+  No Step 2 implementation, focused proof, or implementation commit exists.
+- Interrupted step: Step 2 — Publish and verify the selected authority.
+- Blocker: the necessary nearby proof surface
+  `tests/frontend/frontend_lir_function_signature_type_ref_test.cpp` is
+  already dirty with preserved, unaccepted Idea 821/822 material; the related
+  `src/codegen/lir/hir_to_lir/expr/binary.cpp` material is likewise dirty.
+  Step 2 must neither overwrite, co-commit, nor absorb that material.
+- Exact return action: after
+  `ideas/open/828_shared_worktree_direct_call_authority_isolation.md` has
+  recoverably separated the preserved dirty slice and established its clean
+  route, reactivate this source at **Step 2 — Publish and verify the selected
+  authority**. Publish only an explicit `LirCallOp.structured_args[0]`
+  authority tuple for an unchanged native DirectScalar parameter at a fixed
+  direct call: matching current-function definition/value/owner/index/type/
+  `DirectScalar` ABI, role `FixedDirectCallArgument0`, and coherence with
+  structured argument 0 and fixed callee parameter 0. Reject missing, invalid,
+  duplicate, foreign, owner/index/type/ABI/role, and consumer-incoherent forms.
+  Do not admit later arguments, indirect/variadic/unspecified calls, pointer,
+  spilled/load-derived, aggregate/vector, or any other parameter form.
+- Required return proof: fresh `cmake --build --preset default`, then
+  `ctest --test-dir build --output-on-failure -R '^frontend_lir_call_type_ref$'`.
+  The isolation baseline is the conflict-free stash/pop clean pre-change run
+  captured in `test_before.log`; it is not Step 2 acceptance proof.

@@ -1,67 +1,65 @@
-# Next Function-Body Parameter Authority Handoff Runbook
+# Shared-Worktree Direct-Call Authority Isolation Runbook
 
 Status: Active
-Source Idea: ideas/open/827_lir_next_body_parameter_authority_handoff.md
-Switched from: ideas/open/734_lir_to_new_bir_container_completeness.md after accepted Step 7.39
+Source Idea: ideas/open/828_shared_worktree_direct_call_authority_isolation.md
+Switched from: ideas/open/827_lir_next_body_parameter_authority_handoff.md at Step 2
 
 ## Purpose
 
-Publish and prove one next structured function-body parameter-use authority
-row so 734 can later receive exactly that row into Raw BIR.
+Separate the preserved unaccepted Idea 821/822 dirty slice from the shared
+worktree so the already selected 827 direct-call authority route has an
+independent implementation and proof surface.
 
 ## Core Rule
 
-Select one existing native semantic consumer relation and carry only its
-structured current-function facts. Never recover authority from display text,
-names, signatures, rendered operands, or diagnostics.
+Preserve every dirty implementation/test hunk recoverably before removing it
+from the shared route. Isolation is not semantic acceptance.
 
 ## Non-Goals
 
-- Raw-BIR/importer/receiver changes or any 734 receiver implementation.
-- Generic parameter admission, ABI conversion, or a multi-row sweep.
-- Reopening accepted 817--826 authority rows or absorbing other LIR families.
+- Any producer/schema/verifier implementation for 827.
+- Acceptance, repair, redesign, or deletion of Ideas 821/822.
+- Raw-BIR/importer work, expectation changes, or generic cleanup.
 
 ## Ordered Steps
 
-### Step 1 - Trace and select one next native parameter-use row
+### Step 1 - Inventory and preserve the dirty slice
 
-Goal: identify one currently produced parameter use whose complete typed
-authority and consumer relation can be bounded without presentation recovery.
-
-Actions:
-
-- inspect native LIR producer and verifier seams for the first valid candidate;
-- record why its value, owner, index, type, ABI, role, and consumer coherence
-  are structured or what bounded producer publication is required; and
-- leave every nonselected form fail closed.
-
-Completion check: the selected one-row contract and exact proof target are
-written to `todo.md`; if no safe row exists, return a narrowly evidenced
-blocker rather than guessing.
-
-### Step 2 - Publish and verify the selected authority
-
-Goal: add only the selected native carrier and fail-closed validation.
+Goal: create one named, recoverable preservation artifact for every dirty
+`binary.cpp` and frontend-test hunk owned by the pending 821/822 route.
 
 Actions:
 
-- implement structured current-function authority for the selected row;
-- validate missing, invalid, duplicate, foreign, owner/index/type/ABI/role,
-  and consumer-incoherent forms before downstream use; and
-- add nearby positive and malformed-authority coverage without receiver edits.
+- record the exact source-hunk ownership and current non-accepting proof state;
+- create a reversible preservation artifact and verify its restoration command;
+- remove only the preserved dirty code/test slice from the shared route.
 
-Completion check: a fresh build and focused same-feature producer proof pass;
-nonselected forms remain rejected.
+Completion check: the artifact applies cleanly, the two code/test surfaces are
+clean relative to their pre-slice base, and no semantic behavior is accepted.
 
-### Step 3 - Record the receiver handoff and return to 734
+### Step 2 - Prove the isolated shared route
 
-Goal: conclude this bounded producer route with an executable receiver return.
+Goal: establish that the now-clean route can be independently owned by 827.
 
 Actions:
 
-- record the exact authority tuple, consumer relation, proof, and commit;
-- state the one corresponding Raw-BIR receiver boundary for 734; and
-- return control to 734 without claiming Raw-BIR receipt or source completion.
+- run the supervisor-selected fresh build and focused frontend proof;
+- keep the baseline/after evidence distinct from semantic acceptance; and
+- retain the named restoration procedure.
 
-Completion check: supervisor accepts the selected proof and plan-owner can
-close this handoff and reactivate 734 at the stated bounded receiver step.
+Completion check: evidence and worktree ownership demonstrate a clean 827
+route without altering or accepting the preserved slice.
+
+### Step 3 - Return to the direct-call authority handoff
+
+Goal: record a durable return to 827 without changing its selected contract.
+
+Actions:
+
+- record preservation location, restoration command, and proof references;
+- close/conclude this isolation prerequisite only after supervisor acceptance;
+- reactivate 827 exactly at Step 2.
+
+Completion check: the successor can reconstruct the selected
+`FixedDirectCallArgument0` contract and run its stipulated fresh build plus
+`^frontend_lir_call_type_ref$` proof without reusing preserved hunks.
