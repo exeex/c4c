@@ -1,64 +1,79 @@
-# LIR-To-New-BIR Direct-Scalar Body-Parameter Receiver Runbook
+# LIR DirectScalar Body-Parameter Producer/Verifier Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Resumed from: closed 818 scalar binary-LHS body-parameter authority handoff
-(`0864c8aed` selection; `b16935c69` producer/proof).
+Source Idea: ideas/open/820_lir_directscalar_parameter_producer_verifier_publication.md
+Switched from: 734 Step 7.35 (unaccepted receiver work retained outside this
+runbook)
 
 ## Purpose
 
-Receive exactly the one 818-authorized plain fixed scalar `LirBinOp.lhs`
-function-body parameter row. This is a bounded Raw-BIR receiver packet and
-does not complete 734's coverage matrix.
-
-## Historical Progress
-
-Steps 1 through 7.34 are accepted historical 734 work, most recently the
-direct-pointer body-parameter receipt (`8418036b1`). Do not repeat completed
-receiver rows or producer-authority work.
+Repair the narrow LIR producer/verifier publication defect that prevents the
+existing `ull` DirectScalar parameter path from reaching 734's selected
+receiver route.
 
 ## Core Rule
 
-Consume only the matching native `LirValueId`, parameter index, `LirTypeRef`,
-current-function `LinkNameId` owner, `LirNativeBodyParameterAbi::DirectScalar`,
-explicit `Lhs` role, and matching `LirBinOp.lhs` SSA value/type. Presentation
-fields, including names, signatures, raw operands, diagnostics, and testcase
-identity, are never authority.
+Publish only structured native current-function DirectScalar identity and type.
+Do not derive authority from presentation fields and do not change Raw-BIR or
+admit generic scalar parameter receipt.
 
 ## Read First
 
-- `ideas/closed/818_lir_next_body_parameter_authority_handoff.md`
-- `ideas/closed/819_lir_scalar_binary_lhs_parameter_authority.md`
-- `ideas/open/734_lir_to_new_bir_container_completeness.md` (closed-818
-  resumption record)
+- `ideas/open/820_lir_directscalar_parameter_producer_verifier_publication.md`
+- `ideas/open/734_lir_to_new_bir_container_completeness.md` (latest resumption
+  record)
+- `src/codegen/lir/verify.cpp` and the producer site for the existing `ull`
+  native DirectScalar body parameter
 
 ## Non-Goals
 
-- Any other parameter form, ABI class, operand role, or binary operation;
-- producer/schema/verifier republishing, broad ABI work, declaration-only
-  publication, target lowering, MIR/emission, or importer/dispatcher sweeps;
-- remaining memory/VA, aggregate/vector, module/type/global, instruction,
-  terminator, inline-assembly, and documentation-convergence work.
+- Raw-BIR/importer work, generic scalar parameters, other ABI forms, and
+  broader DirectScalar authority redesign.
 
 ## Ordered Steps
 
-### Step 7.35 - Receive the one 818-authorized body-parameter authority row
+### Step 1 - Trace the existing `ull` DirectScalar authority seam
 
-Goal: transactionally import the selected DirectScalar `LirBinOp.lhs` body
-parameter authority into one typed Raw-BIR destination.
+Goal: identify the exact producer/emitter path and verifier inputs for the
+existing `ull` native DirectScalar parameter.
 
 Actions:
 
-- consume exactly the closed-818 structured handoff fields;
-- add only the minimum typed Raw-BIR destination, importer dispatch, reachable
-  verifier work, and nearby positive/malformed-authority receiver coverage;
-- reject absent, invalid, duplicate, foreign-owner, out-of-range, non-scalar,
-  type-or-ABI-incoherent, wrong-role, and lhs value/type-mismatch forms before
-  publication;
-- run a fresh build and focused receiver proof before the supervisor-selected
-  matching regression guard and broader proof.
+- establish where current-function parameter identity and type are lost;
+- confirm the repair can stay limited to the existing `ull` shape;
+- stop and return a scope blocker if publication necessarily requires a
+  broader authority family.
 
-Completion check: exactly the selected DirectScalar `LirBinOp.lhs` parameter
-row imports and verifies from structured authority; no presentation recovery or
-other parameter receipt occurs. Reassess 734's source completion gate after
-this bounded receipt.
+Completion check: one typed producer/verifier seam is named without relying on
+textual fields or expanding authority scope.
+
+### Step 2 - Publish and verify the typed DirectScalar authority
+
+Goal: make the existing `ull` path satisfy the native body-parameter contract
+while malformed DirectScalar authority remains rejected.
+
+Actions:
+
+- implement the minimal producer/emitter and LIR verifier correction;
+- add focused positive and malformed-authority coverage;
+- keep unselected DirectScalar rows outside Raw-BIR receipt.
+
+Completion check: valid `ull` authority verifies; missing, foreign, and
+type-incoherent authority fails closed.
+
+### Step 3 - Prove the boundary and record the 734 handoff
+
+Goal: demonstrate that the prior external failure no longer occurs at the LIR
+verifier boundary and return only the selected receiver authorization.
+
+Actions:
+
+- run a fresh build and focused producer/verifier proof;
+- run `ctest --test-dir build --output-on-failure -R
+  '^llvm_gcc_c_torture_src_20041011_1_c$'`;
+- run the supervisor-selected matching regression/broader proof;
+- record that 734 resumes solely at Step 7.35 with its selected
+  `LirBinOp.lhs` row.
+
+Completion check: the external test no longer stops at the named pre-import
+verifier failure and the handoff has no generic scalar authorization.

@@ -1,34 +1,29 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
+Source Idea Path: ideas/open/820_lir_directscalar_parameter_producer_verifier_publication.md
 Source Plan Path: plan.md
-Current Step ID: 7.35
-Current Step Title: Receive the one 818-authorized body-parameter authority row
+Current Step ID: 1
+Current Step Title: Trace the existing `ull` DirectScalar authority seam
 
 ## Just Finished
 
-- Lifecycle resumption: 818 is capability-complete. Its accepted Step 1
-  selection (`0864c8aed`) and 819 producer contract/proof (`b16935c69`) hand
-  734 exactly one DirectScalar `LirBinOp.lhs` row; no Raw-BIR receipt occurred
-  in either producer idea.
+- Lifecycle switch from 734 Step 7.35: its current receiver work is
+  unaccepted; accepted 734 history remains through Step 7.34 (`8418036b1`).
 
 ## Suggested Next
 
-- Execute Plan Step 7.35 only: receive the structured DirectScalar `LirBinOp.lhs`
-  row into one typed Raw-BIR destination with transactional authority checks.
+- Trace the existing `ull` native DirectScalar producer/emitter path and the
+  corresponding `native_body_parameter_definitions` verifier inputs.
 
 ## Watchouts
 
-- Consume only matching native `LirValueId`, parameter index, `LirTypeRef`,
-  current-function `LinkNameId` owner, `DirectScalar` ABI, `Lhs` role, and
-  matching lhs SSA value/type.
-- Presentation fields, other ABI classes, roles, binary operators, parameter
-  forms, and all unrelated families remain forbidden or fail closed.
-- Do not repeat Steps 1 through 7.34.
+- Stop if repairing `ull` requires broadening to a DirectScalar authority
+  family; create no such expansion in this blocker.
+- Do not touch Raw-BIR/importer code or use presentation text as authority.
 
 ## Proof
 
-- Accepted producer evidence: 819 commit `b16935c69`; `^backend_` passed 6/6
-  with matching before/after guard and no new failures. The 818 selection trace
-  (`0864c8aed`) did not create receiver proof; Step 7.35 needs its own proof.
+- Before acceptance: fresh build, focused producer/verifier proof, exact
+  `^llvm_gcc_c_torture_src_20041011_1_c$` check, then supervisor-selected
+  matching regression/broader proof.

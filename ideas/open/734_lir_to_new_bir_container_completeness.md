@@ -1245,3 +1245,30 @@ Exact return action: resume only at **Step 7.35 - Receive the one
 destination, importer dispatch, reachable verification, and transactional
 positive/negative coverage. No Raw-BIR receipt occurred in 818; do not repeat
 Steps 1 through 7.34 or receive another parameter form.
+
+## Resumption Record: DirectScalar producer/verifier publication blocker
+
+Paused after accepted Steps 1 through 7.34, most recently the direct-pointer
+body-parameter receipt in `8418036b1`. Step 7.35, **Receive the one
+818-authorized body-parameter authority row**, has uncommitted receiver work
+only and is not accepted progress or acceptance evidence. Its importer-side
+repair preserves the selected i32 `LirBinOp.lhs` receipt and makes unselected
+producer-emitted DirectScalar rows avoid generic SSA-definition receipt; the
+matching `^backend_` before/after proof is 6/6 non-regressive.
+
+Fresh full CTest nevertheless fails the external
+`llvm_gcc_c_torture_src_20041011_1_c` case before BIR import in
+`src/codegen/lir/verify.cpp`: `LirFunction.native_body_parameter_definitions`
+requires a native direct-pointer or direct-scalar current-function parameter
+identity and type. This missing `ull` DirectScalar producer/verifier
+publication is outside 734's Raw-BIR receiver scope. Open blocker
+`ideas/open/820_lir_directscalar_parameter_producer_verifier_publication.md`
+owns only that existing typed authority publication and fail-closed LIR
+validation; it does not authorize generic BIR scalar parameters or a broader
+DirectScalar family.
+
+Exact return action after blocker acceptance: reactivate 734 at **Step 7.35**,
+retain only the selected DirectScalar `LirBinOp.lhs` receiver, and rerun its
+fixed `^backend_` proof plus the full checkpoint. Do not treat the current
+uncommitted Step 7.35 work as accepted, repeat Step 7.34, receive any other
+parameter form, or classify presentation text as authority.
