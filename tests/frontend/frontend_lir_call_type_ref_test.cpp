@@ -3956,14 +3956,17 @@ int lir_logical_short_circuit_result_authority_loss(int lhs, int rhs) {
   });
   expect_true(lhs_boolean != comparisons.end(),
               "logical LHS boolean conversion should retain the typed result selected by the branch");
-  lir::LirCastOp* rhs_conversion = casts[0];
-  expect_true(rhs_conversion->kind == lir::LirCastKind::ZExt &&
-                  rhs_conversion->from_type.kind() == lir::LirTypeKind::Integer &&
-                  rhs_conversion->from_type.integer_bit_width() == 1 &&
-                  rhs_conversion->to_type.kind() == lir::LirTypeKind::Integer &&
-                  rhs_conversion->to_type.integer_bit_width() == 32 &&
-                  rhs_conversion->operand.value_id(),
+  const auto rhs_conversion_it = std::find_if(
+      casts.begin(), casts.end(), [](const lir::LirCastOp* cast) {
+        return cast->kind == lir::LirCastKind::ZExt &&
+               cast->from_type.kind() == lir::LirTypeKind::Integer &&
+               cast->from_type.integer_bit_width() == 1 &&
+               cast->to_type.kind() == lir::LirTypeKind::Integer &&
+               cast->to_type.integer_bit_width() == 32 && cast->operand.value_id();
+      });
+  expect_true(rhs_conversion_it != casts.end(),
               "logical RHS boolean conversion should retain its typed i1 operand before result loss");
+  lir::LirCastOp* rhs_conversion = *rhs_conversion_it;
   const auto rhs_boolean = std::find_if(comparisons.begin(), comparisons.end(),
                                         [&](const lir::LirCmpOp* comparison) {
     return comparison->result.value_id() &&
@@ -3978,14 +3981,66 @@ int lir_logical_short_circuit_result_authority_loss(int lhs, int rhs) {
                   binary_ops[0]->type_str.kind() == lir::LirTypeKind::Integer &&
                   binary_ops[0]->type_str.integer_bit_width() == 32,
               "logical result should feed a later typed i32 Add");
-  expect_true(!rhs_conversion->result.value_id() && !phis[0]->result.value_id() &&
-                  !binary_ops[0]->lhs.value_id(),
-              "logical RHS result, PHI result, and later consumer lack LirValueId authority");
-  expect_true(!rhs_conversion->result.has_authority() && !phis[0]->result.has_authority() &&
-                  !binary_ops[0]->lhs.has_authority(),
-              "logical result path is raw after RHS conversion; text-only PHI incoming values "
-              "cannot support a verifier-backed malformed-ID proof");
+  expect_true(rhs_conversion->result.value_id() && rhs_conversion->result.value_id()->valid() &&
+                  rhs_conversion->result.has_authority() &&
+                  rhs_conversion->requires_native_result_authority,
+              "logical RHS conversion should retain native current-function result authority");
+  expect_true(!phis[0]->result.value_id() && !binary_ops[0]->lhs.value_id(),
+              "logical PHI result and final consumer remain outside the RHS result-authority claim");
   lir::verify_module(lowered);
+
+  const auto require_rhs_conversion = [](lir::LirModule& module) -> lir::LirCastOp& {
+    lir::LirFunction& focused =
+        require_function(module, "lir_logical_short_circuit_result_authority_loss");
+    lir::LirCastOp* found = nullptr;
+    for (auto& block : focused.blocks) {
+      for (auto& inst : block.insts) {
+        auto* candidate = std::get_if<lir::LirCastOp>(&inst);
+        if (!candidate || candidate->kind != lir::LirCastKind::ZExt ||
+            candidate->from_type.kind() != lir::LirTypeKind::Integer ||
+            candidate->from_type.integer_bit_width() != 1 ||
+            candidate->to_type.kind() != lir::LirTypeKind::Integer ||
+            candidate->to_type.integer_bit_width() != 32 || !candidate->operand.value_id()) {
+          continue;
+        }
+        expect_true(found == nullptr,
+                    "focused logical RHS fixture should contain one typed RHS conversion");
+        found = candidate;
+      }
+    }
+    expect_true(found && found->result.value_id(),
+                "focused logical RHS fixture should retain native result authority");
+    return *found;
+  };
+
+  lir::LirModule missing_result = lowered;
+  require_rhs_conversion(missing_result).result = lir::LirOperand("%missing-logical-rhs-result");
+  expect_identity_verification_rejected(
+      missing_result, "verifier should reject logical RHS conversion without result authority");
+
+  lir::LirModule invalid_result = lowered;
+  require_rhs_conversion(invalid_result).result = lir::LirOperand::ssa(
+      "%invalid-logical-rhs-result", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_result, "verifier should reject invalid logical RHS conversion result ID");
+
+  lir::LirModule duplicate_result = lowered;
+  lir::LirCastOp& duplicate_rhs_conversion = require_rhs_conversion(duplicate_result);
+  lir::LirFunction& duplicate_function = require_function(
+      duplicate_result, "lir_logical_short_circuit_result_authority_loss");
+  duplicate_function.blocks.back().insts.push_back(lir::LirStackSaveOp{
+      lir::LirOperand::ssa("%duplicate-logical-rhs-result",
+                           *duplicate_rhs_conversion.result.value_id())});
+  expect_identity_verification_rejected(
+      duplicate_result, "verifier should reject duplicate logical RHS conversion result ID");
+
+  lir::LirModule foreign_result = lowered;
+  foreign_result.functions.push_back(
+      make_identity_test_function("logical_rhs_foreign_result_owner", lir::LirValueId{99}));
+  require_rhs_conversion(foreign_result).result =
+      lir::LirOperand::ssa("%foreign-logical-rhs-result", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      foreign_result, "verifier should reject foreign logical RHS conversion result ID");
 }
 
 void test_vaarg_helper_result_authority_boundary() {
