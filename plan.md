@@ -1,91 +1,74 @@
-# Native Vector Authority Carrier Publication Runbook
+# LIR Aggregate and Vector Value Identity Convergence Runbook
 
 Status: Active
-Source Idea: ideas/open/811_lir_native_vector_authority_carrier_publication.md
-Activated from: 754 Step 8 separate-blocker switch
+Source Idea: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
+Resumed from: 811 native vector authority carrier closure
 
 ## Purpose
 
-Publish the reusable vector authority prerequisite required before 754 can
-select and implement one remaining vector row.
+Complete the remaining representative vector rows one bounded, row-local
+authority route at a time without reopening accepted aggregate work.
 
 ## Core Rule
 
-Use checked current-function IDs and native vector/index/mask facts only.
-Presentation strings remain compatibility mirrors and must never select,
-recover, or repair authority.
+Use checked current-function IDs and native row-specific facts only. Display
+text is compatibility rendering and cannot select, recover, or repair
+authority. Keep every unselected row fail closed.
 
 ## Read First
 
-- `ideas/open/811_lir_native_vector_authority_carrier_publication.md`
 - `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`
-- `src/codegen/lir/ir.hpp`, `src/codegen/lir/operands.hpp`,
-  `src/codegen/lir/types.hpp`, and `src/codegen/lir/verify.cpp`
+- `ideas/closed/811_lir_native_vector_authority_carrier_publication.md`
+- `src/codegen/lir/ir.hpp`, `src/codegen/lir/operands.hpp`, and
+  `src/codegen/lir/verify.cpp`
 - `src/codegen/lir/hir_to_lir/expr/binary.cpp` and `expr/misc.cpp`
 
 ## Non-Goals
 
-- Do not implement or select an 754 vector row.
-- Do not parse display strings or widen into non-vector authority families.
-- Do not modify Raw-BIR, target lowering, MIR, or emission.
+- Do not repeat accepted Steps 1--8, including the extractvalue and
+  insertvalue routes or 811 carrier publication.
+- Do not widen into generic provenance, vector-layout publication, aggregate,
+  CFG/PHI, pointer/object, Raw-BIR, target lowering, MIR, or emission.
+- Do not select more than one vector row or use presentation text as facts.
+
+## Accepted History
+
+- Steps 1--4: selected `LirExtractValueOp` work is accepted; its full
+  baseline closure proof is recorded in the source idea.
+- Steps 5--7: selected terminal direct-complex `LirInsertValueOp` route is
+  accepted in `270c6a93e` and `8fe6c3569`; source closure correctly remained
+  rejected because vector rows remain.
+- Step 8: no vector row was selectable from existing structured facts. The
+  separate 811 prerequisite is now accepted in `76f92ad60` and `56203cbf9`.
 
 ## Steps
 
-### Step 1 - Specify the native vector carrier boundary
+### Step 9 - Implement and prove the Step 8 selection
 
-Goal: identify the smallest reusable structured carrier that represents
-current-function result/use IDs, vector lane/element shape, index value/type,
-and ordered shuffle mask lanes for the three existing vector seams.
-
-Actions:
-
-- inspect only the three vector op schemas, their verifier admission, and the
-  `expr/binary.cpp` splat plus `expr/misc.cpp` vector-index lowering seams;
-- define the carrier ownership and fail-closed conditions without attaching an
-  operation-specific 754 verifier contract;
-- record the concrete producer seams, positive matrix, malformed matrix, and
-  excluded row-level behavior in `todo.md` before code changes.
-
-Completion check: one bounded carrier contract and implementation packet exist;
-no 754 vector row is selected or enabled.
-
-### Step 2 - Publish structured vector identities and facts
-
-Goal: add the Step 1 carrier and populate it from the existing vector seams.
+Goal: perform the required fresh one-row audit against 811's accepted carrier,
+then implement and prove only the selected row.
 
 Actions:
 
-- preserve result/use `LirValueId`s through the seam;
-- publish native lane/element, index value/type, and shuffle mask-lane facts;
-- retain display strings only as checked mirrors and keep non-vector producers
-  unchanged.
+- before changing code, inspect only `LirInsertElementOp`,
+  `LirExtractElementOp`, and `LirShuffleVectorOp` seams against the new carrier;
+  record in `todo.md` the selected seam, exact carrier facts, positive and
+  malformed matrix, and the two excluded rows;
+- select exactly one row only when its complete result/use and row-specific
+  vector/index/mask contract is natively available and fail closed;
+- publish and verify only that row's authority; add nearby valid,
+  missing/foreign, and selected type/index/mask malformed coverage;
+- run a fresh build, selected same-feature proof, and matching regression
+  guard. Escalate to a full baseline when the supervisor judges the shared
+  surface requires it.
 
-Completion check: carrier facts are present for the bounded seams and absent
-or invalid forms fail closed without row-level operation validation.
+Completion check: one and only one vector row has a proven structural contract;
+the two unselected rows and all non-vector scope remain unchanged.
 
-### Step 3 - Verify carrier coherence and focused coverage
+### Step 10 - Reassess remaining source completion
 
-Goal: prove carrier ownership and fact coherence independently of 754 rows.
+Goal: make the next explicit lifecycle decision after the Step 9 packet.
 
-Actions:
-
-- verify missing, unknown/foreign, and incoherent IDs/facts reject;
-- add nearby carrier-focused valid and malformed coverage for each fact family;
-- keep insert/extract/shuffle operation semantics out of the tests and verifier
-  contract.
-
-Completion check: focused carrier coverage proves valid and malformed behavior
-without a display-text fallback or 754 operation claim.
-
-### Step 4 - Prove and return the handoff
-
-Goal: obtain the required build and regression proof, then hand off to 754.
-
-Actions:
-
-- run a fresh build, focused proof, and supervisor-selected matching regression
-  guard; request a full baseline if shared-surface accumulation requires it;
-- record the accepted carrier contract, proof, and exact 754 return point.
-
-Completion check: accepted proof exists and 754 can resume at Step 9 for a
-fresh one-row vector audit.
+Completion check: repair to one fresh row audit, atomically switch to a
+separately scoped blocker, or produce source-closure evidence. Never silently
+widen Step 9.

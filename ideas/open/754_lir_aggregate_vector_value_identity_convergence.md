@@ -389,3 +389,33 @@ Step 5, *Audit and select the next remaining representative row*; it must
 select exactly one row and preserve the no-display-recovery and no-generic-
 provenance boundaries. A discovered prerequisite outside this source must be
 recorded as a separately scoped blocker with this parent return point.
+
+## Resumption Update: 811 native vector carrier blocker accepted
+
+811 is capability-complete and is archived as
+`ideas/closed/811_lir_native_vector_authority_carrier_publication.md`. Its
+accepted implementation is `76f92ad60` (*Publish native vector authority
+carrier*) and its carrier-focused coverage is `56203cbf9` (*Cover native
+vector authority carrier*). The handoff publishes checked current-function
+result/use IDs, native vector lane/element facts, checked insert/extract index
+value/type facts, and exact ordered shuffle mask-lane facts for the three
+existing vector seams. Missing, foreign, malformed, and incoherent carriers
+reject; rendering remains a compatibility mirror and is never recovered as
+authority. 811 does not select, enable, or validate an insert/extract/shuffle
+row.
+
+Accepted proof: a fresh build plus matching `^backend_` canonical regression
+captures passed from 5 to 6 tests with zero failures; the supervisor accepted
+the monotonic guard. The closure-quality fresh
+`cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure` checkpoint also passed 3038/3038. This prerequisite proof
+is a handoff, not 754 vector-row proof.
+
+Exact return point: resume at Step 9, *Implement and prove the Step 8
+selection*. Before selecting or changing a row, rerun a fresh one-row vector
+audit against 811's carrier and record the selected seam, positive/malformed
+matrix, and two excluded rows in `todo.md`. Select exactly one of
+`LirInsertElementOp`, `LirExtractElementOp`, or `LirShuffleVectorOp` only when
+the carrier supports its complete row-local contract. Do not repeat Steps
+1--8, repeat 811 publication work, or implement a vector row merely because
+the carrier exists.
