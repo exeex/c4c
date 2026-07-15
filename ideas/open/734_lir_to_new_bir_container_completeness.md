@@ -946,3 +946,26 @@ After 791 closes with its typed handoff and focused producer proof, reactivate
 work. Do not repeat Step 7.28 or absorb other local/VLA, memory/va,
 aggregate/vector, body-parameter, module/type/global/metadata, instruction,
 terminator, or inline-assembly families.
+
+## Resumption Record: accepted 791 local-array GEP authority handoff
+
+Closed 791 is capability-complete in `ea579c648`. It authorizes exactly the
+direct static-local-array `LirGepOp` with a valid current-function result,
+native SSA base pointer, matching element type, one native `i64` immediate
+index, and checked live local-object authority. Missing admission/local
+authority, raw or SSA index, invalid result/base, foreign or incoherent
+object/owner, type mismatch, and dead authority fail closed before downstream
+use. Display spelling, `%t`, rendered operands, printer output, and LLVM text
+remain nonsemantic.
+
+The supervisor accepted a fresh build, focused
+`^frontend_lir_call_type_ref$` 1/1, matching non-decreasing canonical
+before/after 1/1 guard, broader `^frontend_cxx_` 1/1 and `^backend_` 5/5;
+direct review found no material issue. Resume only `Step 7.29 - Receive the
+selected direct static-local-array LirGepOp authority`: consume the documented
+result, element type, base pointer, immediate index, and local-object fields
+into one typed Raw-BIR destination with importer dispatch, reachable
+verification, and transactional positive/negative coverage. Do not repeat
+Steps 7.26 through 7.28 or absorb SSA-indexed/local-temporary/
+aggregate-member/VLA GEPs, stores, later loads, stack lifetime, or any other
+family.

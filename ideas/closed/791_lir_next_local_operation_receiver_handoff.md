@@ -1,6 +1,6 @@
 # Next LIR Local-Operation Receiver Handoff
 
-Status: Open (active)
+Status: Closed (capability complete)
 Type: bounded LIR local-operation authority handoff
 Predecessor: `ideas/open/734_lir_to_new_bir_container_completeness.md`
 Consumer: `ideas/open/734_lir_to_new_bir_container_completeness.md`
@@ -66,3 +66,27 @@ typed contract first.
   a substitute for current-function object/pointer/type/lifetime facts.
 - Reject a handoff that does not name exactly one 734 receiver row, its typed
   fields, rejected forms, focused proof, and Step 7.29 return action.
+
+## Closure Record
+
+Capability complete. Commit `ea579c648` selected exactly the direct
+static-local-array `LirGepOp` with a valid current-function result, native SSA
+base pointer, one native `i64` immediate index, matching element type, and
+checked live local-object authority. The verifier rejects missing admission,
+malformed result/base/index, foreign or incoherent object/owner, type mismatch,
+and dead authority before downstream use; display spelling remains
+nonsemantic. The handoff at
+`docs/lir_local_operation_authority/handoff_to_734.md` authorizes 734 Step
+7.29 only.
+
+Supervisor acceptance proof is a fresh build plus focused
+`^frontend_lir_call_type_ref$` 1/1, a matching non-decreasing canonical
+before/after 1/1 guard, broader `^frontend_cxx_` 1/1 and `^backend_` 5/5.
+Direct supervisor review found no material issue and the hook review state is
+cleared. All nonselected local rows remain fail closed.
+
+Exact return action: reactivate 734 and repair its runbook for only
+`Step 7.29 - Receive the selected direct static-local-array LirGepOp
+authority`. Consume only the documented result, element type, base pointer,
+immediate index, and local-object authority; do not repeat accepted alloca,
+local-load, or declaration-store receipts, or widen to any other family.

@@ -1,88 +1,63 @@
-# Next LIR Local-Operation Authority Handoff Runbook
+# LIR-To-New-BIR Local Array GEP Receiver Runbook
 
 Status: Active
-Source Idea: ideas/open/791_lir_next_local_operation_receiver_handoff.md
-Activated from: exhausted 734 Step 7.28 receiver runbook.
+Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
+Resumed from: closed 791 static-local-array GEP authority handoff.
 
 ## Purpose
 
-Publish one exact next local-operation producer authority row so 734 can later
-receive it without presentation-derived identity recovery.
-
-## Goal
-
-Select, verify, and hand off exactly one receiver-ready post-store local row.
+Receive the one producer-authorized direct static-local-array GEP in typed
+Raw-BIR without repeating accepted alloca, local-load, or declaration-store
+receipt.
 
 ## Core Rule
 
-Native structured authority is the sole semantic input. Local spelling,
+Use only the native fields in
+`docs/lir_local_operation_authority/handoff_to_734.md`. Local spelling,
 formatted operands, printer output, LLVM text, and testcase identity are never
-authority.
+semantic input.
 
-## Read First
+## Historical Progress
 
-- `ideas/open/791_lir_next_local_operation_receiver_handoff.md`
-- `ideas/open/734_lir_to_new_bir_container_completeness.md` (post-Step 7.28
-  resumption record)
-- `docs/lir_local_operation_authority/handoff_to_734.md`
-- current LIR local-object producer and verifier routes
+Steps 1 through 7.28 are accepted, including `006d79aaf`, `7dc03f23a`,
+`2cce9da69`, `eabf7a3b8`, and `f5cda70ee`. Closed 791 published this exact
+GEP authority in `ea579c648`; do not redo producer work.
 
-## Scope
+## Current Scope
 
-- inspect candidate post-store local rows and choose one only when its native
-  authority is sufficient;
-- add minimum producer/schema/verifier support and focused coverage for that
-  one row;
-- publish the exact 734 handoff for Step 7.29.
+- receive exactly the direct static-local-array `LirGepOp` with native valid
+  result ID, element type, SSA base pointer, one i64 immediate index, and
+  checked current-function local-object owner/type/liveness authority;
+- add the minimum target-independent Raw-BIR destination/importer/reachable
+  verifier and transactional positive/negative coverage;
+- require selected-GEP admission, result/base validity and equality checks,
+  exact one native i64 immediate index, element/pointee type coherence, and
+  valid/live current-function authority.
 
 ## Non-Goals
 
-- Raw-BIR/importer work, target lowering, MIR, emission, and any broad local
-  conversion;
-- more than one local row or any memory/va, aggregate/vector, body-parameter,
-  CFG/PHI, or later family;
-- presentation-derived recovery.
+- SSA-indexed, local-temporary, aggregate-member, VLA, or any other GEP;
+  every store, later load, stack lifetime, and nonselected local row;
+- memory/va, aggregate/vector, body parameters, module/type/global/metadata,
+  CFG/PHI, target lowering, MIR, emission, and every later family;
+- presentation-derived recovery or repeating accepted alloca/load/store work.
 
 ## Ordered Steps
 
-### Step 1 - Select one native-authority local-operation row
+### Step 7.29 - Receive the selected direct static-local-array LirGepOp authority
 
-Goal: identify the earliest candidate that has complete native current-function
-result/use, pointer/object, type, and lifetime authority.
-
-Actions:
-
-- inspect only relevant local producer and verifier routes;
-- reject candidates that require text-derived identity or unsupported facts;
-- document the selected row and exact rejected forms in the handoff.
-
-Completion check: one exact receiver row is selected from native authority, or
-an evidence-backed no-row conclusion names the next lifecycle route.
-
-### Step 2 - Publish and verify the selected authority
-
-Goal: make the one selected row structurally consumable and fail closed.
+Goal: transactionally import the one 791-authorized local-array GEP into a
+typed Raw-BIR destination.
 
 Actions:
 
-- add the minimum producer/schema and verifier admission required;
-- validate current-function ownership, pointer/object/type coherence, and
-  liveness before downstream use;
-- add nearby positive and malformed-authority coverage.
+- map only native result, element type, pointer definition, immediate index,
+  and object/owner/pointer/pointee/liveness facts;
+- validate selected-GEP admission and all producer contract fields before
+  publication, rejecting malformed rows transactionally;
+- add nearby positive and negative receiver coverage, then run a fresh build
+  and narrow proof before supervisor-selected broader acceptance proof.
 
-Completion check: the selected row has native typed authority and malformed or
-nonselected forms reject without presentation recovery.
-
-### Step 3 - Record the 734 handoff and prove the bounded producer slice
-
-Goal: close this authority handoff with a precise one-row return action.
-
-Actions:
-
-- update `docs/lir_local_operation_authority/handoff_to_734.md` with fields,
-  guarantees, rejected forms, proof, and Step 7.29 action;
-- run a fresh build and focused same-feature proof;
-- provide the result to the supervisor for selected broader acceptance.
-
-Completion check: the handoff authorizes exactly one 734 receiver packet and
-all later families remain fail closed.
+Completion check: exactly this selected GEP imports and verifies without
+presentation recovery; all excluded local and later families remain fail
+closed.
