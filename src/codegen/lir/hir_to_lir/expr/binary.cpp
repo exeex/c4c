@@ -305,7 +305,8 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
                                *ins.value_id(), std::nullopt, std::nullopt, shape, shape, shape,
                                std::nullopt, std::vector<lir::LirShuffleMaskLane>(
                                    static_cast<size_t>(lanes),
-                                   {.kind = lir::LirShuffleMaskLane::Kind::Selected, .selected_lane = 0})}});
+                                   {.kind = lir::LirShuffleMaskLane::Kind::Selected, .selected_lane = 0})},
+                               true});
       return shuf.str();
     };
     if (is_vector_value(lts) && !is_vector_value(rts) && rts.ptr_level == 0) {
@@ -423,7 +424,8 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
                                               std::vector<lir::LirShuffleMaskLane>(
                                                   static_cast<size_t>(lanes),
                                                   {.kind = lir::LirShuffleMaskLane::Kind::Selected,
-                                                   .selected_lane = 0})}});
+                                                   .selected_lane = 0})},
+                                              true});
     return shuf.str();
   };
   if (is_vector_value(lts) && !is_vector_value(rts) && rts.ptr_level == 0) {

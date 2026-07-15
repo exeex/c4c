@@ -638,6 +638,9 @@ struct LirShuffleVectorOp {
   LirTypeRef mask_type;
   LirOperand mask;
   std::optional<LirNativeVectorAuthority> native_vector_authority;
+  // Set only for the structured scalar-to-vector zero-initializer splat
+  // lowering, whose native result/use facts are mandatory.
+  bool requires_native_vector_authority = false;
 };
 
 // Typed va_arg instruction.

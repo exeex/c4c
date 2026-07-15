@@ -114,15 +114,36 @@ lir::LirModule vector_authority_module() {
   return module;
 }
 
+lir::LirModule selected_scalar_to_vector_splat_module() {
+  auto module = vector_authority_module();
+  auto& shuffle = std::get<lir::LirShuffleVectorOp>(module.functions[0].blocks[0].insts[2]);
+  shuffle.vec1 = lir::LirOperand::ssa("%insert", lir::LirValueId{5});
+  shuffle.vec2 = lir::LirOperand::special_token(lir::LirSpecialToken::Poison);
+  shuffle.native_vector_authority->first_vector_use = lir::LirValueId{5};
+  shuffle.native_vector_authority->second_vector_use.reset();
+  shuffle.requires_native_vector_authority = true;
+  std::swap(module.functions[0].blocks[0].insts[1], module.functions[0].blocks[0].insts[2]);
+  return module;
+}
+
 void test_native_vector_authority_verifier_boundary() {
   lir::verify_module(vector_authority_module());
 
-  auto structured_poison_second = vector_authority_module();
-  auto& poison_shuffle = std::get<lir::LirShuffleVectorOp>(
-      structured_poison_second.functions[0].blocks[0].insts[2]);
-  poison_shuffle.vec2 = lir::LirOperand::special_token(lir::LirSpecialToken::Poison);
-  poison_shuffle.native_vector_authority->second_vector_use.reset();
-  lir::verify_module(structured_poison_second);
+  lir::verify_module(selected_scalar_to_vector_splat_module());
+
+  auto missing_required_authority = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirShuffleVectorOp>(missing_required_authority.functions[0].blocks[0].insts[1])
+      .native_vector_authority.reset();
+  expect_rejected(std::move(missing_required_authority),
+                  "selected scalar-to-vector splat must require native authority");
+
+  auto nonpreceding_insert = selected_scalar_to_vector_splat_module();
+  auto& nonpreceding_shuffle = std::get<lir::LirShuffleVectorOp>(
+      nonpreceding_insert.functions[0].blocks[0].insts[1]);
+  nonpreceding_shuffle.vec1 = lir::LirOperand::ssa("%v1", lir::LirValueId{1});
+  nonpreceding_shuffle.native_vector_authority->first_vector_use = lir::LirValueId{1};
+  expect_rejected(std::move(nonpreceding_insert),
+                  "selected scalar-to-vector splat must use the preceding native insert result");
 
   auto missing_owner = vector_authority_module();
   std::get<lir::LirInsertElementOp>(missing_owner.functions[0].blocks[0].insts[0])

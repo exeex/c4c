@@ -2712,13 +2712,17 @@ void verify_function_value_ownership(const LirModule& mod,
       }
     }
   };
-  const auto verify_vector_inst = [&](const LirInst& inst) {
+  const auto verify_vector_inst = [&](const LirInst& inst, const LirInst* preceding) {
     if (const auto* op = std::get_if<LirInsertElementOp>(&inst)) {
       const LirTypeRef index_type = LirTypeRef::integer(64);
       verify_vector_authority(*op, "LirInsertElementOp", op->vec, nullptr, &op->elem, &op->index, &index_type, op->vec_type);
     } else if (const auto* op = std::get_if<LirExtractElementOp>(&inst))
       verify_vector_authority(*op, "LirExtractElementOp", op->vec, nullptr, nullptr, &op->index, &op->index_type, op->vec_type);
     else if (const auto* op = std::get_if<LirShuffleVectorOp>(&inst)) {
+      if (op->requires_native_vector_authority && !op->native_vector_authority) {
+        fail_verify("LirShuffleVectorOp.native_vector_authority",
+                    "is required for the scalar-to-vector zero-initializer splat");
+      }
       verify_vector_authority(*op, "LirShuffleVectorOp", op->vec1, &op->vec2, nullptr, nullptr, nullptr, op->vec_type);
       if (op->native_vector_authority &&
           (op->native_vector_authority->mask_lanes.size() != op->native_vector_authority->result_shape.lane_count ||
@@ -2730,10 +2734,25 @@ void verify_function_value_ownership(const LirModule& mod,
                          return lane.kind != LirShuffleMaskLane::Kind::Selected || lane.selected_lane != 0;
                        })))
         fail_verify("LirShuffleVectorOp.native_vector_authority.mask_lanes", "must mirror the structured shuffle mask");
+      if (op->requires_native_vector_authority) {
+        const auto* preceding_insert = preceding ? std::get_if<LirInsertElementOp>(preceding) : nullptr;
+        if (!preceding_insert || !preceding_insert->native_vector_authority ||
+            !op->vec1.value_id() ||
+            *op->vec1.value_id() != preceding_insert->native_vector_authority->result) {
+          fail_verify("LirShuffleVectorOp.native_vector_authority.first_vector_use",
+                      "must equal the preceding native insert result");
+        }
+      }
     }
   };
-  for (const auto& inst : function.alloca_insts) verify_vector_inst(inst);
-  for (const auto& block : function.blocks) for (const auto& inst : block.insts) verify_vector_inst(inst);
+  for (const auto& inst : function.alloca_insts) verify_vector_inst(inst, nullptr);
+  for (const auto& block : function.blocks) {
+    const LirInst* preceding = nullptr;
+    for (const auto& inst : block.insts) {
+      verify_vector_inst(inst, preceding);
+      preceding = &inst;
+    }
+  }
 
   verify_local_object_authority_bindings(function, definition_insts);
   verify_native_memory_va_authority(mod, function, definition_insts);
