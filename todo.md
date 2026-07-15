@@ -3,32 +3,37 @@
 Status: Active
 Source Idea Path: ideas/open/795_lir_body_parameter_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Trace the selected parameter-index body-use handoff
+Current Step ID: 2
+Current Step Title: Publish the selected parameter-index authority
 你該做code review了
 
 ## Just Finished
 
-810 Steps 1--2 are accepted (`f1cb9c510`, `1f1a1fb38`), but its required
-post-commit full baseline rejected at 3035/3037. The variable parameter-index
-GEP failure is switched here; the independent PHI failure remains owned by
-806.
+795 Step 1 traced `pr21173.c` from the GEP verifier failure to `foo` parameter
+`p#P0`: it is a one-to-one native `char*` body parameter, not an ABI-expanded
+form. `init_fn_ctx` publishes only `%p.p` spelling and the ordinary parameter
+rvalue consumer returns it as raw text; the pointer-difference RHS consequently
+reaches the direct pointer-compound GEP without integer/SSA authority. Durable
+route evidence: `review/795_step1_parameter_index_trace.md`.
 
 ## Suggested Next
 
-Trace the `pr21173.c` variable RHS from authoritative GEP-index verification
-to its native function-body parameter publication and lowering handoff. Keep
-the selected route to one body-parameter/ABI classification surface.
+795 Step 2: publish checked current-function authority for this native scalar
+parameter surface at the `init_fn_ctx`/parameter-DeclRef handoff, then keep
+proof bounded to its pointer-to-integer-derived GEP-index chain.
 
 ## Watchouts
 
-810's native-immediate RHS repair is accepted and must not be reopened. Do not
-use rendered parameter identity, weaken GEP verification, or absorb the
-`20060910-1.c` PHI producer failure owned by 806. A focused result does not
-clear the rejected 3035/3037 baseline.
+Do not use rendered parameter identity, weaken GEP verification, or absorb the
+`20060910-1.c` PHI producer failure owned by 806. `p#P0` is native pointer, not
+native integer; any following raw cast/bin authority loss is only the selected
+pointer-to-integer index chain, not authorization for broad ABI work.
 
 ## Proof
 
-No 795 proof recorded yet. The outgoing 810 focused
-`frontend_lir_call_type_ref` guard was accepted at 0/1 before to 1/1 after;
-the post-commit full baseline remains rejected at 3035/3037.
+Trace-only packet: `./build/c4cll --codegen llvm
+tests/c/external/gcc_torture/src/pr21173.c` failed as expected with
+`LirGepOp.indices.value: authoritative GEP index requires integer or SSA
+authority`; `--dump-hir` identified `foo(p: char*)` and `p#P0` as the selected
+source. No build/CTest baseline was requested or run; no `test_after.log` was
+created for this trace-only packet.
