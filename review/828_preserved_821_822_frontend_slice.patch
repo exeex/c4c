@@ -1,0 +1,122 @@
+diff --git a/src/codegen/lir/hir_to_lir/expr/binary.cpp b/src/codegen/lir/hir_to_lir/expr/binary.cpp
+index b9fdccb27..0c9de675b 100644
+--- a/src/codegen/lir/hir_to_lir/expr/binary.cpp
++++ b/src/codegen/lir/hir_to_lir/expr/binary.cpp
+@@ -568,6 +568,7 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
+               [&](const auto& candidate) {
+                 return candidate.value == *lhs.value_id() &&
+                        candidate.type == type &&
++                       candidate.owner == ctx.lir_function->link_name_id &&
+                        candidate.abi == lir::LirNativeBodyParameterAbi::DirectScalar;
+               });
+           if (definition != ctx.lir_function->native_body_parameter_definitions.end()) {
+diff --git a/tests/frontend/frontend_lir_function_signature_type_ref_test.cpp b/tests/frontend/frontend_lir_function_signature_type_ref_test.cpp
+index 98f8590be..d7420fbe7 100644
+--- a/tests/frontend/frontend_lir_function_signature_type_ref_test.cpp
++++ b/tests/frontend/frontend_lir_function_signature_type_ref_test.cpp
+@@ -711,6 +711,89 @@ ull scalar_alias(ull x) { return x + 1; }
+           "DirectScalar verifier must reject a type-incoherent parameter authority");
+ }
+ 
++void test_direct_scalar_binary_lhs_authority() {
++  c4c::hir::Module hir_module = lower_hir_module(R"c(
++typedef unsigned long long ull;
++ull scalar_binary_lhs(ull x) { return x + 1; }
++)c");
++  const c4c::codegen::lir::LirModule module = c4c::codegen::lir::lower(hir_module);
++  const auto find_binary = [](const auto& function) -> const c4c::codegen::lir::LirBinOp& {
++    for (const auto& block : function.blocks) {
++      for (const auto& inst : block.insts) {
++        if (const auto* binary = std::get_if<c4c::codegen::lir::LirBinOp>(&inst)) {
++          return *binary;
++        }
++      }
++    }
++    fail("scalar binary fixture should lower one LirBinOp");
++  };
++  const auto& function = require_function(module, "scalar_binary_lhs", false);
++  const auto& binary = find_binary(function);
++  expect_true(binary.scalar_lhs_parameter_authority.has_value(),
++              "direct scalar binary LHS must publish native parameter authority");
++  const auto& authority = *binary.scalar_lhs_parameter_authority;
++  const auto& definition = function.native_body_parameter_definitions.front();
++  expect_true(binary.lhs.value_id() && authority.value == *binary.lhs.value_id() &&
++                  authority.value == definition.value &&
++                  authority.parameter_index == definition.parameter_index &&
++                  authority.type == binary.type_str && authority.type == definition.type &&
++                  authority.owner == function.link_name_id && authority.owner == definition.owner &&
++                  authority.abi == c4c::codegen::lir::LirNativeBodyParameterAbi::DirectScalar &&
++                  authority.role == c4c::codegen::lir::LirScalarBinaryParameterRole::Lhs,
++              "direct scalar binary LHS authority must mirror its current-function definition");
++  c4c::codegen::lir::verify_module(module);
++
++  const auto rejects = [&](auto mutate, const std::string& message) {
++    auto candidate = module;
++    auto& candidate_function = require_mutable_function(candidate, "scalar_binary_lhs", false);
++    for (auto& block : candidate_function.blocks) {
++      for (auto& inst : block.insts) {
++        if (auto* candidate_binary = std::get_if<c4c::codegen::lir::LirBinOp>(&inst)) {
++          mutate(candidate, candidate_function, *candidate_binary);
++          expect_verify_rejects(candidate, message);
++          return;
++        }
++      }
++    }
++    fail("mutable scalar binary fixture should contain one LirBinOp");
++  };
++  rejects([](auto&, auto&, auto& binary) { binary.scalar_lhs_parameter_authority.reset(); },
++          "DirectScalar binary LHS verifier must reject missing authority");
++  rejects([](auto& candidate, auto&, auto& binary) {
++            binary.scalar_lhs_parameter_authority->owner =
++                candidate.link_names.intern("foreign_scalar_binary_lhs_owner");
++          },
++          "DirectScalar binary LHS verifier must reject foreign authority owner");
++  rejects([](auto&, auto& function, auto&) {
++            function.native_body_parameter_definitions.push_back(
++                function.native_body_parameter_definitions.front());
++          },
++          "DirectScalar binary LHS verifier must reject duplicate definitions");
++  rejects([](auto&, auto&, auto& binary) {
++            binary.scalar_lhs_parameter_authority->parameter_index = 1;
++          },
++          "DirectScalar binary LHS verifier must reject an out-of-range parameter index");
++  rejects([](auto&, auto&, auto& binary) {
++            binary.scalar_lhs_parameter_authority->type = c4c::codegen::lir::LirTypeRef::integer(32);
++          },
++          "DirectScalar binary LHS verifier must reject type and operation incoherence");
++  rejects([](auto&, auto&, auto& binary) {
++            binary.scalar_lhs_parameter_authority->abi =
++                c4c::codegen::lir::LirNativeBodyParameterAbi::DirectPointer;
++          },
++          "DirectScalar binary LHS verifier must reject ABI incoherence");
++  rejects([](auto&, auto&, auto& binary) {
++            binary.scalar_lhs_parameter_authority->role =
++                c4c::codegen::lir::LirScalarBinaryParameterRole::Rhs;
++          },
++          "DirectScalar binary LHS verifier must reject RHS role authority");
++  rejects([](auto&, auto&, auto& binary) {
++            binary.scalar_lhs_parameter_authority->value =
++                c4c::codegen::lir::LirValueId::invalid();
++          },
++          "DirectScalar binary LHS verifier must reject LHS value incoherence");
++}
++
+ void test_direct_scalar_unary_fneg_lhs_authority() {
+   c4c::hir::Module hir_module = lower_hir_module(R"c(
+ double scalar_unary_fneg_lhs(double x) { return -x; }
+@@ -772,6 +855,7 @@ double scalar_unary_fneg_lhs(double x) { return -x; }
+   rejects([](auto& binary) { binary.rhs = binary.lhs; },
+           "unary fneg verifier must reject a populated rhs");
+ }
++
+ }  // namespace
+ 
+ int main() {
+@@ -783,6 +867,7 @@ int main() {
+   test_target_profile_long_signature_publication();
+   test_aarch64_hfa_parameter_classification();
+   test_direct_scalar_parameter_authority_alias_boundary();
++  test_direct_scalar_binary_lhs_authority();
+   test_direct_scalar_unary_fneg_lhs_authority();
+ 
+   c4c::hir::Module hir_module = lower_hir_module(R"c(

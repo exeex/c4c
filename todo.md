@@ -8,29 +8,31 @@ Current Step Title: Inventory and preserve the dirty slice
 
 ## Just Finished
 
-- Lifecycle switch: 827 Step 2 is paused before implementation because its
-  required nearby frontend test is already owned by preserved, unaccepted
-  Idea 821/822 material. Its exact selected direct-call contract and proof
-  remain in 827's resumption record.
+- Step 1 complete: preserved exactly the dirty 821/822 frontend slice in
+  `review/828_preserved_821_822_frontend_slice.patch`, verified both reverse
+  removal and restoration applicability, and removed only that slice from the
+  shared worktree. Restore it explicitly with
+  `git apply review/828_preserved_821_822_frontend_slice.patch`.
 
 ## Suggested Next
 
-- Create and verify one named recoverable preservation artifact for the dirty
-  `src/codegen/lir/hir_to_lir/expr/binary.cpp` and
-  `tests/frontend/frontend_lir_function_signature_type_ref_test.cpp` slice,
-  then remove only that slice from the shared route.
+- Continue 828 only after the supervisor selects the next isolation packet;
+  semantic 821/822 or 827 authority routes are not accepted by this
+  preservation step.
 
 ## Watchouts
 
-- Do not overwrite, co-commit, accept, repair, or semantically alter Ideas
-  821/822. Do not implement 827 authority during isolation. Preserve the
-  conflict-free stash/pop baseline in `test_before.log` and do not modify
-  canonical regression logs outside supervisor direction.
+- The preservation artifact contains the exact former diff for
+  `src/codegen/lir/hir_to_lir/expr/binary.cpp` and
+  `tests/frontend/frontend_lir_function_signature_type_ref_test.cpp`; it is
+  reversible only and does not accept, repair, or semantically alter the
+  821/822 or 827 routes. Leave unrelated dirty artifacts and `test_before.log`
+  untouched.
 
 ## Proof
 
-- The accepted pre-change baseline is fresh `cmake --build --preset default`
-  followed by `ctest --test-dir build --output-on-failure -R
-  '^frontend_lir_call_type_ref$'` captured in `test_before.log` after a
-  conflict-free stash/pop. It is baseline evidence only, not acceptance for
-  this isolation or any semantic authority route.
+- Artifact checks passed: `git apply --reverse --check
+  review/828_preserved_821_822_frontend_slice.patch` before removal, then
+  `git apply --check review/828_preserved_821_822_frontend_slice.patch` after
+  removal (the restoration command above). Required build and focused test are
+  recorded in `test_after.log`.
