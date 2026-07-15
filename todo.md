@@ -9,23 +9,25 @@ Current Step Title: Receive the 826-authorized DirectScalar truthiness-compariso
 
 ## Just Finished
 
-- Closed 826 capability-complete: `02ef01e94` publishes one checked
-  DirectScalar integer parameter authority used as `LirCmpOp.lhs` in
-  `StmtEmitter::to_bool_operand`; accepted proof is a fresh build, focused
-  frontend CTest 1/1, and matching 1/1 regression guard.
+- Step 7.39 complete: received exactly one 826-authorized DirectScalar integer
+  truthiness-comparison-LHS parameter into typed Raw BIR, retaining its
+  value/owner/index/type and checked integer-`ne`/zero-RHS relation. Import and
+  foundation verification fail closed for missing, invalid, duplicate, foreign,
+  index/type/ABI/role, LHS/predicate/float/zero-RHS, and second-row violations.
 
 ## Suggested Next
 
-- Execute Step 7.39 only: receive the exact 826-authorized tuple and its
-  LHS/type/integer-`ne`/authoritative-zero relations into typed Raw BIR.
+- Return the exhausted Step 7.39 runbook to plan-owner for the source
+  completion-gate decision; do not infer whole-source completion.
 
 ## Watchouts
 
-- Do not use `LirCondBr.condition` as direct parameter authority, recover
-  identity from presentation fields, or admit another parameter row.
-- Do not reopen accepted Steps 1 through 7.38 or alter producer/schema code.
+- The receiver accepts only the 826 truthiness-comparison LHS; it does not use
+  `LirCondBr.condition`, presentation fields, or another parameter-use row.
 
 ## Proof
 
-- Step 7.39 requires a fresh build, focused same-feature receiver proof, and
-  matching regression guard. Canonical logs remain supervisor-owned.
+- Fresh `cmake --build --preset default` passed. Exact `ctest --test-dir build
+  -j --output-on-failure -R '^backend_'` passed 6/6; output is in
+  `test_after.log`. Canonical baseline/regression decisions remain
+  supervisor-owned.

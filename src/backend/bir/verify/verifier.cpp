@@ -1263,7 +1263,9 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         const bool olt = compare->predicate == ComparePredicate::OLt && compare->type == f64;
         const bool ffs_eq_zero = compare->predicate == ComparePredicate::Eq &&
             (compare->type == i32 || compare->type == i64);
-        bool exact = (slt || olt || ffs_eq_zero) && instruction.operands.size() == 2 &&
+        const bool truthiness_ne = compare->predicate == ComparePredicate::Ne &&
+            integer_type(compare->type) && compare->direct_scalar_truthiness_lhs.has_value();
+        bool exact = (slt || olt || ffs_eq_zero || truthiness_ne) && instruction.operands.size() == 2 &&
             instruction.results.size() == 1;
         if (exact) {
           const auto lhs = function.values_.get(function_id, instruction.operands[0]);
@@ -1275,7 +1277,9 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           const auto lhs_producer = lhs_def
               ? function.insts_.get(function_id, lhs_def->instruction)
               : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(ResolveError::OutOfRange);
-          exact = exact && (ffs_eq_zero || (lhs_producer && (slt
+          const auto* lhs_parameter = exact
+              ? std::get_if<ParameterDef>(&lhs.value().get().definition) : nullptr;
+          exact = exact && (truthiness_ne || ffs_eq_zero || (lhs_producer && (slt
               ? std::holds_alternative<LoadNode>(lhs_producer.value().get().payload)
               : [&] {
                   const auto* binary = std::get_if<BinaryNode>(&lhs_producer.value().get().payload);
@@ -1289,7 +1293,18 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
               ? std::get_if<IntegerConstant>(&module.constants_[rhs_def->constant.slot].payload)
               : nullptr;
           exact = exact && (!slt || (integer && integer->value == 7)) &&
-              (!ffs_eq_zero || (integer && integer->value == 0));
+              (!ffs_eq_zero || (integer && integer->value == 0)) &&
+              (!truthiness_ne || (integer && integer->value == 0 && lhs_parameter &&
+                  compare->direct_scalar_truthiness_lhs->source_value_id != 0 &&
+                  compare->direct_scalar_truthiness_lhs->parameter_index == lhs_parameter->ordinal &&
+                  compare->direct_scalar_truthiness_lhs->scalar_type == compare->type &&
+                  compare->direct_scalar_truthiness_lhs->owner.valid() &&
+                  compare->direct_scalar_truthiness_lhs->owner.epoch == module.epoch_ &&
+                  compare->direct_scalar_truthiness_lhs->owner.slot < module.link_names_.size() &&
+                  module.link_names_[compare->direct_scalar_truthiness_lhs->owner.slot].spelling ==
+                      function.link_name_ &&
+                  instruction.operands[0] ==
+                      function.parameters_[compare->direct_scalar_truthiness_lhs->parameter_index]));
           const auto result_value = exact
               ? function.values_.get(function_id, instruction.results[0])
               : Result<std::reference_wrapper<const ValueDef>, ResolveError>::failure(ResolveError::OutOfRange);

@@ -2315,6 +2315,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
       selected_return_value_parameter_authority = nullptr;
   const codegen::lir::LirSwitchSelectorParameterAuthority*
       selected_switch_selector_parameter_authority = nullptr;
+  const codegen::lir::LirTruthinessComparisonLhsParameterAuthority*
+      selected_truthiness_lhs_parameter_authority = nullptr;
   for (const auto& block : function.blocks) {
     const auto* ret = std::get_if<LirRet>(&block.terminator);
     if (!ret) continue;
@@ -2401,6 +2403,54 @@ Result<void, ImportError> validate_function(const LirModule& module,
       return fail<void>(ImportErrorCode::UnsupportedTerminator, name, block.label,
                         "direct scalar switch selector parameter requires one exact typed current-function authority row");
     selected_switch_selector_parameter_authority = &authority;
+  }
+  for (const auto& block : function.blocks) for (const auto& instruction : block.insts) {
+    const auto* compare = std::get_if<LirCmpOp>(&instruction);
+    if (!compare) continue;
+    const auto selected_definition =
+        !compare->is_float && compare->predicate.typed() ==
+                std::optional{codegen::lir::LirCmpPredicate::Ne} &&
+                compare->type_str.kind() == codegen::lir::LirTypeKind::Integer &&
+                compare->lhs.kind() == codegen::lir::LirOperandKind::SsaValue &&
+                compare->lhs.value_id() && compare->rhs.integer_immediate() &&
+                compare->rhs.integer_immediate()->value == 0
+            ? std::find_if(function.native_body_parameter_definitions.begin(),
+                           function.native_body_parameter_definitions.end(),
+                           [&](const auto& definition) {
+                             return definition.value == *compare->lhs.value_id() &&
+                                    definition.type == compare->type_str &&
+                                    definition.abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar;
+                           })
+            : function.native_body_parameter_definitions.end();
+    if (!compare->truthiness_lhs_parameter_authority) {
+      if (selected_definition != function.native_body_parameter_definitions.end())
+        return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                          "direct scalar truthiness comparison requires its one typed authority row");
+      continue;
+    }
+    const auto& authority = *compare->truthiness_lhs_parameter_authority;
+    const auto matches = std::count_if(function.native_body_parameter_definitions.begin(),
+                                       function.native_body_parameter_definitions.end(),
+        [&](const auto& definition) {
+          return definition.value == authority.value &&
+              definition.parameter_index == authority.parameter_index &&
+              definition.type == authority.type && definition.owner == authority.owner &&
+              definition.abi == authority.abi;
+        });
+    if (selected_truthiness_lhs_parameter_authority || !authority.value.valid() ||
+        authority.owner != function.link_name_id || authority.parameter_index >= function.params.size() ||
+        authority.parameter_index >= function.signature_param_type_refs.size() ||
+        authority.abi != codegen::lir::LirNativeBodyParameterAbi::DirectScalar ||
+        authority.role != codegen::lir::LirTruthinessComparisonLhsParameterRole::TruthinessComparisonLhs ||
+        compare->is_float || compare->predicate.typed() != std::optional{codegen::lir::LirCmpPredicate::Ne} ||
+        compare->type_str.kind() != codegen::lir::LirTypeKind::Integer ||
+        compare->lhs.kind() != codegen::lir::LirOperandKind::SsaValue || !compare->lhs.value_id() ||
+        *compare->lhs.value_id() != authority.value || compare->type_str != authority.type ||
+        !compare->rhs.integer_immediate() || compare->rhs.integer_immediate()->value != 0 ||
+        function.signature_param_type_refs[authority.parameter_index] != authority.type || matches != 1)
+      return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                        "direct scalar truthiness comparison requires one exact typed current-function authority row");
+    selected_truthiness_lhs_parameter_authority = &authority;
   }
   const LirMemcpyOp* overflow_memcpy = nullptr;
   const codegen::lir::LirAmd64SysVOverflowAggregateCarrier* overflow_carrier = nullptr;
@@ -2591,6 +2641,13 @@ Result<void, ImportError> validate_function(const LirModule& module,
                       *type).second)
       return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
                         "direct scalar switch selector parameter identity collided in the current-function source registry");
+  }
+  if (selected_truthiness_lhs_parameter_authority) {
+    const auto type = lower_lir_type(module, selected_truthiness_lhs_parameter_authority->type);
+    if (!type || !source_values.emplace(selected_truthiness_lhs_parameter_authority->value.value,
+                                        *type).second)
+      return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
+                        "direct scalar truthiness parameter identity collided in the current-function source registry");
   }
   for (const auto& instruction : function.alloca_insts) {
     const auto& alloca = std::get<LirAllocaOp>(instruction);
@@ -3410,7 +3467,15 @@ Result<void, ImportError> validate_function(const LirModule& module,
         const bool olt = exact_downstream_double_olt_compare(
             *compare, source_values, downstream_double_fmul_results);
         const bool ffs_zero = exact_builtin_ffs_zero_compare(*compare);
-        if ((!slt && !olt && !ffs_zero) ||
+        const bool truthiness_ne = compare->truthiness_lhs_parameter_authority &&
+            !compare->is_float &&
+            compare->predicate.typed() == std::optional{codegen::lir::LirCmpPredicate::Ne} &&
+            compare->type_str.kind() == codegen::lir::LirTypeKind::Integer &&
+            compare->lhs.kind() == codegen::lir::LirOperandKind::SsaValue &&
+            compare->lhs.value_id() && compare->rhs.integer_immediate() &&
+            compare->rhs.integer_immediate()->value == 0 &&
+            source_values.count(compare->lhs.value_id()->value) == 1;
+        if ((!slt && !olt && !ffs_zero && !truthiness_ne) ||
             !source_values.emplace(compare->result.value_id()->value,
                                    Type{TypeKind::I1, 1, "i1"}).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
@@ -4200,6 +4265,14 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 return &*sw->selector_parameter_authority;
             return static_cast<const codegen::lir::LirSwitchSelectorParameterAuthority*>(nullptr);
           }();
+          const auto selected_truthiness_lhs_authority = [&]() {
+            for (const auto& block : function.blocks)
+              for (const auto& instruction : block.insts)
+                if (const auto* compare = std::get_if<LirCmpOp>(&instruction);
+                    compare && compare->truthiness_lhs_parameter_authority)
+                  return &*compare->truthiness_lhs_parameter_authority;
+            return static_cast<const codegen::lir::LirTruthinessComparisonLhsParameterAuthority*>(nullptr);
+          }();
           const auto selected_scalar_body_parameter = selected_scalar_authority
               ? std::find_if(function.native_body_parameter_definitions.begin(),
                              function.native_body_parameter_definitions.end(),
@@ -4244,6 +4317,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                    parameter.abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar;
                              })
               : function.native_body_parameter_definitions.end();
+          const auto selected_truthiness_lhs_body_parameter = selected_truthiness_lhs_authority
+              ? std::find_if(function.native_body_parameter_definitions.begin(),
+                             function.native_body_parameter_definitions.end(),
+                             [&](const auto& parameter) {
+                               return parameter.value == selected_truthiness_lhs_authority->value &&
+                                   parameter.parameter_index == selected_truthiness_lhs_authority->parameter_index &&
+                                   parameter.type == selected_truthiness_lhs_authority->type &&
+                                   parameter.owner == selected_truthiness_lhs_authority->owner &&
+                                   parameter.abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar;
+                             })
+              : function.native_body_parameter_definitions.end();
           if (selected_scalar_body_parameter != function.native_body_parameter_definitions.end()) {
             auto parameter = function_builder.parameter(selected_scalar_body_parameter->parameter_index);
             if (!parameter || !source_values.emplace(selected_scalar_body_parameter->value.value,
@@ -4281,6 +4365,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                   parameter.value()).second) {
               edit_error = ImportError{ImportErrorCode::UnsupportedFunctionParameters, name, {},
                                        "direct scalar switch selector parameter failed authoritative Raw-BIR receipt"};
+              return Result<void, BuildError>::failure(BuildError::InvalidParameter);
+            }
+          }
+          if (selected_truthiness_lhs_body_parameter != function.native_body_parameter_definitions.end()) {
+            auto parameter = function_builder.parameter(
+                selected_truthiness_lhs_body_parameter->parameter_index);
+            if (!parameter || !source_values.emplace(
+                                  selected_truthiness_lhs_body_parameter->value.value,
+                                  parameter.value()).second) {
+              edit_error = ImportError{ImportErrorCode::UnsupportedFunctionParameters, name, {},
+                                       "direct scalar truthiness parameter failed authoritative Raw-BIR receipt"};
               return Result<void, BuildError>::failure(BuildError::InvalidParameter);
             }
           }
@@ -5340,6 +5435,10 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 const bool olt = compare->is_float;
                 const bool ffs_zero = !olt &&
                     compare->predicate.typed() == std::optional{codegen::lir::LirCmpPredicate::Eq};
+                const auto* truthiness_authority =
+                    compare->truthiness_lhs_parameter_authority
+                        ? &*compare->truthiness_lhs_parameter_authority : nullptr;
+                const bool truthiness_ne = truthiness_authority != nullptr;
                 ValueId lhs_value{};
                 if (compare->lhs.kind() == codegen::lir::LirOperandKind::SsaValue) {
                   const auto lhs = source_values.find(compare->lhs.value_id()->value);
@@ -5385,7 +5484,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                                  "reserve compare immediate-seven", reserved.error());
                     return Result<void, BuildError>::failure(reserved.error());
                   }
-                  auto defined = function_builder.define_int_constant(reserved.value(), ffs_zero ? 0 : 7);
+                  auto defined = function_builder.define_int_constant(reserved.value(),
+                                                                       (ffs_zero || truthiness_ne) ? 0 : 7);
                   if (!defined) {
                     edit_error = builder_failure(name, block.label,
                                                  "define compare immediate-seven", defined.error());
@@ -5393,13 +5493,29 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   }
                   rhs_value = reserved.value();
                 }
+                std::optional<DirectScalarBodyParameterTruthinessComparisonLhs>
+                    direct_scalar_truthiness_lhs;
+                if (truthiness_authority) {
+                  const auto owner = imported_link_names.find(truthiness_authority->owner);
+                  if (owner == imported_link_names.end()) {
+                    edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                                             block.label, "validated truthiness parameter owner disappeared"};
+                    return Result<void, BuildError>::failure(BuildError::InvalidNameId);
+                  }
+                  direct_scalar_truthiness_lhs =
+                      DirectScalarBodyParameterTruthinessComparisonLhs{
+                          truthiness_authority->value.value,
+                          truthiness_authority->parameter_index,
+                          *lower_lir_type(module, truthiness_authority->type), owner->second};
+                }
                 auto appended = function_builder.append(
                     blocks.at(block.id.value),
-                    CompareSpec{olt ? ComparePredicate::OLt : ffs_zero ? ComparePredicate::Eq : ComparePredicate::Slt,
+                    CompareSpec{olt ? ComparePredicate::OLt : ffs_zero ? ComparePredicate::Eq :
+                                                   truthiness_ne ? ComparePredicate::Ne : ComparePredicate::Slt,
                                 olt ? Type{TypeKind::F64, 64, "double"}
                                     : *lower_lir_type(module, compare->type_str),
                                lhs_value, rhs_value,
-                                compare->result.value_id()->value});
+                                compare->result.value_id()->value, direct_scalar_truthiness_lhs});
                 if (!appended || appended.value().results.size() != 1 ||
                     !source_values.emplace(compare->result.value_id()->value,
                                            appended.value().results[0]).second) {

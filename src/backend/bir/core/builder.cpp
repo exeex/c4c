@@ -1794,12 +1794,21 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       (spec.type == i32 || spec.type == i64) && lhs && rhs &&
       lhs.value().get().type == spec.type && rhs.value().get().type == spec.type &&
       integer && integer->value == 0;
-  if (!function_data.blocks_.contains(function_, block) || (!slt && !olt && !ffs_eq_zero) ||
+  const auto* lhs_parameter = lhs ? std::get_if<ParameterDef>(&lhs.value().get().definition) : nullptr;
+  const bool truthiness_ne = spec.predicate == ComparePredicate::Ne && integer_type(spec.type) &&
+      lhs && rhs && lhs.value().get().type == spec.type && rhs.value().get().type == spec.type &&
+      lhs_parameter && integer && integer->value == 0 && spec.direct_scalar_truthiness_lhs &&
+      spec.direct_scalar_truthiness_lhs->source_value_id != 0 &&
+      spec.direct_scalar_truthiness_lhs->parameter_index == lhs_parameter->ordinal &&
+      spec.direct_scalar_truthiness_lhs->scalar_type == spec.type &&
+      spec.direct_scalar_truthiness_lhs->owner.valid();
+  if (!function_data.blocks_.contains(function_, block) || (!slt && !olt && !ffs_eq_zero && !truthiness_ne) ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   detail::InstData instruction;
   instruction.opcode = Opcode::Compare;
-  instruction.payload = CompareNode{spec.predicate, spec.type};
+  instruction.payload = CompareNode{spec.predicate, spec.type,
+                                    spec.direct_scalar_truthiness_lhs};
   instruction.operands = {spec.lhs, spec.rhs};
   auto inserted = function_data.insts_.emplace(function_, std::move(instruction));
   if (!inserted) return Result<BuildResult, BuildError>::failure(storage_error(inserted.error()));

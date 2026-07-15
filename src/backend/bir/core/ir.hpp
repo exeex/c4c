@@ -282,6 +282,16 @@ struct DirectScalarBodyParameterBinaryRhs {
   LinkNameId owner{};
 };
 
+// Receipt of the one producer-authorized direct-scalar parameter used as the
+// LHS of an integer truthiness comparison.  This remains a bounded authority
+// carrier, not general parameter-use support.
+struct DirectScalarBodyParameterTruthinessComparisonLhs {
+  std::uint32_t source_value_id = 0;
+  std::uint32_t parameter_index = 0;
+  Type scalar_type{TypeKind::Void};
+  LinkNameId owner{};
+};
+
 struct BinaryNode {
   BinaryOpcode opcode = BinaryOpcode::FAdd;
   Type type{};
@@ -289,11 +299,13 @@ struct BinaryNode {
   std::optional<DirectScalarBodyParameterBinaryRhs> direct_scalar_rhs;
 };
 
-enum class ComparePredicate : std::uint8_t { Slt, OLt, Eq };
+enum class ComparePredicate : std::uint8_t { Slt, OLt, Eq, Ne };
 
 struct CompareNode {
   ComparePredicate predicate = ComparePredicate::Slt;
   Type type{};
+  std::optional<DirectScalarBodyParameterTruthinessComparisonLhs>
+      direct_scalar_truthiness_lhs;
 };
 
 // This is intentionally a receipt of the producer-verified wide ffs select

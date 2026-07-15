@@ -231,6 +231,8 @@ struct CompareSpec {
   ValueId lhs{};
   ValueId rhs{};
   std::uint32_t source_result_id = 0;
+  std::optional<DirectScalarBodyParameterTruthinessComparisonLhs>
+      direct_scalar_truthiness_lhs;
 };
 
 struct SelectSpec {

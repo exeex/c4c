@@ -13009,6 +13009,75 @@ void test_switch_selector_parameter_authority_receipt_and_rejections() {
   }, "switch-selector parameter type relation mismatch must reject transactionally");
 }
 
+void test_truthiness_comparison_lhs_parameter_authority_receipt_and_rejections() {
+  const auto make_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    const auto owner = module.link_names.intern("truthiness_parameter_owner");
+    lir::LirFunction function;
+    function.name = "truthiness_parameter_owner";
+    function.return_type = scalar_type(c4c::TB_VOID);
+    function.signature_return_type_ref = lir::LirTypeRef("void");
+    function.link_name_id = owner;
+    function.params.emplace_back("%presentation-only", scalar_type(c4c::TB_INT));
+    function.signature_params.push_back({"%presentation-only-signature", scalar_type(c4c::TB_INT), false});
+    function.signature_param_type_refs.push_back(lir::LirTypeRef::integer(32));
+    function.native_body_parameter_definitions.push_back(
+        {lir::LirValueId{71}, 0, lir::LirTypeRef::integer(32), owner,
+         lir::LirNativeBodyParameterAbi::DirectScalar});
+    lir::LirBlock entry = return_block(0, "entry");
+    entry.insts.push_back(lir::LirCmpOp{
+        lir::LirOperand::ssa("%truthiness-result", lir::LirValueId{72}), false,
+        lir::LirCmpPredicate::Ne, lir::LirTypeRef::integer(32),
+        lir::LirOperand::ssa("%presentation-only-lhs", lir::LirValueId{71}),
+        lir::LirOperand::integer("presentation-only-zero", 0),
+        lir::LirTruthinessComparisonLhsParameterAuthority{
+            lir::LirValueId{71}, 0, lir::LirTypeRef::integer(32), owner,
+            lir::LirNativeBodyParameterAbi::DirectScalar,
+            lir::LirTruthinessComparisonLhsParameterRole::TruthinessComparisonLhs}});
+    function.blocks.push_back(std::move(entry));
+    function.entry = lir::LirBlockId{0};
+    module.functions.push_back(std::move(function));
+    return module;
+  };
+  const auto module = make_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "truthiness parameter authority must publish verified Raw BIR");
+  const auto view = raw.value().view();
+  const auto function = view.function(view.functions()[0]).value();
+  const auto compare = function.instruction(function.instructions(function.blocks()[0]).value()[0]).value();
+  expect(compare.compare() && compare.compare()->predicate == bir::ComparePredicate::Ne &&
+             compare.compare()->type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+             compare.compare()->direct_scalar_truthiness_lhs &&
+             compare.compare()->direct_scalar_truthiness_lhs->source_value_id == 71 &&
+             compare.compare()->direct_scalar_truthiness_lhs->parameter_index == 0 &&
+             compare.compare()->direct_scalar_truthiness_lhs->scalar_type ==
+                 bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+             compare.operands().size() == 2 && compare.operands()[0] == function.parameters()[0],
+         "Raw BIR must retain the exact typed truthiness comparison-LHS parameter authority");
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = make_module();
+    mutate(candidate);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value(), message + " (Raw rollback)");
+    expect(!bir::lower_lir_to_canonical_bir(candidate).has_value(), message + " (Canonical rollback)");
+  };
+  rejected([](auto& candidate) { std::get<lir::LirCmpOp>(candidate.functions[0].blocks[0].insts[0]).truthiness_lhs_parameter_authority.reset(); }, "missing truthiness authority must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirCmpOp>(candidate.functions[0].blocks[0].insts[0]).truthiness_lhs_parameter_authority->value = lir::LirValueId::invalid(); }, "invalid truthiness authority must reject transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].native_body_parameter_definitions.push_back(candidate.functions[0].native_body_parameter_definitions[0]); }, "duplicate truthiness definition must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirCmpOp>(candidate.functions[0].blocks[0].insts[0]).truthiness_lhs_parameter_authority->owner = candidate.link_names.intern("foreign_truthiness_owner"); }, "foreign truthiness owner must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirCmpOp>(candidate.functions[0].blocks[0].insts[0]).truthiness_lhs_parameter_authority->parameter_index = 1; }, "truthiness parameter index mismatch must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirCmpOp>(candidate.functions[0].blocks[0].insts[0]).truthiness_lhs_parameter_authority->type = lir::LirTypeRef::integer(64); }, "truthiness parameter type mismatch must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirCmpOp>(candidate.functions[0].blocks[0].insts[0]).truthiness_lhs_parameter_authority->abi = lir::LirNativeBodyParameterAbi::DirectPointer; }, "truthiness parameter ABI mismatch must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirCmpOp>(candidate.functions[0].blocks[0].insts[0]).truthiness_lhs_parameter_authority->role = lir::LirTruthinessComparisonLhsParameterRole::Invalid; }, "truthiness parameter role mismatch must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirCmpOp>(candidate.functions[0].blocks[0].insts[0]).lhs = lir::LirOperand::ssa("%other", lir::LirValueId{73}); }, "truthiness LHS relation mismatch must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirCmpOp>(candidate.functions[0].blocks[0].insts[0]).predicate = lir::LirCmpPredicate::Eq; }, "truthiness predicate mismatch must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirCmpOp>(candidate.functions[0].blocks[0].insts[0]).is_float = true; }, "floating truthiness comparison must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirCmpOp>(candidate.functions[0].blocks[0].insts[0]).rhs = lir::LirOperand::integer("one", 1); }, "truthiness zero RHS mismatch must reject transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].blocks[0].insts.push_back(candidate.functions[0].blocks[0].insts[0]); }, "second truthiness authority row must reject transactionally");
+}
+
 }  // namespace
 
 int main() {
@@ -13120,5 +13189,6 @@ int main() {
   test_direct_pointer_body_parameter_gep_receipt_and_rejections();
   test_return_value_parameter_authority_receipt_and_rejections();
   test_switch_selector_parameter_authority_receipt_and_rejections();
+  test_truthiness_comparison_lhs_parameter_authority_receipt_and_rejections();
   return 0;
 }
