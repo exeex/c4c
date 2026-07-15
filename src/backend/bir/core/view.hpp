@@ -37,6 +37,9 @@ class InstView {
   const LocalArrayGepAuthorityNode* local_array_gep_authority() const noexcept {
     return std::get_if<LocalArrayGepAuthorityNode>(&data_->payload);
   }
+  const StackSaveAuthorityNode* stack_save_authority() const noexcept {
+    return std::get_if<StackSaveAuthorityNode>(&data_->payload);
+  }
   const AbsNode* abs() const noexcept {
     return std::get_if<AbsNode>(&data_->payload);
   }

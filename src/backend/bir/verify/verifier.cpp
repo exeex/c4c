@@ -74,6 +74,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
     case Opcode::GetElementPtr:
       return std::holds_alternative<GetElementPtrNode>(instruction.payload) ||
              std::holds_alternative<LocalArrayGepAuthorityNode>(instruction.payload);
+    case Opcode::StackSaveAuthority:
+      return std::holds_alternative<StackSaveAuthorityNode>(instruction.payload);
     case Opcode::Abs:
       return std::holds_alternative<AbsNode>(instruction.payload);
     case Opcode::Call:
@@ -939,6 +941,30 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
             alloca->pointee_type == gep->pointee_type && alloca->live;
         if (!exact) report(result, VerificationRule::ValueDefinition, function_id, inst_id,
                            "local-array GEP must retain one live typed current-function array pointer/object authority, immediate index, and exact result");
+      }
+      if (const auto* stack_save =
+              std::get_if<StackSaveAuthorityNode>(&instruction.payload)) {
+        const ValueDef* result_value = nullptr;
+        if (instruction.results.size() == 1) {
+          const auto resolved = function.values_.get(function_id, instruction.results[0]);
+          if (resolved) result_value = &resolved.value().get();
+        }
+        const bool owner_resolves = stack_save->owner.valid() &&
+            stack_save->owner.epoch == module.epoch_ &&
+            stack_save->owner.slot < module.link_names_.size();
+        const bool exact = stack_save->result.valid() &&
+            stack_save->pointer_definition.valid() && stack_save->object.valid() &&
+            stack_save->result == stack_save->pointer_definition &&
+            stack_save->result.owner == function_id &&
+            stack_save->object.owner == function_id && owner_resolves &&
+            stack_save->pointer_type == Type{TypeKind::Pointer} &&
+            stack_save->pointee_type == Type{TypeKind::Pointer} && stack_save->live &&
+            instruction.operands.empty() && result_value &&
+            result_value->source_id == stack_save->result &&
+            result_value->type == Type{TypeKind::Pointer};
+        if (!exact)
+          report(result, VerificationRule::ValueDefinition, function_id, inst_id,
+                 "stack save must retain one live typed current-function saved-pointer/object authority and exact result");
       }
       if (const auto* abs = std::get_if<AbsNode>(&instruction.payload)) {
         const Type i32{TypeKind::Integer, 32, "i32"};

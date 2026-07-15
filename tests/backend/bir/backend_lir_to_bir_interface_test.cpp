@@ -12046,6 +12046,90 @@ void test_selected_local_scalar_load_authority_receipt_and_rejections() {
            "dead local load authority must reject transactionally");
 }
 
+void test_selected_vla_stack_save_receipt_and_rejections() {
+  lir::LirModule module;
+  auto texts = std::make_shared<c4c::TextTable>();
+  module.link_name_texts = texts;
+  module.link_names.attach_text_table(texts.get());
+  const auto owner = module.link_names.intern("typed_vla_stack_save_owner");
+  lir::LirBlock entry = return_block(0, "entry");
+  entry.insts.push_back(lir::LirStackSaveOp{
+      lir::LirOperand::ssa("%misleading.saved.pointer", lir::LirValueId{42}),
+      lir::LirCurrentFunctionLocalObjectPointer{
+          lir::LirValueId{42}, lir::LirObjectId{7}, owner,
+          lir::LirTypeRef(lir::LirBuiltinType::Pointer),
+          lir::LirTypeRef(lir::LirBuiltinType::Pointer), true}, true});
+  lir::LirFunction function = void_definition("typed_vla_stack_save_owner", {entry});
+  function.link_name_id = owner;
+  module.functions.push_back(std::move(function));
+
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "one selected VLA stack save must publish verified Raw BIR");
+  const auto view = raw.value().view();
+  const auto function_view = view.function(view.functions()[0]).value();
+  const auto instructions = function_view.instructions(function_view.blocks()[0]).value();
+  const auto stack_save = function_view.instruction(instructions[0]).value().stack_save_authority();
+  expect(stack_save && stack_save->result == bir::SourceValueId{function_view.id(), 42} &&
+             stack_save->pointer_definition == bir::SourceValueId{function_view.id(), 42} &&
+             stack_save->object.owner == function_view.id() && stack_save->object.value == 7 &&
+             stack_save->pointer_type == bir::Type{bir::TypeKind::Pointer} &&
+             stack_save->pointee_type == bir::Type{bir::TypeKind::Pointer} && stack_save->live,
+         "Raw BIR VLA stack save must retain only typed result and live local-object authority");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = module;
+    auto& stack_save = std::get<lir::LirStackSaveOp>(candidate.functions[0].blocks[0].insts[0]);
+    mutate(candidate, stack_save);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value() &&
+               !bir::lower_lir_to_canonical_bir(candidate).has_value(), message);
+  };
+  rejected([](auto&, auto& stack_save) { stack_save.requires_native_stack_save_authority = false; },
+           "nonselected stack save must reject transactionally");
+  rejected([](auto&, auto& stack_save) { stack_save.result = lir::LirOperand::ssa("%bad", lir::LirValueId::invalid()); },
+           "stack save with invalid result must reject transactionally");
+  rejected([](auto&, auto& stack_save) { stack_save.local_object_authority->pointer_definition = lir::LirValueId{99}; },
+           "stack save result must equal its native pointer definition");
+  rejected([](auto& candidate, auto& stack_save) {
+             stack_save.local_object_authority->owner = candidate.link_names.intern("foreign_vla_stack_save_owner");
+           }, "foreign VLA stack-save owner must reject transactionally");
+  rejected([](auto&, auto& stack_save) { stack_save.local_object_authority->object = lir::LirObjectId::invalid(); },
+           "malformed VLA stack-save object must reject transactionally");
+  rejected([](auto&, auto& stack_save) { stack_save.local_object_authority->pointee_type = lir::LirTypeRef::integer(64); },
+           "VLA stack-save pointee type must remain pointer-typed");
+  rejected([](auto&, auto& stack_save) { stack_save.local_object_authority->live = false; },
+           "dead VLA stack-save authority must reject transactionally");
+  auto two_saves = module;
+  two_saves.functions[0].blocks[0].insts.push_back(lir::LirStackSaveOp{
+      lir::LirOperand::ssa("%second", lir::LirValueId{43}),
+      lir::LirCurrentFunctionLocalObjectPointer{
+          lir::LirValueId{43}, lir::LirObjectId{8}, owner,
+          lir::LirTypeRef(lir::LirBuiltinType::Pointer),
+          lir::LirTypeRef(lir::LirBuiltinType::Pointer), true}, true});
+  expect(!bir::lower_lir_to_raw_bir(two_saves).has_value(),
+         "a second selected VLA stack save must reject transactionally");
+  auto stack_restore = module;
+  stack_restore.functions[0].blocks[0].insts.push_back(lir::LirStackRestoreOp{
+      lir::LirOperand::ssa("%saved", lir::LirValueId{42}),
+      lir::LirCurrentFunctionLocalObjectPointer{
+          lir::LirValueId{42}, lir::LirObjectId{7}, owner,
+          lir::LirTypeRef(lir::LirBuiltinType::Pointer),
+          lir::LirTypeRef(lir::LirBuiltinType::Pointer), true}});
+  expect(!bir::lower_lir_to_raw_bir(stack_restore).has_value(),
+         "VLA stack restore must remain transactionally rejected");
+  auto dynamic_vla_alloca = module;
+  dynamic_vla_alloca.functions[0].alloca_insts.push_back(lir::LirAllocaOp{
+      lir::LirOperand::ssa("%dynamic.vla", lir::LirValueId{43}),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::ssa("%vla.count", lir::LirValueId{99}), 0,
+      lir::LirCurrentFunctionLocalObjectPointer{
+          lir::LirValueId{43}, lir::LirObjectId{8}, owner,
+          lir::LirTypeRef(lir::LirBuiltinType::Pointer),
+          lir::LirTypeRef::integer(32), true}});
+  expect(!bir::lower_lir_to_raw_bir(dynamic_vla_alloca).has_value(),
+         "dynamic VLA allocation must remain transactionally rejected");
+}
+
 void test_selected_direct_static_local_array_gep_receipt_and_rejections() {
   lir::LirModule module;
   auto texts = std::make_shared<c4c::TextTable>();
@@ -12328,6 +12412,7 @@ int main() {
   test_selected_global_array_gep_builder_contract();
   test_label_address_gep_base_builder_contract();
   test_selected_global_array_gep_rejections();
+  test_selected_vla_stack_save_receipt_and_rejections();
   test_selected_direct_static_local_array_gep_receipt_and_rejections();
   test_scalar_integer_return_receipt();
   test_scalar_integer_ssa_return_receipt();

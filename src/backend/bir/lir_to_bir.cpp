@@ -2291,6 +2291,19 @@ Result<void, ImportError> validate_function(const LirModule& module,
                         "alloca requires one live typed current-function pointer/object authority binding");
   }
 
+  std::size_t selected_stack_save_count = 0;
+  for (const auto& block : function.blocks) {
+    for (const auto& instruction : block.insts) {
+      if (const auto* stack_save =
+              std::get_if<codegen::lir::LirStackSaveOp>(&instruction);
+          stack_save && stack_save->requires_native_stack_save_authority)
+        ++selected_stack_save_count;
+    }
+  }
+  if (selected_stack_save_count > 1)
+    return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
+                      "current function may publish exactly one selected VLA stack-save authority");
+
   std::size_t selected_memcpy_count = 0;
   for (const auto& block : function.blocks) {
     for (const auto& instruction : block.insts) {
@@ -2672,6 +2685,29 @@ Result<void, ImportError> validate_function(const LirModule& module,
                             "duplicate authoritative LirValueId definition");
         if (*type == Type{TypeKind::Integer, 32, "i32"})
           selected_global_i32_load_results.insert(result->value);
+        continue;
+      }
+      if (const auto* stack_save = std::get_if<codegen::lir::LirStackSaveOp>(&instruction)) {
+        const auto* authority = stack_save->local_object_authority
+            ? &*stack_save->local_object_authority : nullptr;
+        const auto* result = stack_save->result.value_id();
+        const auto pointer_type = authority
+            ? lower_lir_type(module, authority->pointer_type) : std::optional<Type>{};
+        const auto pointee_type = authority
+            ? lower_lir_type(module, authority->pointee_type) : std::optional<Type>{};
+        const bool selected = stack_save->requires_native_stack_save_authority && authority &&
+            stack_save->result.kind() == codegen::lir::LirOperandKind::SsaValue &&
+            result && result->valid() && *result == authority->pointer_definition &&
+            authority->object.valid() && function.link_name_id != c4c::kInvalidLinkName &&
+            authority->owner == function.link_name_id &&
+            pointer_type == Type{TypeKind::Pointer} &&
+            pointee_type == Type{TypeKind::Pointer} && authority->live;
+        if (!selected)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                            "stack save requires the one selected native VLA saved-pointer and live current-function authority shape");
+        if (!source_values.emplace(result->value, Type{TypeKind::Pointer}).second)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                            block.label, "duplicate authoritative LirValueId definition");
         continue;
       }
       if (const auto* gep = std::get_if<LirGepOp>(&instruction)) {
@@ -4076,6 +4112,35 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                       "load result collided in the current-function source registry"};
                   return Result<void, BuildError>::failure(
                       BuildError::DuplicateSourceValue);
+                }
+                continue;
+              }
+              if (const auto* stack_save = std::get_if<codegen::lir::LirStackSaveOp>(&instruction)) {
+                const auto& authority = *stack_save->local_object_authority;
+                const auto owner = imported_link_names.find(authority.owner);
+                if (owner == imported_link_names.end()) {
+                  edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                      name, block.label, "validated VLA stack-save owner disappeared"};
+                  return Result<void, BuildError>::failure(BuildError::InvalidNameId);
+                }
+                auto appended = function_builder.append(
+                    blocks.at(block.id.value), StackSaveAuthoritySpec{
+                        SourceValueId{function_ids[function_index], stack_save->result.value_id()->value},
+                        SourceValueId{function_ids[function_index], authority.pointer_definition.value},
+                        SourceObjectId{function_ids[function_index], authority.object.value}, owner->second,
+                        *lower_lir_type(module, authority.pointer_type),
+                        *lower_lir_type(module, authority.pointee_type), authority.live});
+                if (!appended) {
+                  edit_error = builder_failure(name, block.label,
+                                               "append VLA stack-save authority", appended.error());
+                  return Result<void, BuildError>::failure(appended.error());
+                }
+                if (appended.value().results.size() != 1 ||
+                    !source_values.emplace(stack_save->result.value_id()->value,
+                                           appended.value().results[0]).second) {
+                  edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                      name, block.label, "VLA stack-save result collided in the current-function source registry"};
+                  return Result<void, BuildError>::failure(BuildError::DuplicateSourceValue);
                 }
                 continue;
               }

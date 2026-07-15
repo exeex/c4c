@@ -161,6 +161,7 @@ enum class Opcode : std::uint8_t {
   Cast,
   Phi,
   AllocaAuthority,
+  StackSaveAuthority,
 };
 
 struct InlineAsmNode {
@@ -333,11 +334,24 @@ struct AllocaAuthorityNode {
   bool live = false;
 };
 
+// Receipt of the producer-selected VLA stack-save result.  This retains only
+// its native current-function identity and typed local-object authority.
+struct StackSaveAuthorityNode {
+  SourceValueId result{};
+  SourceValueId pointer_definition{};
+  SourceObjectId object{};
+  LinkNameId owner{};
+  Type pointer_type{TypeKind::Pointer};
+  Type pointee_type{};
+  bool live = false;
+};
+
 using InstPayload =
     std::variant<InlineAsmNode, StoreNode, LoadNode, GetElementPtrNode,
     AbsNode, CallNode, BinaryNode, CompareNode, SelectNode, SelectedMemcpyNode,
     IntrinsicCallNode, CastNode, PhiNode, AllocaAuthorityNode,
-    LocalLoadAuthorityNode, LocalStoreAuthorityNode, LocalArrayGepAuthorityNode>;
+    LocalLoadAuthorityNode, LocalStoreAuthorityNode, LocalArrayGepAuthorityNode,
+    StackSaveAuthorityNode>;
 
 class BlockView;
 class FunctionView;

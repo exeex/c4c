@@ -1,6 +1,6 @@
 # Current Packet
 
-Status: Active
+Status: Awaiting Acceptance
 Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
 Current Step ID: 7.30
@@ -8,23 +8,23 @@ Current Step Title: Receive the selected VLA LirStackSaveOp authority
 
 ## Just Finished
 
-- Closed 792 completed its one-row producer authority handoff for the VLA
-  `LirStackSaveOp` saved-stack-pointer result. Steps 1 through 7.29 remain
-  accepted historical receiver work and must not be repeated.
+- Step 7.30 received closed 792's one selected VLA `LirStackSaveOp` into a
+  typed Raw-BIR stack-save authority node, transactional importer dispatch,
+  reachable verifier, and positive/negative nearby backend coverage.
 
 ## Suggested Next
 
-- Execute Step 7.30: receive only closed 792's documented VLA stack-save
-  native authority into the minimum typed Raw-BIR receiver path.
+- Supervisor acceptance and commit decision for the bounded Step 7.30 slice.
 
 ## Watchouts
 
 - Presentation is nonsemantic. Consume only the native result, pointer
   definition, object/owner, pointer-type/pointee-type, and liveness fields.
-  Do not receive stack restore, dynamic VLA allocation, any second stack save,
-  or another local/later row.
+- Stack restore and dynamic VLA allocation remain unreceived; validation
+  rejects nonselected or second selected saves before publication.
 
 ## Proof
 
-- Before implementation, run a fresh build and focused receiver proof selected
-  for Step 7.30; escalate to the supervisor-selected broader acceptance check.
+- Passed: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_' > test_after.log` (5/5 backend tests).
+  Proof log: `test_after.log`.

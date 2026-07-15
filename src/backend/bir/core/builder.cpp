@@ -2197,6 +2197,72 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
   return Result<BuildResult, BuildError>::success(BuildResult{instruction_id, {result->second}});
 }
 
+Result<BuildResult, BuildError> FunctionBuilder::append(
+    BlockId block, StackSaveAuthoritySpec spec) {
+  auto function = mutable_function();
+  if (!function) return Result<BuildResult, BuildError>::failure(function.error());
+  if (!same_owner(function_, block) || !spec.result.valid() ||
+      !spec.pointer_definition.valid() || !spec.object.valid() ||
+      spec.result != spec.pointer_definition || spec.result.owner != function_ ||
+      spec.object.owner != function_ || !spec.owner.valid() ||
+      spec.owner.epoch != parent_->data_->epoch_ ||
+      spec.owner.slot >= parent_->data_->link_names_.size() ||
+      spec.pointer_type != Type{TypeKind::Pointer} ||
+      spec.pointee_type != Type{TypeKind::Pointer} || !spec.live)
+    return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  auto& data = function.value().get();
+  if (!data.blocks_.contains(function_, block))
+    return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
+  if (data.values_by_source_id_.count(spec.result.value) != 0)
+    return Result<BuildResult, BuildError>::failure(BuildError::DuplicateSourceValue);
+  detail::InstData instruction;
+  instruction.opcode = Opcode::StackSaveAuthority;
+  instruction.payload = StackSaveAuthorityNode{spec.result, spec.pointer_definition,
+      spec.object, spec.owner, spec.pointer_type, spec.pointee_type, spec.live};
+  auto inserted = data.insts_.emplace(function_, std::move(instruction));
+  if (!inserted) return Result<BuildResult, BuildError>::failure(storage_error(inserted.error()));
+  const auto instruction_id = inserted.value();
+  ValueDef value;
+  value.kind = ValueKind::Ordinary;
+  value.type = Type{TypeKind::Pointer};
+  value.source_id = spec.result;
+  value.definition = InstResultDef{instruction_id, 0};
+  auto inserted_value = data.values_.emplace(function_, std::move(value));
+  if (!inserted_value) {
+    data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(storage_error(inserted_value.error()));
+  }
+  const auto result_id = inserted_value.value();
+  auto stored = data.insts_.get_mut(function_, instruction_id);
+  if (!stored) {
+    data.values_.erase(function_, result_id); data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  stored.value().get().results = {result_id};
+  if (!data.value_order_.append(result_id)) {
+    data.values_.erase(function_, result_id); data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  try {
+    const auto indexed = data.values_by_source_id_.emplace(spec.result.value, result_id);
+    if (!indexed.second) {
+      data.value_order_.erase(result_id); data.values_.erase(function_, result_id);
+      data.insts_.erase(function_, instruction_id);
+      return Result<BuildResult, BuildError>::failure(BuildError::DuplicateSourceValue);
+    }
+  } catch (...) {
+    data.value_order_.erase(result_id); data.values_.erase(function_, result_id);
+    data.insts_.erase(function_, instruction_id); throw;
+  }
+  auto block_data = data.blocks_.get_mut(function_, block);
+  if (!block_data || !block_data.value().get().instruction_order_.append(instruction_id)) {
+    data.values_by_source_id_.erase(spec.result.value); data.value_order_.erase(result_id);
+    data.values_.erase(function_, result_id); data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  return Result<BuildResult, BuildError>::success(BuildResult{instruction_id, {result_id}});
+}
+
 Result<void, BuildError> FunctionBuilder::set_terminator(
     BlockId block, TerminatorSpec terminator) {
   auto function_result = mutable_function();
