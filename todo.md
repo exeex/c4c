@@ -1,36 +1,27 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
+Source Idea Path: ideas/open/789_lir_local_operation_receiver_handoff_completion.md
 Source Plan Path: plan.md
-Current Step ID: 7.26
-Current Step Title: Receive selected hoisted alloca authority
+Current Step ID: 1
+Current Step Title: Select the first post-alloca authority row
 
 ## Just Finished
 
-- Step 7.26 completed: the new Raw-BIR importer receives exactly one selected
-  hoisted `LirAllocaOp` from its typed result and live local-object authority,
-  with a typed container, builder, view, and reachable verifier. Nearby
-  interface coverage proves transactional rejection for missing pointer
-  definition, invalid object, foreign owner, pointee mismatch, dead, and
-  repeated authority rows.
+- Lifecycle switch from exhausted 734 after accepted Step 7.26 selected
+  hoisted alloca receipt (`2cce9da69`).
 
 ## Suggested Next
 
-- Send the exhausted Step 7.26 runbook to plan-owner for an explicit closure,
-  repair, replacement, or conclusion decision; do not infer source-idea
-  completion from runbook exhaustion.
+- Execute Step 1 only: select and state one exact post-alloca local-operation
+  typed authority row for a later 734 receiver packet.
 
 ## Watchouts
 
-- The receiver remains deliberately limited to one static selected alloca row.
-  It does not receive local load/store/GEP, VLA lifetime, memory/va,
-  aggregate/vector, body parameters, PHI/CFG, or later families, and never
-  derives identity from local names or `%t` spelling.
+- Do not change Raw-BIR/importer code or select semantics from local names,
+  `%t`, formatted operands, printer output, LLVM text, or testcase shape.
 
 ## Proof
 
-- Passed: `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^backend_lir_to_bir_interface$' > test_after.log`.
-  The focused receiver proof is preserved at `test_after.log`; broader
-  acceptance validation remains supervisor-owned.
+- No 789 implementation proof yet. The accepted 734 alloca proof belongs to
+  its preserved resumption record and is not proof for this producer handoff.

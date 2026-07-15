@@ -1,7 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (paused after accepted complete Step 7.25 PHI receipt; awaiting
-the separately scoped local/object-pointer authority successor)
+Status: Open (paused after accepted Step 7.26 selected-hoisted alloca receipt;
+awaiting the separately scoped next local-operation receiver-authority handoff)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -825,3 +825,47 @@ row with importer dispatch, reachable verification, and transactional
 positive/negative coverage. Leave memory/va-list, aggregate/vector,
 body-parameter, module/type/global/metadata, other instruction/terminator,
 and inline-assembly families separately scoped and fail-closed.
+
+## Runbook Exhaustion Decision: post-Step 7.26 selected alloca receipt
+
+Close rejected. Commit `2cce9da69` receives exactly the one closed-752
+selected-hoisted `LirAllocaOp` row from its typed result and
+`local_object_authority` into the Raw-BIR container, builder, view, importer,
+and reachable verifier, with positive and malformed transactional interface
+coverage. Supervisor acceptance is a fresh prescribed build plus
+`^backend_lir_to_bir_interface$` 1/1, a matching non-decreasing
+`test_before.log`/`test_after.log` guard, and fresh broader `^backend_` 5/5.
+
+This does not meet the source completion gate. Unmet source criteria are:
+
+- the no-omission checked coverage matrix and its per-row authority,
+  destination, importer, verifier, and proof disposition;
+- lossless verified Raw-BIR receipt of every valid current-LIR semantic fact,
+  plus the complete explicit dispatcher and neighboring coverage required for
+  that receipt;
+- typed receiving coverage for the still-unreceived local load/store/GEP and
+  VLA lifetime, named/local-temporary, memory/va-list, aggregate/vector,
+  body-parameter, module/type/global/metadata, other instruction/terminator,
+  and inline-assembly families;
+- final whole-module transactional success/failure evidence, final
+  documentation-to-matrix/code convergence, and the source-wide focused and
+  broader regression acceptance required after all rows land.
+
+Classification: `separate-blocker`. Closed 752 deliberately authorizes only
+the alloca row as its sole first Raw-BIR return packet; it orders local
+load/store/GEP and VLA lifetime later but supplies no exact second
+receiver-ready row. New open idea
+`ideas/open/789_lir_local_operation_receiver_handoff_completion.md` owns one
+bounded next local-operation authority handoff only; it must not edit Raw-BIR
+or recover identity from local spelling.
+
+Resumption record: Steps 1 through 7.25 remain historical complete work, and
+Step 7.26 is complete. The interrupted/return point is `Step 7.27 - Receive
+the exact first post-alloca local-operation authority row`, which must not be
+invented from closed 752's representative scope. After 789 accepts a handoff
+naming that one row, reactivate 734 and repair its runbook at Step 7.27 to
+receive only the handed-off structured fields with importer dispatch,
+reachable verification, and transactional positive/negative coverage.
+Preserve commits `006d79aaf`, `7dc03f23a`, and `2cce9da69` and the proof
+references above; do not repeat their receiver work. Later local/VLA variants
+and all remaining families stay separately scoped and fail-closed.
