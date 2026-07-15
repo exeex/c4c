@@ -126,6 +126,17 @@ void expect_type_ref_structured_equality_uses_name_id(
   expect_true(bytes == other_bytes,
               "structured array equality should use element and length, not stale text mirrors");
 
+  other_bytes.str() = "[99 x i64]";
+  expect_eq(other_bytes.render_llvm(), "[4 x i8]",
+            "structured array rendering should use element and length, not a stale text mirror");
+
+  c4c::codegen::lir::LirStructDecl storage_decl;
+  storage_decl.name_id = module.struct_names.intern("%struct.Storage");
+  storage_decl.fields.push_back({other_bytes});
+  expect_eq(c4c::codegen::lir::render_struct_decl_llvm(module, storage_decl),
+            "%struct.Storage = type { [4 x i8] }",
+            "structured declaration rendering should use structural array facts");
+
   const c4c::codegen::lir::LirTypeRef runtime_array =
       c4c::codegen::lir::LirTypeRef::runtime_text("[4 x i8]");
   expect_true(!runtime_array.has_array_shape(),

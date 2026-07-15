@@ -584,7 +584,8 @@ std::string render_struct_decl_llvm(const LirModule& mod,
     out << " ";
     for (std::size_t i = 0; i < decl.fields.size(); ++i) {
       if (i) out << ", ";
-      out << require_type_ref(decl.fields[i].type, "LirStructDecl.fields.type");
+      (void)require_type_ref(decl.fields[i].type, "LirStructDecl.fields.type");
+      out << decl.fields[i].type.render_llvm();
     }
     out << " ";
   }

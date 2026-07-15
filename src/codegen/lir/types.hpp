@@ -176,6 +176,15 @@ class LirTypeRef {
 
   [[nodiscard]] const std::string& str() const { return text_; }
   [[nodiscard]] std::string& str() { return text_; }
+  // LLVM emission renders supported structural forms from their semantic facts
+  // so compatibility text never becomes the source of array semantics.
+  [[nodiscard]] std::string render_llvm() const {
+    if (has_array_shape()) {
+      return "[" + std::to_string(*array_length_) + " x " +
+             array_element_type_->render_llvm() + "]";
+    }
+    return text_;
+  }
   [[nodiscard]] LirTypeKind kind() const { return kind_; }
   [[nodiscard]] std::optional<LirBuiltinType> builtin_type() const {
     return builtin_type_;
@@ -458,7 +467,7 @@ class LirTypeRef {
   [[nodiscard]] static std::string array_compatibility_text(
       const LirTypeRef& element_type,
       std::size_t length) {
-    return "[" + std::to_string(length) + " x " + element_type.str() + "]";
+    return "[" + std::to_string(length) + " x " + element_type.render_llvm() + "]";
   }
 
   std::string text_;

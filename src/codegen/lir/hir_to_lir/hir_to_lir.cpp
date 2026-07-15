@@ -808,6 +808,10 @@ static void lower_globals(const std::vector<size_t>& global_indices,
 
 // ── Type declarations ────────────────────────────────────────────────────────
 
+LirTypeRef lir_byte_storage_type_ref(std::size_t byte_count) {
+  return LirTypeRef::array(LirTypeRef(LirBuiltinType::I8), byte_count);
+}
+
 std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
                                           LirModule* lir_module) {
   using namespace c4c::codegen::llvm_helpers;
@@ -862,7 +866,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
       decls.push_back(sty + " = type <{ [" + std::to_string(sd.size_bytes) +
                       " x i8] }>");
       structured_decl.fields.push_back(
-          {LirTypeRef::runtime_text("[" + std::to_string(sd.size_bytes) + " x i8]")});
+          {lir_byte_storage_type_ref(static_cast<std::size_t>(sd.size_bytes))});
       record_structured_decl();
       continue;
     }
@@ -877,7 +881,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
                          "[" + std::to_string(sd.size_bytes) + " x i8]" +
                          std::string(structured_decl.is_packed ? " }>" : " }"));
         structured_decl.fields.push_back(
-            {LirTypeRef::runtime_text("[" + std::to_string(sd.size_bytes) + " x i8]")});
+            {lir_byte_storage_type_ref(static_cast<std::size_t>(sd.size_bytes))});
       }
       record_structured_decl();
       continue;
@@ -888,7 +892,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
                        "[" + std::to_string(sd.size_bytes) + " x i8]" +
                        std::string(structured_decl.is_packed ? " }>" : " }"));
       structured_decl.fields.push_back(
-          {LirTypeRef::runtime_text("[" + std::to_string(sd.size_bytes) + " x i8]")});
+          {lir_byte_storage_type_ref(static_cast<std::size_t>(sd.size_bytes))});
       record_structured_decl();
     } else {
       std::ostringstream line;
@@ -904,10 +908,10 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
         if (base_offset > cur_offset) {
           if (!first) line << ", ";
           first = false;
-          const std::string pad_ty =
-              "[" + std::to_string(base_offset - cur_offset) + " x i8]";
-          line << pad_ty;
-          structured_decl.fields.push_back({LirTypeRef::runtime_text(pad_ty)});
+          const LirTypeRef pad_type =
+              lir_byte_storage_type_ref(static_cast<std::size_t>(base_offset - cur_offset));
+          line << pad_type.render_llvm();
+          structured_decl.fields.push_back({pad_type});
           cur_offset = base_offset;
         }
         if (!first) line << ", ";
@@ -927,10 +931,10 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
         if (f.offset_bytes > cur_offset) {
           if (!first) line << ", ";
           first = false;
-          const std::string pad_ty =
-              "[" + std::to_string(f.offset_bytes - cur_offset) + " x i8]";
-          line << pad_ty;
-          structured_decl.fields.push_back({LirTypeRef::runtime_text(pad_ty)});
+          const LirTypeRef pad_type =
+              lir_byte_storage_type_ref(static_cast<std::size_t>(f.offset_bytes - cur_offset));
+          line << pad_type.render_llvm();
+          structured_decl.fields.push_back({pad_type});
           cur_offset = f.offset_bytes;
         }
         if (!first) line << ", ";
@@ -942,10 +946,10 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
       }
       if (sd.size_bytes > cur_offset) {
         if (!first) line << ", ";
-        const std::string pad_ty =
-            "[" + std::to_string(sd.size_bytes - cur_offset) + " x i8]";
-        line << pad_ty;
-        structured_decl.fields.push_back({LirTypeRef::runtime_text(pad_ty)});
+        const LirTypeRef pad_type =
+            lir_byte_storage_type_ref(static_cast<std::size_t>(sd.size_bytes - cur_offset));
+        line << pad_type.render_llvm();
+        structured_decl.fields.push_back({pad_type});
       }
       line << (structured_decl.is_packed ? " }>" : " }");
       decls.push_back(line.str());
