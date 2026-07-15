@@ -1132,3 +1132,26 @@ Do not repeat Step 7.32, receive a residual row merely because 763 closes, or
 absorb remaining memory/VA, aggregate/vector, parameter, module/type/global,
 instruction/terminator, or inline-assembly work without its separately scoped
 first owner and checked handoff.
+
+## Resumption Record: closed 816 inline-assembly output-only authority
+
+The prior composite-type prerequisite and later dependency queue do not
+authorize a receiver by themselves. Closed idea 816 now supplies the required
+checked one-row producer/schema/verifier handoff. Its closure commit
+`1b04a886e` records that `StmtEmitter::emit_inline_asm` publishes only a
+scalar-integer output-only `LirInlineAsmOp.ordinary_results[0]` with a fresh
+native value ID, typed `Output` binding at index 0, and its `LirTypeRef`.
+The exact verifier tuple requires a valid ID owned by the current function;
+missing, invalid, duplicate, role-mismatched, index-mismatched,
+type-mismatched, and foreign forms reject. Compatibility `result` remains
+presentation-only.
+
+Steps 1 through 7.32 remain accepted historical work and must not be repeated.
+Resume at **Step 7.33 - Receive the selected inline-assembly output-only
+authority**. Receive only that handoff into the minimum typed Raw-BIR
+destination, importer dispatch, and reachable verifier path, with transactional
+positive and malformed-authority rejection coverage. Do not derive value or
+type from `result`, operands, templates, constraints, or other presentation
+text; do not receive input, read/write, non-integer, multi-result, or any other
+inline-assembly form. Reapply the source completion gate after this bounded
+receipt; all remaining source families stay separately owned and fail closed.
