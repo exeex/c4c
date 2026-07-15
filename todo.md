@@ -3,20 +3,21 @@
 Status: Active
 Source Idea Path: ideas/open/775_lir_phi_producer_helper_result_identity.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Publish selected then-arm coercion result authority
+Current Step ID: 2
+Current Step Title: Prove selected then-arm authority and failure closure
 
 ## Just Finished
 
-- Reassessment found the first remaining producer loss: the selected scalar
-  ternary `then` arm still follows `emit_rval_id` to string `coerce`, while the
-  accepted selected `else` arm already follows `emit_rval_operand` to
-  `coerce_operand`.
+- Plan Step 1 routed only the selected scalar ternary `then` arm through
+  `emit_rval_operand` and `coerce_operand`, so a representation-changing arm
+  coercion publishes its native current-function result authority before the
+  compatibility spelling is projected. The selected else arm, raw PHI result
+  and incomings, and later consumer remain untouched.
 
 ## Suggested Next
 
-- Implement only Plan Step 1's selected then-arm typed coercion-result
-  publication; retain the raw PHI/final-consumer boundary.
+- Dispatch Plan Step 2's focused structural and malformed-authority coverage
+  for the selected then-arm coercion result.
 
 ## Watchouts
 
@@ -26,6 +27,7 @@ Current Step Title: Publish selected then-arm coercion result authority
 
 ## Proof
 
-- After implementation, run `cmake --build --preset default && ctest
-  --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`;
-  Step 2 owns focused structural and malformed-authority proof.
+- Passed `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log`.
+  The focused `frontend_lir_call_type_ref` subset passed. Log:
+  `test_after.log`.
