@@ -73,14 +73,14 @@ std::optional<std::string> member_access_owner_tag_from_type(const c4c::hir::Mod
 }
 
 void populate_selected_byval_parameter_materialization_authority(
-    lir::LirFunction& function) {
+    lir::LirModule& module, lir::LirFunction& function) {
   if (function.selected_memcpy_pointer_authority.has_value()) return;
   if (function.link_name_id == kInvalidLinkName) return;
 
   function.selected_memcpy_pointer_authority =
       lir::LirSelectedMemcpyPointerAuthority{
           .byval_parameter = lir::LirCurrentFunctionPointerDefinition{
-              .value = function.alloc_value(),
+              .value = module.alloc_value(),
               .pointer_type = lir::LirTypeRef(lir::LirBuiltinType::Pointer),
               .object = function.alloc_object(),
               .object_owner = function.link_name_id,
@@ -88,7 +88,7 @@ void populate_selected_byval_parameter_materialization_authority(
               .live_at_selected_site = true,
           },
           .destination_alloca = lir::LirCurrentFunctionPointerDefinition{
-              .value = function.alloc_value(),
+              .value = module.alloc_value(),
               .pointer_type = lir::LirTypeRef(lir::LirBuiltinType::Pointer),
               .object = function.alloc_object(),
               .object_owner = function.link_name_id,
@@ -425,7 +425,7 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
               "StmtEmitter: selected byval memcpy requires current-function authority");
         }
         populate_selected_byval_parameter_materialization_authority(
-            *ctx.lir_function);
+            *module_, *ctx.lir_function);
         const long long size_bytes = llvm_cc::amd64_type_size_bytes(pts, mod_);
         const auto authority = selected_byval_parameter_materialization_memcpy_authority(
             *ctx.lir_function, size_bytes);

@@ -461,11 +461,11 @@ LirOperand StmtEmitter::emit_rval_operand(FnCtx& ctx, ExprId id,
                                literal->value);
   }
   if (const auto* label_address = std::get_if<LabelAddrExpr>(&e.payload)) {
-    if (!ctx.fn || !ctx.lir_function) {
+    if (!ctx.fn || !ctx.lir_function || !module_) {
       throw std::logic_error("StmtEmitter: label address without function owner");
     }
     const auto target = user_label_target(ctx, label_address->label_name);
-    const lir::LirValueId value = ctx.lir_function->alloc_value();
+    const lir::LirValueId value = module_->alloc_value();
     ctx.lir_function->direct_label_address_constants.push_back(
         {ctx.lir_function->link_name_id, target.id,
          lir::LirTypeRef(lir::LirBuiltinType::Pointer), value});

@@ -1435,10 +1435,10 @@ c4c::codegen::LirDirectBranchTarget StmtEmitter::user_label_target(
 std::string StmtEmitter::fresh_tmp(FnCtx& ctx) { return "%t" + std::to_string(ctx.tmp_idx++); }
 
 lir::LirOperand StmtEmitter::fresh_value(FnCtx& ctx) {
-  if (!ctx.lir_function) {
+  if (!ctx.lir_function || !module_) {
     throw std::logic_error("StmtEmitter: fresh value without function owner");
   }
-  const lir::LirValueId id = ctx.lir_function->alloc_value();
+  const lir::LirValueId id = module_->alloc_value();
   return lir::LirOperand::ssa(fresh_tmp(ctx), id);
 }
 

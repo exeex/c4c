@@ -842,6 +842,14 @@ struct LirModule {
   std::vector<LirStringConst> string_pool;
   std::vector<LirExternDecl> extern_decls;
 
+  // Native SSA value identities are module-wide: verifier ownership is keyed
+  // by the numeric LirValueId, so lowering must not restart this namespace for
+  // every LirFunction.  LirFunction retains its allocator for standalone
+  // construction compatibility; normal module lowering uses this allocator.
+  uint32_t next_value_id = 0;
+
+  [[nodiscard]] LirValueId alloc_value() { return LirValueId{next_value_id++}; }
+
   // Extern call declarations dedup first by semantic link-visible identity.
   // The raw/rendered-name map is a legacy compatibility and output boundary
   // for declarations that arrive before complete LinkNameId metadata exists.
