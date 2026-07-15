@@ -139,3 +139,16 @@ baseline-acceptance/Step-4 boundary. First rerun the focused build/test, the
 matching focused guard, and a fresh full-suite candidate; accept no parent
 handoff or closure unless that candidate restores non-regression. Only then
 publish the bounded 775 handoff. PHI/generic migration remains excluded.
+
+## Blocker Resolution: cross-function `LirValueId` ownership
+
+780 closed capability-complete after accepted commits `7b9d6152b` (module-wide
+native value allocation) and `3602e8fd2` (nearby multi-function proof). The
+focused build and matching guard
+`^(frontend_lir_call_type_ref|llvm_gcc_c_torture_src_pr52129_c)$` passed 2/2;
+the supervisor accepted the fresh full-suite candidate at 3037/3037 passed,
+restored `test_baseline.log`, and removed the candidate. Resume this source at
+Step 4, `Publish the bounded 775 handoff`, but do not publish that handoff
+until its preserved focused build/test, matching guard, and a fresh full-suite
+candidate have all passed. This resolution changes no source scope: logical
+RHS only; PHI and generic migration remain excluded.

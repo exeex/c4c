@@ -1,6 +1,6 @@
 # LIR Cross-Function `LirValueId` Ownership Restoration
 
-Status: Open
+Status: Closed — capability complete
 Type: shared LIR value-ID allocation and ownership blocker
 Blocks: `ideas/open/778_lir_logical_rhs_result_authority_publication.md`
 
@@ -81,3 +81,23 @@ After this blocker is accepted, reactivate 778 at its
 baseline-acceptance/Step-4 boundary. Rerun its focused build/test, matching
 focused guard, and a fresh full-suite candidate before publishing the bounded
 775 handoff.
+
+## Closure Record
+
+Disposition: **close accepted — capability complete.**
+
+The bounded shared allocation/ownership repair was accepted in `7b9d6152b`
+(`lir: allocate native values module-wide`) and nearby multi-function authority
+proof was accepted in `3602e8fd2` (`test: prove module-wide lir value
+ownership`). The focused build and matching guard passed:
+
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_call_type_ref|llvm_gcc_c_torture_src_pr52129_c)$'`
+
+Both selected tests passed (2/2). The supervisor accepted the fresh full-suite
+candidate, 3037/3037 passed, and restored `test_baseline.log`; the candidate
+was removed. This resolves the rejected 778 baseline without weakening the
+flag-gated malformed-authority contract or expanding into PHI/generic work.
+
+778 resumes at its preserved baseline-acceptance/Step-4 boundary. Before its
+handoff, it must rerun its focused build/test, the matching focused guard, and
+a fresh full-suite candidate. Its scope remains logical RHS only.
