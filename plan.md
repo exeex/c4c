@@ -115,7 +115,7 @@ Before-change proof passed: a fresh build and
 `ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_extern_decl_type_ref|backend_lir_to_bir_interface)$'`
 passed 2/2; the baseline is recorded in `test_before.log`.
 
-### Step 4 - Make structured extern return type authoritative — current
+### Step 4 - Make structured extern return type authoritative — complete
 
 Goal: make `LirExternDecl::return_type` the primary input to
 `BirFunctionLowerer::lower_extern_decl`, retaining `return_type_str` only for
@@ -138,3 +138,35 @@ Completion check: the backend consumes the structured extern return type first,
 the renderer text is fallback-only when no structured carrier exists, both
 focused frontend/backend tests prove stale-shadow rejection or non-authority,
 and valid LLVM output remains unchanged.
+
+Accepted in `44ca942cf`: `BirFunctionLowerer::lower_extern_decl` now lowers a
+present `LirExternDecl::return_type` before consulting `return_type_str`.
+Focused frontend and backend stale-shadow proof passed 2/2 before and after;
+the matching regression guard was clean.
+
+### Step 5 - Prove aggregate parameter lowering uses structured function signatures — current
+
+Goal: make the aggregate-parameter consumer seam in
+`src/backend/bir/lir_to_bir/aggregate.cpp` demonstrably authoritative on
+`LirFunction::signature_params` and `signature_param_type_refs` whenever they
+are complete, with `signature_text` limited to the legacy no-metadata path.
+
+Actions:
+
+- Audit the aggregate parameter route through
+  `BirFunctionLowerer::lower_aggregate_params` and its structured-signature
+  availability predicate; retain text parsing only when the exact structured
+  parameter carrier is absent or incomplete.
+- Correct any path that can select parsed `signature_text` while complete
+  structured signature parameters and type refs are present.
+- Add a backend LIR-to-BIR stale-signature-shadow case whose rendered parameter
+  spelling conflicts with complete structured parameter facts, proving the
+  aggregate ABI route follows structured metadata and preserves valid LLVM
+  output.
+- Build and run the exact affected backend interface test before and after the
+  packet; retain matching evidence for supervisor regression comparison.
+
+Completion check: complete structured signature parameters and refs govern the
+aggregate ABI route; `signature_text` is unreachable as semantic authority in
+that case, legacy no-metadata fallback remains explicit, stale-shadow coverage
+is nearby and non-testcase-shaped, and valid output is preserved.
