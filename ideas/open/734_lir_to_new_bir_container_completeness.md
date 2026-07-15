@@ -1,7 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (resumed at Step 7.25 after the accepted fail-closed partial PHI
-receiver; only its exact parallel incoming CFG-edge portion remains)
+Status: Open (paused after accepted complete Step 7.25 PHI receipt; awaiting
+the separately scoped local/object-pointer authority successor)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -788,3 +788,40 @@ Resume only unchanged Step 7.25's parallel-edge Raw-BIR PHI receiver portion:
 consume `successor_occurrence` with closed 751 value/predecessor and closed
 786 SpecialToken authority. Preserve accepted `006d79aaf`; do not repeat
 Steps 7.20–7.24 or the accepted unambiguous/loop-backedge receiver work.
+
+## Runbook Exhaustion Decision: post-Step 7.25 complete PHI receipt
+
+Close rejected. Commit `7dc03f23a` completes the remaining parallel-edge
+portion of Step 7.25 and, together with accepted partial `006d79aaf`, now
+receives the selected structured PHI rows without presentation recovery. The
+accepted proof is focused `backend_lir_to_bir_interface` 1/1, the matching
+`^backend_` before/after guard 5/5 non-decreasing, and fresh full CTest
+3037/3037. The prerequisite handoffs remain closed 751 (`6ece9fe8f`, incoming
+value/predecessor), 786 (`91b5bde43`, SpecialToken), and 788 (`f52ced6ae`,
+`10d63ff7a`, successor occurrence).
+
+This does not meet the source completion gate. Valid current-LIR families
+still lack an evidenced typed Raw-BIR receiver disposition, including
+local/stack/object and general pointer authority; remaining memory/va-list;
+aggregate/vector; body-parameter; module/type/global/metadata; and other
+unreceived instruction, terminator, and inline-assembly rows. Therefore this
+source cannot yet claim a complete checked matrix, a complete explicit
+dispatcher, or lossless receipt of every current-LIR semantic fact.
+
+Classification: `separate-blocker`. The already-open
+`ideas/open/752_lir_local_object_pointer_authority_convergence.md` is the
+earliest executable successor. It owns only the missing current-function
+local-object, pointer-definition, and lifetime authority for representative
+alloca/local load/store/GEP and VLA stack-lifetime routes; it must not edit
+Raw-BIR/importer code or recover identity from local spellings. The active
+runbook is switched to 752 as part of this decision.
+
+Resumption record: completed receiver progress is Steps 1 through 7.25,
+including accepted `006d79aaf` and `7dc03f23a`; do not repeat any of it. The
+interrupted return point is the first bounded Raw-BIR receiver row authorized
+by 752's accepted handoff. After 752 closes with its typed authority and proof,
+reactivate 734, repair its runbook from that handoff, and receive exactly that
+row with importer dispatch, reachable verification, and transactional
+positive/negative coverage. Leave memory/va-list, aggregate/vector,
+body-parameter, module/type/global/metadata, other instruction/terminator,
+and inline-assembly families separately scoped and fail-closed.
