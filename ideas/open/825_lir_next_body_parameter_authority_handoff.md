@@ -125,6 +125,15 @@ accepted binary-LHS producer/verifier repair.
   resume exactly at Step 2. Reassess the preserved Step 2 selector slice using
   its own proof; there is no Idea 825 Step 2 acceptance commit.
 
+## Return From Idea 827
+
+- Idea 827 is intentionally concluded: its exact first failing operation was
+  unary `fneg`, and no truthful binary definition/operation type-mismatch
+  reproduction exists. Idea 828 accepted the unary route in `524b24f64`.
+- Resume exactly at Step 2, *Publish and verify the selected authority tuple*.
+  The current dirty selector-authority implementation remains unaccepted and
+  must receive its own focused proof; do not credit 827/828 evidence.
+
 ## Reviewer Reject Signals
 
 - Reject selection from rendered parameter names, types, signatures, operand

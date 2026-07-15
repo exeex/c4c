@@ -1,33 +1,31 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/827_lir_direct_scalar_binary_lhs_authority_repair.md
+Source Idea Path: ideas/open/825_lir_next_body_parameter_authority_handoff.md
 Source Plan Path: plan.md
 Current Step ID: 2
-Current Step Title: Decide the disproved binary-LHS route
+Current Step Title: Publish and verify the selected authority tuple
 你該做code review了
 
 ## Just Finished
 
-- 828 returned accepted: clean detached `524b24f64^` and `524b24f64`, each
-  backend-enabled, built and directly ran `frontend_hir_tests` with `PASS`.
-  The dirty aggregate CTest SEGFAULT is not causal to 828; existing Idea 825
-  owns the dirty selector-authority route.
+- 827 was intentionally concluded after its binary mismatch premise was
+  disproved. Its unary `fneg` blocker completed separately as closed Idea 828;
+  neither result accepts this selector route.
 
 ## Suggested Next
 
-- Execute resumed 827 Step 2 only: make the explicit repair/close disposition
-  from the documented disproof. Do not edit binary-RHS or selector code
-  without a new binary-LHS first bad fact.
+- Execute Step 2 only: assess the existing dirty selector-authority slice as
+  unaccepted work, then publish/verify the dedicated direct selector tuple and
+  obtain its own focused positive/malformed proof.
 
 ## Watchouts
 
-- Preserve the dirty 821/822/825-related worktree changes. The aggregate
-  `frontend_hir_tests` CTest failure belongs to existing Idea 825's dirty
-  selector-authority route, not to 828.
+- Preserve adjacent dirty 821/822 material. Do not reuse binary-LHS authority,
+  materialize an add, or claim the dirty aggregate `frontend_hir_tests`
+  failure as accepted evidence.
 
 ## Proof
 
-- 828 acceptance attribution: clean detached before/after `524b24f64` each
-  directly ran `frontend_hir_tests` successfully. The current dirty aggregate
-  CTest remains red and is not 827 proof.
+- No Step 2 acceptance proof yet. `7e6366cc9` remains the only accepted Idea
+  825 progress (Step 1 selection).

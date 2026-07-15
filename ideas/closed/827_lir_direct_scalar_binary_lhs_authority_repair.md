@@ -127,3 +127,16 @@ Idea 820's bounded `ull` publication does not own or authorize it.
 - Exact return point: make the explicit 827 repair/close disposition. Its
   documented binary type-mismatch premise remains disproved, so do not begin
   a binary producer change without a newly observed in-scope first bad fact.
+
+## Closure Record
+
+Disposition: intentionally concluded; capability not claimed.
+
+- The source's required binary definition/operation type-mismatch reproduction
+  is disproved: the actual first failing operation was unary `fneg` with
+  matching native parameter and operation types.
+- Idea 828 repaired and accepted that unary route in `524b24f64`; clean
+  detached before/after evidence also clears `frontend_hir_tests`.
+- No new binary-LHS first bad fact exists. Remaining durable selector intent
+  resumes under existing Idea 825 at Step 2, with its dirty implementation
+  still unaccepted and separately accountable.
