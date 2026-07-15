@@ -1,6 +1,6 @@
 # BIR Node-Kind-Centric Storage and Pass Contract
 
-Status: Draft
+Status: Open (active)
 Type: Architecture review and implementation-contract refinement
 Source Context:
 - `ideas/closed/735_bir_phase_a_import_raw_document_convergence.md`

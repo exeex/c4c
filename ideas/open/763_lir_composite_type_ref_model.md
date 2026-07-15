@@ -1,5 +1,25 @@
 # LIR composite type ref model
 
+## Resumption Record (deactivated for idea 746)
+
+- Last accepted progress: lifecycle activation only; no implementation step
+  for this idea has started or completed.
+- Interrupted step: `Step 1 - Establish structured composite representation`.
+- Blocker: none inside idea 763. The user explicitly reprioritized execution to
+  the independent BIR NodeKind contract in idea 746; that work is outside this
+  LIR type-model scope.
+- Exact return point: regenerate the idea-763 runbook from this source and
+  resume at Step 1 before making any implementation edit. Start by inspecting
+  current `LirTypeRef` storage, construction, equality, and query seams, then
+  add the bounded structured composite representation described below.
+- Remaining work: all three former runbook steps remain—establish the
+  structured representation, migrate the selected layout path and rendering
+  boundary, then add focused proof and obtain supervisor-selected broader
+  validation.
+- Accepted proof: none; no idea-763 implementation packet was executed.
+- Implementation commits: none. Activation/lifecycle reference:
+  `13123e752` (`lifecycle: switch 734 exhaustion to composite type model`).
+
 ## Intent
 
 Add a composite `LirTypeRef` model so non-builtin LIR types can be carried as
