@@ -1374,8 +1374,26 @@ void StmtEmitter::emit_term_condbr(FnCtx& ctx, const lir::LirOperand& cond,
 
 void StmtEmitter::emit_term_ret(FnCtx& ctx, lir::LirTypeRef type_str,
                                 std::optional<lir::LirOperand> value_str) {
+  std::optional<lir::LirReturnValueParameterAuthority> authority;
+  if (ctx.lir_function != nullptr && type_str.kind() == lir::LirTypeKind::Integer &&
+      value_str.has_value() && value_str->value_id() != nullptr) {
+    for (const auto& definition : ctx.lir_function->native_body_parameter_definitions) {
+      if (definition.value == *value_str->value_id() && definition.type == type_str &&
+          definition.abi == lir::LirNativeBodyParameterAbi::DirectScalar) {
+        authority = lir::LirReturnValueParameterAuthority{
+            .value = definition.value,
+            .parameter_index = definition.parameter_index,
+            .type = definition.type,
+            .owner = definition.owner,
+            .abi = definition.abi,
+            .role = lir::LirReturnValueParameterRole::ReturnValue,
+        };
+        break;
+      }
+    }
+  }
   (void)set_terminator_if_open(
-      ctx, lir::LirRet{std::move(value_str), std::move(type_str)});
+      ctx, lir::LirRet{std::move(value_str), std::move(type_str), std::move(authority)});
 }
 
 void StmtEmitter::emit_term_switch(

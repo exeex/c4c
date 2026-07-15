@@ -814,11 +814,32 @@ struct LirCondBr {
   LirValueId condition = LirValueId::invalid();
 };
 
+enum class LirNativeBodyParameterAbi : uint8_t;
+
+enum class LirReturnValueParameterRole : uint8_t {
+  Invalid,
+  ReturnValue,
+};
+
+// Native authority for exactly a direct plain scalar current-function
+// parameter returned unchanged as an integer. The return operand remains a
+// checked display mirror; it is never used to reconstruct this binding.
+struct LirReturnValueParameterAuthority {
+  LirValueId value = LirValueId::invalid();
+  uint32_t parameter_index = 0;
+  LirTypeRef type;
+  LinkNameId owner = kInvalidLinkName;
+  LirNativeBodyParameterAbi abi{};
+  LirReturnValueParameterRole role = LirReturnValueParameterRole::Invalid;
+};
+
 struct LirRet {
   // Field spellings remain source-compatible with aggregate producers, but
   // their values now carry the same structured authority as instructions.
   std::optional<LirOperand> value_str;  // e.g. "%t7", "null", "0"
   LirTypeRef type_str;                  // e.g. "i32", "ptr", "void"
+  std::optional<LirReturnValueParameterAuthority>
+      return_value_parameter_authority;
 };
 
 struct LirSwitch {

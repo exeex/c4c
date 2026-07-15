@@ -2788,6 +2788,66 @@ void verify_function_value_ownership(const LirModule& mod,
     }
   }
 
+  const auto verify_return_value_parameter_authority = [&](const LirRet& ret) {
+    const auto returned_definition =
+        ret.type_str.kind() == LirTypeKind::Integer && ret.value_str &&
+                ret.value_str->kind() == LirOperandKind::SsaValue &&
+                ret.value_str->value_id() && function.signature_return_type_ref &&
+                *function.signature_return_type_ref == ret.type_str
+            ? std::find_if(function.native_body_parameter_definitions.begin(),
+                           function.native_body_parameter_definitions.end(),
+                           [&](const auto& definition) {
+                             return definition.value == *ret.value_str->value_id() &&
+                                    definition.type == ret.type_str &&
+                                     definition.abi ==
+                                         LirNativeBodyParameterAbi::DirectScalar;
+                           })
+            : function.native_body_parameter_definitions.end();
+    if (!ret.return_value_parameter_authority) {
+      if (returned_definition != function.native_body_parameter_definitions.end()) {
+        fail_verify("LirRet.return_value_parameter_authority",
+                    "is required when LirRet returns a native direct-scalar parameter");
+      }
+      return;
+    }
+    const auto& authority = *ret.return_value_parameter_authority;
+    constexpr std::string_view field = "LirRet.return_value_parameter_authority";
+    const bool unique_owner = authority.owner != kInvalidLinkName &&
+        authority.owner == function.link_name_id &&
+        std::count_if(mod.functions.begin(), mod.functions.end(), [&](const LirFunction& candidate) {
+          return candidate.link_name_id == authority.owner;
+        }) == 1;
+    if (!authority.value.valid() || !unique_owner ||
+        authority.parameter_index >= function.params.size() ||
+        authority.abi != LirNativeBodyParameterAbi::DirectScalar ||
+        authority.role != LirReturnValueParameterRole::ReturnValue ||
+        ret.type_str.kind() != LirTypeKind::Integer || !ret.value_str ||
+        ret.value_str->kind() != LirOperandKind::SsaValue || !ret.value_str->value_id() ||
+        *ret.value_str->value_id() != authority.value || ret.type_str != authority.type ||
+        !function.signature_return_type_ref ||
+        *function.signature_return_type_ref != ret.type_str) {
+      fail_verify(field,
+                  "requires one native direct-scalar current-function return-value binding");
+    }
+    const auto matches = std::count_if(
+        function.native_body_parameter_definitions.begin(),
+        function.native_body_parameter_definitions.end(), [&](const auto& definition) {
+          return definition.value == authority.value &&
+                 definition.parameter_index == authority.parameter_index &&
+                 definition.type == authority.type && definition.owner == authority.owner &&
+                 definition.abi == authority.abi;
+        });
+    if (matches != 1 || authority.parameter_index >= function.params.size() ||
+        !direct_scalar_parameter_type(function.params[authority.parameter_index].second)) {
+      fail_verify(field, "must exactly mirror one native direct-scalar parameter definition");
+    }
+  };
+  for (const auto& block : function.blocks) {
+    if (const auto* ret = std::get_if<LirRet>(&block.terminator)) {
+      verify_return_value_parameter_authority(*ret);
+    }
+  }
+
   const auto verify_vector_authority = [&](const auto& op, std::string_view name,
                                            const LirOperand& first, const LirOperand* second,
                                            const LirOperand* element, const LirOperand* index,

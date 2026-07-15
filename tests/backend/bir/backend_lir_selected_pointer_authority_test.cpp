@@ -1300,6 +1300,85 @@ void test_native_scalar_binary_rhs_authority_verifier_boundary() {
   }, "duplicate scalar parameter rhs value must reject");
 }
 
+void test_native_scalar_return_value_authority_verifier_boundary() {
+  auto make_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    const c4c::LinkNameId owner = module.link_names.intern("native_scalar_return");
+    c4c::TypeSpec scalar{};
+    scalar.base = c4c::TB_INT;
+    lir::LirFunction function;
+    function.name = "native_scalar_return";
+    function.link_name_id = owner;
+    function.signature_text = "define i32 @native_scalar_return(i32 %p.x)";
+    function.return_type = scalar;
+    function.signature_return_type_ref = lir::LirTypeRef::integer(32);
+    function.params.push_back({"%p.x", scalar});
+    function.signature_params.push_back({"%p.x", scalar, false});
+    function.signature_param_type_refs.push_back(lir::LirTypeRef::integer(32));
+    function.native_body_parameter_definitions.push_back({
+        .value = lir::LirValueId{1}, .parameter_index = 0,
+        .type = lir::LirTypeRef::integer(32), .owner = owner,
+        .abi = lir::LirNativeBodyParameterAbi::DirectScalar});
+    lir::LirBlock entry;
+    entry.id = lir::LirBlockId{1};
+    entry.label = "entry";
+    entry.terminator = lir::LirRet{
+        lir::LirOperand::ssa("%p.x", lir::LirValueId{1}), lir::LirTypeRef::integer(32),
+        lir::LirReturnValueParameterAuthority{
+            .value = lir::LirValueId{1}, .parameter_index = 0,
+            .type = lir::LirTypeRef::integer(32), .owner = owner,
+            .abi = lir::LirNativeBodyParameterAbi::DirectScalar,
+            .role = lir::LirReturnValueParameterRole::ReturnValue}};
+    function.blocks.push_back(std::move(entry));
+    function.entry = lir::LirBlockId{1};
+    module.functions.push_back(std::move(function));
+    return module;
+  };
+  lir::verify_module(make_module());
+  const auto rejects = [&](auto mutate, const std::string& message) {
+    auto module = make_module();
+    auto& ret = std::get<lir::LirRet>(module.functions[0].blocks[0].terminator);
+    mutate(module, ret);
+    expect_rejected(std::move(module), message);
+  };
+  rejects([](auto&, auto& ret) { ret.return_value_parameter_authority.reset(); },
+          "returned scalar parameter requires a return-value authority binding");
+  rejects([](auto&, auto& ret) {
+    ret.return_value_parameter_authority->value = lir::LirValueId{9};
+  }, "unknown returned scalar parameter value must reject");
+  rejects([](auto& module, auto& ret) {
+    ret.return_value_parameter_authority->owner =
+        module.link_names.intern("foreign_scalar_return_owner");
+  }, "foreign returned scalar parameter owner must reject");
+  rejects([](auto&, auto& ret) {
+    ret.return_value_parameter_authority->parameter_index = 9;
+  }, "out-of-range returned scalar parameter position must reject");
+  rejects([](auto&, auto& ret) {
+    ret.return_value_parameter_authority->type = lir::LirTypeRef::integer(64);
+  }, "returned scalar parameter type mismatch must reject");
+  rejects([](auto&, auto& ret) {
+    ret.return_value_parameter_authority->abi = lir::LirNativeBodyParameterAbi::DirectPointer;
+  }, "returned scalar parameter ABI mismatch must reject");
+  rejects([](auto&, auto& ret) {
+    ret.return_value_parameter_authority->role = lir::LirReturnValueParameterRole::Invalid;
+  }, "wrong returned scalar parameter role must reject");
+  rejects([](auto&, auto& ret) {
+    ret.value_str = lir::LirOperand::ssa("%other", lir::LirValueId{2});
+  }, "returned scalar parameter value relation mismatch must reject");
+  rejects([](auto& module, auto&) {
+    module.functions[0].native_body_parameter_definitions.push_back(
+        module.functions[0].native_body_parameter_definitions.front());
+  }, "duplicate returned scalar parameter definition must reject");
+  rejects([](auto&, auto& ret) {
+    ret.value_str = lir::LirOperand::integer("1", 1);
+  }, "return-value authority must reject a nonselected immediate return");
+  rejects([](auto& module, auto&) {
+    module.functions[0].signature_return_type_ref = lir::LirTypeRef::integer(64);
+  }, "return-value authority must reject a mismatched function return type");
+}
+
 }  // namespace
 
 int main() {
@@ -1312,6 +1391,7 @@ int main() {
   test_native_body_parameter_authority_verifier_boundary();
   test_native_scalar_binary_lhs_authority_verifier_boundary();
   test_native_scalar_binary_rhs_authority_verifier_boundary();
+  test_native_scalar_return_value_authority_verifier_boundary();
   test_selected_byval_materialization_populates_authority();
   test_selected_memcpy_authority_verifier_boundary();
   test_selected_memcpy_raw_bir_receipt_and_rollback();
