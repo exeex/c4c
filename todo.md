@@ -8,42 +8,45 @@ Current Step Title: Repair and cover bounded mask-lane coherence
 
 ## Just Finished
 
-Step 2's verifier tightening and nearby fixture coverage were accepted in
-`0d8e74852`: the zero-initializer contract now rejects selected lanes, nonzero
-inactive payloads, and invalid enum values using structured fields only. A
-fresh build and the focused backend command passed (6/6), with a non-decreasing
-matching regression guard.
+Step 2 diagnostic action completed: the delegated LLVM-path command,
+`./build/c4cll --codegen llvm tests/c/external/gcc_torture/src/scal-to-vec1.c
+-o /tmp/scal-to-vec1.ll`, reproduces the verifier failure before emission.
+Both scalar-to-vector splat constructors in
+`src/codegen/lir/hir_to_lir/expr/binary.cpp` (the vector-result and ordinary
+binary paths) construct `mask_lanes` with `std::vector<LirShuffleMaskLane>(lanes)`.
+That value-initializes every lane as `{kind = Inactive, selected_lane = 0}`.
 
-The supervisor's subsequent full command, `cmake --build --preset default &&
-ctest --test-dir build -j --output-on-failure`, did not meet acceptance: it
-reached 3038 tests but failed actual scalar-to-vector lowering at
-`llvm_gcc_c_torture_src_scal_to_vec1_c` with
-`LirShuffleVectorOp.native_vector_authority.mask_lanes: must mirror the
-structured shuffle mask`. The unit fixture was therefore not representative
-of the emitted carrier. Step 2 remains active; no full-baseline success is
-claimed.
+The concrete mismatch is `kind`: LLVM `shufflevector ... zeroinitializer`
+uses an all-zero integer mask, so each output lane selects first-vector lane
+0; its coherent native value is `{kind = Selected, selected_lane = 0}`, not
+an inactive lane. `0d8e74852` instead made the verifier require `Inactive, 0`,
+so it rejects the actual structured carrier. The unit fixture shares that
+incorrect default and is not representative of the semantic mask.
 
 ## Suggested Next
 
-Execute repaired plan Step 2 only: inspect the actual emitted structured
-mask-lane facts in the scalar-to-vector splat lowering that fails the full
-baseline, then implement only the valid zero-mask publication/coherence fix.
-Keep the existing fail-closed malformed-form checks and add representative
-nearby coverage before rerunning the bounded proof.
+Implement the bounded Step 2 coherence repair at the existing scalar-splat
+construction seam: publish one `{Selected, 0}` `LirShuffleMaskLane` per lane
+in both duplicate splat emitters in `binary.cpp`, and make the zero-mask
+verifier require that exact structured value. Update nearby coverage so the
+valid fixture and malformed cases use the same selected-zero contract, with a
+representative `scal-to-vec1.c` lowering-path test.
 
 ## Watchouts
 
-Do not assume the lowerings publish the valid default inactive lanes merely
-because the fixture does. Inspect the emitted structured carrier, not display
-text. This repair does not parse text, select shuffle semantics, claim a 754
-row, or change vector/second-shape facts, poison, aggregate, extract/insert,
-provenance, CFG/PHI, target/MIR, or emission behavior.
+Do not describe `zeroinitializer` as an inactive shuffle mask: it is the
+display mirror for a vector of integer zero selection indices. Preserve
+fail-closed rejection for wrong lane count, wrong mask type/token, inactive
+lanes, nonzero selected payloads, and invalid enum values. This remains a
+structured carrier repair only; it introduces no text recovery or shuffle-row
+semantic selection.
 
 ## Proof
 
-Accepted narrow evidence from `0d8e74852`: fresh
-`cmake --build --preset default`, focused backend 6/6, and a non-decreasing
-matching regression guard. It is insufficient for the actual lowering route.
-After the repaired Step 2 packet, rerun a fresh build and representative
-same-feature proof; return readiness still requires the supervisor-owned
-matching regression comparison and fresh 100% baseline decision.
+No build or test proof was delegated for this diagnostic-only packet, and no
+canonical regression log was written. Reproduction/observation only:
+`./build/c4cll --codegen llvm tests/c/external/gcc_torture/src/scal-to-vec1.c
+-o /tmp/scal-to-vec1.ll` failed with
+`LirShuffleVectorOp.native_vector_authority.mask_lanes: must mirror the
+structured shuffle mask`. The implementation packet must receive its exact
+fresh-build and focused-proof command from the supervisor.
