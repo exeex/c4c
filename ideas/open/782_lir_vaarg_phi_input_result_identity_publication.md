@@ -92,6 +92,23 @@ passed 1/1, with matching `test_before.log` and `test_after.log` guard pass
 under `--allow-non-decreasing-passed`. Accepted implementation commit
 references: none; no code changes were accepted.
 
+## Resumption Update: 783 decomposition accepted
+
+783 closed capability-complete after accepting the AArch64 GP `gr_top` pointer
+load to indexed `reg_addr` GEP, AArch64 FP ptrmask result to aligned-stack GEP,
+and AMD64 register-GEP/stack-load to immediate-`memcpy` native contracts. The
+accepted implementation references are `e45a6b0ee` and `2d16c90dc`; the
+focused frontend-LIR command passed 1/1 after a fresh build and the matching
+`test_before.log`/`test_after.log` guard passed under
+`--allow-non-decreasing-passed`.
+
+Exact return point remains Step 1, `Publish native vaarg PHI-helper input
+fields`. No 782 implementation slice is complete. Use the accepted three-chain
+contracts as upstream authority only; publish 782's bounded helper-input fields
+without extending into PHI carrier/verifier, predecessor/edge, CFG,
+Raw-BIR/importer, backend, target lowering, MIR, emission, or generic
+migration.
+
 ## Reviewer Reject Signals
 
 - Reject parsing `%` names, labels, rendered LLVM/printer output, instruction

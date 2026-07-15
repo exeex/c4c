@@ -1,33 +1,33 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/783_lir_native_vaarg_operand_result_seam_decomposition.md
+Source Idea Path: ideas/open/782_lir_vaarg_phi_input_result_identity_publication.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Bind focused probes to native operand/result contracts
+Current Step ID: 1
+Current Step Title: Publish native vaarg PHI-helper input fields
 
 ## Just Finished
 
-- Completed 783 Plan Step 3: added fail-closed frontend-LIR structural probes
-  for the AArch64 GP native `gr_top` load to indexed `reg_addr` GEP boundary,
-  AArch64 FP ptrmask-result to aligned-stack GEP boundary, and AMD64 native
-  register-GEP/stack-load to memcpy boundaries plus value-only PHI transport.
+- Closed 783 capability-complete and resumed 782 at its preserved Step 1; no
+  782 implementation packet or after-proof has been accepted.
 
 ## Suggested Next
 
-- Compare the three accepted Step 3 contracts and select the common minimal
-  native operand/result publication for 783 Plan Step 4.
+- Execute Plan Step 1: trace the native defining operations for every raw input
+  to the AArch64 GP, AArch64 FP, and AMD64 vaarg PHI constructors, then publish
+  only the bounded helper-input fields.
 
 ## Watchouts
 
-- Do not add PHI verification, predecessor/edge identity, CFG semantics, 782
-  helper fields, HFA ptrmask work, Raw-BIR/importer, backend, target lowering,
-  MIR, emission, generic migration, or text-derived identity.
-- The AMD64 probe observes `LirPhiIncoming.value` only as value transport; it
-  makes no predecessor, edge, or PHI-verifier claim.
+- Treat 783's accepted source-to-immediate-consumer contracts as upstream
+  authority, not as a 782 helper-field or PHI-completion claim.
+- `LirVaArgOp.result` is a later result and does not identify helper PHI inputs.
+- Do not change `LirPhiOp`, PHI verification, predecessor/edge authority, CFG,
+  Raw-BIR/importer, backend, target lowering, MIR, or emission.
+- Do not recover IDs from names, labels, rendered text, instruction order, or
+  testcase text; do not introduce side tables or result-name maps.
 
 ## Proof
 
-- Step 3 focused proof passed 1/1: `cmake --build --preset default && ctest
-  --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`.
-  Root regression logs were not written; they remain supervisor-owned.
+- Plan Step 2 requires a fresh build and focused three-constructor vaarg
+  result-authority proof. The supervisor selects any broader acceptance proof.

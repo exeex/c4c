@@ -1,6 +1,6 @@
 # LIR Native Vaarg Operand/Result Seam Decomposition
 
-Status: Open
+Status: Closed
 Type: focused frontend-LIR decomposition blocker
 Blocked Parent: `ideas/open/782_lir_vaarg_phi_input_result_identity_publication.md`
 Downstream Consumer: `ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md`
@@ -83,7 +83,40 @@ any larger vaarg case only as integration context, not as the primary probe.
 - Reject retaining the `LirGepOp.ptr` raw-base failure behind a renamed helper
   abstraction rather than binding its authoritative operand seam.
 
-## Resumption Record: native vaarg operand carrier foundation blocker
+## Closure Decision
+
+Close accepted: capability complete. The focused baseline and three-seam
+inventory were accepted at `0d0d402d6` and `fb1cb983b`. The minimal native
+carrier foundation was accepted at `e45a6b0ee` (`lir: retain native vaarg
+carrier operands`), and Step 3's focused decomposition probes were accepted at
+`2d16c90dc` (`lir: bind vaarg native operand contracts`).
+
+The accepted common contract is native, current-function `LirOperand`/
+`LirValueId` propagation from each defining operation to its immediate
+consumer: the AArch64 GP `gr_top` pointer load through the indexed `reg_addr`
+GEP; the AArch64 FP ptrmask call result through the immediate-16 aligned-stack
+GEP; and the AMD64 register GEP result plus stack pointer-load result through
+their immediate `memcpy` consumers. The AMD64 join observes
+`LirPhiIncoming.value` only as value transport of those already-native values.
+It makes no PHI verifier, predecessor/edge, CFG, generic-migration, or backend
+claim; labels remain string-only.
+
+Accepted proof: `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1 after a fresh
+build. The supervisor-owned `test_before.log`/`test_after.log` comparison
+passed under `--allow-non-decreasing-passed` with no regression.
+
+Handoff: resume
+`ideas/open/782_lir_vaarg_phi_input_result_identity_publication.md` exactly at
+Step 1, `Publish native vaarg PHI-helper input fields`. Its bounded work now
+has the accepted native source-to-consumer facts for all three chains; 783 does
+not itself publish 782 helper fields or resume 751.
+
+## Historical Resumption Record: native vaarg operand carrier foundation blocker
+
+Superseded by the closure decision above. This records the earlier 784 switch
+only; 784 subsequently closed at `e45a6b0ee`, 783 Step 3 completed at
+`2d16c90dc`, and 782 is now the active plan at its preserved Step 1.
 
 Last accepted progress: Step 1, `Establish the focused frontend-LIR baseline`,
 and Step 2, `Enumerate the three native vaarg structural seams`, are complete.
