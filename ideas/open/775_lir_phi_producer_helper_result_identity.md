@@ -93,3 +93,25 @@ single evidenced family and names the remaining unproven families, reactivate
 775 only if its bounded helper contract is then executable without broad API
 migration or PHI-carrier changes. Otherwise preserve 751's existing blocked
 return and create a separately scoped successor from the accepted 776 facts.
+
+## Accepted 778 Logical-RHS Producer Handoff
+
+Closed `ideas/closed/778_lir_logical_rhs_result_authority_publication.md`
+publishes only the logical RHS non-`i1` conversion producer fact: its
+`LirCastOp.result` is a native module-unique, current-function-owned
+`LirValueId` allocated before rendering, and it opts into the existing
+standalone cast-result verifier. Focused positive coverage and missing,
+invalid, same-function-duplicate, and foreign-authority rejection proof are
+accepted in `3b716c12d`, `54ebfa4df`, and `b4685da80`; the fresh parent guard
+`^(frontend_lir_call_type_ref|llvm_gcc_c_torture_src_pr52129_c)$` passed 2/2
+with no changes and the supervisor accepted a fresh 3037/3037 full-suite
+candidate into `test_baseline.log`. Module-wide ownership restoration was
+accepted in closed 780 commits `7b9d6152b` and `3602e8fd2`.
+
+775's exact return point is to consume this logical RHS cast-result fact only
+when 775 is later activated and reassesses its bounded helper contract. Raw
+logical PHI result/incoming entries and the final logical consumer remain
+unresolved and excluded; this is not an accepted logical chain to the PHI
+input seam. This handoff does not reactivate 775 or 751, alter 751, or
+authorize generic expression API, PHI carrier/verifier, Raw-BIR/importer, or
+backend work.

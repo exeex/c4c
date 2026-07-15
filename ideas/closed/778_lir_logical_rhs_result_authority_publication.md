@@ -1,6 +1,6 @@
 # LIR Logical RHS Result Authority Publication
 
-Status: Open
+Status: Closed — logical RHS producer capability complete
 Type: one-family typed expression-result producer successor
 Unblocks: `ideas/open/775_lir_phi_producer_helper_result_identity.md`
 Downstream Consumer: `ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md`
@@ -152,3 +152,36 @@ Step 4, `Publish the bounded 775 handoff`, but do not publish that handoff
 until its preserved focused build/test, matching guard, and a fresh full-suite
 candidate have all passed. This resolution changes no source scope: logical
 RHS only; PHI and generic migration remain excluded.
+
+## Completed Logical-RHS-Only Handoff
+
+Disposition: capability-complete for this one logical RHS non-`i1` conversion
+producer source; close accepted. This source does not claim PHI-carrier or
+final-consumer capability.
+
+The logical RHS non-`i1` `LirCastOp.result` is allocated as a native,
+module-unique, current-function-owned `LirValueId` before rendering, and the
+selected cast opts into the existing standalone cast-result verification
+contract. Focused coverage proves the positive route and that missing, invalid,
+same-function-duplicate, and foreign result authority fail closed.
+
+Close proof: the fresh parent focused guard
+`^(frontend_lir_call_type_ref|llvm_gcc_c_torture_src_pr52129_c)$` passed 2/2
+with no changes, and the supervisor accepted a fresh full-suite candidate at
+3037/3037 passed into `test_baseline.log` (candidate removed). The accepted
+implementation and focused-proof commits are `3b716c12d`, `54ebfa4df`, and
+`b4685da80`; closed blocker 780's accepted ownership restoration commits are
+`7b9d6152b` and `3602e8fd2`.
+
+Exact 775 return point: when 775 is later activated, it may consume only this
+logical RHS conversion `LirCastOp.result` producer fact and its proof. The raw
+logical PHI result/incoming boundary and final logical consumer remain
+unresolved and excluded; this handoff neither reactivates 775 or 751 nor
+changes their scope. It does not authorize any 751 work or generic API change.
+
+## Closure Record
+
+Archived 2026-07-15 as capability-complete. The named open successor is
+`ideas/open/775_lir_phi_producer_helper_result_identity.md`, solely for its
+remaining bounded helper/PHI-producer intent; it is not activated by this
+archive.
