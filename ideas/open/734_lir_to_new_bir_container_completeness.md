@@ -1528,3 +1528,34 @@ typed Raw-BIR receiver row. Do not repeat Step 7.38 or receive another
 parameter, memory/VA, aggregate/vector, module/type/global, instruction/
 terminator, or inline-assembly form without its separately scoped first-owner
 handoff.
+
+## Resumption Record: closed 826 DirectScalar truthiness-comparison LHS authority
+
+Closed idea 826 is capability-complete in `02ef01e94`. It publishes exactly
+one producer/schema/verifier row: an unchanged current-function DirectScalar
+integer parameter used directly as `LirCmpOp.lhs` by
+`StmtEmitter::to_bool_operand`. The native tuple is
+`LirCurrentFunctionBodyParameterDefinition.value`, current
+`LirFunction.link_name_id` owner, definition index, definition integer
+`LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`, and the bounded
+truthiness-comparison LHS role. Its checked consumer relation requires
+`LirCmpOp.lhs == authority.value`, `LirCmpOp.type_str == authority.type`,
+integer predicate `ne`, and an authoritative integer-zero RHS.
+
+The verifier rejects missing, invalid, duplicate-definition, foreign,
+owner/index/type/ABI/role-mismatched, and consumer-incoherent authority
+transactionally. `LirCondBr.condition` is not selected because it is the
+comparison result rather than the direct parameter use; all other comparison
+and parameter forms remain fail closed. The accepted proof is fresh
+`cmake --build --preset default`, exact focused `ctest --test-dir build
+--output-on-failure -R '^frontend_lir_call_type_ref$'` (1/1), and a matching
+1/1 non-regression guard. No Raw-BIR/importer/receiver code landed in 826.
+
+Exact return action: resume at **Step 7.39 - Receive the one 826-authorized
+DirectScalar truthiness-comparison-LHS parameter authority row**. Add only
+this tuple's typed Raw-BIR destination, importer dispatch, reachable verifier
+path, and transactional positive/malformed-authority coverage for the stated
+LHS/type/predicate/zero relations. Do not repeat Steps 1 through 7.38,
+receive another parameter row, use `LirCondBr.condition` as direct parameter
+authority, or recover identity from presentation fields. Reapply this source
+completion gate after the one receipt.
