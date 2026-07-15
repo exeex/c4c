@@ -75,7 +75,7 @@ no work; full CTest before/after captures each passed 3037/3037; and the
 monotonic guard passed with `--allow-non-decreasing-passed` for the equal
 repeat capture.
 
-### Step 3 - Verify row-specific index facts — pending
+### Step 3 - Verify row-specific index facts — complete
 
 Goal: use 801's accepted native anonymous aggregate layout facts to enforce
 the selected `LirExtractValueOp` field-index bounds and result-element type
@@ -94,10 +94,17 @@ Completion check: selected-row malformed index/type combinations reject,
 nearby valid forms pass, focused proof passes, and unrelated rows remain
 fail-closed.
 
+Accepted in `97137f39d`: bounded direct-complex coverage rejects index `-1`,
+index `2`, and an `i32` result type while preserving the nearby valid form.
+The existing verifier consumes 801's native anonymous-layout facts; this slice
+does not publish generic layout facts or widen to other rows. A fresh focused
+target build and `^frontend_lir_call_type_ref$` passed 1/1 before and after;
+the matching regression guard passed with `--allow-non-decreasing-passed`.
+
 ### Step 4 - Prove and hand off the bounded row
 
 Goal: obtain accepted producer-side proof for the selected row without a
 Raw-BIR receiver change.
 
-Completion check: a 100% full baseline and accepted one-row handoff are
-recorded; otherwise preserve an executable repair route.
+Completion check: a supervisor-accepted 100% full baseline and accepted
+one-row handoff are recorded; otherwise preserve an executable repair route.

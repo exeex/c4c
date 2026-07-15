@@ -312,3 +312,22 @@ Consume only 801's accepted native anonymous aggregate layout/type handoff to
 validate the selected `LirExtractValueOp` field-index bounds and result-element
 type coherence. Do not repeat Steps 1--2, publish layout facts, widen to other
 aggregate/vector rows, reopen PHI work, or recover facts from display text.
+
+## Resumption Update: Step 3 index/result coherence accepted
+
+Step 3, *Verify row-specific index facts*, is accepted in `97137f39d`.
+The bounded selected direct-complex `LirExtractValueOp` coverage consumes
+801's already-accepted native anonymous-layout facts and rejects index `-1`,
+index `2`, and an `i32` result type, while retaining the nearby valid form.
+This is selected-row validation only: it neither publishes generic layout
+facts nor widens to any other aggregate/vector row or display-text recovery.
+
+Accepted proof: the fresh focused target build and
+`ctest --test-dir build --output-on-failure -R '^frontend_lir_call_type_ref$'`
+passed 1/1 before and after; the matching regression guard passed with
+`--allow-non-decreasing-passed`.
+
+Exact return point: proceed to Step 4, *Prove and hand off the bounded row*.
+The supervisor must obtain and accept a 100% full baseline, then record the
+one-row handoff. If the baseline is not 100%, preserve an executable repair
+route without reopening Steps 1--3 or absorbing out-of-scope work.
