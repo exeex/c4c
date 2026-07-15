@@ -3,25 +3,34 @@
 Status: Active
 Source Idea Path: ideas/open/823_lir_next_body_parameter_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Trace and select one distinct native parameter-use row
+Current Step ID: 2
+Current Step Title: Publish and verify one DirectScalar binary-RHS authority contract
 你該做code review了
 
 ## Just Finished
 
-- Parent 734 Step 7.35 accepted in `18443fc0f`: only the closed-818
-  DirectScalar `LirBinOp.lhs` authority was received into the typed Raw-BIR
-  binary destination. Focused proof passed 1/1; matching full CTest guard was
-  non-regressive at 3003/3038 pass and 35 failures before/after.
+- Step 1 traced the next adjacent candidate, a native `DirectScalar`
+  `LirBinOp.rhs` use, and selected no row. Its value identity, owner,
+  parameter index, type, and ABI exist in
+  `LirCurrentFunctionBodyParameterDefinition`, but the first required missing
+  fact is a native RHS role/use binding: `LirScalarBinaryParameterRole` has
+  only `Lhs`, `LirBinOp` carries only `scalar_lhs_parameter_authority`, and
+  the producer/verifier inspect and validate only `lhs`. This is distinct from
+  the accepted pointer GEP-base and DirectScalar binary-LHS rows, but it is
+  not receiver-ready and remains fail-closed.
 
 ## Suggested Next
 
-- Step 1 only: trace and select one distinct native function-body parameter
-  use with a complete structured authority tuple. Do not select from text or
-  begin Raw-BIR receiver work.
+- Implement only the in-scope Step 2 repair: publish one explicit
+  `LirBinOp.rhs` DirectScalar parameter role and independent authority carrier,
+  bind it from the existing checked current-function definition facts, and
+  verify matching RHS role/value/type coherence with nearby fail-closed tests.
+  Do not begin Raw-BIR receiver work.
 
 ## Watchouts
 
+- Do not infer a RHS role from `LirBinOp.rhs`, operand spelling, or the LHS
+  carrier. The current schema and verifier intentionally have no RHS role.
 - Ideas 821 and 822 retain pending, unaccepted implementation work; do not
   modify, discard, or claim acceptance for either slice.
 - No generic scalar/parameter admission, Raw-BIR/importer/builder work, or
@@ -31,7 +40,5 @@ Current Step Title: Trace and select one distinct native parameter-use row
 
 ## Proof
 
-- Parent acceptance: fresh `^backend_lir_selected_pointer_authority$` 1/1;
-  matching full CTest `test_before.log`/`test_after.log` guard, 3003/3038 pass
-  and 35 failures before/after, non-regressive; receiver commit `18443fc0f`.
-- This successor must select a fresh focused producer proof after Step 1.
+- No proof run: this was a read-only producer/schema/verifier trace with no
+  code change and no selected row. No `test_after.log` was produced.

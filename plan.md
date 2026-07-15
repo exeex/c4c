@@ -33,7 +33,7 @@ recover any of them from text, names, diagnostics, or rendered operands.
 
 ## Ordered Steps
 
-### Step 1 - Trace and select one distinct native parameter-use row
+### Step 1 - Trace and select one distinct native parameter-use row (complete: no receiver-ready row)
 
 Goal: identify one candidate only when the complete structured authority tuple
 and its consumer operation can be demonstrated.
@@ -47,22 +47,30 @@ Actions:
 - define the exact rejected malformed forms before editing code.
 
 Completion check: one bounded row is selected with no presentation-derived
-authority and no expansion into other parameter forms.
+authority and no expansion into other parameter forms; otherwise record the
+first missing native fact and repair only that producer/schema/verifier seam.
 
-### Step 2 - Publish and verify the selected authority contract
+### Step 2 - Publish and verify one explicit DirectScalar binary-RHS authority contract
 
-Goal: implement the minimum native producer/schema/verifier publication for
-the selected row.
+Goal: make `LirBinOp.rhs` usable as exactly one independently checked
+DirectScalar body-parameter role, rather than inferring RHS authority from the
+operand or the LHS carrier.
 
 Actions:
 
-- preserve current-function ownership and the selected identity/type/ABI/role
-  contract;
-- add nearby positive and malformed/foreign/type- or ABI-incoherent coverage;
-- keep all nonselected forms fail closed.
+- add one explicit RHS role to `LirScalarBinaryParameterRole` and one distinct
+  RHS authority carrier on `LirBinOp`; do not repurpose the LHS carrier;
+- bind that RHS carrier only when the existing current-function parameter
+  definition identity, owner, index, type, and ABI agree with `rhs`, then
+  teach the verifier to require the matching RHS role/value/type contract;
+- add nearby positive and malformed, foreign-owner, type/ABI-incoherent,
+  wrong-role, and role/value mismatch coverage for this RHS authority only;
+- keep LHS behavior and every nonselected parameter form fail closed; do not
+  edit Raw-BIR/importer/builder/receiver code.
 
-Completion check: the selected structured tuple verifies and malformed forms
-reject without a generic parameter path.
+Completion check: exactly the structured `LirBinOp.rhs` tuple verifies and
+the malformed forms reject without generic scalar/parameter admission or any
+Raw-BIR receipt.
 
 ### Step 3 - Prove and hand off to 734
 
