@@ -1,120 +1,113 @@
-# LIR Native Vaarg Operand/Result Seam Decomposition Runbook
+# LIR Native Vaarg Operand Carrier Foundation Runbook
 
 Status: Active
-Source Idea: ideas/open/783_lir_native_vaarg_operand_result_seam_decomposition.md
-Supersedes: 782 Step 1 while its prerequisite vaarg operand/result contracts are decomposed.
+Source Idea: ideas/open/784_lir_native_vaarg_operand_carrier_foundation.md
+Supersedes: 783 Step 3 while its excluded carrier prerequisite is resolved.
 
 ## Purpose
 
-Turn the repeated upstream movement of the vaarg first-bad fact into three
-small, frontend-LIR structural seams before retrying any helper-field work.
+Provide the smallest native current-function carrier foundation needed to make
+the three already-inventoried vaarg seams structurally testable, then return
+the focused probe work to 783.
 
 ## Goal
 
-Accept the narrowest viable native vaarg operand/result contract for AArch64
-GP, AArch64 FP/alignment, and AMD64 reg/stack chains, then return to 782.
+Accept a narrow operand/result carrier contract, including an explicit decision
+on PHI incoming value transport, without entering PHI completion or lowering.
 
 ## Core Rule
 
-This is route-quality work, not PHI or generic-migration implementation. Do not
-change PHI carrier/verification or use text as identity authority.
+Track native authority only. A PHI change is permitted solely if it transports
+the already-published value carrier; predecessor/edge identity and verification
+remain outside this runbook.
 
 ## Read First
 
+- `ideas/open/784_lir_native_vaarg_operand_carrier_foundation.md`
 - `ideas/open/783_lir_native_vaarg_operand_result_seam_decomposition.md`
 - `ideas/open/782_lir_vaarg_phi_input_result_identity_publication.md`
 - `ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md`
 - `src/codegen/lir/hir_to_lir/call/vaarg.cpp`
 - `src/codegen/lir/hir_to_lir/call/vaarg_amd64.cpp`
-- the existing frontend-LIR test inventory selected in Step 2
+- frontend-LIR carrier and verifier test inventory selected in Step 1
 
 ## Non-Goals
 
-- Do not modify `LirPhiOp`, PHI verification, predecessor/edge authority,
-  Raw-BIR/importer, backend, target lowering, MIR, or emission.
-- Do not begin 782 helper-field publication, generic migration, or broad API
-  redesign before all three focused seam contracts are bound.
-- Do not use names, labels, rendered output, instruction order, testcase text,
-  side tables, or result-name maps as identity authority.
+- Do not implement PHI verification, predecessor/edge identity, Raw-BIR/importer,
+  backend, target lowering, MIR, emission, broad generic-expression redesign,
+  or 782 helper-field publication.
+- Do not recover authority from names, labels, text, output, instruction order,
+  side tables, or result-name maps.
 
 ## Execution Rules
 
-1. Run the baseline before altering tests or implementation.
-2. Use frontend-LIR structural probes, not `tests/backend/case/`: the owned
-   behavior is LIR construction/authority, not backend lowering.
-3. Give every probe one primary contract and bind it to exactly one of the
-   three named chains.
-4. Do not implement a contract until Steps 1 through 3 establish and bind the
-   complete three-chain evidence set.
-5. Return to 782 only after the accepted outcome names all three contracts;
-   751 remains parked until 782 completes.
+1. Start with carrier inventory and structural-probe feasibility; do not
+   presume a PHI incoming representation change is necessary.
+2. Keep one carrier contract across GP, FP/alignment, and AMD64 reg/stack;
+   isolate any route that cannot share the contract as a blocker, not a special
+   case.
+3. If a PHI incoming value transport is required, prove it is transport-only
+   and record the boundary that still belongs to 751.
+4. Run the focused proof after each code-changing packet; preserve matching
+   root regression logs through the supervisor-owned guard.
 
 ## Ordered Steps
 
-### Step 1 - Establish the focused frontend-LIR baseline
+### Step 1 - Inventory carrier surfaces and prove structural-probe feasibility
 
-Goal: record a reproducible starting result for the blocked vaarg authority
-family without treating the prior PHI-facing test as sufficient evidence.
-
-Actions:
-
-- inspect the existing frontend-LIR test inventory to select the narrow
-  structural command and three-chain probe targets;
-- run the selected build plus focused command before any change; and
-- record the exact command, pass/fail result, and any baseline limitation in
-  `todo.md`.
-
-Completion check:
-
-- a current baseline and a justified frontend-LIR probe location are recorded;
-  no implementation or PHI change has occurred.
-
-### Step 2 - Enumerate the three native vaarg structural seams
-
-Goal: make each authority loss independently observable before implementation.
+Goal: identify the smallest current-function operand/result carrier boundary
+shared by the three vaarg seams.
 
 Actions:
 
-- trace and name the AArch64 GP `gr_top` to `reg_addr` GEP-address seam;
-- trace and name the AArch64 FP/alignment-helper operand seam; and
-- trace and name the AMD64 register/stack helper-result seam.
+- trace the authoritative producer, string-only construction point, and
+  immediate structural consumer for GP `gr_top` to `reg_addr`, FP/alignment,
+  and AMD64 register/stack;
+- inspect existing native carrier and frontend-LIR structural-test facilities;
+  and
+- record whether a probe reaches its consumer without a PHI incoming value
+  transport.
 
 Completion check:
 
-- each chain has a source, propagation path, consumer boundary, and focused
-  frontend-LIR structural probe target; no seam is inferred from presentation
-  text or represented only by the original monolithic case.
+- the shared carrier candidate and the PHI incoming-value necessity decision
+  are supported by source-level evidence; no code or test changes occur.
 
-### Step 3 - Bind focused probes to native operand/result contracts
+### Step 2 - Bind the minimal generic carrier contract
 
-Goal: turn the inventory into a complete, fail-closed three-chain contract set.
+Goal: publish only the native current-function operand/result carrier required
+by all three seam boundaries.
 
 Actions:
 
-- add or refine one focused structural probe per seam in the frontend-LIR test
-  location established in Step 1;
-- specify the authoritative source and required native propagation for every
-  probe; and
-- prove the probes distinguish missing/raw authority from valid structural
-  propagation without changing PHI carrier/verification.
+- implement the smallest carrier addition at the selected producer/consumer
+  boundary;
+- add a PHI incoming value transport only if Step 1 proved it indispensable,
+  retaining string rendering compatibility and excluding verifier and CFG work;
+  and
+- maintain fail-closed ownership/validity behavior at the carrier's existing
+  validation boundary.
 
 Completion check:
 
-- all three probes are bound to one narrow native operand/result contract and
-  the test evidence is sufficient to choose the smallest implementation seam.
+- all three seams retain native structural authority at their immediate
+  consumer boundaries with no text-recovery fallback or PHI-completion claim.
 
-### Step 4 - Accept the narrowest contract and return to 782
+### Step 3 - Prove the carrier and publish the 783 handoff
 
-Goal: conclude the decomposition route with an executable parent return point.
+Goal: establish focused structural evidence and an unambiguous parent return.
 
 Actions:
 
-- compare the three contracts and select only the common minimal native
-  operand/result publication required by 782;
-- record accepted proof and any implementation commit references; and
-- request lifecycle resumption of 782 Step 1, preserving its source record.
+- add focused frontend-LIR structural coverage for GP, FP/alignment, and AMD64
+  register/stack carrier propagation plus relevant malformed authority cases;
+- run the focused build/test command and coordinate the matching regression
+  guard with the supervisor; and
+- record the accepted carrier contract, PHI incoming value decision, and exact
+  return point to 783 Step 3.
 
 Completion check:
 
-- 782 can resume its Step 1 helper-input publication with all three contracts
-  named; no generic-migration or PHI-completion claim is made.
+- 783 can resume its three focused probe bindings without reopening this
+  foundation; any non-transport PHI requirement is named as a separate
+  successor.

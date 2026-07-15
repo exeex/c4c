@@ -82,3 +82,38 @@ any larger vaarg case only as integration context, not as the primary probe.
   capability's progress.
 - Reject retaining the `LirGepOp.ptr` raw-base failure behind a renamed helper
   abstraction rather than binding its authoritative operand seam.
+
+## Resumption Record: native vaarg operand carrier foundation blocker
+
+Last accepted progress: Step 1, `Establish the focused frontend-LIR baseline`,
+and Step 2, `Enumerate the three native vaarg structural seams`, are complete.
+The accepted baseline state is commit `0d0d402d6`; the accepted all-three-seam
+inventory is commit `fb1cb983b`. No implementation carrier has been accepted.
+
+Interrupted step: Step 3, `Bind focused probes to native operand/result
+contracts`. The blocker is that `LirPhiOp::incoming` is
+`std::vector<std::pair<std::string, std::string>>` and the seam GEP/load
+operands are constructed from strings. Native-ID propagation cannot be probed
+from the authoritative `gr_top`/FP/helper value through the join to the actual
+consumer boundary without forbidden text recovery or excluded helper
+operand/PHI-carrier work.
+
+Classification: `separate-blocker`. The active
+`ideas/open/784_lir_native_vaarg_operand_carrier_foundation.md` owns only the
+minimal native current-function operand/result carrier foundation for the
+three chains. It must explicitly decide whether a narrow PHI incoming value
+transport belongs in that foundation or needs a second successor; it must not
+absorb PHI verification, predecessor/edge identity, Raw-BIR/importer, backend,
+target lowering, MIR, emission, broad generic-expression redesign, or text
+recovery.
+
+Exact return point: after 784 accepts the minimal carrier contract, reactivate
+783 at Step 3 and add the three focused frontend-LIR structural probes for
+AArch64 GP `gr_top` to `reg_addr`, AArch64 FP/alignment, and AMD64
+register/stack. The remaining action is otherwise unchanged: complete Step 3,
+then select the narrowest contract and return to 782.
+
+Accepted proof: `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1 in
+`test_after.log`; `test_before.log` and `test_after.log` match. No code or test
+change is accepted after this proof.
