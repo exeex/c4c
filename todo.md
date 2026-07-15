@@ -1,29 +1,34 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/807_lir_phi_floating_unary_minus_fneg_authority.md
+Source Idea Path: ideas/open/809_lir_ternary_phi_incoming_operand_authority_handoff.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Reconfirm the bounded floating-minus handoff and choose coverage
+Current Step Title: Trace the returned-operand to PHI-incoming construction seam
 
 ## Just Finished
 
-- Active plan switched from 806 after accepted Steps 1–2; 806 is parked at
-  Step 3 pending the separately scoped 807 and 808 successor routes.
+- Active plan switched from 807 Step 2 after its unaccepted `fresh_value(ctx)`
+  probe showed native `fneg` authority is dropped when ternary lowering
+  constructs the matching PHI incoming. No blocker implementation has begun.
 
 ## Suggested Next
 
-- Trace the floating `UnaryOp::Minus` / `fneg` result in `ieee/pr50310.c` and
-  identify the paired positive and malformed-authority focused coverage.
+- Execute Step 1: trace the returned `LirOperand` to the ternary
+  `LirPhiOp::incoming` construction and identify the exact omitted `value_id`
+  handoff plus nearby preservation/rejection coverage.
 
 ## Watchouts
 
-- Keep this packet limited to floating `fneg`. Do not absorb postfix,
-  scalar-integer-minus, scalar bit-not, PHI-side, or text-recovery work.
+- Keep the parked 807 `src/codegen/lir/hir_to_lir/expr/misc.cpp` hunk intact
+  but do not accept, enlarge, or move it. Do not alter producer creation, PHI
+  schema/verifier behavior, other unary families, CFG semantics, or rendered
+  text identity.
 
 ## Proof
 
-- Before code changes, reproduce the targeted failure narrowly. After the
-  repair packet, require a fresh build plus focused same-family positive and
-  malformed-authority proof; 807 does not itself clear the 806/804 full
-  baseline gate.
+- Discovery evidence only: fresh `cmake --build --preset default` succeeded;
+  the focused `ctest --test-dir build -j --output-on-failure -R
+  '^frontend_lir_call_type_ref$'` failed only a temporary positive assertion,
+  and temporary test edits were removed. Before acceptance, require a fresh
+  build and focused blocker proof selected by the supervisor.

@@ -55,3 +55,30 @@ handoff.
   downgrades, or a named-test-only pass without nearby malformed coverage.
 - Reject weakening PHI verification or accepting missing, foreign, stale, or
   unknown native authority merely to make `ieee/pr50310.c` pass.
+
+## Resumption Record: ternary PHI-incoming operand-authority blocker
+
+Last accepted progress: Step 1 established the bounded floating
+`UnaryOp::Minus` / `fneg` producer route and selected the nearby focused
+coverage direction. No 807 implementation slice is accepted or committed.
+
+Interrupted step: Step 2, `Publish native authority for the `fneg` result`.
+
+Blocking evidence: the scoped, unaccepted change from `fresh_tmp(ctx)` to
+`fresh_value(ctx)` in `src/codegen/lir/hir_to_lir/expr/misc.cpp` gives the
+`fneg` result a native `LirValueId{1}` for `condition ? -input : 0.0`, but the
+matching `%t6` PHI incoming is recreated without `value_id`. The authority is
+therefore lost in ternary lowering's PHI-incoming construction, not at the
+floating-minus producer. A fresh `cmake --build --preset default` succeeds;
+the focused `frontend_lir_call_type_ref` CTest fails only the temporary
+positive assertion, and those temporary test edits were removed.
+
+This handoff is out of 807 scope because 807 explicitly excludes ternary/
+PHI-consumer changes. It is owned first by
+`ideas/open/809_lir_ternary_phi_incoming_operand_authority_handoff.md`.
+
+Return point after blocker: resume 807 Step 2 with the existing scoped
+`misc.cpp` hunk retained; add the floating-`fneg` positive and
+malformed-authority coverage, then run the focused proof. Do not claim 807
+acceptance, create a commit, or clear the 806/804 full-baseline gate until
+that route completes.

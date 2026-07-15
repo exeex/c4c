@@ -16,6 +16,7 @@ class Result;
 namespace c4c::backend::bir {
 
 struct FunctionId;
+struct GlobalId;
 struct BlockId;
 struct InstId;
 struct ValueId;
@@ -63,6 +64,12 @@ struct SwitchTerm;
 struct ReturnTerm;
 struct UnreachableTerm;
 struct FunctionSignature;
+enum class GlobalLinkage;
+struct ZeroInitializer;
+struct IntegerInitializer;
+struct FloatInitializer;
+struct NullPointerInitializer;
+struct GlobalSpec;
 
 }  // namespace c4c::backend::bir
 
@@ -72,6 +79,7 @@ struct FunctionSignature;
 namespace c4c::backend::bir {
 
 class ModuleView;
+class GlobalView;
 class FunctionView;
 class BlockView;
 class InstView;
