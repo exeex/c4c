@@ -1,72 +1,65 @@
-# LIR Standalone Cast Result Authority Contract Runbook
+# LIR Logical RHS Result Authority Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/779_lir_cast_result_authority_contract.md
-Supersedes: `ideas/open/778_lir_logical_rhs_result_authority_publication.md` while its verifier/IR prerequisite is active.
+Source Idea: ideas/open/778_lir_logical_rhs_result_authority_publication.md
+Resumed from: closed 779's accepted standalone cast-result authority prerequisite.
 
 ## Goal
 
-Establish the minimal verifier/IR contract that makes malformed standalone
-`LirCastOp.result` authority fail closed.
+Publish one native logical RHS conversion result ID without migrating generic
+expression APIs or changing the downstream PHI receiver.
 
 ## Core Rule
 
-Use native `LirValueId` ownership only. A cast result must never derive
-authority from rendered text, instruction order, or a testcase-specific path.
+Allocate authority with `fresh_value` before rendering; raw display text must
+not be used to create or recover a value ID.
 
 ## Read First
 
-- `ideas/open/779_lir_cast_result_authority_contract.md`
 - `ideas/open/778_lir_logical_rhs_result_authority_publication.md`
-- `src/codegen/lir/verify.cpp`
-- the LIR operand/result definitions and result-ownership collection path
+- `ideas/closed/779_lir_cast_result_authority_contract.md`
+- `ideas/closed/776_lir_typed_expression_result_carrier_decomposition.md`
+- `ideas/open/775_lir_phi_producer_helper_result_identity.md`
+- `ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md`
+- `src/codegen/lir/hir_to_lir/expr/binary.cpp`
 - `tests/frontend/frontend_lir_call_type_ref_test.cpp`
 
 ## Non-Goals
 
-- Do not edit `emit_logical` or accept/reuse 778's unaccepted `binary.cpp`
-  change.
-- Do not change PHI result/incoming representation or verification.
-- Do not migrate generic expression APIs or other producer families.
+- no logical PHI/incoming/result carrier work or final logical consumer claim
+- no ternary/coerce, vaarg, or generic expression migration
+- no text recovery, maps, side tables, Raw-BIR/importer, backend, target
+  lowering, MIR, or emission work
 
 ## Ordered Steps
 
-### Step 1 - Repair native standalone cast result ownership
+### Step 1 - Publish the logical RHS conversion result
 
-Goal: complete the smallest verifier/IR rule that distinguishes a
-result-producing standalone cast, requires a valid native result ID, and
-rejects an ID whose defining result belongs to another function.
+Goal: replace only the non-`i1` RHS conversion result allocation in
+`emit_logical` with a native `fresh_value` result.
 
-Primary targets:
+Primary target:
 
-- `src/codegen/lir/verify.cpp`
-- LIR result ownership collection definitions, only if required by the rule
+- `src/codegen/lir/hir_to_lir/expr/binary.cpp`
 
 Actions:
 
-- retain the partial Step 1 commit `5a9888938`: its explicit standalone-cast
-  selection and missing-result rejection are accepted but incomplete;
-- add native definition provenance or an equivalent module-level ownership
-  check so `verify_function_value_ownership` can distinguish a fresh local
-  definition from a `LirValueId` already defined as a result in another
-  `LirFunction`;
-- require selected standalone casts to reject cross-function result reuse
-  while retaining existing invalid-ID and same-function duplicate behavior;
-- retain existing cast kind and endpoint-type validation;
-- keep the ownership rule native and bounded: do not alter PHI or logical
-  producer lowering, and do not introduce rendered-text, result-name-map,
-  side-table, or testcase-specific authority.
+- make a clean reattempt; do not reuse the prior unaccepted local diff;
+- preserve the existing typed RHS boolean operand and conversion type;
+- allocate the RHS `LirCastOp.result` as `LirOperand::ssa` with an owning
+  current-function ID;
+- leave the raw PHI result/incoming and final logical consumer unchanged.
 
 Completion check:
 
-- the verifier has a native fail-closed path for missing, invalid, duplicate,
-  and cross-function foreign standalone cast-result IDs; a foreign ID cannot
-  be accepted merely because the current function has not yet defined it.
+- the selected RHS conversion produces a valid native result ID without PHI,
+  generic API, or other-family changes.
 
-### Step 2 - Add focused positive and malformed cast coverage
+### Step 2 - Prove the logical RHS result authority contract
 
-Goal: prove the standalone cast contract structurally and exercise missing,
-invalid, duplicate, and foreign result authority.
+Goal: add focused positive and fail-closed malformed proof for the selected
+RHS conversion result only, using the accepted standalone-cast verifier
+contract from closed 779.
 
 Primary target:
 
@@ -74,35 +67,30 @@ Primary target:
 
 Actions:
 
-- use a standalone cast fixture and native IDs, not rendered-result matching;
-- preserve a valid positive cast case;
-- add one malformed mutation for each required failure family only after Step
-  1 proves cross-function provenance: missing, invalid, same-function
-  duplicate, and foreign reuse from a different `LirFunction`;
-- keep PHI and logical-RHS fixtures out of this packet.
+- require the RHS `LirCastOp.result` native ID without rendered-text or order
+  matching;
+- prove missing, invalid, duplicate, and foreign RHS-result authority rejects;
+- keep PHI and final logical consumer expectations explicitly outside this
+  packet.
 
 Completion check:
 
-- focused tests demonstrate every malformed case is rejected by the verifier.
+- focused logical RHS result proof passes and malformed authority fails closed
+  through the accepted verifier contract.
 
-### Step 3 - Validate and publish the 778 handoff
+### Step 3 - Publish the bounded 775 handoff
 
-Goal: validate the bounded contract and document the precise parent return
-point.
-
-Actions:
-
-- build and run the focused frontend-LIR test;
-- record the accepted verifier/IR contract and proof in the execution state;
-- hand 778 back to Step 1 for a clean producer reattempt, without accepting its
-  prior local diff.
+Goal: record the logical RHS field, proof, unresolved PHI boundary, and 775
+return point without reactivating 775 or 751.
 
 Completion check:
 
-- 778 can resume from its recorded Step 1 with this verifier contract available,
-  while PHI and generic logical work remain separate.
+- 775 may consume this logical-RHS-only producer fact while PHI and other
+  family work remain separate.
 
 ## Proof
 
-- For code steps: `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
-- The supervisor owns baseline/regression logs and final acceptance.
+- For Steps 1–2: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_call_type_ref$'`
+- The supervisor owns final regression and baseline acceptance; this runbook
+  does not write root logs.

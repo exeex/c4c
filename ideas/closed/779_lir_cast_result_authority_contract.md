@@ -1,6 +1,6 @@
 # LIR Standalone Cast Result Authority Contract
 
-Status: Open
+Status: Closed — capability complete
 Type: bounded verifier/IR authority prerequisite
 Unblocks: `ideas/open/778_lir_logical_rhs_result_authority_publication.md`
 
@@ -64,3 +64,30 @@ producer change.
   named-testcase branches in place of native ownership verification.
 - Reject Raw-BIR/importer, backend, target lowering, MIR, emission, or unrelated
   operation-family rewrites as part of this idea.
+
+## Closure Record
+
+Disposition: capability complete.
+
+Accepted verifier/IR contract: selected standalone result-producing
+`LirCastOp` instances opt into native result authority. The verifier requires a
+present, valid, current-function-owned `LirValueId` and rejects missing,
+invalid, same-function duplicate, and cross-function foreign result IDs. The
+ownership index records instruction-result provenance across functions; it does
+not use rendered text, result-name maps, side tables, PHI, logical lowering, or
+generic expression APIs.
+
+Accepted implementation and coverage: `5a9888938` selects standalone casts and
+rejects missing result authority; `1e48ea6ab` adds cross-function result
+ownership; `29f4adb6b` adds focused positive, missing, invalid, duplicate, and
+foreign-ID coverage. Accepted focused proof:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`.
+The supervisor also accepted the full-suite baseline candidate after
+`1e48ea6ab`.
+
+Successor resumption: `ideas/open/778_lir_logical_rhs_result_authority_publication.md`
+resumes at Step 1, `Publish the logical RHS conversion result`, as a clean
+producer reattempt. Its prior local `binary.cpp` diff remains unaccepted;
+restart from the clean producer change, then perform its Step 2 against this
+accepted contract. PHI result/incoming and generic logical work remain
+excluded.

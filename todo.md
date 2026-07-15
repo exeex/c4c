@@ -1,33 +1,29 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/779_lir_cast_result_authority_contract.md
+Source Idea Path: ideas/open/778_lir_logical_rhs_result_authority_publication.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Validate and publish the 778 handoff
+Current Step ID: 1
+Current Step Title: Publish the logical RHS conversion result
 
 ## Just Finished
 
-- Plan Step 2 is complete: a standalone `LirCastOp` verifier fixture opts into
-  `requires_native_result_authority`, proves the valid native-ID path, and
-  directly rejects missing, invalid, same-function duplicate, and genuinely
-  foreign instruction-result IDs through structured IDs rather than
-  display-text probes, PHI, or logical paths.
+- Closed 779 capability-complete: its selected standalone-cast verifier/IR
+  contract and focused positive/malformed proof are accepted; 778 now resumes
+  at its recorded Step 1 clean producer reattempt.
 
 ## Suggested Next
 
-- Plan Step 3: Validate and publish the 778 handoff.
+- Dispatch Plan Step 1.
 
 ## Watchouts
 
-- The cross-function case uses a separate function's `LirStackSaveOp` result
-  ID, not a local duplicate or presentation-string surrogate. The ownership
-  index remains instruction-only and selected-cast-only.
-- Keep PHI, logical producer lowering, generic expression APIs, and the
-  unaccepted 778 `binary.cpp` diff out of the acceptance handoff.
+- Do not reuse the former unaccepted `binary.cpp` diff. Limit the reattempt to
+  the logical RHS non-`i1` conversion result; PHI result/incoming, generic
+  expression APIs, and other producer families remain excluded.
 
 ## Proof
 
-- Passed: `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^frontend_lir_call_type_ref$'`.
-- Proof output: `test_after.log`.
+- 779 accepted proof: `cmake --build --preset default && ctest --test-dir
+  build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`.
+- 778 has no producer proof yet; run its focused proof after Steps 1–2.

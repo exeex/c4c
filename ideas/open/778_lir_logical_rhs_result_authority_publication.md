@@ -95,3 +95,18 @@ perform Step 2 against the accepted standalone-cast verifier contract and
 complete the Step 3 handoff. Remaining action is not a continuation of the
 unaccepted diff. PHI result/incoming and generic logical migration remain
 excluded.
+
+## Blocker Resolution
+
+779 closed capability-complete with the bounded standalone `LirCastOp.result`
+authority contract: selected casts require a present, valid,
+current-function-owned native `LirValueId`, and missing, invalid,
+same-function duplicate, and cross-function foreign IDs fail closed. Accepted
+commits are `5a9888938`, `1e48ea6ab`, and `29f4adb6b`; focused proof passed:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`.
+The supervisor accepted a full-suite baseline candidate after `1e48ea6ab`.
+
+Current return point: restart Step 1, `Publish the logical RHS conversion
+result`, with a clean producer reattempt. Do not reuse the former unaccepted
+`binary.cpp` diff. PHI result/incoming and generic logical migration remain
+excluded.
