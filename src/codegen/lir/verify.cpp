@@ -1697,6 +1697,9 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
                     "must not be empty for non-unary binary instructions");
       }
     } else {
+      if (op->opcode.typed() == LirBinaryOpcode::FNeg) {
+        fail_verify("LirBinOp.rhs", "must be empty for unary fneg instructions");
+      }
       verify_value_operand(op->rhs, "LirBinOp.rhs");
     }
     verify_bin_op_authority(*op);

@@ -87,7 +87,29 @@ LirOperand StmtEmitter::emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u,
         return tmp;
       } else if (is_float_base(op_ts.base)) {
         const LirOperand tmp = fresh_value(ctx);
-        emit_lir_op(ctx, lir::LirBinOp{tmp, "fneg", ty, val, ""});
+        const LirTypeRef type(ty);
+        std::optional<lir::LirScalarBinaryLhsParameterAuthority> lhs_authority;
+        if (ctx.lir_function != nullptr && val.value_id() != nullptr) {
+          const auto definition = std::find_if(
+              ctx.lir_function->native_body_parameter_definitions.begin(),
+              ctx.lir_function->native_body_parameter_definitions.end(),
+              [&](const auto& candidate) {
+                return candidate.value == *val.value_id() && candidate.type == type &&
+                       candidate.owner == ctx.lir_function->link_name_id &&
+                       candidate.abi == lir::LirNativeBodyParameterAbi::DirectScalar;
+              });
+          if (definition != ctx.lir_function->native_body_parameter_definitions.end()) {
+            lhs_authority = lir::LirScalarBinaryLhsParameterAuthority{
+                .value = definition->value,
+                .parameter_index = definition->parameter_index,
+                .type = definition->type,
+                .owner = definition->owner,
+                .abi = definition->abi,
+                .role = lir::LirScalarBinaryParameterRole::Lhs,
+            };
+          }
+        }
+        emit_lir_op(ctx, lir::LirBinOp{tmp, "fneg", type, val, "", lhs_authority});
         return tmp;
       } else {
         const LirOperand tmp = fresh_value(ctx);
