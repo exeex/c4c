@@ -1449,6 +1449,9 @@ bool requires_native_result_authority(const LirInst& inst) {
   if (const auto* extract = std::get_if<LirExtractValueOp>(&inst)) {
     return extract->requires_native_result_authority;
   }
+  if (const auto* insert = std::get_if<LirInsertValueOp>(&inst)) {
+    return insert->requires_native_result_authority;
+  }
   return false;
 }
 
@@ -1487,6 +1490,19 @@ void verify_insert_value_authority(const LirInsertValueOp& op) {
       *op.aggregate_result_type != op.agg_type) {
     fail_verify("LirInsertValueOp.result",
                 "native insertvalue aggregate producer requires matching result and type authority");
+  }
+  const std::vector<LirTypeRef>* fields = op.aggregate_result_type->anonymous_struct_field_types();
+  if (!fields) {
+    fail_verify("LirInsertValueOp.aggregate_result_type",
+                "native insertvalue aggregate producer requires ordered native field types");
+  }
+  if (op.index < 0 || static_cast<size_t>(op.index) >= fields->size()) {
+    fail_verify("LirInsertValueOp.index",
+                "native insertvalue field index must select an aggregate field");
+  }
+  if (op.elem_type != (*fields)[static_cast<size_t>(op.index)]) {
+    fail_verify("LirInsertValueOp.elem_type",
+                "native insertvalue element type must match its selected aggregate field");
   }
 }
 

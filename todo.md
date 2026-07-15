@@ -8,61 +8,39 @@ Current Step Title: Implement and prove the selected remaining row
 
 ## Just Finished
 
-Step 5 audit selected exactly one next row: the terminal direct-complex
-`LirInsertValueOp` producer emitted by
-`StmtEmitter::emit_complex_binary_arith` in
-`src/codegen/lir/hir_to_lir/expr/binary.cpp` (the
-`require_direct_aggregate_ssa` branch).  The existing structured seam is
-`LirInsertValueOp.result : LirOperand::ssa` plus
-`requires_native_result_authority` and `aggregate_result_type`, constructed
-at the terminal insert and checked by `verify_insert_value_authority`; the
-same result/type pair is consumed as the selected aggregate producer in the
-current-function definition check for `LirExtractValueOp.agg`.
+Step 6 completed the selected terminal direct-complex `LirInsertValueOp`
+producer in `StmtEmitter::emit_complex_binary_arith`'s
+`require_direct_aggregate_ssa` branch.  The verifier now treats this selected
+native result as current-function owned and, without parsing display text,
+requires its existing aggregate result type to provide an ordered native
+layout, its index to select a field, and its element type to match that field.
+The existing result-ID/aggregate-result-type handoff to the immediate
+`LirExtractValueOp` remains a compatibility consumer.
 
-This selection does not reopen accepted `LirExtractValueOp` work.  It is a
-single producer-row extension: native result ownership and aggregate result
-type are already factual, while terminal insert's row-local aggregate/index/
-element coherence remains to be published and proved.  No identity is to be
-recovered from the terminal result text, `with_real`, `out_imag`, or rendered
-LLVM.
+Nearby lowering-based coverage retains one valid terminal insert and rejects
+missing, invalid/unknown, and foreign result authority; missing/conflicting
+aggregate result type; negative/out-of-range index; and element-field type
+conflict.  A stale producer/extract display pair with the same valid ID still
+verifies, demonstrating that display does not select or repair authority.
 
 ## Suggested Next
 
-Step 6: implement only the selected terminal direct-complex
-`LirInsertValueOp` row.  Keep its existing current-function result ID and
-aggregate-result-type handoff, then add/check only native row-local facts
-needed to prove aggregate result/type, selected index, and inserted element
-coherence.  The positive/malformed matrix is:
-
-- Positive: a terminal direct-complex insert with a valid current-function
-  result ID, matching aggregate result/type, valid selected field, and an
-  element matching that field; retain the existing immediate extract consumer
-  as a compatibility consumer, not as the source of identity.
-- Malformed: missing/unknown/foreign terminal result ID; missing or
-  aggregate-type-conflicting result fact; negative/out-of-range index;
-  selected-field/element type conflict; stale display paired with an otherwise
-  valid ID, which must not repair or select authority.
-
-Excluded and unchanged: `LirInsertElementOp`, `LirExtractElementOp`, and
-`LirShuffleVectorOp`.  Their lowering paths carry vector result/vector/index/
-mask values through unselected raw `LirOperand` presentations and expose no
-row-local native vector lane/layout authority.  Making those paths authoritative
-would require a separate generic vector producer/use or vector-layout
-publication family; classify that prerequisite as `separate-blocker` if it is
-needed later, rather than extending this packet.  Likewise, do not follow the
-selected insert's `with_real` or `out_imag` strings into generic binop/extract
-provenance; that is outside this row-local contract.
+Step 7: reassess the remaining representative aggregate/vector rows and have
+the plan owner repair the runbook with one new bounded audit, or request the
+required full baseline if source completion is otherwise evidenced.
 
 ## Watchouts
 
-Do not revisit accepted `LirExtractValueOp` work, recover identity from display
-text, weaken contracts, absorb generic binop/extract provenance or generic
-vector-layout publication, or claim the source complete before all
-representative aggregate/vector rows have accepted bounded coverage.
+Do not widen the completed insert row into generic binop/extract provenance or
+generic vector layout. `LirInsertElementOp`, `LirExtractElementOp`, and
+`LirShuffleVectorOp` remain unselected and unchanged; any native vector
+authority prerequisite is a separate blocker.
 
 ## Proof
 
-The accepted 754 full-baseline proof is in root `test_before.log` and
-`test_after.log`; each reports 3037/3037 passed. New code packets require a
-fresh build, nearby same-feature proof, and matching regression guard. A later
-full baseline is required before source closure.
+Fresh `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^backend_'` passed 5/5 backend tests. Nearby
+`./build/tests/frontend/frontend_lir_call_type_ref_test` passed. Per supervisor
+ownership and packet scope, canonical root `test_before.log` and
+`test_after.log` were not modified; a later matching regression guard/full
+baseline remains supervisor work.

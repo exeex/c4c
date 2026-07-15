@@ -8663,6 +8663,93 @@ float extract_real(int value) { return __real__ complex_source(value); }
       mismatched_direct_result_type,
       "selected direct-complex extract must reject a conflicting field result type");
 
+  lir::LirModule direct_complex_binary = lower_lir_module_for_target(R"c(
+float extract_sum_real(__complex__ float lhs, __complex__ float rhs) {
+  return __real__ (lhs + rhs);
+}
+)c", "x86_64-linux-gnu");
+  const auto selected_terminal_insert = [](lir::LirModule& module) -> lir::LirInsertValueOp& {
+    lir::LirFunction& function = require_function(module, "extract_sum_real");
+    lir::LirInsertValueOp* selected = nullptr;
+    for (lir::LirInst& inst : function.blocks.front().insts) {
+      if (auto* insert = std::get_if<lir::LirInsertValueOp>(&inst);
+          insert && insert->requires_native_result_authority) {
+        expect_true(selected == nullptr,
+                    "direct-complex binary fixture must publish exactly one terminal insert authority");
+        selected = insert;
+      }
+    }
+    if (!selected) throw std::runtime_error("direct-complex binary fixture lost terminal insertvalue");
+    return *selected;
+  };
+  lir::LirInsertValueOp& terminal_insert = selected_terminal_insert(direct_complex_binary);
+  expect_true(terminal_insert.result.value_id() && terminal_insert.result.value_id()->valid() &&
+                  terminal_insert.aggregate_result_type &&
+                  *terminal_insert.aggregate_result_type == terminal_insert.agg_type &&
+                  terminal_insert.index == 1 &&
+                  terminal_insert.aggregate_result_type->anonymous_struct_field_types() &&
+                  terminal_insert.elem_type ==
+                      (*terminal_insert.aggregate_result_type->anonymous_struct_field_types())[1],
+              "terminal direct-complex insert must publish native result, aggregate, index, and element facts");
+  lir::verify_module(direct_complex_binary);
+
+  lir::LirModule missing_terminal_result = direct_complex_binary;
+  selected_terminal_insert(missing_terminal_result).result = {};
+  expect_identity_verification_rejected(
+      missing_terminal_result, "terminal direct-complex insert must reject a missing result authority");
+
+  lir::LirModule unknown_terminal_result = direct_complex_binary;
+  selected_terminal_insert(unknown_terminal_result).result =
+      lir::LirOperand::ssa("%unknown_terminal", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      unknown_terminal_result, "terminal direct-complex insert must reject an unknown result authority");
+
+  lir::LirModule foreign_terminal_result = direct_complex_binary;
+  foreign_terminal_result.functions.push_back(
+      make_identity_test_function("foreign_terminal_insert_owner", lir::LirValueId{99}));
+  selected_terminal_insert(foreign_terminal_result).result =
+      lir::LirOperand::ssa("%foreign_terminal", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      foreign_terminal_result, "terminal direct-complex insert must reject a foreign result authority");
+
+  lir::LirModule missing_terminal_type = direct_complex_binary;
+  selected_terminal_insert(missing_terminal_type).aggregate_result_type.reset();
+  expect_identity_verification_rejected(
+      missing_terminal_type, "terminal direct-complex insert must reject a missing aggregate result type");
+
+  lir::LirModule conflicting_terminal_type = direct_complex_binary;
+  selected_terminal_insert(conflicting_terminal_type).aggregate_result_type = lir::LirTypeRef::integer(32);
+  expect_identity_verification_rejected(
+      conflicting_terminal_type, "terminal direct-complex insert must reject a conflicting aggregate result type");
+
+  lir::LirModule negative_terminal_index = direct_complex_binary;
+  selected_terminal_insert(negative_terminal_index).index = -1;
+  expect_identity_verification_rejected(
+      negative_terminal_index, "terminal direct-complex insert must reject a negative field index");
+
+  lir::LirModule out_of_range_terminal_index = direct_complex_binary;
+  selected_terminal_insert(out_of_range_terminal_index).index = 2;
+  expect_identity_verification_rejected(
+      out_of_range_terminal_index, "terminal direct-complex insert must reject an out-of-range field index");
+
+  lir::LirModule mismatched_terminal_element = direct_complex_binary;
+  selected_terminal_insert(mismatched_terminal_element).elem_type = lir::LirTypeRef::integer(32);
+  expect_identity_verification_rejected(
+      mismatched_terminal_element, "terminal direct-complex insert must reject a field/element type conflict");
+
+  lir::LirModule stale_terminal_display = direct_complex_binary;
+  lir::LirInsertValueOp& stale_insert = selected_terminal_insert(stale_terminal_display);
+  stale_insert.result = lir::LirOperand::ssa("%stale_terminal_display", *stale_insert.result.value_id());
+  lir::LirFunction& stale_function = require_function(stale_terminal_display, "extract_sum_real");
+  for (lir::LirInst& inst : stale_function.blocks.front().insts) {
+    if (auto* extract = std::get_if<lir::LirExtractValueOp>(&inst);
+        extract && extract->agg.value_id() &&
+        *extract->agg.value_id() == *stale_insert.result.value_id()) {
+      extract->agg = lir::LirOperand::ssa("%stale_terminal_display", *stale_insert.result.value_id());
+    }
+  }
+  lir::verify_module(stale_terminal_display);
+
   const auto make_module = [&](bool terminal_insert) {
     lir::LirModule module;
     lir::LirFunction function;
