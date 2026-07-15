@@ -71,8 +71,9 @@ form remain fail closed.
 
 ## Resumption Record: Preserved lowering-selector worktree collision
 
-Status: parked; there is no active runbook until the separately owned local
-Idea 822 slice has been isolated, accepted, or removed by its own authority.
+Status: resumed after Idea 826 completed its isolation-only prerequisite.
+Idea 825 does not own, accept, remove, or edit the preserved dirty 822
+material.
 
 - Last accepted progress: Step 1 only, accepted in `7e6366cc9` (`plan: select
   direct scalar switch selector authority row`). No Step 2 implementation,
@@ -86,16 +87,18 @@ Idea 822 slice has been isolated, accepted, or removed by its own authority.
   binary-LHS/materializing route Step 2 expressly rejects, and editing around
   it would overwrite or blend an unaccepted Idea 822 slice. Its companion
   dirty test patch and Idea 821 note remain preserved and unaccepted.
-- Exact return action: after separate authority has isolated, accepted, or
-  removed the local Idea 822 slice, reconstruct this runbook at Step 2 and
-  publish a dedicated optional `LirSwitch` selector authority with the
-  `SwitchSelector` role directly from the native parameter definition; do not
-  reuse `scalar_lhs_parameter_authority` or materialize an add. Then define
-  the focused producer proof before proceeding to Step 3.
+- Isolation resolution and exact return action: Idea 826 closed its bounded
+  isolation route with the dirty 822 material recoverably preserved at
+  `.git/c4c-preservation/822-materializing-add-and-lowered-route.patch`.
+  Restore it only with `git apply --binary .git/c4c-preservation/822-materializing-add-and-lowered-route.patch`.
+  Resume this runbook exactly at Step 2 and publish a dedicated optional
+  `LirSwitch` selector authority with the `SwitchSelector` role directly from
+  the native parameter definition; do not reuse
+  `scalar_lhs_parameter_authority` or materialize an add. Then define the
+  focused producer proof before proceeding to Step 3.
 - Proof and commit status: `7e6366cc9` is the only accepted Idea 825 progress.
-  There is no Step 2 proof. The unresolved authority decision is whether the
-  local Idea 822 slice may be isolated, accepted, or removed; this must not be
-  assumed by Idea 825.
+  There is no Step 2 proof. The completed isolation prerequisite must not be
+  mistaken for authority acceptance or performed again by Idea 825.
 
 ## Reviewer Reject Signals
 
