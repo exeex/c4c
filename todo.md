@@ -4,26 +4,28 @@ Status: Active
 Source Idea Path: ideas/open/775_lir_phi_producer_helper_result_identity.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Reassess the accepted producer handoffs
+Current Step Title: Publish selected then-arm coercion result authority
 
 ## Just Finished
 
-- Activation only. 775 resumes at its preserved post-781 reassessment gate;
-  no 775 implementation packet has run.
+- Reassessment found the first remaining producer loss: the selected scalar
+  ternary `then` arm still follows `emit_rval_id` to string `coerce`, while the
+  accepted selected `else` arm already follows `emit_rval_operand` to
+  `coerce_operand`.
 
 ## Suggested Next
 
-- Execute Plan Step 1: compare the accepted 777, 778, and 781 producer facts
-  against 775's complete three-family contract and identify the first remaining
-  loss or bounded route.
+- Implement only Plan Step 1's selected then-arm typed coercion-result
+  publication; retain the raw PHI/final-consumer boundary.
 
 ## Watchouts
 
-- The accepted 781 fact covers only the selected ternary `else` arm. The other
-  ternary arm, raw PHI result/incoming carriers, and later final-consumer input
-  remain unresolved; 751 stays blocked.
+- The accepted selected else-arm, logical-RHS, and vaarg facts are retained.
+  Do not widen to another expression family, generic expression APIs, PHI/751,
+  Raw-BIR, or backend work.
 
 ## Proof
 
-- Step 1 is a lifecycle reassessment only. Do not run or alter code proof in
-  this packet.
+- After implementation, run `cmake --build --preset default && ctest
+  --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`;
+  Step 2 owns focused structural and malformed-authority proof.

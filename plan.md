@@ -1,96 +1,115 @@
-# LIR PHI Producer Helper Result Identity Reassessment Runbook
+# LIR PHI Producer Helper Result Identity Then-Arm Runbook
 
 Status: Active
 Source Idea: ideas/open/775_lir_phi_producer_helper_result_identity.md
-Activated from: accepted 781 ternary-arm handoff and 775's preserved
-post-781 reassessment return point.
+Repaired from: Step 1 reassessment, which found the first remaining loss in the
+selected scalar ternary `then` arm.
 
 ## Purpose
 
-Determine whether the accepted vaarg, logical-RHS, and selected ternary-arm
-producer facts leave an executable, bounded route for 775's three-family
-helper-result contract.
+Publish native result authority for the selected scalar ternary `then`-arm
+coercion before compatibility spelling, completing only this next bounded
+producer repair for 775's later three-family reassessment.
 
 ## Goal
 
-Establish the first remaining native producer loss, or confirm that the
-remaining 775 work can proceed without a generic expression API migration or
-PHI-carrier work.
+Route the selected `then` arm from `emit_rval_id` through a bounded typed
+operand/coercion entry so its emitted `LirCastOp.result` has an owning,
+current-function `LirValueId` before rendering.
+
+## Evidence
+
+In `src/codegen/lir/hir_to_lir/expr/misc.cpp`, accepted 781 already routes the
+selected `else` arm through `emit_rval_operand` to `coerce_operand`. The
+selected `then` arm in the same ternary function remains the first loss:
+`emit_rval_id` followed by string `coerce`.
 
 ## Core Rule
 
-Treat native `LirValueId` authority as semantic data before rendering. Do not
-recover it from result spelling, labels, printed output, instruction order, or
-testcase identity.
+Native result authority must be carried before display spelling. Do not derive
+it from `%t` names, labels, rendered output, instruction order, or testcase
+identity.
 
 ## Read First
 
 - `ideas/open/775_lir_phi_producer_helper_result_identity.md`
-- `ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md`
-- `ideas/closed/777_lir_vaarg_result_authority_publication.md`
-- `ideas/closed/778_lir_logical_rhs_result_authority_publication.md`
 - `ideas/closed/781_lir_ternary_coerce_arm_result_authority_publication.md`
+- `src/codegen/lir/hir_to_lir/expr/misc.cpp`
+- `src/codegen/lir/hir_to_lir/expr/coordinator.cpp`
+- `tests/frontend/frontend_lir_call_type_ref_test.cpp`
 
 ## Non-Goals
 
-- no implementation or test changes during the reassessment gate
-- no generic `emit_rval_*` or `coerce` API migration
-- no other expression family, PHI carrier/verifier, 751, Raw-BIR/importer,
-  backend, target-lowering, MIR, emission, or baseline-log work
-- no side tables, synthetic values, or text-derived identity recovery
+- no work beyond the selected ternary `then` arm
+- retain, without revisiting, accepted selected `else`-arm, logical-RHS, and
+  vaarg producer facts
+- no raw ternary PHI result, either incoming carrier, later final-consumer
+  input, 751, generic `emit_rval_*`/`coerce` API migration, Raw-BIR, backend,
+  or baseline-log work
+- no side tables, synthetic values, or text-derived authority
 
 ## Execution Rules
 
-1. Compare each accepted handoff only to the corresponding 775 acceptance
-   criterion; do not treat a selected producer fact as full chain coverage.
-2. Identify a concrete first remaining native-authority loss before proposing
-   code work.
-3. If the remaining route needs a broad API migration or PHI-carrier work,
-   stop and return the exact bounded successor scope for plan-owner lifecycle
-   repair; do not absorb it into 775.
-4. Preserve 751's blocked return point until 775 has an accepted complete typed
-   handoff for all named producer families.
+1. Change only the narrow typed operand/coercion route required by the selected
+   scalar `then` arm; compatibility strings are projections, not authority.
+2. Keep the raw PHI boundary and final consumer untouched.
+3. Use the existing native verifier contract to fail closed for malformed
+   authority.
+4. Do not claim a full ternary, PHI, 751, or Raw-BIR solution from this packet.
 
 ## Ordered Steps
 
-### Step 1 - Reassess the accepted producer handoffs
+### Step 1 - Publish selected then-arm coercion result authority
 
-Goal: determine whether 777, 778, and 781 together leave an executable,
-bounded native producer contract for 775.
+Goal: route only the selected scalar ternary `then` arm through the bounded
+typed operand/coercion entry and publish a valid current-function
+`LirCastOp.result` before compatibility spelling.
 
-Actions:
+Primary targets:
 
-- inventory the vaarg, logical, and ternary facts against 775's acceptance
-  criteria, including what each fact expressly leaves raw;
-- identify the first remaining producer authority loss, if any, without
-  inferring identity from compatibility spelling; and
-- classify the result as an in-scope bounded 775 implementation route or a
-  separately scoped blocker.
-
-Completion check:
-
-- the next lifecycle action names either one bounded native 775 route with its
-  exact first loss and proof boundary, or one separately scoped successor; no
-  PHI/751/Raw-BIR claim is made.
-
-### Step 2 - Repair the lifecycle route from the reassessment result
-
-Goal: keep the active lifecycle executable without broadening 775.
+- `src/codegen/lir/hir_to_lir/expr/misc.cpp`
+- `src/codegen/lir/hir_to_lir/expr/coordinator.cpp` only if the existing narrow
+  typed entry requires a matching bounded call site
 
 Actions:
 
-- if Step 1 identifies a bounded in-scope producer route, request a runbook
-  repair that names only that route and its focused proof; or
-- if Step 1 identifies an out-of-scope first loss, have plan-owner create and
-  activate the named successor while preserving 775's return point.
+- replace the selected `emit_rval_id` to string-`coerce` authority loss with
+  the existing narrow typed operand/coercion route;
+- preserve the selected arm's type and conditional control flow; and
+- retain raw PHI result/incomings and the later consumer exactly as raw
+  compatibility boundaries.
 
 Completion check:
 
-- no exhausted reassessment route remains active without either an executable
-  repaired 775 runbook or a named active successor.
+- the selected emitted then-arm coercion has a native, valid,
+  current-function-owned result ID before display spelling, without a generic
+  API or PHI-carrier change.
+
+### Step 2 - Prove selected then-arm authority and failure closure
+
+Goal: add focused structural positive and malformed-authority coverage for the
+selected then-arm coercion result.
+
+Primary target:
+
+- `tests/frontend/frontend_lir_call_type_ref_test.cpp`
+
+Actions:
+
+- prove the native result structurally, without rendered-text or order probes;
+- prove missing, invalid, duplicate, and foreign result authority rejects via
+  the existing verifier; and
+- retain explicit proof that the raw PHI and later-consumer boundaries remain
+  outside this route.
+
+Completion check:
+
+- `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_call_type_ref$'` passes with focused
+  structural positive and fail-closed malformed coverage.
 
 ## Proof
 
-- This reassessment gate is documentation/lifecycle analysis; do not generate
-  code proof. Any later code packet must select fresh focused build and test
-  proof before acceptance.
+- Required focused proof: `cmake --build --preset default && ctest --test-dir
+  build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`.
+- The supervisor owns regression-log and broader acceptance selection.
