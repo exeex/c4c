@@ -47,3 +47,16 @@ return 810 at unchanged Step 3.
 - Reject reliance on closed 742 declaration publication as body-use authority.
 - Reject broad ABI conversion, receiver edits, expectation weakening, or
   rendered parameter names/types as semantic authority.
+
+## Resumption / Completion Record
+
+- Accepted progress: Step 1 trace is recorded in `7807812ee`; Step 2 native
+  body-parameter authority publication is accepted in `281737387`.
+- Accepted proof: fresh `cmake --build --preset default`; backend CTest 5/5
+  with the accepted non-decreasing regression guard; focused
+  `backend_lir_selected_pointer_authority`; and successful
+  `./build/c4cll --codegen llvm tests/c/external/gcc_torture/src/pr21173.c`.
+- Disposition: the bounded parameter-index handoff is complete. Its required
+  return-control action is this lifecycle switch: resume the already-open 810
+  blocker unchanged at Step 3 for a fresh comparable full baseline. This does
+  not establish 3037/3037 clearance or return control to 801.

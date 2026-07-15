@@ -1,82 +1,63 @@
-# LIR Function-Body Parameter Authority Handoff Runbook
+# LIR GEP Producer Result Authority Baseline Blocker Runbook
 
 Status: Active
-Source Idea: ideas/open/795_lir_body_parameter_authority_handoff.md
-Activated from: 810 Step 3 full-baseline blocker; return to 810 only after accepted parameter-index proof.
+Source Idea: ideas/open/810_lir_gep_producer_result_authority_baseline_blocker.md
+Resumed from: 795 accepted parameter-index authority handoff (`281737387`)
 
 ## Purpose
 
-Publish the native function-body parameter authority needed by the selected
-variable pointer-compound GEP index without treating declaration facts or
-rendered parameter text as body-use identity.
+Complete the previously interrupted baseline gate for the bounded GEP
+producer-authority blocker. Steps 1--2 remain accepted; Step 3 must establish
+a fresh comparable full baseline before 810 can return control to 801.
 
 ## Core Rule
 
-A variable GEP index sourced from a function-body parameter must carry checked
-native integer or SSA authority owned by the current function. Do not recover
-identity from spelling, weaken `verify_authoritative_gep`, or broaden to ABI
-families not selected by evidence.
+Keep the existing authoritative GEP contract intact. Do not derive authority
+from rendered text, testcase identity, or instruction order, and do not
+absorb anonymous layout, structured-call, or PHI work.
 
 ## Read First
 
-- `ideas/open/795_lir_body_parameter_authority_handoff.md`
-- `ideas/open/810_lir_gep_producer_result_authority_baseline_blocker.md` resumption record
-- current `pr21173.c` failure trace and the direct pointer-compound GEP lowering path
-- nearby parameter publication/body-use authority and authoritative GEP verification
+- `ideas/open/810_lir_gep_producer_result_authority_baseline_blocker.md`
+- its function-body parameter index resumption record
+- `ideas/open/795_lir_body_parameter_authority_handoff.md` completion record
+- canonical `test_before.log` and the fresh full-baseline procedure
 
 ## Non-Goals
 
-- Reopening 810's accepted postfix/native-immediate GEP producer repair.
-- PHI producer authority, including `20060910-1.c`, owned by 806.
-- Broad ABI/byval/HFA/vector/variadic conversion, Raw-BIR receipt, pointer or
-  memory redesign, verifier weakening, or text-derived authority.
+- Repeating accepted 810 Steps 1--2 or reopening 795.
+- Claiming 3037/3037 clearance from focused proof.
+- Anonymous aggregate/direct-complex compatibility changes, PHI work, verifier
+  weakening, text-derived identity, or generic provenance/pointer redesign.
 
 ## Ordered Steps
 
-### Step 1 - Trace the selected parameter-index body-use handoff
+### Step 1 - Trace and classify failing GEP producer families (accepted)
 
-Goal: establish the exact native parameter identity, ownership, and ABI-form
-classification at the variable RHS index entering the direct pointer-compound
-GEP.
+Accepted in `f1cb9c510`: the bounded native pointer postfix and compound
+add/sub producer family was traced. Do not repeat this step.
 
-Actions:
+### Step 2 - Repair the selected GEP result-authority handoff (accepted)
 
-- trace `pr21173.c` from the GEP index verifier diagnostic to the function
-  body parameter publication and lowering handoff;
-- determine whether the selected parameter is native integer authority or a
-  bounded ABI-expanded form requiring explicit classification;
-- split any unshared parameter or ABI family into a separate open successor.
+Accepted in `1f1a1fb38`: only the selected native pointer producer family was
+repaired. The later native parameter-index handoff is complete in `281737387`
+and is not a reopening of this step.
 
-Completion check: one body-parameter/index authority route is evidenced and
-bounded; no declaration-only, text-derived, PHI, or generic ABI work is
-selected.
+### Step 3 - Prove the blocker and return control to 801
 
-### Step 2 - Publish the selected parameter-index authority
-
-Goal: make the smallest producer/schema/lowering repair that supplies checked
-current-function integer or SSA authority for the selected body-parameter GEP
-index.
+Goal: obtain the fresh, comparable full-baseline evidence required after the
+accepted 810 and 795 handoffs.
 
 Actions:
 
-- repair only the evidenced parameter body-use/index handoff;
-- retain rejection of malformed, foreign, type-incoherent, and display-derived
-  authority;
-- add nearby same-family positive and malformed-authority coverage.
+- run a fresh build and the supervisor-selected comparable full baseline;
+- retain the established focused proof only as supporting evidence, not as
+  baseline clearance;
+- classify any residual failure by owned route without absorbing the unrelated
+  anonymous aggregate/direct-complex dirty hunks or the 806 PHI residual;
+- return control to 801 unchanged at Step 2 only after supervisor acceptance
+  of a 3037/3037 comparable baseline.
 
-Completion check: focused coverage proves the selected variable parameter
-index is authoritative and malformed forms remain fail-closed.
-
-### Step 3 - Prove the handoff and return control to 810
-
-Goal: give the supervisor accepted focused proof sufficient to resume 810's
-full-baseline gate.
-
-Actions:
-
-- run a fresh build and selected same-feature proof;
-- have the supervisor assess the evidence and reactivate 810 unchanged at
-  Step 3; do not call a focused result a 3037/3037 baseline clearance.
-
-Completion check: supervisor acceptance permits 810 to resume exactly at Step
-3, where it must obtain a fresh comparable full baseline before returning 801.
+Completion check: a fresh comparable full baseline passes 3037/3037 and the
+supervisor accepts 810's bounded evidence. Any lesser or partial result does
+not clear 810 or 801.
