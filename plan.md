@@ -31,7 +31,7 @@ No Raw-BIR/importer work belongs in this plan.
 
 ## Ordered Steps
 
-### Step 1 - Trace and select one native body-parameter use row
+### Step 1 - Trace and select one native body-parameter use row (completed)
 
 Goal: identify one next receiver-eligible parameter-use semantic relation and
 its first owning producer/schema/verifier seam.
@@ -44,17 +44,27 @@ Actions:
 - otherwise record the exact missing first-owner fact and repair this plan
   before any implementation.
 
-Completion check: one explicitly bounded native row is selected, with all
-other forms fail closed and no Raw-BIR changes.
+Completion check: selected `DirectScalar` integer current-function parameter
+used directly as `LirSwitch.selector`; its tuple is parameter `LirValueId`,
+`LirFunction.link_name_id` owner, parameter index, `LirTypeRef`,
+`LirNativeBodyParameterAbi::DirectScalar`, new `SwitchSelector` role, and the
+exact `LirSwitch.selector`/`selector_type_ref` relation. The native seam is
+`StmtEmitter::emit_control_flow_stmt(const SwitchStmt&)`, `LirSwitch`, and
+`verify_switch_selector`. Existing binary-LHS/RHS, ReturnValue, DirectPointer,
+and every other parameter form remain fail closed; no Raw-BIR changes.
 
 ### Step 2 - Publish and verify the selected authority tuple
 
 Goal: add only the selected producer/schema/verifier carrier and malformed
-authority rejection.
+authority rejection. Publish a dedicated optional `LirSwitch` selector
+authority with a `SwitchSelector` role; do not route through or reuse
+`LirBinOp.scalar_lhs_parameter_authority` or its materializing add, because
+that is the accepted binary-LHS row rather than the selected direct consumer
+relation.
 
 Completion check: the selected tuple and consuming relation verify natively;
-missing, foreign, duplicate, incoherent, and display-derived paths fail
-closed.
+missing, foreign, duplicate, owner/index/type/ABI/role-invalid, selector- or
+selector-type-incoherent, and display-derived paths fail closed.
 
 ### Step 3 - Prove and hand off the selected row to 734
 

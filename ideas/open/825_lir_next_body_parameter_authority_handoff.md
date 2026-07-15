@@ -51,6 +51,24 @@ owner must identify one native row before a receiver can proceed.
 - No Raw-BIR/importer code changes, presentation-derived authority, or
   expectation weakening is used to claim the handoff.
 
+## Step 1 Selection Record
+
+The sole selected row is an unchanged current-function integer parameter with
+`LirNativeBodyParameterAbi::DirectScalar`, consumed directly as
+`LirSwitch.selector`. Its required native tuple is the parameter-definition
+`LirValueId`, current `LirFunction.link_name_id` owner, parameter index,
+`LirTypeRef`, `DirectScalar` ABI, a new `SwitchSelector` role, and the exact
+consumer relation that `LirSwitch.selector` equals that value and
+`LirSwitch.selector_type_ref` equals that type.
+
+The first producer is `StmtEmitter::emit_control_flow_stmt(const SwitchStmt&)`;
+the publication/verifier seam is a dedicated optional `LirSwitch` selector
+authority checked by `verify_switch_selector`. It must not reuse the accepted
+`LirBinOp.scalar_lhs_parameter_authority` or its materializing add: that is a
+binary-LHS relation, not this direct switch-selector row. DirectPointer,
+DirectScalar binary-LHS, binary-RHS, ReturnValue, and every other parameter
+form remain fail closed.
+
 ## Reviewer Reject Signals
 
 - Reject selection from rendered parameter names, types, signatures, operand
