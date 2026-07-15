@@ -1,7 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (paused after accepted Step 7.37 DirectScalar return-value receipt;
-active successor: 825 next body-parameter authority handoff)
+Status: Open (resumed after closed 825's accepted DirectScalar switch-selector
+parameter-authority handoff; Step 7.38 receiver packet active)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -1452,3 +1452,35 @@ typed Raw-BIR receiver row. Do not repeat Step 7.37 or receive another
 parameter, memory/VA, aggregate/vector, module/type/global, instruction/
 terminator, or inline-assembly form without its separately scoped first-owner
 handoff.
+
+## Resumption Record: closed 825 DirectScalar switch-selector authority
+
+Closed idea 825 is capability-complete in `37674ad76`. It publishes exactly
+one new producer/schema/verifier row: an unchanged current-function integer
+parameter with `LirNativeBodyParameterAbi::DirectScalar` used directly as
+`LirSwitch.selector`. The native authority tuple is the parameter-definition
+`LirValueId`, current `LirFunction.link_name_id` owner, parameter index,
+`LirTypeRef`, DirectScalar ABI, and
+`LirSwitchSelectorParameterRole::SwitchSelector`. It is carried only by
+`LirSwitch.selector_parameter_authority`, and its checked consumer relation
+requires `LirSwitch.selector == authority.value` and
+`LirSwitch.selector_type_ref == authority.type`. Missing, invalid, duplicate,
+foreign, owner/index/type/ABI/role-mismatched, and consumer-incoherent
+authority rejects; no fact is recovered from display text.
+
+The accepted producer proof is a fresh `cmake --build --preset default`, the
+exact focused `ctest --test-dir build -j --output-on-failure -R
+'^frontend_lir_call_type_ref$'` pass, and its matching guard from the prior
+0/1 expected abort to 1/1 pass. No Raw-BIR/importer/receiver code landed in
+825.
+
+Exact return action: resume at **Step 7.38 - Receive the one
+825-authorized DirectScalar switch-selector parameter authority row**. Add
+only the typed Raw-BIR switch-selector parameter destination, importer
+dispatch, reachable verifier path, and transactional positive/malformed
+authority coverage for this tuple and its two equality checks. Do not repeat
+Steps 1 through 7.37 (including `88e930ee1`), reuse binary-LHS authority,
+materialize an `add`, admit another parameter row, or absorb memory/VA,
+aggregate/vector, module/type/global, instruction/terminator, or
+inline-assembly work. Reapply this source completion gate after the one
+receipt.
