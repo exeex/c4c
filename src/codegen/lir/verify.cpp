@@ -2114,6 +2114,7 @@ void verify_selected_memcpy_pointer_authority(const LirModule& mod,
 }
 
 bool plain_fixed_scalar_parameter(const TypeSpec& type);
+bool direct_scalar_parameter_type(const TypeSpec& type);
 bool same_plain_fixed_scalar_type(const TypeSpec& lhs, const TypeSpec& rhs);
 bool exact_plain_scalar_mirror(const LirModule& mod, const TypeSpec& type,
                                const LirTypeRef& mirror);
@@ -2140,10 +2141,10 @@ void verify_native_body_parameter_definitions(
                                 definition.abi == LirNativeBodyParameterAbi::DirectPointer;
     const bool direct_scalar = in_range &&
                                definition.abi == LirNativeBodyParameterAbi::DirectScalar &&
-                               plain_fixed_scalar_parameter(
+                               direct_scalar_parameter_type(
                                    function.params[definition.parameter_index].second) &&
                                !function.signature_params[definition.parameter_index].is_byval &&
-                               plain_fixed_scalar_parameter(
+                               direct_scalar_parameter_type(
                                    function.signature_params[definition.parameter_index].type) &&
                                same_plain_fixed_scalar_type(
                                    function.params[definition.parameter_index].second,
@@ -2151,9 +2152,25 @@ void verify_native_body_parameter_definitions(
                                exact_plain_scalar_mirror(
                                    mod, function.signature_params[definition.parameter_index].type,
                                    definition.type);
-    if (!definition.value.valid() || definition.owner != function.link_name_id ||
-        !in_range || (!direct_pointer && !direct_scalar) ||
+    if (!definition.value.valid() || definition.owner != function.link_name_id || !in_range ||
         function.signature_param_type_refs[definition.parameter_index] != definition.type) {
+      fail_verify(field,
+                  "requires a native direct-pointer or direct-scalar current-function parameter identity and type");
+    }
+    if (!direct_pointer && !direct_scalar) {
+      if (definition.abi == LirNativeBodyParameterAbi::DirectScalar) {
+        const auto& logical = function.params[definition.parameter_index].second;
+        const auto& signature = function.signature_params[definition.parameter_index];
+        if (!direct_scalar_parameter_type(logical))
+          fail_verify(field, "direct-scalar parameter has a non-plain logical type");
+        if (signature.is_byval)
+          fail_verify(field, "direct-scalar parameter must not be passed byval");
+        if (!direct_scalar_parameter_type(signature.type))
+          fail_verify(field, "direct-scalar parameter has a non-plain signature type");
+        if (!same_plain_fixed_scalar_type(logical, signature.type))
+          fail_verify(field, "direct-scalar parameter logical and signature types disagree");
+        fail_verify(field, "direct-scalar parameter type does not match its typed signature mirror");
+      }
       fail_verify(field,
                   "requires a native direct-pointer or direct-scalar current-function parameter identity and type");
     }
@@ -2716,7 +2733,7 @@ void verify_function_value_ownership(const LirModule& mod,
                  definition.abi == authority.abi;
         });
     if (matches != 1 || authority.parameter_index >= function.params.size() ||
-        !plain_fixed_scalar_parameter(function.params[authority.parameter_index].second)) {
+        !direct_scalar_parameter_type(function.params[authority.parameter_index].second)) {
       fail_verify(field, "must exactly mirror one native direct-scalar parameter definition");
     }
   };
@@ -3821,6 +3838,26 @@ bool plain_fixed_scalar_parameter(const TypeSpec& type) {
          type.deferred_member_type_owner_key == c4c::QualifiedNameKey{} &&
          type.deferred_member_type_name == nullptr &&
          type.deferred_member_type_text_id == kInvalidText;
+}
+
+bool direct_scalar_parameter_type(const TypeSpec& type) {
+  switch (type.base) {
+    case TB_INT:
+    case TB_UINT:
+    case TB_LONG:
+    case TB_ULONG:
+    case TB_LONGLONG:
+    case TB_ULONGLONG:
+    case TB_FLOAT:
+    case TB_DOUBLE: break;
+    default: return false;
+  }
+  // Keep scalar admission structural. Source alias/qualification metadata is
+  // not parameter identity; the matching logical/signature bases and exact
+  // typed mirror below remain the authority contract.
+  return type.ptr_level == 0 && type.array_rank == 0 && !type.is_ptr_to_array &&
+         !type.is_vector && !type.is_lvalue_ref && !type.is_rvalue_ref &&
+         !type.is_fn_ptr;
 }
 
 bool same_plain_fixed_scalar_type(const TypeSpec& lhs,

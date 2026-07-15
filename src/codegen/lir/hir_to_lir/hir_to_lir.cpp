@@ -1435,7 +1435,10 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
           LirCurrentFunctionBodyParameterDefinition{
               .value = value,
               .parameter_index = static_cast<uint32_t>(i),
-              .type = LirTypeRef(stmt_emitter_detail::llvm_value_ty(mod, param_ts)),
+              // The signature mirror is the typed ABI authority for this
+              // current-function parameter.  Reuse it rather than rebuilding
+              // a parallel scalar type from rendered lowering text.
+              .type = lir_function.signature_param_type_refs.at(i),
               .owner = lir_function.link_name_id,
               .abi = LirNativeBodyParameterAbi::DirectScalar,
           });

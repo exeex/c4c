@@ -669,6 +669,48 @@ void defined_hfa(struct HfaPair input) {}
   c4c::codegen::lir::verify_module(module);
 }
 
+void test_direct_scalar_parameter_authority_alias_boundary() {
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+typedef unsigned long long ull;
+ull scalar_alias(ull x) { return x + 1; }
+)c");
+  const c4c::codegen::lir::LirModule module = c4c::codegen::lir::lower(hir_module);
+  const auto& function = require_function(module, "scalar_alias", false);
+  expect_true(function.native_body_parameter_definitions.size() == 1,
+              "typedef-backed ull parameter must publish one DirectScalar authority");
+  const auto& definition = function.native_body_parameter_definitions.front();
+  expect_true(definition.value.valid() && definition.parameter_index == 0 &&
+                  definition.owner == function.link_name_id &&
+                  definition.type == function.signature_param_type_refs[0] &&
+                  definition.abi == c4c::codegen::lir::LirNativeBodyParameterAbi::DirectScalar,
+              "DirectScalar authority must publish typed current-function identity");
+  c4c::codegen::lir::verify_module(module);
+
+  const auto rejects = [&](auto mutate, const std::string& message) {
+    auto candidate = module;
+    auto& candidate_function = require_mutable_function(candidate, "scalar_alias", false);
+    mutate(candidate, candidate_function);
+    expect_verify_rejects(candidate, message);
+  };
+  rejects([](auto&, auto& function) { function.native_body_parameter_definitions.clear(); },
+          "DirectScalar verifier must reject missing parameter authority");
+  rejects([](auto&, auto& function) {
+            function.native_body_parameter_definitions.front().value =
+                c4c::codegen::lir::LirValueId::invalid();
+          },
+          "DirectScalar verifier must reject missing parameter identity");
+  rejects([](auto& candidate, auto& function) {
+            function.native_body_parameter_definitions.front().owner =
+                candidate.link_names.intern("foreign_scalar_parameter_owner");
+          },
+          "DirectScalar verifier must reject foreign parameter ownership");
+  rejects([](auto&, auto& function) {
+            function.native_body_parameter_definitions.front().type =
+                c4c::codegen::lir::LirTypeRef::integer(32);
+          },
+          "DirectScalar verifier must reject a type-incoherent parameter authority");
+}
+
 }  // namespace
 
 int main() {
@@ -679,6 +721,7 @@ int main() {
   test_definition_logical_parameter_publication();
   test_target_profile_long_signature_publication();
   test_aarch64_hfa_parameter_classification();
+  test_direct_scalar_parameter_authority_alias_boundary();
 
   c4c::hir::Module hir_module = lower_hir_module(R"c(
 struct Pair {
