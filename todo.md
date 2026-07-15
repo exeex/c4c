@@ -1,33 +1,43 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/806_lir_phi_residual_producer_family_authority_trace.md
+Source Idea Path: ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove the blocker and return to 804
+Current Step ID: 2
+Current Step Title: Repair anonymous layout / structured-call compatibility
 你該做code review了
 
 ## Just Finished
 
-- Lifecycle resumption: 808 closed capability-complete after its fresh
-  focused 1/1 proof and supervisor-accepted non-decreasing guard. 806 Steps
-  1–2 remain accepted; the exact return point is Step 3 full-baseline proof.
+- Step 1 trace/selection is accepted in `827dae5bd3`; the bounded native
+  anonymous-layout contract and its 754 handoff boundary were identified.
+- 802 Step 1's isolated switch verifier/test working-tree changes are
+  unaccepted and parked for resumption. Its exact focused command is
+  `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`.
+- The preserved 801 Step 2 implementation is unaccepted. Its latest durable
+  evidence records a structured-call compatibility repair and an aggregate-use
+  baseline blocker owned by 754; neither is accepted Step 2 progress.
 
 ## Suggested Next
 
-- Supervisor: obtain and evaluate the required fresh 100% full baseline. On
-  acceptance, reactivate 804 at its unchanged Step 3; do not repeat completed
-  806 producer work.
+- Step 2: evaluate the preserved native anonymous-layout/structured-call
+  repair against `frontend_lir_call_type_ref`. Keep native field facts checked
+  and do not weaken mirror or signature contracts. Once the focused test
+  reaches the switch check, return to 802 Step 1 with its preserved hunk/tests.
 
 ## Watchouts
 
-- 808's strict guard rejected unchanged 1/1 -> 1/1 counts, while the matching
-  `--allow-non-decreasing-passed` guard exited 0 and was accepted. That closes
-  808 only; it is not 806/804 clearance. Do not reopen accepted producer,
-  PHI/verifier, or 804 unary-minus work.
+- Do not parse `LirTypeRef` display text, use rendered diagnostics as argument
+  type authority, weaken `LirCallOp` mirror/signature checks, or add
+  extractvalue field/index/result validation, Raw-BIR, or generic aggregate
+  work. 802's work remains unaccepted and must not be claimed as 801 progress.
+- 806 is parked at Step 3 full-baseline proof; do not reopen its accepted
+  producer work or treat this switch as 806/804 clearance.
 
 ## Proof
 
-- Accepted predecessor evidence: `961ce9fda`, `8f31e2535`, and `b86df3b9d`;
-  808 fresh build/focused CTest and non-decreasing guard are accepted. Required
-  next proof: supervisor-owned fresh 100% full baseline; none is recorded yet.
+- Immediate prerequisite proof: `ctest --test-dir build -R
+  '^frontend_lir_call_type_ref$' --output-on-failure` reaches the switch
+  selector check. After 802 resumes, retain the Step 2 ladder: fresh `cmake
+  --build --preset default`; focused call/frontend-HIR/backend tests; then the
+  supervisor-owned full baseline and explicit acceptance before Step 3.
