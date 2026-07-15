@@ -8,20 +8,25 @@ Current Step Title: Select one native-authority local-operation row
 
 ## Just Finished
 
-- 734 Step 7.29 accepted the selected direct static-local-array GEP receipt in
-  `4ab2deb7e`; this successor must not repeat it.
+- Plan Step 1 selected exactly one post-791 row: the VLA `LirStackSaveOp`
+  saved-stack-pointer receipt. Its native current-function result,
+  pointer-definition/object/owner/type/liveness fields and verifier binding are
+  recorded in `docs/lir_local_operation_authority/handoff_to_734.md`; stack
+  restore and all other local forms remain unselected.
 
 ## Suggested Next
 
-- Execute Step 1: inspect post-GEP local candidates and select exactly one
-  only when its native authority is sufficient.
+- Execute Step 2: add only the selected VLA stack-save row's minimum
+  producer/schema and verifier admission; do not add receiver/Raw-BIR support.
 
 ## Watchouts
 
-- Do not use local spelling, `%t`, rendered operands, printer output, LLVM
-  text, or testcase identity as semantic authority. Do not edit Raw-BIR.
+- The selected save result is one receipt, not a save/restore pair. Do not use
+  local spelling, `%t`, rendered operands, printer output, LLVM text, or
+  testcase identity as semantic authority. Do not edit Raw-BIR.
 
 ## Proof
 
-- Before implementation, establish the focused producer proof for the one
-  selected row; the supervisor will select broader acceptance proof.
+- `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log`
+  (required Step 1 audit proof; `test_after.log` is the proof log).
