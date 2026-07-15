@@ -268,24 +268,70 @@ consumers.
   machine/emission output has an owner.
 - F cannot repair an earlier-stage failure.
 
-## Step 8 — Audit landed importer and close the cross-phase contract
+## Step 8A — Close the non-importer cross-phase Markdown contract
 
 ### Goal
 
-Replace provisional Raw assumptions with landed importer evidence and prove
-the complete Raw-to-F3 Markdown architecture is internally consistent.
+Finish the currently executable cross-phase inventory, adjacency, authority,
+and implementation-status audit without treating the unfinished importer route
+as landed evidence.
 
 ### Actions
 
-- Wait until the parallel LIR-to-BIR route has landed at an identifiable
-  revision; do not infer its final behavior from intent.
+- Inventory every current BIR Markdown owner and every A1/A2, B1-B8, C1-C9,
+  D1-D5, E1-E4, and F1-F3 row against the root ordered index.
+- Prove unique ownership, producer/consumer adjacency, vocabulary and identity
+  compatibility, exact revision/target/product keys, invalidation, verifier
+  ownership, failure atomicity, and terminal consumer ownership wherever the
+  result does not depend on final importer behavior.
+- Reconcile cross-document terminology and authority so no pass-local owner
+  duplicates the shared NodeKind/tag algebra, stable-identity gate, phase
+  vocabulary, analysis framework, or external MIR/emission authority.
+- Audit implementation-state claims against the current repository and mark
+  unimplemented or incomplete behavior truthfully as `absent` or `partial`.
+- Record final non-importer closure findings in Markdown, including an explicit
+  list of facts that remain provisional and are reserved for Step 8B.
+- Record the external route evidence exactly: `origin/new_bir` at
+  `13123e7524c12a307bae372007be60e0a4e656a3` has retired the exhausted 734
+  runbook and activated blocker idea 763 at Step 1; this is progress evidence,
+  not a completed importer revision.
+
+### Completion Check
+
+- Every current BIR Markdown file and every A1-F3 row is accounted for once.
+- Every non-importer-dependent seam accepts the exact predecessor artifact;
+  remaining importer-dependent facts are isolated explicitly for Step 8B.
+- No duplicate authority, stale product, implicit kind carry-forward,
+  unresolved identity rule, or overstated implementation status remains in the
+  non-importer contract.
+- The Step 8A changed-path set is Markdown-only and the runbook remains active
+  at Step 8B rather than requesting closure.
+
+## Step 8B — Reconcile the landed importer and decide closure
+
+### Goal
+
+Replace every provisional Raw assumption with final landed importer evidence,
+reconcile the Raw/A1/B1 boundary, and submit the complete A1-F3 Markdown
+contract for an explicit close decision.
+
+### Entry Gate
+
+- The parallel LIR-to-BIR route has a named completed revision, not merely a
+  work-in-progress branch, exhausted parent runbook, active blocker, or intent.
+- That revision contains inspectable importer code and matching tests or other
+  accepted code-level proof of the published Raw behavior.
+
+### Actions
+
+- Name the completed importer revision and the exact code/test evidence used.
 - Audit its actual Raw kinds, payload alternatives, operand/result roles,
   types, CFG/terminators, stable source identities, metadata, verifier gate,
   rejection behavior, and publication atomicity.
-- Reconcile A1/A2 and B1 admission documents with those facts.
-- Audit every current BIR Markdown owner for unique indexing, truthful
-  implementation status, vocabulary/identity adjacency, exact keys,
-  invalidation, verifier ownership, and failure atomicity.
+- Reconcile the factual Raw producer contract across A1/A2 and B1 admission;
+  remove or correct every provisional assumption recorded by Step 8A.
+- Recheck every downstream adjacency affected by the factual Raw matrix while
+  preserving the already accepted non-importer findings.
 - Record remaining implementation gaps as truthful `absent`/`partial` state or
   separately scoped open ideas; do not modify code.
 - Verify the complete accepted diff contains Markdown only and request
@@ -293,8 +339,10 @@ the complete Raw-to-F3 Markdown architecture is internally consistent.
 
 ### Completion Check
 
-- The landed importer revision and factual Raw publication matrix are named.
-- Every B-F producer/consumer seam accepts the exact predecessor artifact.
+- A completed landed importer revision and its code/test proof are named.
+- The factual Raw publication matrix is explicit and A1/A2/B1 agree with it.
+- Every A1-F3 producer/consumer seam accepts the exact predecessor artifact.
 - No speculative implementation claim, duplicate authority, stale product,
   implicit kind carry-forward, or unresolved identity rule remains.
-- Markdown-only scope is proven and all source acceptance criteria are met.
+- Markdown-only scope is proven and all source acceptance criteria are met or
+  the exact unmet criterion is returned as a runbook repair/blocker route.

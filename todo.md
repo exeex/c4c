@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/732_bir_stage_document_convergence_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: 8
-Current Step Title: Audit landed importer and close the cross-phase contract
+Current Step ID: 8A
+Current Step Title: Close the non-importer cross-phase Markdown contract
 
 ## Just Finished
 
@@ -15,17 +15,24 @@ Current Step Title: Audit landed importer and close the cross-phase contract
 
 ## Suggested Next
 
-- Execute plan Step 8 after the parallel LIR-to-BIR route lands at an
-  identifiable revision: audit its actual importer/Raw boundary and reconcile
-  the complete A1-to-F3 cross-phase contract against checked-in evidence.
+- Execute plan Step 8A now: audit every current BIR Markdown owner and every
+  A1-F3 row for unique indexing, non-importer adjacency, authority,
+  implementation status, exact keys, invalidation, verifier ownership, and
+  failure atomicity; isolate the remaining importer-dependent facts for 8B.
 
 ## Watchouts
 
-- Step 8 must wait for and name the landed importer revision; intent or a
-  work-in-progress tree is not sufficient factual evidence.
-- Reconcile Raw kinds, payloads, roles, types, CFG, source identities,
-  metadata, failure behavior, and publication without widening F owners into
-  external MIR/assembler/object/linker semantic authority.
+- `origin/new_bir@13123e7524c12a307bae372007be60e0a4e656a3`
+  has switched from the exhausted 734 runbook to blocker idea 763 Step 1; it
+  is not a completed importer revision and cannot satisfy Step 8B.
+- Step 8A must not guess final Raw kinds, payloads, roles, types, CFG, source
+  identities, metadata, failure behavior, or publication facts; list those as
+  provisional 8B inputs while closing every independent cross-phase finding.
+- Step 8B remains mandatory and requires a named completed importer revision
+  plus inspectable code/test evidence before Raw/A1/B1 reconciliation or
+  closure can be claimed.
+- Preserve external MIR/assembler/object/linker semantic authority while
+  auditing F adjacency and terminal ownership.
 - F1-F3 are planned contracts with absent/partial implementation evidence;
   their documentation must not be reported as implemented capability.
 - Markdown-only output; proposed code belongs only in fenced Markdown blocks.
