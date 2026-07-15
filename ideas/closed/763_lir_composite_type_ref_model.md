@@ -106,6 +106,21 @@ Those ideas should be able to use the composite carrier from this work instead
 of classifying array, aggregate, vector, or function types as unavoidable
 runtime text.
 
+## Completion
+
+Capability complete on 2026-07-15. The bounded model now carries builtin,
+integer-width, named struct/union, and array facts structurally; the selected
+struct-layout byte-storage and padding arrays use the array factory and render
+at the LLVM boundary without changing emitted text. Focused construction,
+equality/query, stale-text render, declaration-render, and padded-layout
+coverage passed.
+
+Accepted implementation: `cc24f48b8`, `fea07596f`, and `f5eb48657`. Each
+packet had a fresh build with the 7/7 targeted CTest subset passing; regression
+guards were non-regressive, and the post-Step 2 full-suite baseline was
+accepted at 3037/3037. Remaining call/signature and module declaration work
+remains separately scoped by ideas 761 and 762.
+
 ## Reviewer Reject Signals
 
 - The patch merely renames runtime strings or wraps rendered text without
