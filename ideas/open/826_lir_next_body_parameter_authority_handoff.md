@@ -52,6 +52,29 @@ receiver can proceed.
 - No Raw-BIR/importer code changes, presentation-derived authority, or
   expectation weakening is used to claim the handoff.
 
+## Step 1 Selection Record
+
+The sole selected row is an unchanged current-function DirectScalar integer
+parameter used directly as `LirCmpOp.lhs` by
+`StmtEmitter::to_bool_operand`. Its native authority tuple is
+`LirCurrentFunctionBodyParameterDefinition.value`, the current
+`LirFunction.link_name_id` owner, the definition index, the definition integer
+`LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`, and a bounded
+truthiness-comparison LHS role.
+
+The required consumer relation is exact: `LirCmpOp.lhs == authority.value`,
+`LirCmpOp.type_str == authority.type`, integer predicate `ne`, and an
+authoritative integer-zero RHS. The native definition seam is
+`init_fn_ctx` in `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`; the consuming
+producer is `StmtEmitter::to_bool_operand` in
+`src/codegen/lir/hir_to_lir/core.cpp`; verification runs through
+`verify_cmp_op_authority`, `verify_integer_cmp_operand_authority`, and the
+modeled value-use traversal in `src/codegen/lir/verify.cpp`.
+
+`LirCondBr.condition` is not selected: it denotes the comparison result, not
+the direct parameter use. Every other comparison and parameter form remains
+fail closed until separately selected.
+
 ## Reviewer Reject Signals
 
 - Reject selection from rendered parameter names, types, signatures, operand

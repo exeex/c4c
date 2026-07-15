@@ -49,12 +49,15 @@ Actions:
 Completion check: the selected row is explicit and bounded, or the missing
 first-owner prerequisite is evidenced and separately routed before publication.
 
-### Step 2 - Publish and verify only the selected authority contract
+### Step 2 - Publish and verify the selected truthiness-comparison LHS authority contract
 
 Goal: add the minimum native carrier and verifier checks for the Step 1 row.
 
 Actions:
 
+- add only the DirectScalar integer parameter authority consumed as
+  `LirCmpOp.lhs` by `StmtEmitter::to_bool_operand`, with exact LHS/type,
+  integer-`ne`, and authoritative-zero-RHS relations;
 - enforce native value/owner/index/type/ABI/role and consumer coherence;
 - reject missing, invalid, duplicate, foreign, and malformed authority
   transactionally as applicable; and
