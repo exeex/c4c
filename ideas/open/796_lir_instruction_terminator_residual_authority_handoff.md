@@ -110,6 +110,27 @@ the retry, reactivate 801 unchanged at Step 2 for its fresh build, focused
 call/frontend/backend ladder, and supervisor-accepted full gate. This record
 does not claim 801 Step 2 acceptance.
 
+## Resumption Record: accepted bounded recurrence return to 801
+
+- Last accepted progress: Steps 4 and 5 are accepted. Step 4 selected only the
+  non-parameter pointer-subtraction producer/immediate-handoff family; Step 5
+  published native `fresh_value` authority for its `PtrToInt`, subtraction,
+  and optional scaling values. The supervisor accepted the focused 4/4 proof.
+- Interrupted step and disposition: Step 6, *Accept the bounded 796 repair and
+  return to 801*, is complete as a lifecycle return. The exact clean-first
+  command `cmake --build --preset default --clean-first && ctest --test-dir
+  build -j 32 --output-on-failure > test_before.log` completed with 3034/3037
+  passed. Its only failures were `cpp_qualified_template_call_template_arg_perf`,
+  `llvm_gcc_c_torture_src_20060910_1_c` (the 806-owned PHI family), and
+  `llvm_gcc_c_torture_src_pr28982b_c`.
+- Exact return point: resume
+  `ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md` unchanged at
+  Step 2, *Repair anonymous layout / structured-call compatibility*. Preserve
+  its dirty anonymous-layout/direct-complex hunks uncredited, then run its
+  fresh build, focused call/frontend/backend ladder, and supervisor-accepted
+  full gate. This comparable baseline enables the retry; it does not accept
+  801 Step 2.
+
 ## Reviewer Reject Signals
 
 - Reject a catch-all instruction/terminator conversion, text parsing, receiver
