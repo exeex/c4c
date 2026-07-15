@@ -3,42 +3,44 @@
 Status: Active
 Source Idea Path: ideas/open/801_bir_node_kind_tag_algebra_and_phase_vocabulary_lowering_contract.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Define identity and publication-verifier obligations
+Current Step ID: 6
+Current Step Title: Review and publish the normative artifact
 
 ## Just Finished
 
-- Completed `plan.md` Step 5 in normative Sections 13 and 14.
-- Defined the eight-condition `NodeId` preservation gate across operation and
-  result identity, count/type, operand roles, effects/control, stage owner,
-  product authority, payload, and provenance/verifier obligations. Arena-slot
-  stability is explicitly non-evidence; owner or semantic changes require
-  replacement.
-- Defined retain, one-to-one lower/replace, insert, delete/disappear, expand,
-  project, split, and merge consequences for fresh/retired IDs, total use/result
-  mappings, provenance-only derivation, revision advancement, analysis/product
-  invalidation, and transaction failure atomicity.
-- Clarified C as immutable admission-by-reference: Canonical nodes keep their
-  kind, `NodeId`, owner, and revision while external products reference them.
-  F machine records own distinct identities; source BIR IDs may be provenance
-  only.
-- Added common and stage-specific fail-closed verifier gates for Raw,
-  Canonical/B4 SSA, Prepared, PseudoPreallocation, Allocated, and
-  MirReadyMachine, covering vocabulary/tags, payload/shape/type,
-  effects/control, identities, product lineage, and dynamic invariants.
+- Completed `plan.md` Step 6 as a read-only conformance review in normative
+  Sections 15-17.
+- Mapped every idea 801 acceptance criterion to exact artifact sections and
+  audited all reject-signal classes: free booleans/flat fields/all-stage masks,
+  SSA ambiguity, duplicate authority/exposed plumbing, TableGen-like DSL,
+  catch-all transitions, identity-by-slot, testcase shaping, docs-only claims,
+  and scope drift are explicitly rejected.
+- Marked the artifact normative-review-complete but production convergence
+  partial. Step 7 is required because landed code still has flat descriptor
+  fields, duplicated 16-kind runtime dispatch inventories, no closed
+  SSA/non-SSA/tag or stage-qualified helper algebra, and the same all-stage mask
+  on every current kind.
+- Bounded Step 7 to one C++17 production inventory for only current kinds,
+  derived compile/runtime/payload/stage helpers, compile-time validation,
+  existing `Binary`/`Store`/`Phi` production representatives, and
+  non-production prepared/pseudo/machine fixtures with focused negative proof.
+  No phase kinds/passes, storage, importer, allocation, MIR, or 732 work is
+  authorized.
+- Recorded the later requirement that idea 732 and each B-F child cite and
+  consume Sections 2-14 without editing or activating 732 now.
 
 ## Suggested Next
 
-- Execute only Step 6: review the complete normative artifact against idea 801
-  and decide whether the bounded C++ schema/query proof is necessary.
+- Execute only Step 7: land the bounded single-authority schema/query proof and
+  focused validation seam specified in Section 16.1.
 
 ## Watchouts
 
 - Do not revise or activate idea 732, reopen idea 746, or treat tag
   classification as proof of graph-stage SSA validity.
-- Step 6 must reject ornamental code: require Step 7 only if a concrete
-  feasibility or single-authority claim remains unproved by the landed schema
-  and this artifact.
+- Step 7 must remove duplicate kind inventories rather than layer a tag table
+  beside the landed descriptor, and contract-only later-stage representatives
+  must not become speculative production enum kinds.
 
 ## Proof
 
