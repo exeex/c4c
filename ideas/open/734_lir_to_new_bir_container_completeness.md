@@ -1155,3 +1155,11 @@ type from `result`, operands, templates, constraints, or other presentation
 text; do not receive input, read/write, non-integer, multi-result, or any other
 inline-assembly form. Reapply the source completion gate after this bounded
 receipt; all remaining source families stay separately owned and fail closed.
+
+## Runbook Exhaustion Decision: post-Step 7.33 inline-assembly output-only receipt
+
+Close rejected. Commit `3b8870e2b` receives exactly closed 816's selected scalar-integer output-only `LirInlineAsmOp.ordinary_results[0]` into typed Raw-BIR using only the structured SSA ID, typed Output/index-0 binding, and `LirTypeRef`. Supervisor route review found no presentation-derived admission. The accepted evidence is a fresh build, focused `^backend_lir_to_bir_interface$` proof, and broader `^backend_` proof; malformed authority rejects transactionally and all nonselected inline-assembly forms remain fail closed.
+
+This one receiver row does not satisfy the source completion gate: the no-omission coverage matrix, per-row typed authority/destination/importer/verifier/proof disposition, complete explicit dispatcher, whole-module transactional proof, and documentation convergence remain unproven. Valid unreceived families include function-body parameter use identity, remaining memory/VA, aggregate/vector, module/type/global/metadata, residual instruction/terminator, and other inline-assembly forms. No receiver may infer authority from compatibility fields, text, names, rendered operands, `monostate`, or unclassified values.
+
+Classification: `separate-blocker`. The queue's listed body-parameter owner `ideas/open/795_lir_body_parameter_authority_handoff.md` is already complete for an unrelated baseline return and supplies no 734 handoff. New open idea `ideas/open/817_lir_body_parameter_receiver_authority_handoff.md` owns one fresh producer/schema/verifier selection and handoff for exactly one function-body parameter use row. This source is paused after accepted Steps 1 through 7.33, including `3b8870e2b`. After 817 closes with an exact selected one-row structured handoff and accepted focused proof, reactivate 734 and repair its runbook only for that matching Raw-BIR receiver row. Do not repeat Step 7.33 or absorb other parameter forms, memory/VA, aggregate/vector, module/type/global, instruction/terminator, or inline-assembly work.

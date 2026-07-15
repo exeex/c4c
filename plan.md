@@ -1,65 +1,52 @@
-# LIR-To-New-BIR Inline-Assembly Output Receiver Runbook
+# LIR Body-Parameter Receiver Authority Handoff Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Resumed from: closed 816 scalar-integer output-only inline-assembly authority
-handoff (`1b04a886e`).
+Source Idea: ideas/open/817_lir_body_parameter_receiver_authority_handoff.md
+Switched from: 734 after accepted Step 7.33 (`3b8870e2b`).
 
 ## Purpose
 
-Receive exactly the checked output-only scalar-integer inline-assembly result
-published by closed 816. This is one bounded Raw-BIR receiver packet and does
-not complete the remaining source-wide coverage matrix.
-
-## Historical Progress
-
-Steps 1 through 7.32 are accepted historical 734 work, most recently the
-AMD64 aggregate VA-arg overflow receipt (`cf8c05985`). Do not repeat those
-receiver rows or producer-authority work.
+Produce one checked function-body parameter-use authority handoff for a later, single 734 Raw-BIR receiver packet.
 
 ## Core Rule
 
-Use only closed 816's native result ID, typed `Output` binding at index 0, and
-`LirTypeRef`, subject to its current-function ownership checks. Never recover
-semantic value or type from compatibility `result`, rendered operands,
-templates, constraints, or testcase shape.
+Only native current-function value/type/ownership facts establish parameter-use authority. Declaration publication and presentation text are non-authoritative.
 
 ## Read First
 
-- `ideas/closed/816_lir_next_residual_authority_handoff.md`
-- `ideas/open/734_lir_to_new_bir_container_completeness.md` (closed-816
-  resumption record)
+- `ideas/open/817_lir_body_parameter_receiver_authority_handoff.md`
+- `ideas/open/734_lir_to_new_bir_container_completeness.md`
+- `ideas/open/795_lir_body_parameter_authority_handoff.md`
 - `docs/lir_to_new_bir_remaining_coverage/successor_queue.md`
 
 ## Non-Goals
 
-- Input, read/write, non-integer, multi-result, or any other inline-assembly
-  form;
-- producer/schema/verifier republishing, text/template/constraint parsing,
-  target lowering, MIR/emission, or importer/dispatcher sweeps;
-- remaining memory/VA, aggregate/vector, parameter, module/type/global,
-  instruction, terminator, and documentation-convergence work.
+- Raw-BIR receipt or changes to 734.
+- Multiple parameter forms, broad ABI work, or non-parameter residual families.
+- Text-derived identity/type recovery or weaker verifier/test contracts.
 
 ## Ordered Steps
 
-### Step 7.33 - Receive selected inline-assembly output-only authority
+### Step 1 - Trace and select one body-parameter use authority row
 
-Goal: transactionally import closed 816's one scalar-integer output-only
-`LirInlineAsmOp.ordinary_results[0]` row into a typed Raw-BIR destination.
+Goal: locate the smallest native current-function body-use row whose value ID, type, ownership, and required ABI classification are present or can be narrowly published.
 
 Actions:
 
-- consume only the fresh native result `LirValueId`, typed `Output` binding at
-  index 0, and its `LirTypeRef` from `StmtEmitter::emit_inline_asm`;
-- add only the minimum typed Raw-BIR destination, importer dispatch, reachable
-  verifier work, and nearby positive/malformed-authority receiver coverage;
-- reject missing, invalid, duplicate, role-mismatched, index-mismatched,
-  type-mismatched, foreign, and all nonselected inline-assembly forms
-  transactionally;
-- run a fresh build and focused receiver proof before the supervisor-selected
-  broader proof.
+- distinguish body-use authority from closed 742/795 declaration or baseline-only work;
+- select exactly one row, or explicitly split if no single row is native and checkable;
+- define malformed, foreign, duplicate, and type-incoherent rejection without parsing text.
 
-Completion check: exactly the selected output-only scalar-integer row imports
-and verifies from native authority without presentation recovery. Every other
-inline-assembly form remains fail closed, and source completion is reassessed
-after this bounded receipt.
+Completion check: one selected row and native authority tuple are explicit; all other parameter forms remain fail closed.
+
+### Step 2 - Publish and verify the selected authority contract
+
+Goal: add only the producer/schema/verifier support required for the selected row.
+
+Completion check: native ownership/type checks admit only the selected row and nearby positive/malformed coverage proves the boundary.
+
+### Step 3 - Prove and record the 734 handoff
+
+Goal: run fresh build and focused proof, then record allowed fields, rejected forms, proof, and the one-row 734 return point.
+
+Completion check: 817 can close and 734 can reactivate only for the documented receiver row; no Raw-BIR receipt occurs here.
