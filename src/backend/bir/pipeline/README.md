@@ -192,16 +192,28 @@ always runs B8. A checkpoint is consumed once; inspection uses a borrow only.
 
 ## Verification and Canonical Publication
 
+B8 is an unconditional publication boundary, not a `PassId`, rewrite pass, or
+analysis. The pipeline owns freezing the exact B7 owner, invoking the gate, and
+atomically consuming the verifier-private token with that same candidate. The
+verifier owns every acceptance rule and the token; neither owner may perform a
+last-minute rewrite.
+
 B8 accepts only one private frozen B7 candidate whose stamp proves exact
 canonical-v1 lineage, plan/options fingerprints, ordinal 7,
 `IntrinsicsCanonical`, epoch/module revision and ordered function-revision
 digest. The candidate passed to the verifier is the same owner frozen by P07.
 
-The verifier runs Raw plus every P01-P07 obligation and rejects target/
-preparation/allocation/MIR facts. Any diagnostic, cancellation, resource
-failure or key/stamp change discards the candidate. Only the completely green
-private token permits the pipeline to mint exactly one immutable
-target-independent unallocated `CanonicalBir` carrying the verified stamp.
+The candidate vocabulary is exactly `B.CanonicalSsaValue`,
+`B.CanonicalEffect`, `B.CanonicalControl`, `B.CanonicalPhiMerge`, and
+`B.CanonicalOpaqueTargetToken` as defined by the normative NodeKind contract.
+The pipeline maintains no duplicate kind table. The verifier runs Raw plus
+every P01-P07 obligation and rejects unknown, illegal, omitted, import-only,
+target-selected, preparation-owned, pseudo, allocation, spill/frame, machine,
+encoding, and MIR vocabulary or products. Any diagnostic, cancellation,
+resource failure, stale analysis/product, or key/stamp change discards the
+candidate. Only the completely green private token permits the pipeline to
+mint exactly one immutable target-independent unallocated `CanonicalBir`
+carrying the verified stamp and B4 dynamic SSA proof.
 
 ## Target and ABI Rules
 

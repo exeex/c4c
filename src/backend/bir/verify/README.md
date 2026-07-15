@@ -164,6 +164,13 @@ equal semantic hash is not eligible for publication.
 The full Canonical check is cumulative. It runs the complete Raw registry plus
 the following closed post-pass obligations on that one frozen revision:
 
+Before the per-pass checks, the admitted node vocabulary must be exactly the
+five normative groups `B.CanonicalSsaValue`, `B.CanonicalEffect`,
+`B.CanonicalControl`, `B.CanonicalPhiMerge`, and
+`B.CanonicalOpaqueTargetToken`. This verifier derives membership from the one
+NodeKind schema authority; it owns no second table. Every node must match one
+group and the complete P07-to-B8 handoff must account for every node.
+
 1. P01 legal semantic types, constants, casts, predicates, truth uses, and
    portable opcode families hold; no `legalize`-owned Raw form remains.
 2. P02 scalar expressions, comparisons, selects, exceptional-value behavior,
@@ -192,12 +199,14 @@ or create a parallel assembly graph. The same opaque semantic node that entered
 the pipeline must survive P01-P07 except for typed generic-edge repair required
 by an owning earlier rewrite.
 
-Canonical facts remain target-independent. B8 rejects every stage-forbidden
-prepared, calling-placement, allocation, frame, machine-instruction, encoding,
-or MIR fact, as well as a fresh P01-P06 noncanonical form emitted by a later
-pass. A portable feature requirement is semantic metadata, not a support
-decision. Target support and constraint binding occur only after immutable
-`CanonicalBir` publication.
+Canonical facts remain target-independent. B8 rejects every unknown, illegal,
+omitted, unhandled, import-only, target-selected, preparation-owned, pseudo,
+allocation/spill, frame, machine-instruction, encoding, or MIR kind/tag/fact,
+as well as a fresh P01-P06 noncanonical form emitted by a later pass. It also
+rejects a missing/stale/foreign analysis or product key and any matrix-coverage
+hole. A portable feature requirement is semantic metadata, not a support
+decision. Target support, helper selection, and constraint binding occur only
+after immutable `CanonicalBir` publication.
 
 B8 is one fail-closed transaction:
 
