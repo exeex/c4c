@@ -43,7 +43,7 @@ fail-closed.
 Accepted in `d8e5ed3a8`: only `LirExtractValueOp` is selected. Do not repeat
 this audit or widen to other aggregate/vector rows.
 
-### Step 2 - Repair structured result and aggregate operand authority
+### Step 2 - Repair structured result and aggregate operand authority — complete
 
 Goal: repair the selected row so every supported aggregate SSA
 `LirExtractValueOp.agg` use carries valid current-function `LirValueId`
@@ -68,12 +68,30 @@ aggregate operand has checked producer authority independent of display
 spelling, focused proof passes, and the full baseline is 100% accepted by the
 supervisor.
 
+Accepted in `33a6c21cc`: selected `LirExtractValueOp` result-authority
+coverage rejects missing and cross-function result IDs without treating result
+display spelling as authority. Focused proof passed 6/6; the fresh build had
+no work; full CTest before/after captures each passed 3037/3037; and the
+monotonic guard passed with `--allow-non-decreasing-passed` for the equal
+repeat capture.
+
 ### Step 3 - Verify row-specific index facts — pending
 
-Goal: enforce `LirExtractValueOp` field-index and selected result-type
-coherence using 801's native anonymous aggregate facts.
+Goal: use 801's accepted native anonymous aggregate layout facts to enforce
+the selected `LirExtractValueOp` field-index bounds and result-element type
+coherence.
 
-Completion check: start only after Step 2 is accepted; retain unrelated rows
+Actions:
+
+- consume only 801's checked ordered native field-layout/type facts for the
+  selected direct-complex aggregate carrier;
+- validate the selected extract index and result type against that layout;
+- add nearby selected-row positive and malformed coverage without display-text
+  parsing, generic layout publication, or changes to other aggregate/vector
+  rows.
+
+Completion check: selected-row malformed index/type combinations reject,
+nearby valid forms pass, focused proof passes, and unrelated rows remain
 fail-closed.
 
 ### Step 4 - Prove and hand off the bounded row

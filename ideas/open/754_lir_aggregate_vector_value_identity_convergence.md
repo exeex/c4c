@@ -291,3 +291,24 @@ Exact return point: resume unchanged at Step 2, *Repair structured result and
 aggregate operand authority*. Do not repeat Step 1, 804/806 work, or their
 accepted baseline proof. This resumption follows the explicit current parent
 return decision; it does not begin Step 3/4 work or absorb PHI scope.
+
+## Resumption Update: Step 2 repair accepted; proceed to Step 3
+
+Last accepted progress: Step 1 remains accepted in `d8e5ed3a8`. The repaired
+Step 2, *Repair structured result and aggregate operand authority*, is accepted
+in `33a6c21cc`: selected `LirExtractValueOp` result-authority coverage rejects
+missing and cross-function result IDs while result display spelling remains
+non-authoritative. The accepted aggregate-operand handoffs remain limited to
+798's direct-composite path and 803's local-load / terminal-insertvalue paths.
+
+Accepted proof: the focused selected-row proof passed 6/6. A fresh build had
+no work; matching full CTest before/after captures each passed 3037/3037; and
+the monotonic guard passed with `--allow-non-decreasing-passed` for the equal
+repeat capture. This satisfies Step 2's required supervisor-owned full
+baseline gate.
+
+Exact return point: proceed to Step 3, *Verify row-specific index facts*.
+Consume only 801's accepted native anonymous aggregate layout/type handoff to
+validate the selected `LirExtractValueOp` field-index bounds and result-element
+type coherence. Do not repeat Steps 1--2, publish layout facts, widen to other
+aggregate/vector rows, reopen PHI work, or recover facts from display text.
