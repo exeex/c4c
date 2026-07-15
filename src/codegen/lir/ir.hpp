@@ -295,6 +295,10 @@ struct LirCastOp {
   LirTypeRef from_type;   // LLVM type string of source
   LirOperand operand;     // SSA name of source operand
   LirTypeRef to_type;     // LLVM type string of destination
+  // Opt-in ownership contract for a standalone native result producer.
+  // Compatibility casts remain false until their producer publishes native
+  // result authority.
+  bool requires_native_result_authority = false;
 };
 
 class LirGepIndex {

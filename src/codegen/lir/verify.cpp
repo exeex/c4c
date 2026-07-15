@@ -530,7 +530,17 @@ void verify_cast_op_authority(const LirCastOp& op) {
       fail_verify("LirCastOp.kind", "invalid native cast kind");
   }
 
-  if (!op.result.value_id()) return;
+  // The explicit standalone contract keeps this result requirement separate
+  // from compatibility casts and logical/PHI lowering. Once selected, the
+  // result identity is native and the function ownership pass rejects
+  // invalid, duplicate, and foreign IDs without rendered spelling lookups.
+  if (op.requires_native_result_authority && !op.result.value_id()) {
+    fail_verify("LirCastOp.result",
+                "standalone native cast requires LirValueId result authority");
+  }
+  if (!op.result.value_id()) {
+    return;
+  }
   if (op.kind == LirCastKind::FPToSI || op.kind == LirCastKind::FPToUI) {
     if (op.from_type.kind() != LirTypeKind::Floating ||
         op.to_type.kind() != LirTypeKind::Integer) {

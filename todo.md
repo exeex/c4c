@@ -3,23 +3,30 @@
 Status: Active
 Source Idea Path: ideas/open/779_lir_cast_result_authority_contract.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Define native standalone cast result ownership
+Current Step ID: 2
+Current Step Title: Add focused positive and malformed cast coverage
 
 ## Just Finished
 
-- None — blocker runbook activated; no execution packet has run.
+- Plan Step 1 complete: added an explicit `LirCastOp` standalone native-result
+  ownership contract. The verifier rejects a selected cast without
+  `LirValueId` result authority; present IDs continue through the existing
+  function ownership checks for invalid and duplicate IDs and value-use scope.
 
 ## Suggested Next
 
-- Dispatch Plan Step 1.
+- Dispatch Plan Step 2: add a standalone cast fixture that selects
+  `requires_native_result_authority` and covers the positive, missing,
+  invalid, duplicate, and foreign-ID rejection paths.
 
 ## Watchouts
 
-- Keep the contract to standalone `LirCastOp.result` authority; exclude PHI,
-  logical producer lowering, and generic expression-result migration.
-- Do not accept or edit the unaccepted 778 `binary.cpp` diff in this blocker.
+- The explicit flag is required because source-ID presence alone also occurs
+  in the excluded logical RHS cast path, whose result authority remains raw.
+- Keep PHI, logical producer lowering, generic expression APIs, and the
+  unaccepted 778 `binary.cpp` diff out of the next packet.
 
 ## Proof
 
-- No proof run during lifecycle switch.
+- Passed: `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`.
+  Focused test output: `test_after.log`.
