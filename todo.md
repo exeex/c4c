@@ -8,31 +8,47 @@ Current Step Title: Audit and select the remaining InsertElement authority row
 
 ## Just Finished
 
-Step 12 is accepted in `d491013e9`. Its implementation requires `LirNativeVectorAuthority` on the sole
-direct vector-value `IndexExpr` `LirExtractElementOp` producer and requires its
-native `i32` index type. The row-local verifier compares index kind and native
-authority rather than index display text, while retaining current-function
-result/vector IDs and structured lane/element shape coherence. Nearby coverage
-now accepts native SSA and immediate/coerced `i32` indices and rejects missing,
-invalid, mismatched, or undefined result/vector/index facts; missing/bad
-shapes; and non-`i32` index types. `LirInsertElementOp` and accepted
-ShuffleVector behavior were left unchanged.
+Step 13 audit selected exactly one row: the scalar-to-vector splat
+`LirInsertElementOp` precursor emitted by the two `emit_splat[_vec]` helpers in
+`src/codegen/lir/hir_to_lir/expr/binary.cpp`. This is a fresh, complete seam,
+not a relabel of the rejected pre-811 poison seed: each producer now emits a
+native result ID, poison vector token, coerced scalar element (with optional
+native element-use ID), immediate index value `0`, native `i64` index type, and
+matching result/first-vector lane-and-element shapes through the accepted 811
+carrier. The current generic carrier verifier already validates owner,
+result/vector/element/index identity, defined value uses, immediate index
+authority, and shape mirrors; it does not yet make this row mandatory or compare
+`elem_type` with the structured vector element type.
+
+Step 14 contract: add a row-local opt-in requirement on those two producer
+instances only, then require their carrier and require `elem_type` to equal the
+carrier result/first-vector element type, with the native index type exactly
+`i64`. Keep raw/other InsertElement forms unselected. Positive coverage: actual
+scalar-to-vector lowering (including `scal-to-vec1`) and a selected immediate-
+zero/i64 InsertElement carrier with both SSA and immediate/coerced scalar
+elements. Malformed coverage: selected row missing carrier; bad/foreign/undefined
+result, vector, or element IDs; missing or mismatched result/first-vector shapes;
+missing, mismatched, or undefined index authority; non-`i64` index type; and
+`elem_type`/structured-element mismatch. Existing generic InsertElement carrier
+coverage remains the nearby base for the identity, shape, and index mutations.
 
 ## Suggested Next
 
-Audit only the remaining `LirInsertElementOp` producer seam against the
-accepted 811 vector carrier and the accepted ShuffleVector precursor. Record
-one concrete row-local contract plus its nearby positive/malformed matrix.
-Do not reuse the previously rejected scalar-to-vector selection without a
-fresh audit, generalize ExtractElement, or change accepted ShuffleVector.
+Implement and prove only the selected scalar-to-vector splat InsertElement
+contract. Add nearby selected-row positives/malformed mutations without
+generalizing unselected InsertElement producers, ExtractElement, or
+ShuffleVector.
 
 ## Watchouts
 
-The accepted ExtractElement seam has no per-row requirement bit because its
-sole producer is direct vector IndexExpr lowering. InsertElement must receive
-its own fresh authority/seam decision; do not infer it from the existing
-ShuffleVector precursor or from display text.
+The accepted ShuffleVector precursor is a strict boundary, not InsertElement
+authority: it may continue to require its immediately preceding native insert
+result, but InsertElement must independently opt in and verify its own
+result/vector/element/index/type facts even with no following shuffle. Preserve
+the accepted shuffle mask and adjacency checks unchanged. Do not recover any
+fact from `poison`, rendered vector text, or the index display string.
 
 ## Proof
 
-Executor proof passed: `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'` (6/6 backend tests). Supervisor-accepted proof: fresh backend before/after 6/6, monotonic guard PASS with documented `--allow-non-decreasing-passed`, and full CTest 3038/3038 passing. The supervisor owns the canonical regression logs.
+Audit only; no build or tests run. `git diff --check -- todo.md` is required
+before handoff.
