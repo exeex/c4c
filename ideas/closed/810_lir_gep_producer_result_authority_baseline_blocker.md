@@ -153,3 +153,25 @@ Step 1 or credit its preserved repair through this blocker.
   completes its bounded route and its result is classified or accepted, resume
   810 unchanged at Step 3; rerun the exact full command above. Return control
   to 801 unchanged at Step 2 only after the supervisor accepts 3037/3037.
+
+## Accepted Completion and Parent Return
+
+Disposition: capability complete. Step 1's bounded GEP producer trace was
+accepted in `f1cb9c510`; Step 2's selected producer-result authority repair
+was accepted in `1f1a1fb38`. The intervening bounded parameter and cast
+handoffs completed in `281737387` and `387af7745` without reopening either
+accepted 810 step.
+
+Supervisor acceptance evidence: on 2026-07-15 at 15:51 UTC, the exact
+comparable gate `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure` completed successfully with 3037/3037 tests passed.
+This is the accepted Step 3 proof and clears only 810's bounded baseline
+blocker.
+
+Parent return: resume
+`ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md` unchanged at
+Step 2, `Repair anonymous layout / structured-call compatibility`. Preserve
+the unaccepted working-tree repair in `call/args.cpp`, `call/target.cpp`,
+`verify.cpp`, and `frontend_hir_tests.cpp`; evaluate it under 801's existing
+scope before any Step 2 acceptance. Do not repeat 801 Step 1 or credit those
+dirty hunks as accepted progress through this closure.

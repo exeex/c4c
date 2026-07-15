@@ -1,66 +1,76 @@
-# LIR GEP Producer Result Authority Baseline Blocker Runbook
+# LIR Anonymous Aggregate Layout Type Facts Runbook
 
 Status: Active
-Source Idea: ideas/open/810_lir_gep_producer_result_authority_baseline_blocker.md
-Resumed from: 796 accepted cast-result authority handoff (`387af7745`)
+Source Idea: ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md
+Resumed from: accepted 810 GEP producer-authority baseline blocker; return at
+unchanged Step 2.
 
 ## Purpose
 
-Complete the previously interrupted baseline gate for the bounded GEP
-producer-authority blocker. Steps 1--2 remain accepted; Step 3 must establish
-a fresh comparable full baseline before 810 can return control to 801.
+Provide native anonymous aggregate field-layout/type facts needed by the
+selected extractvalue row without letting compatibility text become authority.
 
 ## Core Rule
 
-Keep the existing authoritative GEP contract intact. Do not derive authority
-from rendered text, testcase identity, or instruction order, and do not
-absorb anonymous layout, structured-call, or PHI work.
+Native structured field facts are authority. `LirTypeRef` rendering may mirror
+an anonymous aggregate but must not be parsed to create or repair its layout.
 
 ## Read First
 
-- `ideas/open/810_lir_gep_producer_result_authority_baseline_blocker.md`
-- its comparable-baseline residual ownership resumption record
-- `ideas/open/796_lir_instruction_terminator_residual_authority_handoff.md`
-  accepted return record
-- canonical `test_before.log` and the fresh full-baseline procedure
+- `ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md`
+- `ideas/closed/810_lir_gep_producer_result_authority_baseline_blocker.md`
+- `ideas/closed/802_lir_switch_selector_type_reference_verifier.md`
+- `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`
+- direct-complex aggregate lowering plus nearby focused tests
 
 ## Non-Goals
 
-- Repeating accepted 810 Steps 1--2 or reopening 796/795.
-- Claiming 3037/3037 clearance from focused proof.
-- Anonymous aggregate/direct-complex compatibility changes, PHI work, verifier
-  weakening, text-derived identity, or generic provenance/pointer redesign.
+- `LirExtractValueOp` result/use/index/result-type row validation.
+- Reopening accepted 810 GEP or 802 selector verifier work.
+- Raw-BIR, other aggregate/vector rows, broad type rewrite, lowering, MIR,
+  emission, and all text-derived layout recovery.
 
 ## Ordered Steps
 
-### Step 1 - Trace and classify failing GEP producer families (accepted)
+### Step 1 - Trace and select anonymous aggregate layout facts (accepted)
 
-Accepted in `f1cb9c510`: the bounded native pointer postfix and compound
-add/sub producer family was traced. Do not repeat this step.
+Goal: identify the exact anonymous aggregate construction and verification
+boundary and select the smallest checked native field-layout carrier.
 
-### Step 2 - Repair the selected GEP result-authority handoff (accepted)
+Completion check: accepted in `827dae5bd3`; one bounded native layout contract
+is explicit and no compatibility-text parsing or extractvalue-row work is
+selected.
 
-Accepted in `1f1a1fb38`: only the selected native pointer producer family was
-repaired. The later native parameter-index handoff is complete in `281737387`
-and the cast-result handoff is accepted in `387af7745`; neither reopens this
-step.
+### Step 2 - Repair anonymous layout / structured-call compatibility
 
-### Step 3 - Prove the blocker and return control to 801
-
-Goal: obtain the fresh, comparable full-baseline evidence required after the
-accepted 810, 795, and 796 handoffs.
+Goal: evaluate and repair the preserved anonymous-layout implementation so
+native ordered field facts remain checked without making a direct-complex
+`LirCallOp`'s structured callee signature or argument type mirror disagree
+with its call arguments.
 
 Actions:
 
-- run exactly `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure`;
-- retain established focused proof only as supporting evidence, not baseline
-  clearance;
-- classify any residual failure by owned route without absorbing the unrelated
-  anonymous aggregate/direct-complex dirty hunks or the 806 PHI residual;
-- return control to 801 unchanged at Step 2 only after supervisor acceptance
-  of a 3037/3037 comparable baseline.
+- start from rejected implementation commit `201f229d3` and the preserved
+  unaccepted in-progress Step 2 repair; locate the ownership/type construction
+  mismatch rather than weakening verifier contracts;
+- retain the native `arg_type_refs` argument-mirror and callee-signature
+  contracts without treating rendered diagnostic/call text as type authority;
+- retain checked native field-count/field-type access and malformed-layout
+  rejection; leave named structs, arrays, unrelated calls, and all
+  extractvalue-row validation unchanged;
+- keep accepted 802 selector and accepted 810 GEP contracts as environmental
+  prerequisites, not 801 progress or scope.
 
-Completion check: a fresh comparable full baseline passes 3037/3037 and the
-supervisor accepts 810's bounded evidence. Any lesser or partial result does
-not clear 810 or 801.
+Completion check: the native carrier remains authoritative; mirror and
+signature contracts remain fail-closed; the required fresh build, focused
+call/frontend/backend proof, and supervisor-accepted full baseline pass before
+Step 3. Do not advance on a narrow focused result alone.
+
+### Step 3 - Prove and publish the 754 handoff
+
+Goal: establish positive and malformed proof and record the exact field-layout
+contract that 754 Step 3 may consume.
+
+Completion check: accepted proof supports reactivation of 754 at unchanged
+Step 3 without treating this blocker as extractvalue-row validation. Do not
+advance while Step 2 remains unaccepted.

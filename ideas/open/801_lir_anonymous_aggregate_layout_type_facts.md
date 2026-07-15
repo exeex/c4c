@@ -223,3 +223,20 @@ unaccepted Step 2 repair; then rerun the required fresh build, focused
 call/frontend/backend ladder, and supervisor-accepted comparable full baseline
 before Step 3. Do not repeat Step 1 or credit the preserved changes as
 accepted progress.
+
+## Resumption Update: accepted 810 GEP baseline return
+
+810 is capability-complete: its accepted Steps 1--2 remain in `f1cb9c510`
+and `1f1a1fb38`, and the supervisor accepted its exact fresh comparable gate
+on 2026-07-15 at 15:51 UTC:
+`cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure` passed 3037/3037. The intervening 795 and 796 handoffs
+were accepted in `281737387` and `387af7745`.
+
+801 now resumes unchanged at Step 2, `Repair anonymous layout / structured-call
+compatibility`. Step 1 remains the only accepted 801 progress (`827dae5bd3`).
+The preserved dirty `args.cpp`, `target.cpp`, `verify.cpp`, and
+`frontend_hir_tests.cpp` repair remains unaccepted and uncommitted; the next
+action is to evaluate that repair strictly within the existing Step 2 scope,
+then obtain its required fresh build, focused call/frontend/backend ladder,
+and supervisor-accepted comparable full baseline before Step 3.
