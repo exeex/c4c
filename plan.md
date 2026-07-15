@@ -75,7 +75,7 @@ with `type_decls` retained as its checked compatibility shadow. Extern,
 function-signature, and global routes remain excluded because their current
 producer/printer/consumer seams still consume text.
 
-### Step 2 - Implement and prove the selected struct-declaration authority surface — current
+### Step 2 - Implement and prove the selected struct-declaration authority surface — complete
 
 Goal: make only `LirModule::struct_decls` authoritative and retain matching
 `type_decls` solely as a checked compatibility/emission shadow. Preserve the
@@ -89,7 +89,14 @@ broader checkpoint prove the row without output-compatibility change or weaker
 contracts. `frontend_lir_extern_decl_type_ref` is not selected proof because
 it exercises the excluded extern route.
 
-### Step 3 - Reassess remaining module-level surfaces
+Accepted in `51ee839bc`: `backend_lir_to_bir_interface` now proves the
+structured packed/recursive declaration pair supplies the retained
+`type_decls` shadow and Raw-BIR structured layout facts, while mutating only a
+shadow line rejects before BIR import. Fresh builds passed the target 1/1 and
+the broader `^backend_` 6/6 run; the matching equal-count regression guard
+passed and supervisor direct review found no defect.
+
+### Step 3 - Reassess remaining module-level surfaces — current
 
 Goal: decide whether the other extern/signature/global/struct surfaces require
 another in-scope one-row route or whether the source acceptance criteria are

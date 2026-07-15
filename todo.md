@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/762_lir_module_declaration_type_shadow_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Implement and prove the selected struct-declaration authority surface
+Current Step ID: 3
+Current Step Title: Reassess remaining module-level surfaces
 
 ## Just Finished
 
@@ -36,4 +36,7 @@ verified selected seam.  Keep extern `return_type_str`, function
 Passed: `cmake --build --preset default && ctest --test-dir build
 --output-on-failure -R '^backend_lir_to_bir_interface$'` (1/1). Build emitted
 only existing deprecated runtime-text constructor warnings. Test output:
-`test_after.log`.
+`test_after.log`. A fresh broader `^backend_` run passed 6/6 after the build;
+the matching regression guard passed with the equal-count allowance. The
+supervisor's direct code review found no defect; its hook-managed review
+obligation is satisfied.
