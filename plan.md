@@ -1,86 +1,69 @@
-# LIR Memory/VA Pointer Authority Convergence Runbook
+# AMD64 `va_arg` Unselected Alloca Compatibility Regression Runbook
 
 Status: Active
-Source Idea: ideas/open/753_lir_memory_va_pointer_authority_convergence.md
-Resumed from: 753 Step 2 after closed 799 overflow aggregate carrier handoff;
-Step 2 is satisfied by accepted 799 evidence with no new 753 semantic delta
+Source Idea: ideas/open/800_lir_amd64_vaarg_unselected_alloca_compatibility_regression.md
+Activated from: 753 Step 3 full-baseline regression blocker
 
 ## Purpose
 
-Finish the bounded native memory/VA producer proof and publish one
-receiver-ready handoff. The one AMD64 aggregate `va_arg` overflow memcpy row
-is already selected, published, and verified by closed 799; do not duplicate
-that completed semantic work or widen the producer family.
+Restore the verifier-compatible typed-result construction for the unselected
+AMD64 overflow `va_arg` compatibility route. This is a regression follow-up to
+closed 799, not a reopening or expansion of its selected carrier authority.
 
 ## Core Rule
 
-Native structured current-function authority is the sole semantic input. For
-the resumed row, consume 799's checked carrier exactly as published; do not
-recover pointer, object, lifetime, size, or row-selection facts from text or
-redefine the aggregate/vector carrier boundary.
+Keep selected AMD64 aggregate overflow carrier authority exactly as accepted in
+`c4e820a48`. Repair only the unselected route's typed `LirAllocaOp` result
+representation; do not weaken the verifier or derive semantic facts from raw
+text.
 
 ## Read First
 
-- `ideas/open/753_lir_memory_va_pointer_authority_convergence.md` (resumed
-  carrier handoff record)
-- `ideas/closed/799_lir_amd64_vaarg_overflow_aggregate_carrier_authority.md`
+- `ideas/open/800_lir_amd64_vaarg_unselected_alloca_compatibility_regression.md`
 - `src/codegen/lir/hir_to_lir/call/vaarg_amd64.cpp`
-- Existing `LirVaArgOp`, pointer/object/lifetime verifier, and focused backend
-  authority coverage adjacent to the AMD64 vaarg lowering seam
+- `src/codegen/lir/ir.hpp` and the `LirAllocaOp` verifier admission path
+- `ideas/open/753_lir_memory_va_pointer_authority_convergence.md` (durable
+  return record)
 
 ## Non-Goals
 
-- Aggregate/vector carrier publication or generalization, other targets,
-  scalar `va_arg`, generic memory intrinsics, Raw-BIR, MIR, emission, or
-  changing 753's source scope.
+- Reopening closed 799, changing selected carrier fields or authority,
+  aggregate/vector generalization, ABI redesign, Raw-BIR/MIR/emission work,
+  or work on 753's receiver handoff.
 
 ## Ordered Steps
 
-### Step 1 - Establish the bounded native memory/VA authority boundary (complete)
+### Step 1 - Restore typed alloca-result compatibility on unselected overflow routes
 
-Completed accepted 753 work includes direct-local `va_start`/`va_end`,
-positive-size aggregate `memset`, direct-local `va_copy`, and AMD64
-scalar/pointer `va_arg`. Their retained evidence is recorded in the source
-handoff record.
-
-Completion check: complete; do not redo these accepted packets.
-
-### Step 2 - Consume and verify the checked aggregate overflow carrier (complete; no delta)
-
-Goal: establish whether the selected 753 row needs any consumer work beyond
-closed 799's carrier contract, while retaining 799 as the sole publisher of
-derived aggregate carrier facts.
+Goal: make the unselected compatibility temporary satisfy `LirAllocaOp`'s
+typed result contract without changing selected-route behavior.
 
 Actions:
 
-- inspected the closed 799 carrier contract and the resumed AMD64 aggregate
-  overflow producer seam;
-- accepted `c4e820a48` as the complete matching selection/publication and
-  verification: `vaarg_amd64.cpp` selects the row and publishes
-  `requires_native_memory_va_authority` plus its carrier; `verify.cpp`
-  consumes/verifies it; nearby focused coverage proves positive and malformed
-  boundaries;
-- recorded no new 753 semantic delta. All nonmatching aggregate/vector and
-  target routes remain fail-closed or compatibility-only.
+- inspect the `selected` branch in
+  `emit_amd64_va_arg_from_overflow` and the `LirAllocaOp` verifier contract;
+- replace only the unselected raw-text temporary construction with the
+  appropriate typed operand/result representation accepted by that contract;
+- retain the selected `fresh_value` path, native carrier construction, and
+  `requires_native_memory_va_authority` selection boundary unchanged;
+- add or adjust nearby focused coverage only if needed to demonstrate both
+  compatible unselected construction and preserved selected authority.
 
-Completion check: satisfied by `c4e820a48`: fresh build plus
-`./build/tests/backend/bir/backend_lir_selected_pointer_authority_test` passed,
-the matching `test_after.log` baseline is 5/5, and the supervisor comparison
-is non-decreasing 5/5. Do not redo this as a new code claim.
+Completion check: fresh `cmake --build --preset default` and
+`./build/tests/frontend/frontend_lir_call_type_ref_test` pass, with no
+verifier relaxation or selected-carrier contract change.
 
-### Step 3 - Prove the bounded producer slice and hand off one receiver row
+### Step 2 - Re-establish the parent baseline return gate
 
-Goal: meet 753's source proof gate and publish exactly one later receiver
-handoff without Raw-BIR receipt work.
+Goal: show the correction restores the interrupted full-baseline gate before
+753 resumes.
 
 Actions:
 
-- run a fresh build and focused memory/VA producer/verifier proof;
-- run the source-required full baseline; closure requires 100% passing tests,
-  and a lower baseline must be diagnosed through `log/*` by time/commit before
-  continuing;
-- document exactly one selected receiver handoff with native fields,
-  guarantees, rejected forms, and accepted proof.
+- have the supervisor run the exact matching full baseline and compare it with
+the accepted 3037/3037 baseline; diagnose any remaining loss before return;
+- record the accepted proof and return 753 to Step 3 at its receiver-handoff
+action, without performing that handoff under this blocker.
 
-Completion check: 753 has source-complete producer authority evidence and one
-receiver-ready handoff; receiver work remains outside this runbook.
+Completion check: matching full baseline is 100% passing and the supervisor
+can switch back to 753 using its durable return record.

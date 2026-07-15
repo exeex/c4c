@@ -1,37 +1,31 @@
 Status: Active
-Source Idea Path: ideas/open/753_lir_memory_va_pointer_authority_convergence.md
+Source Idea Path: ideas/open/800_lir_amd64_vaarg_unselected_alloca_compatibility_regression.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove the bounded producer slice and hand off one receiver row
+Current Step ID: 1
+Current Step Title: Restore typed alloca-result compatibility on unselected overflow routes
 
 # Current Packet
 
 ## Just Finished
 
-- Step 2 is satisfied with no new 753 semantic delta: accepted 799 commit
-  `c4e820a48` already selects the one AMD64 aggregate-overflow row, publishes
-  its checked carrier, and verifies it. The focused fresh build plus
-  `./build/tests/backend/bir/backend_lir_selected_pointer_authority_test`
-  passed; the matching `test_after.log` baseline is 5/5, and the supervisor's
-  regression comparison is non-decreasing at 5/5.
+- Switched from 753 Step 3 after its required full baseline failed 3036/3037.
+  The failure is outside 753's source scope and is now owned by this separate
+  800 regression blocker; no 753 receiver handoff was performed.
 
 ## Suggested Next
 
-- Execute Step 3 only: retain the accepted producer proof and document exactly
-  one receiver-ready handoff with native fields, guarantees, rejected forms,
-  and proof. Raw-BIR receiver implementation remains out of scope.
+- Execute Step 1 only: restore a verifier-compatible typed result operand for
+  the unselected AMD64 overflow `LirAllocaOp` route, while preserving selected
+  carrier selection and authority exactly as accepted in `c4e820a48`.
 
 ## Watchouts
 
-- Do not republish or generalize aggregate/vector carrier authority. Do not
-  add Raw-BIR receipt work. The accepted gate remains AMD64 SysV + aggregate +
-  positive `layout.needs_memory` + checked direct-local `va_list`; other
-  targets and indirect/nonlocal routes remain compatibility-only.
+- Do not weaken `LirAllocaOp` verification, turn the unselected route into a
+  selected carrier, recover facts from text, or modify closed 799. Keep the
+  correction limited to the unselected compatibility construction seam.
 
 ## Proof
 
-- Accepted evidence: `c4e820a48`; fresh `cmake --build --preset default` plus
-  `./build/tests/backend/bir/backend_lir_selected_pointer_authority_test`
-  passed; matching `test_after.log` baseline 5/5 and supervisor comparison
-  passed non-decreasing 5/5. Step 3 still owns the source-required full
-  baseline and the one receiver handoff record.
+- Required for this blocker: fresh `cmake --build --preset default` plus
+  `./build/tests/frontend/frontend_lir_call_type_ref_test`; after that passes,
+  the supervisor must run a matching full baseline before returning to 753.

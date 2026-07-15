@@ -99,3 +99,34 @@ semantic gaps unless the common memory/va pointer boundary is closed.
   exactly one receiver-ready handoff documenting native fields, guarantees,
   rejected forms, and accepted proof. Raw-BIR is only that later receiver and
   remains out of scope: do not perform Raw-BIR receipt/lowering work here.
+
+## Step 3 Baseline Regression Blocker / Resumption Record
+
+- **Last accepted 753 progress:** Step 1 remains accepted through
+  `8f6f4f9c9`, `0912c93a9`, `17ba5b129`, and `52f143765`; Step 2 is accepted
+  with no new 753 semantic delta through closed-799 implementation
+  `c4e820a48`. The last known full-green acceptance is `52f143765`, whose
+  full baseline passed 3037/3037. The accepted focused 799 proof is a fresh
+  `cmake --build --preset default` plus
+  `./build/tests/backend/bir/backend_lir_selected_pointer_authority_test`,
+  with matching `test_after.log` 5/5 and non-decreasing supervisor comparison.
+- **Interrupted step:** Step 3, *Prove the bounded producer slice and hand off
+  one receiver row*. Its source-required full baseline ran 3036/3037: only
+  `frontend_lir_call_type_ref` failed, aborting at
+  `LirAllocaOp.result: expected operand kind mismatch for '%t18'; got raw-text`.
+- **Blocker classification:** the first code commit after the last full-green
+  acceptance is `c4e820a48`; its compatibility path in
+  `vaarg_amd64.cpp` constructs the unselected temporary as
+  `LirOperand::raw(fresh_tmp(ctx))` while passing typed `LirTypeRef` to
+  `LirAllocaOp`. This is an unselected AMD64 `va_arg` alloca compatibility
+  regression, outside 753's selected producer/receiver-handoff scope. It is
+  owned by separate open blocker
+  `ideas/open/800_lir_amd64_vaarg_unselected_alloca_compatibility_regression.md`;
+  closed 799 remains closed and is not silently reopened.
+- **Exact return point:** after 800 has a fresh build plus
+  `./build/tests/frontend/frontend_lir_call_type_ref_test` passing and the
+  supervisor has accepted a matching 100%-passing full baseline, resume 753
+  Step 3 at the remaining action: document exactly one receiver-ready handoff
+  with native fields, guarantees, rejected forms, and accepted proof. Do not
+  rerun accepted Steps 1/2, republish carrier authority, or perform Raw-BIR
+  receiver implementation.
