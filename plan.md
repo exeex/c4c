@@ -1,61 +1,90 @@
-# LIR-To-New-BIR VLA Stack-Restore Receiver Runbook
+# LIR Memory/VA Pointer Authority Convergence Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Resumed from: closed 794 selected VLA stack-restore authority handoff.
+Source Idea: ideas/open/753_lir_memory_va_pointer_authority_convergence.md
+Activated from: exhausted 734 Step 7.31 selected stack-restore receiver
+runbook.
 
 ## Purpose
 
-Receive exactly closed 794's selected VLA `LirStackRestoreOp` authority in
-typed Raw-BIR, without repeating accepted receiver work or widening the
-local/VLA surface.
-
-## Historical Progress
-
-Steps 1 through 7.30 are accepted historical 734 receiver work. Closed 794
-completed only the selected producer-side handoff; do not redo either the
-earlier receiver steps or its producer authority work.
+Publish checked native pointer/object/lifetime authority for the bounded
+memory/va producer family so a later, separately repaired 734 packet can
+receive one exact selected row without presentation recovery.
 
 ## Core Rule
 
-Use only the checked native fields in
-`docs/lir_local_operation_authority/handoff_to_734.md`. Do not infer value,
-object, owner, type, liveness, row identity, or lifetime transition from names,
-formatted operands, LLVM text, testcase identity, `monostate`, or an unresolved
-classification.
+Native structured current-function authority is the sole semantic input. Do
+not use builtin names, operand spelling, rendered LIR or LLVM, testcase shape,
+`monostate`, or unclassified operands as value, pointer, object, owner,
+lifetime, or row-selection authority.
 
 ## Read First
 
-- `docs/lir_local_operation_authority/handoff_to_734.md`
-- `ideas/closed/794_lir_next_local_vla_authority_handoff.md`
-- `ideas/open/734_lir_to_new_bir_container_completeness.md` (selected
-  stack-restore resumption record)
+- `ideas/open/753_lir_memory_va_pointer_authority_convergence.md`
+- `ideas/closed/752_lir_local_object_pointer_authority_convergence.md`
+- `docs/lir_to_new_bir_remaining_coverage/successor_queue.md`
+- `ideas/open/734_lir_to_new_bir_container_completeness.md` (post-Step 7.31
+  exhaustion record)
 
 ## Non-Goals
 
-- dynamic-VLA count/allocation, VLA GEP, other local rows, broad local/VLA
-  conversion, a generic lifetime-model redesign, or multiple row admissions;
-- target lowering, MIR, emission, and any work beyond this one typed Raw-BIR
-  receiver packet;
-- presentation-derived authority or weaker verifier/test contracts.
+- Raw-BIR destination/importer/receiver work, target lowering, MIR, emission,
+  alias analysis, or full memory-model semantics;
+- CFG/PHI, local/object substrate definition, aggregate/vector carrier work,
+  opaque inline-assembly text, or a second 734 receiver row;
+- presentation-derived recovery or weakening verifier/test contracts.
 
 ## Ordered Steps
 
-### Step 7.31 - Receive the selected VLA LirStackRestoreOp authority
+### Step 1 - Establish the bounded native memory/VA authority boundary
 
-Goal: transactionally import closed 794's one selected stack-restore row into
-a typed Raw-BIR destination.
+Goal: derive the executable producer route from closed 752's substrate and
+identify the selected representative memory/va forms that can carry checked
+pointer/object/lifetime authority.
 
 Actions:
 
-- map only selected admission, `saved_ptr`, matching pointer definition,
-  current-function object/owner, pointer-type/pointee-type/live checkpoint
-  binding, and `RestoreSavedVlaStackCheckpoint` transition;
-- add only the minimum typed destination, importer dispatch, reachable
-  verification, and nearby positive/negative receiver coverage;
-- reject every malformed or unselected form before publication and run a fresh
-  build plus focused receiver proof before supervisor-selected broader proof.
+- inspect only memcpy, memset, va_start, va_end, va_copy, and va_arg producer
+  and verifier seams named by the source idea;
+- retain the already accepted selected memcpy row as history, not as a claim
+  that the residual family is received or fully converted;
+- record the native field and malformed-authority boundary needed before any
+  producer publication; keep unsupported forms fail closed.
 
-Completion check: exactly the selected stack restore imports and verifies
-transactionally without presentation recovery; dynamic-VLA allocation/count,
-VLA GEP, all other local/lifetime rows, and later families remain fail closed.
+Completion check: an implementation packet can add only source-authorized
+structured fields and rejection rules without deriving facts from text.
+
+### Step 2 - Publish and verify native pointer/object/lifetime authority
+
+Goal: make the selected representative memory/va producer forms structurally
+authoritative and fail closed.
+
+Actions:
+
+- consume closed 752's current-function pointer/object/lifetime substrate;
+- publish the minimum structured pointer/object/lifetime and typed size/value
+  facts required by the selected forms;
+- verify invalid, foreign, type-mismatched, size-mismatched, and dead
+  authority before downstream use; add nearby positive and negative coverage.
+
+Completion check: selected representative producer forms use checked native
+authority, while unconverted rows remain fail closed or explicitly
+compatibility-only.
+
+### Step 3 - Prove the bounded producer slice and hand off one receiver row
+
+Goal: meet the source proof gate and publish exactly one later 734 receiver
+handoff without Raw-BIR receipt work.
+
+Actions:
+
+- run a fresh build and focused memory/va producer/verifier proof;
+- run the source-required full baseline; closure requires 100% passing tests,
+  and a lower baseline must be diagnosed through `log/*` by time/commit before
+  continuing;
+- document exactly one selected 734 handoff with native fields, guarantees,
+  rejected forms, and accepted proof.
+
+Completion check: 753 has source-complete producer authority evidence and one
+receiver-ready handoff; 734 remains unmodified by implementation and can later
+resume only for that matching row.

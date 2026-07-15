@@ -1067,3 +1067,32 @@ through 7.30 or absorb dynamic-VLA count/allocation, VLA GEP, other local or
 lifetime rows, Raw-BIR work beyond this one receiver packet, target lowering,
 MIR, or presentation-derived recovery. This resumption record authorizes the
 packet; it does not claim that the receiver work has occurred.
+
+## Runbook Exhaustion Decision: post-Step 7.31 VLA stack-restore receipt
+
+Close rejected. Commit `d411ff989` receives exactly closed 794's selected VLA
+`LirStackRestoreOp` authority into a typed Raw-BIR stack-restore destination,
+transactional importer dispatch, reachable verification, and nearby positive/
+negative coverage. Supervisor route review found the selected typed restore
+receipt scope-correct and transactionally validated. Its fresh build and exact
+`^backend_` proof passed, and the documented allow-non-decreasing backend
+before/after guard is non-regressive at 5/5 to 5/5 with no new failures.
+
+This bounded row does not satisfy this source's completion gate. The checked
+coverage matrix still has valid current-LIR families without an evidenced
+typed Raw-BIR receiver disposition, including remaining memory/va,
+aggregate/vector, body-parameter, module/type/global/metadata,
+instruction/terminator, and inline-assembly families; no-omission matrix
+completion, explicit dispatcher completeness, whole-module transactional
+proof, and documentation convergence remain unproven. Do not infer their
+authority from text, names, `monostate`, or unclassified operands.
+
+Classification: `separate-blocker`. The next dependency-ordered first owner
+is existing open idea
+`ideas/open/753_lir_memory_va_pointer_authority_convergence.md`. This source
+is parked after accepted Steps 1 through 7.31, including `d411ff989`. After
+753 closes with an exact selected one-row producer/verifier handoff and
+accepted proof, reactivate 734 and repair its runbook at **Step 7.32** for only
+that matching typed Raw-BIR receiver row. Do not repeat Step 7.31 or absorb
+other memory/va, local/VLA, aggregate/vector, parameter, module/type/global,
+instruction/terminator, inline-assembly, or later families.
