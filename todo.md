@@ -3,29 +3,30 @@
 Status: Active
 Source Idea Path: ideas/open/793_lir_to_new_bir_remaining_coverage_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify remaining families by first owner
+Current Step ID: 3
+Current Step Title: Generate the bounded successor queue and close the umbrella
 
 ## Just Finished
 
-- Step 1 established the current post-792/post-7.30 baseline in
-  `docs/lir_to_new_bir_remaining_coverage/post_792_post_730_evidence_baseline.md`.
-  It records the accepted 734 Step 7.30 VLA stack-save receipt and keeps all
-  nonselected local/VLA and broader families fail closed.
+- Step 2 classified all required remaining families in
+  `docs/lir_to_new_bir_remaining_coverage/first_owner_matrix.md`, including
+  first owner, structured evidence, dependency order, and explicit evidence
+  gaps. No unreceived row gained receiver authorization.
 
 ## Suggested Next
 
-- Execute Step 2: classify every remaining family by first owner and dependency
-  order from the new post-792/post-7.30 baseline.
+- Execute Step 3: generate the ordered bounded successor queue from the matrix
+  and prepare the umbrella closure route.
 
 ## Watchouts
 
-- Closed 792 authorizes only the VLA stack-save handoff. Stack restore, dynamic
-  VLA allocation, VLA GEP, other local rows, and broader local conversion stay
-  fail closed; do not derive authority from presentation text.
+- Keep 792's selected VLA stack-save handoff separate. The local/VLA,
+  body-parameter, and residual instruction rows retain explicit producer or
+  type-model gaps; do not turn the matrix into receiver authorization.
 
 ## Proof
 
-- Passed: `git diff --check`; structural check confirmed the Step 1 baseline is
-  under the owned handoff directory, names post-792/post-7.30 evidence, and
-  changes no code. No build or test applies to this documentation-only packet.
+- Passed: `git diff --check`; structural check confirmed all required families
+  have first-owner/dependency fields in the owned handoff directory and only
+  that documentation plus `todo.md` changed. No build or test applies to this
+  documentation-only packet.
