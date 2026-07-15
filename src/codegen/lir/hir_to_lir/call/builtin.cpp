@@ -528,12 +528,24 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
       return "";
     }
     if (builtin_id == BuiltinId::VaCopy && call.args.size() >= 2) {
+      module_->need_va_copy = true;
+      if (const auto dst_authority = native_direct_local_va_pointer(call.args[0])) {
+        if (const auto src_authority = native_direct_local_va_pointer(call.args[1])) {
+          emit_lir_op(ctx, lir::LirVaCopyOp{
+                               .dst_ptr = dst_authority->first,
+                               .src_ptr = src_authority->first,
+                               .requires_native_memory_va_authority = true,
+                               .dst_authority = dst_authority->second,
+                               .src_authority = src_authority->second,
+                           });
+          return "";
+        }
+      }
       TypeSpec dst_ts{};
       TypeSpec src_ts{};
-      const std::string dst_ptr = emit_va_list_obj_ptr(ctx, call.args[0], dst_ts);
-      const std::string src_ptr = emit_va_list_obj_ptr(ctx, call.args[1], src_ts);
-      module_->need_va_copy = true;
-      emit_lir_op(ctx, lir::LirVaCopyOp{dst_ptr, src_ptr});
+      emit_lir_op(ctx, lir::LirVaCopyOp{
+                           emit_va_list_obj_ptr(ctx, call.args[0], dst_ts),
+                           emit_va_list_obj_ptr(ctx, call.args[1], src_ts)});
       return "";
     }
     if (builtin_id == BuiltinId::Alloca && call.args.size() == 1) {
