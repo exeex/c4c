@@ -1225,3 +1225,23 @@ dispatch, reachable verification, and transactional positive/negative
 coverage. Do not repeat Step 7.34 or absorb other parameter, memory/VA,
 aggregate/vector, module/type/global/metadata, instruction/terminator, or
 inline-assembly work.
+
+## Resumption Record: closed 818 scalar binary-LHS body-parameter authority
+
+Closed idea 818 is capability-complete. Its Step 1 selection trace
+(`0864c8aed`) accepted exactly closed 819's plain fixed scalar `LirBinOp.lhs`
+row as receiver-ready; 819's accepted producer/schema/verifier implementation
+and proof are `b16935c69`, with `^backend_` 6/6 and matching before/after
+guard showing no new failures. The sole receiver-consumable authority is the
+matching native `LirValueId`, parameter index, `LirTypeRef`, current-function
+`LinkNameId` owner, `LirNativeBodyParameterAbi::DirectScalar`, explicit `Lhs`
+role, and matching `LirBinOp.lhs` SSA value/type. Missing, invalid, duplicate,
+foreign-owner, out-of-range, non-scalar, type-or-ABI-incoherent, wrong-role,
+and lhs value/type-mismatch forms reject transactionally; presentation fields
+are forbidden.
+
+Exact return action: resume only at **Step 7.35 - Receive the one
+818-authorized body-parameter authority row**. Add only its typed Raw-BIR
+destination, importer dispatch, reachable verification, and transactional
+positive/negative coverage. No Raw-BIR receipt occurred in 818; do not repeat
+Steps 1 through 7.34 or receive another parameter form.

@@ -1,6 +1,6 @@
 # LIR Next Body-Parameter Authority Handoff
 
-Status: Open
+Status: Closed (capability complete; consumer 734 resumed at Step 7.35)
 Type: bounded LIR producer/schema/verifier authority publication
 Predecessor: accepted 734 Step 7.34 direct-pointer receiver receipt
 Consumer: `ideas/open/734_lir_to_new_bir_container_completeness.md`
@@ -95,3 +95,22 @@ handoff returns to its separate 810 baseline route and does not authorize a
   ctest --test-dir build -j --output-on-failure -R '^backend_' 2>&1 | tee
   test_after.log`, 6/6; matching `^backend_` before/after regression guard
   passed with no new failures (allow-non-decreasing for internal cases).
+
+## Closure Record
+
+Capability complete. Step 1's selection trace accepted exactly 819's plain
+fixed scalar `LirBinOp.lhs` row as receiver-ready (`0864c8aed`); 819's already
+accepted producer/schema/verifier contract and focused proof are
+`b16935c69` and the matching 6/6 `^backend_` regression guard with no new
+failures. Together they satisfy this idea's Steps 2--3 without a second
+producer publication: the sole 734-consumable handoff is the matching native
+`LirValueId`, parameter index, `LirTypeRef`, current-function `LinkNameId`
+owner, `LirNativeBodyParameterAbi::DirectScalar`, explicit `Lhs` role, and
+matching `LirBinOp.lhs` SSA value/type. The verifier transactionally rejects
+absent, invalid, duplicate, foreign-owner, out-of-range, non-scalar,
+type-or-ABI-incoherent, wrong-role, and lhs value/type-mismatch forms.
+Presentation fields remain forbidden. No Raw-BIR receipt occurred here.
+
+Consumer return: reactivate 734 at **Step 7.35 - Receive the one
+818-authorized body-parameter authority row** only; do not repeat Step 7.34
+or receive another parameter form.

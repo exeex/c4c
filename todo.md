@@ -1,46 +1,34 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/818_lir_next_body_parameter_authority_handoff.md
+Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Trace and select one body-parameter use authority row
+Current Step ID: 7.35
+Current Step Title: Receive the one 818-authorized body-parameter authority row
 
 ## Just Finished
 
-- Plan Step 1 selection complete: the exact 819 plain fixed scalar
-  `LirBinOp.lhs` row is receiver-ready for a later 734 receipt. Its only
-  receiver-consumable authority fields are the matching native `LirValueId`,
-  parameter index, `LirTypeRef`, current-function `LinkNameId` owner,
-  `LirNativeBodyParameterAbi::DirectScalar`, and
-  `LirScalarBinaryParameterRole::Lhs`; `LirBinOp.lhs` is the matching SSA
-  value/type binding. The allowed ABI is DirectScalar only. The verifier
-  transactionally rejects absent, invalid, duplicate, foreign-owner,
-  out-of-range, non-scalar/type-or-ABI-incoherent, wrong-role, and lhs
-  value/type-mismatch forms; `param_slots`, rendered text/signatures,
-  `LirOperand::raw`, diagnostics, and testcase identity remain forbidden.
-  No Raw-BIR receipt and no 818 Steps 2–3 work occurred. The exact consumer
-  return point is 734 Step 7.35, "Receive the one 818-authorized
-  body-parameter authority row."
+- Lifecycle resumption: 818 is capability-complete. Its accepted Step 1
+  selection (`0864c8aed`) and 819 producer contract/proof (`b16935c69`) hand
+  734 exactly one DirectScalar `LirBinOp.lhs` row; no Raw-BIR receipt occurred
+  in either producer idea.
 
 ## Suggested Next
 
-- Supervisor may select the next bounded 818 packet; retain this one selected
-  DirectScalar `LirBinOp.lhs` row and do not start Raw-BIR receipt work.
+- Execute Plan Step 7.35 only: receive the structured DirectScalar `LirBinOp.lhs`
+  row into one typed Raw-BIR destination with transactional authority checks.
 
 ## Watchouts
 
-- `param_slots`, rendered names/signatures, `LirOperand::raw`, diagnostics,
-  and testcase identity are forbidden authority.
-- Do not touch Raw-BIR/importer/dispatcher/receiver work or reuse accepted
-  817 / separate 795 authority as this row.
-- 819 permits only the exact plain fixed scalar `LirBinOp.lhs` tuple with
-  `DirectScalar` ABI and `Lhs` role; do not generalize to rhs, another
-  operator, or another parameter form.
+- Consume only matching native `LirValueId`, parameter index, `LirTypeRef`,
+  current-function `LinkNameId` owner, `DirectScalar` ABI, `Lhs` role, and
+  matching lhs SSA value/type.
+- Presentation fields, other ABI classes, roles, binary operators, parameter
+  forms, and all unrelated families remain forbidden or fail closed.
+- Do not repeat Steps 1 through 7.34.
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^backend_' 2>&1 | tee test_after.log` passed 6/6;
-  the required log is `test_after.log`. This selection/trace proof does not
-  imply a Raw-BIR receiver proof.
+- Accepted producer evidence: 819 commit `b16935c69`; `^backend_` passed 6/6
+  with matching before/after guard and no new failures. The 818 selection trace
+  (`0864c8aed`) did not create receiver proof; Step 7.35 needs its own proof.
