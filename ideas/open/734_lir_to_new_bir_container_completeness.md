@@ -1,8 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (paused after the accepted fail-closed partial Step 7.25 PHI
-receiver; exact parallel incoming CFG-edge occurrence authority is owned by
-open blocker 788 before this source resumes)
+Status: Open (resumed at Step 7.25 after the accepted fail-closed partial PHI
+receiver; only its exact parallel incoming CFG-edge portion remains)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -767,3 +766,25 @@ the Raw-BIR PHI receiver, consuming its occurrence authority alongside closed
 751 value/predecessor and closed 786 SpecialToken authority. Preserve
 `006d79aaf`; do not repeat Steps 7.20 through 7.24 or the already accepted
 unambiguous/loop-backedge partial receipt.
+
+## Resumption Update: accepted 788 successor-occurrence handoff
+
+Closed 788 is capability-complete. Its accepted commits `f52ced6ae` and
+`10d63ff7a` publish and verify native
+`LirSuccessorOccurrenceId` in
+`LirPhiIncoming.successor_occurrence` for the selected ternary, logical,
+AArch64-vaarg, and AMD64-vaarg direct PHI producers. The ID selects the exact
+typed predecessor terminator occurrence; verifier admission requires its
+presence, validity, current-function predecessor ownership,
+predecessor/destination coherence, and unique exact destination-edge coverage
+with native multiplicity/order. Conditional/switch true/false/default/case
+parallel occurrences remain distinct. Missing, invalid, foreign,
+predecessor-mismatched, destination-mismatched, duplicate, and incomplete
+coverage fails closed. Accepted proof is focused `frontend_lir_call_type_ref`
+1/1, matching `^backend_` before/after 5/5 non-decreasing, and fresh full
+CTest 3037/3037.
+
+Resume only unchanged Step 7.25's parallel-edge Raw-BIR PHI receiver portion:
+consume `successor_occurrence` with closed 751 value/predecessor and closed
+786 SpecialToken authority. Preserve accepted `006d79aaf`; do not repeat
+Steps 7.20–7.24 or the accepted unambiguous/loop-backedge receiver work.

@@ -1,6 +1,6 @@
 # LIR PHI Incoming Successor-Occurrence Identity Publication
 
-Status: Open
+Status: Closed — capability complete; parent handoff accepted
 Type: LIR producer/schema/verifier blocker for Raw-BIR PHI receipt
 Blocked Parent: ideas/open/734_lir_to_new_bir_container_completeness.md, Step 7.25
 
@@ -94,3 +94,36 @@ consuming this occurrence ID together with closed 751 value/predecessor and
 closed 786 SpecialToken authority. It must preserve `006d79aaf` and must not
 repeat Steps 7.20 through 7.24 or the accepted unambiguous/loop-backedge
 partial receiver work.
+
+## Completion And Accepted Parent Handoff
+
+Close accepted: this bounded LIR producer/schema/verifier blocker is capability
+complete. Commit `f52ced6ae` publishes
+`LirSuccessorOccurrenceId` in the native
+`LirPhiIncoming.successor_occurrence` carrier for the selected ternary,
+logical, AArch64-vaarg, and AMD64-vaarg direct producer populations. Commit
+`10d63ff7a` verifies that each published incoming has present, valid,
+current-function predecessor authority; that its selected typed terminator
+occurrence coheres with both its predecessor and the PHI destination; and that
+the selected occurrences provide unique exact destination-edge coverage with
+the terminator's native multiplicity and order.
+
+The verifier interprets the ID only against the typed predecessor terminator:
+direct-branch, conditional true/false, switch default, and ordered switch-case
+occurrences remain distinct even when their destination blocks are equal. It
+rejects missing, invalid, foreign, predecessor-mismatched,
+destination-mismatched, duplicate, and incomplete coverage. Typed positive
+coverage includes conditional and switch parallel occurrences; malformed cases
+cover the same rejected authority boundary without rendered-text or testcase
+matching.
+
+Supervisor-accepted proof: focused `frontend_lir_call_type_ref` 1/1; matching
+`^backend_` before/after guard 5/5 non-decreasing; and fresh full CTest
+3037/3037. The accepted implementation commits are `f52ced6ae` and
+`10d63ff7a`.
+
+Parent 734 now resumes only Step 7.25's remaining parallel-edge Raw-BIR PHI
+receiver portion. It must consume `LirPhiIncoming.successor_occurrence` with
+closed 751's value/predecessor authority and closed 786's SpecialToken
+authority, preserve accepted `006d79aaf`, and must not repeat Steps 7.20–7.24
+or accepted unambiguous/loop-backedge receiver work.
