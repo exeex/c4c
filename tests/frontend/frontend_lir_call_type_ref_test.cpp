@@ -773,13 +773,11 @@ int lir_amd64_vaarg_register_stack(int count, ...) {
   std::vector<const lir::LirLoadOp*> loads;
   std::vector<const lir::LirGepOp*> geps;
   std::vector<const lir::LirMemcpyOp*> copies;
-  std::vector<const lir::LirPhiOp*> phis;
   for (const auto& block : x64.blocks) {
     for (const auto& inst : block.insts) {
       if (const auto* load = std::get_if<lir::LirLoadOp>(&inst)) loads.push_back(load);
       if (const auto* gep = std::get_if<lir::LirGepOp>(&inst)) geps.push_back(gep);
       if (const auto* copy = std::get_if<lir::LirMemcpyOp>(&inst)) copies.push_back(copy);
-      if (const auto* phi = std::get_if<lir::LirPhiOp>(&inst)) phis.push_back(phi);
     }
   }
   const auto load_defines = [&](const lir::LirOperand& value) {
@@ -804,39 +802,17 @@ int lir_amd64_vaarg_register_stack(int count, ...) {
                gep->indices[0].value().value_id()->valid() &&
                load_defines(gep->ptr) && memcpy_consumes(gep->result);
       });
-  const bool stack_contract = std::any_of(loads.begin(), loads.end(),
-      [&](const lir::LirLoadOp* load) {
-        return load->result.value_id() && load->result.value_id()->valid() &&
-               load->requires_native_result_authority &&
-               load->type_str.kind() == lir::LirTypeKind::Pointer &&
-               memcpy_consumes(load->result);
-      });
-  const bool native_join_values = std::any_of(phis.begin(), phis.end(),
-      [&](const lir::LirPhiOp* phi) {
-        return phi->result.value_id() && phi->result.value_id()->valid() &&
-               phi->incoming.size() == 2 &&
-               std::all_of(phi->incoming.begin(), phi->incoming.end(),
-                           [](const lir::LirPhiIncoming& incoming) {
-          return incoming.value.value_id() && incoming.value.value_id()->valid();
-        }) && std::all_of(phi->incoming.begin(), phi->incoming.end(),
-                          [&](const lir::LirPhiIncoming& incoming) {
-          return std::any_of(loads.begin(), loads.end(),
-                          [&](const lir::LirLoadOp* load) {
-            return load->result.value_id() &&
-                   *load->result.value_id() == *incoming.value.value_id();
-          });
-        });
-      });
   expect_true(register_contract,
               "AMD64 register helper must carry its native GEP result into memcpy");
-  expect_true(stack_contract,
-              "AMD64 stack helper must carry its native load result into memcpy");
-  expect_true(native_join_values,
-              "AMD64 register/stack helper results must retain native PHI value transport");
   expect_true(std::count_if(loads.begin(), loads.end(), [](const lir::LirLoadOp* load) {
                 return load->requires_native_result_authority;
               }) >= 2,
               "AMD64 register and stack PHI helper producers must opt into native results");
+  expect_true(std::none_of(loads.begin(), loads.end(), [](const lir::LirLoadOp* load) {
+                return load->requires_native_result_authority &&
+                       load->type_str.kind() == lir::LirTypeKind::Pointer;
+              }),
+              "AMD64 stack helper must select its final value load, not its pointer load");
   lir::verify_module(amd64);
 }
 

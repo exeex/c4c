@@ -8,23 +8,23 @@ Current Step Title: Publish native vaarg PHI-helper input fields
 
 ## Just Finished
 
-- Plan Step 1 native vaarg helper-input producer fields: AArch64 GP/FP marks
-  `reg_addr` GEP and `stack_ptr` load; FP also marks its `aligned_stack_ptr`
-  ptrmask call or IntToPtr cast; AMD64 marks register `reg_value` and overflow
-  `stack_value` loads. `LirGepOp`, `LirLoadOp`, and `LirCallOp` now have
-  opt-in native-result requirements with missing/invalid/duplicate/foreign
-  rejection coverage, without changing PHI carriers or PHI verification.
+- Plan Step 1 repaired AMD64 overflow helper authority: the intermediate
+  `stack_ptr` pointer load no longer opts in, and the returned final
+  `stack_value` load does. Focused AMD64 coverage identifies the selected
+  non-pointer native producer structurally without inspecting `LirPhiOp`.
 
 ## Suggested Next
 
-- Review the completed Step 1 slice for acceptance and select the next
-  bounded Plan Step 1 packet only if remaining helper-input authority is found.
+- Review the repaired Step 1 slice for acceptance and select the next bounded
+  Step 1 packet only if another helper-input authority defect is found.
 
 ## Watchouts
 
 - Treat 783's accepted source-to-immediate-consumer contracts as upstream
   authority, not as a 782 helper-field or PHI-completion claim.
 - `LirVaArgOp.result` is a later result and does not identify helper PHI inputs.
+- AMD64 overflow authority belongs to the final non-pointer result load, not
+  the pointer load used as the memcpy source.
 - Do not change `LirPhiOp`, PHI verification, predecessor/edge authority, CFG,
   Raw-BIR/importer, backend, target lowering, MIR, or emission.
 - Do not recover IDs from names, labels, rendered text, instruction order, or
@@ -35,5 +35,5 @@ Current Step Title: Publish native vaarg PHI-helper input fields
 ## Proof
 
 - Passed: `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^frontend_lir_call_type_ref$'`. Per packet scope, no
-  canonical root log was written.
+  --output-on-failure -R '^frontend_lir_call_type_ref$'`. Per delegated scope,
+  no canonical root log was written.

@@ -48,7 +48,7 @@ LirOperand StmtEmitter::emit_amd64_va_arg_from_overflow(
     FnCtx& ctx, const TypeSpec& res_ts, const std::string& res_ty,
     const Amd64VaListPtrs& access, int size_bytes) {
   const LirOperand stack_ptr = fresh_value(ctx);
-  emit_lir_op(ctx, lir::LirLoadOp{stack_ptr, std::string("ptr"), access.overflow_ptr_ptr, true});
+  emit_lir_op(ctx, lir::LirLoadOp{stack_ptr, std::string("ptr"), access.overflow_ptr_ptr});
   const int stride = ((size_bytes + 7) / 8) * 8;
   const LirOperand next_ptr = fresh_value(ctx);
   emit_lir_op(ctx, lir::LirGepOp{
@@ -63,7 +63,7 @@ LirOperand StmtEmitter::emit_amd64_va_arg_from_overflow(
   module_->need_memcpy = true;
   emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, stack_ptr, std::to_string(size_bytes), false});
   const LirOperand out = fresh_value(ctx);
-  emit_lir_op(ctx, lir::LirLoadOp{out, res_ty, tmp_addr});
+  emit_lir_op(ctx, lir::LirLoadOp{out, res_ty, tmp_addr, true});
   return out;
 }
 
