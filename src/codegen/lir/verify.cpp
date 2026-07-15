@@ -2838,6 +2838,73 @@ void verify_function_value_ownership(const LirModule& mod,
                   "must exactly mirror one native direct-scalar parameter definition");
     }
   };
+  const auto verify_fixed_direct_call_argument0_parameter_authority =
+      [&](const LirCallOp& call) {
+    const bool selected_consumer =
+        call.direct_callee_link_name_id != kInvalidLinkName &&
+        call.callee.kind() == LirOperandKind::Global && call.callee.link_name_id() &&
+        *call.callee.link_name_id() == call.direct_callee_link_name_id &&
+        call.callee_signature && !call.callee_signature->is_variadic &&
+        !call.callee_signature->has_unspecified_params &&
+        !call.structured_args.empty() && !call.arg_type_refs.empty() &&
+        !call.callee_signature->fixed_param_type_refs.empty();
+    const LirCallArg* argument = selected_consumer ? &call.structured_args[0] : nullptr;
+    const auto definition = argument &&
+                                argument->operand.kind() == LirOperandKind::SsaValue &&
+                                argument->operand.value_id() && !argument->type_ref.empty() &&
+                                argument->type_ref == call.arg_type_refs[0] &&
+                                argument->type_ref == call.callee_signature->fixed_param_type_refs[0]
+                            ? std::find_if(
+                                  function.native_body_parameter_definitions.begin(),
+                                  function.native_body_parameter_definitions.end(),
+                                  [&](const auto& candidate) {
+                                    return candidate.value == *argument->operand.value_id() &&
+                                           candidate.type == argument->type_ref &&
+                                           candidate.abi ==
+                                               LirNativeBodyParameterAbi::DirectScalar;
+                                  })
+                            : function.native_body_parameter_definitions.end();
+    if (!argument || !argument->fixed_direct_call_argument_parameter_authority) {
+      if (definition != function.native_body_parameter_definitions.end()) {
+        fail_verify("LirCallOp.structured_args[0].fixed_direct_call_argument_parameter_authority",
+                    "is required when fixed direct-call argument 0 uses a native direct-scalar parameter");
+      }
+      return;
+    }
+    const auto& authority = *argument->fixed_direct_call_argument_parameter_authority;
+    constexpr std::string_view field =
+        "LirCallOp.structured_args[0].fixed_direct_call_argument_parameter_authority";
+    const bool unique_owner = authority.owner != kInvalidLinkName &&
+        authority.owner == function.link_name_id &&
+        std::count_if(mod.functions.begin(), mod.functions.end(), [&](const LirFunction& candidate) {
+          return candidate.link_name_id == authority.owner;
+        }) == 1;
+    if (!selected_consumer || !argument || !authority.value.valid() || !unique_owner ||
+        authority.parameter_index >= function.params.size() ||
+        authority.abi != LirNativeBodyParameterAbi::DirectScalar ||
+        authority.role !=
+            LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument0 ||
+        argument->operand.kind() != LirOperandKind::SsaValue || !argument->operand.value_id() ||
+        *argument->operand.value_id() != authority.value || argument->type_ref != authority.type ||
+        call.arg_type_refs[0] != authority.type ||
+        call.callee_signature->fixed_param_type_refs[0] != authority.type) {
+      fail_verify(field,
+                  "requires one native direct-scalar current-function fixed direct-call argument-0 binding");
+    }
+    const auto matches = std::count_if(
+        function.native_body_parameter_definitions.begin(),
+        function.native_body_parameter_definitions.end(), [&](const auto& candidate) {
+          return candidate.value == authority.value &&
+                 candidate.parameter_index == authority.parameter_index &&
+                 candidate.type == authority.type && candidate.owner == authority.owner &&
+                 candidate.abi == authority.abi;
+        });
+    if (matches != 1 || !direct_scalar_parameter_type(
+                            function.params[authority.parameter_index].second)) {
+      fail_verify(field,
+                  "must exactly mirror one native direct-scalar parameter definition");
+    }
+  };
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
       if (const auto* op = std::get_if<LirBinOp>(&inst)) {
@@ -2846,6 +2913,9 @@ void verify_function_value_ownership(const LirModule& mod,
       }
       if (const auto* op = std::get_if<LirCmpOp>(&inst)) {
         verify_truthiness_lhs_parameter_authority(*op);
+      }
+      if (const auto* call = std::get_if<LirCallOp>(&inst)) {
+        verify_fixed_direct_call_argument0_parameter_authority(*call);
       }
     }
   }

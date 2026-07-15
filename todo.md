@@ -8,16 +8,15 @@ Current Step Title: Publish and verify the selected authority
 
 ## Just Finished
 
-- Step 1 selected the native DirectScalar current-function parameter used
-  unchanged as fixed direct-call argument 0. Closed 828 then recoverably
-  isolated the unrelated 821/822 dirty frontend slice; its committed artifact
-  is `review/828_preserved_821_822_frontend_slice.patch` at `7b0f8671e`.
+- Step 2 published `LirCallOp.structured_args[0]` authority only for an
+  unchanged native DirectScalar current-function parameter passed as fixed
+  direct-call argument 0, with fail-closed verifier and focused malformed
+  tuple coverage, including duplicate matching native-definition rejection.
 
 ## Suggested Next
 
-- Implement only the explicit `LirCallOp.structured_args[0]`
-  `FixedDirectCallArgument0` authority and its fail-closed producer/verifier
-  coverage, then run the stipulated fresh build and focused frontend proof.
+- Record the selected producer authority and bounded Raw-BIR receiver boundary
+  for the Step 3 handoff back to 734.
 
 ## Watchouts
 
@@ -25,12 +24,12 @@ Current Step Title: Publish and verify the selected authority
   material. Restore it only with `git apply
   review/828_preserved_821_822_frontend_slice.patch` when its owning route is
   authorized.
-- Do not admit later arguments, indirect/variadic/unspecified calls, pointer,
-  spilled/load-derived, aggregate/vector, or any other parameter form.
+- The authority remains limited to structured argument 0 of a direct,
+  non-variadic, specified call and rejects pointer, spilled/load-derived,
+  aggregate/vector, later-argument, indirect, and other parameter forms.
 
 ## Proof
 
-- Required Step 2 acceptance proof: fresh `cmake --build --preset default`,
-  then `ctest --test-dir build --output-on-failure -R
-  '^frontend_lir_call_type_ref$'`. The 828 matching baseline/after 1/1 result
-  establishes worktree isolation only, not Step 2 semantic acceptance.
+- Passed: `cmake --build --preset default && ctest --test-dir build
+  --output-on-failure -R '^frontend_lir_call_type_ref$'` (1/1). Per the
+  delegated packet, no root test log was written or changed.

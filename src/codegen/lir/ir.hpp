@@ -492,6 +492,32 @@ struct LirCallSignature {
   bool has_void_param_list = false;
 };
 
+// The only body-parameter ABI classes admitted to native body-use authority.
+// Each additional class needs its own producer and verifier contract.
+enum class LirNativeBodyParameterAbi : uint8_t {
+  Invalid,
+  DirectPointer,
+  DirectScalar,
+};
+
+enum class LirFixedDirectCallArgumentParameterRole : uint8_t {
+  Invalid,
+  FixedDirectCallArgument0,
+};
+
+// Native authority for exactly a direct plain scalar current-function
+// parameter passed unchanged as fixed direct-call argument 0. The operand
+// spelling is a checked display mirror; selection facts live here.
+struct LirFixedDirectCallArgumentParameterAuthority {
+  LirValueId value = LirValueId::invalid();
+  uint32_t parameter_index = 0;
+  LirTypeRef type;
+  LinkNameId owner = kInvalidLinkName;
+  LirNativeBodyParameterAbi abi = LirNativeBodyParameterAbi::Invalid;
+  LirFixedDirectCallArgumentParameterRole role =
+      LirFixedDirectCallArgumentParameterRole::Invalid;
+};
+
 struct LirCallArg {
   std::string type;
   LirOperand operand;
@@ -500,6 +526,8 @@ struct LirCallArg {
   std::size_t aarch64_hfa_lane_index = 0;
   std::size_t aarch64_stack_align_bytes = 0;
   LirExtAttr ext_attr = LirExtAttr::None;
+  std::optional<LirFixedDirectCallArgumentParameterAuthority>
+      fixed_direct_call_argument_parameter_authority;
 };
 
 enum class LirIntrinsicKind : unsigned char {
@@ -530,14 +558,6 @@ struct LirCallOp {
   std::optional<LirZeroCountBehavior> zero_count_behavior;
   // Opt-in standalone native result ownership; compatibility calls remain false.
   bool requires_native_result_authority = false;
-};
-
-// The only body-parameter ABI classes admitted to native body-use authority.
-// Each additional class needs its own producer and verifier contract.
-enum class LirNativeBodyParameterAbi : uint8_t {
-  Invalid,
-  DirectPointer,
-  DirectScalar,
 };
 
 enum class LirScalarBinaryParameterRole : uint8_t {

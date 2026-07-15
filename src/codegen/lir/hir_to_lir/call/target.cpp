@@ -314,17 +314,56 @@ CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr&
   return info;
 }
 
+namespace {
+
+void publish_fixed_direct_call_argument0_authority(
+    FnCtx& ctx, const CallTargetInfo& call_target, LirCallOp& call) {
+  if (!ctx.lir_function || call_target.callee_link_name_id == kInvalidLinkName ||
+      !call_target.target_fn || call_target.target_fn->attrs.variadic ||
+      call_target.callee_fn_ptr_sig || !call.callee_signature ||
+      call.callee_signature->is_variadic ||
+      call.callee_signature->has_unspecified_params ||
+      call.structured_args.empty() || call.arg_type_refs.empty()) {
+    return;
+  }
+  LirCallArg& argument = call.structured_args[0];
+  if (argument.operand.kind() != LirOperandKind::SsaValue ||
+      !argument.operand.value_id() || argument.type_ref.empty() ||
+      argument.type_ref != call.arg_type_refs[0] ||
+      call.callee_signature->fixed_param_type_refs.empty() ||
+      argument.type_ref != call.callee_signature->fixed_param_type_refs[0]) {
+    return;
+  }
+  const auto definition = std::find_if(
+      ctx.lir_function->native_body_parameter_definitions.begin(),
+      ctx.lir_function->native_body_parameter_definitions.end(),
+      [&](const LirCurrentFunctionBodyParameterDefinition& candidate) {
+        return candidate.value == *argument.operand.value_id() &&
+               candidate.type == argument.type_ref &&
+               candidate.abi == LirNativeBodyParameterAbi::DirectScalar;
+      });
+  if (definition == ctx.lir_function->native_body_parameter_definitions.end()) return;
+  argument.fixed_direct_call_argument_parameter_authority =
+      LirFixedDirectCallArgumentParameterAuthority{
+          .value = definition->value,
+          .parameter_index = definition->parameter_index,
+          .type = definition->type,
+          .owner = definition->owner,
+          .abi = definition->abi,
+          .role = LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument0,
+      };
+}
+
+}  // namespace
+
 void StmtEmitter::emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
                                  const std::vector<OwnedLirTypedCallArg>& args) {
-  emit_lir_op(ctx,
-              make_lir_call_op_with_return_type_ref("",
-                                                    LirTypeRef(LirBuiltinType::Void),
-                                                    call_target.callee_val,
-                                                    call_target.callee_type_suffix,
-                                                    args,
-                                                    call_target.callee_link_name_id,
-                                                    structured_callee_signature(
-                                                        mod_, module_, call_target)));
+  LirCallOp call = make_lir_call_op_with_return_type_ref(
+      "", LirTypeRef(LirBuiltinType::Void), call_target.callee_val,
+      call_target.callee_type_suffix, args, call_target.callee_link_name_id,
+      structured_callee_signature(mod_, module_, call_target));
+  publish_fixed_direct_call_argument0_authority(ctx, call_target, call);
+  emit_lir_op(ctx, std::move(call));
 }
 
 LirOperand StmtEmitter::emit_call_with_result(
@@ -354,16 +393,12 @@ LirOperand StmtEmitter::emit_call_with_result(
   const LirOperand result = authoritative_direct_result
                                 ? fresh_value(ctx)
                                 : LirOperand(fresh_tmp(ctx));
-  emit_lir_op(
-      ctx,
-      make_lir_call_op_with_return_type_ref(
-          result,
-          std::move(return_type),
-          call_target.callee_val,
-          call_target.callee_type_suffix,
-          args,
-          call_target.callee_link_name_id,
-          std::move(callee_signature)));
+  LirCallOp call = make_lir_call_op_with_return_type_ref(
+      result, std::move(return_type), call_target.callee_val,
+      call_target.callee_type_suffix, args, call_target.callee_link_name_id,
+      std::move(callee_signature));
+  publish_fixed_direct_call_argument0_authority(ctx, call_target, call);
+  emit_lir_op(ctx, std::move(call));
   return result;
 }
 

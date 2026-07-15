@@ -4344,6 +4344,80 @@ void lir_direct_void_ssa_arg_identity(void) {
       extension_conflict, "verifier should reject extension on fixed SSA argument");
 }
 
+void test_native_direct_scalar_fixed_call_argument0_authority() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+void fixed_call_argument0_target(int value);
+void fixed_call_argument0_native(int value) {
+  fixed_call_argument0_target(value);
+}
+)c", "x86_64-linux-gnu");
+  const auto require_call = [](lir::LirModule& module) -> lir::LirCallOp& {
+    return require_call_to(require_function(module, "fixed_call_argument0_native"),
+                           "@fixed_call_argument0_target");
+  };
+
+  lir::LirCallOp& call = require_call(lowered);
+  expect_true(call.structured_args.size() == 1 &&
+                  call.structured_args[0].fixed_direct_call_argument_parameter_authority,
+              "native direct-scalar parameter call argument 0 should publish authority");
+  const auto& authority =
+      *call.structured_args[0].fixed_direct_call_argument_parameter_authority;
+  expect_true(call.structured_args[0].operand.value_id() &&
+                  authority.value == *call.structured_args[0].operand.value_id() &&
+                  authority.type == call.structured_args[0].type_ref &&
+                  authority.type == call.arg_type_refs[0] && call.callee_signature &&
+                  authority.type == call.callee_signature->fixed_param_type_refs[0] &&
+                  authority.abi == lir::LirNativeBodyParameterAbi::DirectScalar &&
+                  authority.role ==
+                      lir::LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument0,
+              "call argument authority should mirror the selected direct scalar tuple");
+  lir::verify_module(lowered);
+
+  const auto rejected = [&](const std::string& message, const auto& mutate) {
+    lir::LirModule malformed = lowered;
+    mutate(malformed, require_call(malformed));
+    expect_identity_verification_rejected(malformed, message);
+  };
+  rejected("missing fixed call argument authority must fail closed", [](auto&, auto& candidate) {
+    candidate.structured_args[0].fixed_direct_call_argument_parameter_authority.reset();
+  });
+  rejected("invalid fixed call argument authority must fail closed", [](auto&, auto& candidate) {
+    candidate.structured_args[0].fixed_direct_call_argument_parameter_authority->value =
+        lir::LirValueId::invalid();
+  });
+  rejected("foreign fixed call argument authority must fail closed", [](auto&, auto& candidate) {
+    candidate.structured_args[0].fixed_direct_call_argument_parameter_authority->owner =
+        c4c::LinkNameId{999};
+  });
+  rejected("wrong fixed call argument index must fail closed", [](auto&, auto& candidate) {
+    candidate.structured_args[0].fixed_direct_call_argument_parameter_authority->parameter_index = 1;
+  });
+  rejected("wrong fixed call argument type must fail closed", [](auto&, auto& candidate) {
+    candidate.structured_args[0].fixed_direct_call_argument_parameter_authority->type =
+        lir::LirTypeRef::integer(64);
+  });
+  rejected("wrong fixed call argument ABI must fail closed", [](auto&, auto& candidate) {
+    candidate.structured_args[0].fixed_direct_call_argument_parameter_authority->abi =
+        lir::LirNativeBodyParameterAbi::DirectPointer;
+  });
+  rejected("wrong fixed call argument role must fail closed", [](auto&, auto& candidate) {
+    candidate.structured_args[0].fixed_direct_call_argument_parameter_authority->role =
+        lir::LirFixedDirectCallArgumentParameterRole::Invalid;
+  });
+  rejected("duplicate fixed call argument parameter definition must fail closed",
+           [](auto& module, auto&) {
+             lir::LirFunction& function =
+                 require_function(module, "fixed_call_argument0_native");
+             function.native_body_parameter_definitions.push_back(
+                 function.native_body_parameter_definitions.front());
+           });
+  rejected("consumer-incoherent fixed call authority must fail closed", [](auto&, auto& candidate) {
+    candidate.callee_signature->fixed_param_type_refs[0] = lir::LirTypeRef::integer(64);
+  });
+}
+
 void test_native_direct_scalar_switch_selector_authority() {
   namespace lir = c4c::codegen::lir;
 
@@ -9364,6 +9438,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_standalone_cast_result_authority_contract();
   test_direct_branch_successor_identity_contract();
   test_conditional_and_switch_successor_identity_contract();
+  test_native_direct_scalar_fixed_call_argument0_authority();
   test_native_direct_scalar_switch_selector_authority();
   test_native_direct_scalar_truthiness_comparison_lhs_authority();
   test_indirect_branch_successor_identity_contract();
