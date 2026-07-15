@@ -479,3 +479,40 @@ the excluded row in `todo.md`; then implement and prove only that row. Do not
 reopen Steps 1--9, generalize the shuffle splat, recover facts from display
 text, or absorb a missing carrier fact: any such prerequisite is a separately
 scoped blocker that returns to this Step 11 selection point.
+
+## Resumption Update: Step 12 closure rejected; remaining InsertElement route
+
+Last accepted progress: Steps 1--11 remain accepted. Step 12,
+*Implement and prove the Step 11 selection*, is accepted in `d491013e9`
+(`lir: require extractelement authority`). It selects only direct vector
+`IndexExpr` `LirExtractElementOp`: native vector authority and a native `i32`
+index are required in addition to the established current-function result/
+vector IDs and structured lane/element coherence. Its nearby matrix accepts
+native SSA and immediate/coerced `i32` indices and rejects missing, invalid,
+mismatched, or undefined result/vector/index facts, malformed shapes, and
+non-`i32` indices. `LirInsertElementOp` and accepted ShuffleVector behavior
+are unchanged.
+
+Accepted proof: fresh `^backend_` before/after captures each passed 6/6; the
+monotonic guard passed with `--allow-non-decreasing-passed`; and the supervisor
+accepted a fresh full CTest baseline at 3038/3038. This proves the selected
+ExtractElement row only.
+
+Closure disposition: **close rejected**. The source criterion requiring
+representative `LirInsertElementOp` structured result/use identity and exact
+typed element/index/vector facts remains unmet: its row has not been selected
+or implemented as authority work. Consequently the required vector
+insert/extract/shuffle chain coverage is also incomplete. The accepted
+ShuffleVector route's immediately preceding InsertElement is a checked
+precursor for that shuffle seam, not representative InsertElement-row
+authority; it cannot satisfy this criterion.
+
+Classification: `repair-current-route`. The remaining row is expressly within
+this source's scope, so no successor or switch is warranted. Repair the active
+runbook at Step 13, *Audit and select the remaining InsertElement authority
+row*, then implement and prove only that selection at Step 14 and return for
+Step 15 semantic reassessment. A missing prerequisite outside aggregate/vector
+row authority must instead become a separately scoped blocker that preserves
+this exact Step 13 return point. Do not repeat accepted Steps 1--12, reopen
+the ExtractElement route, generalize the ShuffleVector precursor, or recover
+identity from display text.

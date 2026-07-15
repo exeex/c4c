@@ -3,12 +3,12 @@
 Status: Active
 Source Idea Path: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 12
-Current Step Title: Implement and prove the Step 11 selection
+Current Step ID: 13
+Current Step Title: Audit and select the remaining InsertElement authority row
 
 ## Just Finished
 
-Step 12 implementation now requires `LirNativeVectorAuthority` on the sole
+Step 12 is accepted in `d491013e9`. Its implementation requires `LirNativeVectorAuthority` on the sole
 direct vector-value `IndexExpr` `LirExtractElementOp` producer and requires its
 native `i32` index type. The row-local verifier compares index kind and native
 authority rather than index display text, while retaining current-function
@@ -20,15 +20,18 @@ ShuffleVector behavior were left unchanged.
 
 ## Suggested Next
 
-Supervisor checkpoint: inspect the bounded diff and decide whether to accept
-the required ExtractElement carrier seam before broader validation.
+Audit only the remaining `LirInsertElementOp` producer seam against the
+accepted 811 vector carrier and the accepted ShuffleVector precursor. Record
+one concrete row-local contract plus its nearby positive/malformed matrix.
+Do not reuse the previously rejected scalar-to-vector selection without a
+fresh audit, generalize ExtractElement, or change accepted ShuffleVector.
 
 ## Watchouts
 
-The LIR schema has no per-ExtractElement requirement bit, but repository search
-found exactly one producer, the selected direct vector IndexExpr lowering; the
-verifier therefore requires the carrier at that sole operation seam. Do not
-generalize to InsertElement or alter accepted zero-initializer ShuffleVector.
+The accepted ExtractElement seam has no per-row requirement bit because its
+sole producer is direct vector IndexExpr lowering. InsertElement must receive
+its own fresh authority/seam decision; do not infer it from the existing
+ShuffleVector precursor or from display text.
 
 ## Proof
 
