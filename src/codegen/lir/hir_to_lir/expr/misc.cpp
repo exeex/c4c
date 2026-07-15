@@ -273,12 +273,25 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, con
     if (res_ty == "float" || res_ty == "double") return LirOperand("0.0");
     return LirOperand::integer("0", 0);
   };
+  auto retain_same_type_source_authority = [&](const LirOperand& source,
+                                               const TypeSpec& source_spec,
+                                               const LirOperand& coerced) -> LirOperand {
+    if (source.value_id() && llvm_value_ty(mod_, source_spec) == res_ty &&
+        source.str() == coerced.str()) {
+      return source;
+    }
+    return coerced;
+  };
+  const LirOperand then_incoming =
+      retain_same_type_source_authority(then_source, then_ts, then_coerced);
+  const LirOperand else_incoming =
+      retain_same_type_source_authority(else_source, else_ts, else_coerced);
   const std::string tmp = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirPhiOp{
                        tmp, res_ty,
-                       {{void_to_zero(then_coerced), then_end_target.label, then_end_target.id,
+                       {{void_to_zero(then_incoming), then_end_target.label, then_end_target.id,
                          lir::LirSuccessorOccurrenceId::direct_branch()},
-                        {void_to_zero(else_coerced), else_end_target.label, else_end_target.id,
+                        {void_to_zero(else_incoming), else_end_target.label, else_end_target.id,
                          lir::LirSuccessorOccurrenceId::direct_branch()}}});
   return tmp;
 }

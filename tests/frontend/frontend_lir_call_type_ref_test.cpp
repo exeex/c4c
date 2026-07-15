@@ -5005,6 +5005,12 @@ long long lir_ternary_coerce_result_authority_loss(int condition, long long inpu
   expect_identity_verification_rejected(
       foreign_phi_value, "verifier should reject cross-function PHI incoming value authority");
 
+  lir::LirModule stale_phi_value = lowered;
+  require_phi(stale_phi_value).incoming.front().value =
+      lir::LirOperand::ssa("%stale-phi", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      stale_phi_value, "verifier should reject stale PHI incoming value authority");
+
   lir::LirModule missing_phi_predecessor = lowered;
   require_phi(missing_phi_predecessor).incoming.front().predecessor = lir::LirBlockId::invalid();
   expect_identity_verification_rejected(
