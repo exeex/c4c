@@ -5,6 +5,7 @@
 #include "type.hpp"
 #include "../pipeline/identity.hpp"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -169,6 +170,7 @@ enum class NodeKind : std::uint8_t {
   AllocaAuthority,
   StackSaveAuthority,
   StackRestoreAuthority,
+  Count,
 };
 
 // Compatibility spelling for clients that still describe the closed node
@@ -395,20 +397,101 @@ using InstPayload =
     LocalLoadAuthorityNode, LocalStoreAuthorityNode, LocalArrayGepAuthorityNode,
     StackSaveAuthorityNode, StackRestoreAuthorityNode>;
 
-enum class NodeFamily : std::uint8_t { Semantic, Memory, Call, Authority };
-enum class OperandArityPolicy : std::uint8_t { Fixed, Variable };
-enum class ResultArityPolicy : std::uint8_t { Zero, One, Many };
+enum class NodeFamily : std::uint8_t {
+  Semantic,
+  Memory,
+  Call,
+  Authority,
+  Count,
+};
+enum class OperandArityPolicy : std::uint8_t { Fixed, Variable, Count };
+enum class ResultArityPolicy : std::uint8_t { Zero, One, Many, Count };
 enum class NodeEffect : std::uint8_t {
   None,
   ReadsMemory,
   WritesMemory,
   ReadsAndWritesMemory,
   Unknown,
+  Count,
 };
 enum class NodeStage : std::uint8_t {
   Raw = 1,
   Canonical = 2,
   Prepared = 4,
+  PseudoPreallocation = 8,
+  Allocated = 16,
+  MirReadyMachine = 32,
+};
+
+enum class NodeValueModel : std::uint8_t {
+  NoOrdinaryResult,
+  SingleOrdinaryResult,
+  MultipleResults,
+  Count,
+};
+enum class NodeSsaParticipation : std::uint8_t { NeverSsa, SsaEligible, Count };
+enum class NodeSemanticFamily : std::uint8_t {
+  Arithmetic,
+  Compare,
+  Conversion,
+  Memory,
+  Aggregate,
+  Call,
+  PhiMerge,
+  Authority,
+  Intrinsic,
+  Preparation,
+  Pseudo,
+  AllocationAction,
+  Machine,
+  Count,
+};
+enum class NodeControlBehavior : std::uint8_t {
+  FallsThrough,
+  TerminatorNoSuccessor,
+  TerminatorOneSuccessor,
+  TerminatorTwoSuccessors,
+  TerminatorVariableSuccessors,
+  Count,
+};
+enum class NodeTrapBehavior : std::uint8_t { CannotTrap, MayTrap, Count };
+enum class NodeTypePolicy : std::uint8_t {
+  NoResultType,
+  StoredValueType,
+  Count,
+};
+enum class NodePayloadPolicy : std::uint8_t {
+  OneClosedPayload,
+  ClosedPayloadAlternatives,
+  Count,
+};
+enum class NodeMirDisposition : std::uint8_t {
+  OneRecordRealizable,
+  RequiresExpansion,
+  RequiresAllocationOrFrameFacts,
+  MachineOnly,
+  ForbiddenAtMirBoundary,
+  Count,
+};
+enum class NodeKindRefinement : std::uint8_t {
+  None = 0,
+  BinaryForm = 1,
+  PhiMergeForm = 2,
+};
+enum class NodeTag : std::uint8_t {
+  ValueProducing,
+  SsaEligible,
+  Semantic,
+  Memory,
+  CallLike,
+  Terminator,
+  ReadsMemory,
+  WritesMemory,
+  MayTrap,
+  RequiresExpansion,
+  RequiresAllocationOrFrameFacts,
+  MachineOnly,
+  Count,
 };
 
 struct NodeKindDescriptor {
@@ -422,150 +505,346 @@ struct NodeKindDescriptor {
   std::uint8_t legal_stages;
 };
 
+struct NodeKindSchema {
+  NodeKind kind;
+  NodeKindDescriptor descriptor;
+  NodeValueModel value_model;
+  NodeSsaParticipation ssa_participation;
+  NodeSemanticFamily semantic_family;
+  std::uint8_t refinements;
+  NodeControlBehavior control;
+  NodeTrapBehavior trap;
+  NodeStage stage_owner;
+  NodeTypePolicy type_policy;
+  NodePayloadPolicy payload_policy;
+  NodeMirDisposition mir_disposition;
+};
+
 namespace detail {
 
 constexpr std::uint16_t variable_arity = UINT16_MAX;
-constexpr std::uint8_t all_node_stages =
+constexpr std::uint8_t semantic_node_stages =
     static_cast<std::uint8_t>(NodeStage::Raw) |
     static_cast<std::uint8_t>(NodeStage::Canonical) |
     static_cast<std::uint8_t>(NodeStage::Prepared);
+constexpr std::uint8_t known_node_stages =
+    semantic_node_stages |
+    static_cast<std::uint8_t>(NodeStage::PseudoPreallocation) |
+    static_cast<std::uint8_t>(NodeStage::Allocated) |
+    static_cast<std::uint8_t>(NodeStage::MirReadyMachine);
+constexpr std::uint8_t binary_refinement =
+    static_cast<std::uint8_t>(NodeKindRefinement::BinaryForm);
+constexpr std::uint8_t phi_refinement =
+    static_cast<std::uint8_t>(NodeKindRefinement::PhiMergeForm);
+constexpr std::uint8_t known_refinements = binary_refinement | phi_refinement;
 
 template <class... Payloads>
 bool accepts_one_of(const InstPayload& payload) noexcept {
   return (std::holds_alternative<Payloads>(payload) || ...);
 }
 
-template <NodeKind Kind, NodeFamily Family, bool Binary,
-          OperandArityPolicy OperandPolicy, std::uint16_t MinimumOperands,
-          std::uint16_t MaximumOperands, ResultArityPolicy ResultPolicy,
-          NodeEffect Effects, std::uint8_t LegalStages, class... Payloads>
-struct node_kind_schema {
-  static constexpr NodeKindDescriptor descriptor{
-      Family, Binary, OperandPolicy, MinimumOperands, MaximumOperands,
-      ResultPolicy, Effects, LegalStages};
+using PayloadAcceptance = bool (*)(const InstPayload&) noexcept;
 
-  static bool accepts(const InstPayload& payload) noexcept {
-    return accepts_one_of<Payloads...>(payload);
-  }
+struct NodeKindRegistryEntry {
+  NodeKindSchema schema;
+  PayloadAcceptance accepts_payload;
 };
 
-template <NodeKind>
-struct node_kind_traits;
+template <class... Payloads>
+constexpr NodeKindRegistryEntry make_node_kind_entry(
+    NodeKind kind, NodeFamily legacy_family, NodeValueModel value_model,
+    NodeSsaParticipation ssa, NodeSemanticFamily semantic_family,
+    std::uint8_t refinements, OperandArityPolicy operand_policy,
+    std::uint16_t minimum_operands, std::uint16_t maximum_operands,
+    ResultArityPolicy result_policy, NodeEffect effects,
+    NodeControlBehavior control, NodeTrapBehavior trap, NodeStage stage_owner,
+    std::uint8_t admitted_stages, NodeTypePolicy type_policy,
+    NodeMirDisposition mir) noexcept {
+  return {{kind,
+           {legacy_family, (refinements & binary_refinement) != 0,
+            operand_policy, minimum_operands, maximum_operands, result_policy,
+            effects, admitted_stages},
+           value_model,
+           ssa,
+           semantic_family,
+           refinements,
+           control,
+           trap,
+           stage_owner,
+           type_policy,
+           sizeof...(Payloads) == 1
+               ? NodePayloadPolicy::OneClosedPayload
+               : NodePayloadPolicy::ClosedPayloadAlternatives,
+           mir},
+          &accepts_one_of<Payloads...>};
+}
 
-template <>
-struct node_kind_traits<NodeKind::InlineAsm>
-    : node_kind_schema<NodeKind::InlineAsm, NodeFamily::Semantic, false,
-                       OperandArityPolicy::Variable, 0, variable_arity,
-                       ResultArityPolicy::Many, NodeEffect::Unknown,
-                       all_node_stages, InlineAsmNode> {};
-template <>
-struct node_kind_traits<NodeKind::Store>
-    : node_kind_schema<NodeKind::Store, NodeFamily::Memory, false,
-                       OperandArityPolicy::Fixed, 1, 1,
-                       ResultArityPolicy::Zero, NodeEffect::WritesMemory,
-                       all_node_stages, StoreNode, LocalStoreAuthorityNode> {};
-template <>
-struct node_kind_traits<NodeKind::Load>
-    : node_kind_schema<NodeKind::Load, NodeFamily::Memory, false,
-                       OperandArityPolicy::Variable, 0, 1,
-                       ResultArityPolicy::One, NodeEffect::ReadsMemory,
-                       all_node_stages, LoadNode, LocalLoadAuthorityNode> {};
-template <>
-struct node_kind_traits<NodeKind::GetElementPtr>
-    : node_kind_schema<NodeKind::GetElementPtr, NodeFamily::Semantic, false,
-                       OperandArityPolicy::Variable, 1, variable_arity,
-                       ResultArityPolicy::One, NodeEffect::None,
-                       all_node_stages, GetElementPtrNode,
-                       LocalArrayGepAuthorityNode> {};
-template <>
-struct node_kind_traits<NodeKind::Abs>
-    : node_kind_schema<NodeKind::Abs, NodeFamily::Semantic, false,
-                       OperandArityPolicy::Fixed, 1, 1,
-                       ResultArityPolicy::One, NodeEffect::None,
-                       all_node_stages, AbsNode> {};
-template <>
-struct node_kind_traits<NodeKind::Call>
-    : node_kind_schema<NodeKind::Call, NodeFamily::Call, false,
-                       OperandArityPolicy::Variable, 0, variable_arity,
-                       ResultArityPolicy::Many, NodeEffect::Unknown,
-                       all_node_stages, CallNode, IntrinsicCallNode> {};
-template <>
-struct node_kind_traits<NodeKind::Binary>
-    : node_kind_schema<NodeKind::Binary, NodeFamily::Semantic, true,
-                       OperandArityPolicy::Fixed, 2, 2,
-                       ResultArityPolicy::One, NodeEffect::None,
-                       all_node_stages, BinaryNode> {};
-template <>
-struct node_kind_traits<NodeKind::Compare>
-    : node_kind_schema<NodeKind::Compare, NodeFamily::Semantic, true,
-                       OperandArityPolicy::Fixed, 2, 2,
-                       ResultArityPolicy::One, NodeEffect::None,
-                       all_node_stages, CompareNode> {};
-template <>
-struct node_kind_traits<NodeKind::Select>
-    : node_kind_schema<NodeKind::Select, NodeFamily::Semantic, false,
-                       OperandArityPolicy::Variable, 0, variable_arity,
-                       ResultArityPolicy::One, NodeEffect::None,
-                       all_node_stages, SelectNode> {};
-template <>
-struct node_kind_traits<NodeKind::SelectedMemcpy>
-    : node_kind_schema<NodeKind::SelectedMemcpy, NodeFamily::Memory, false,
-                       OperandArityPolicy::Fixed, 0, 0,
-                       ResultArityPolicy::Zero,
-                       NodeEffect::ReadsAndWritesMemory, all_node_stages,
-                       SelectedMemcpyNode> {};
-template <>
-struct node_kind_traits<NodeKind::Amd64SysVOverflowAggregateMemcpy>
-    : node_kind_schema<NodeKind::Amd64SysVOverflowAggregateMemcpy,
-                       NodeFamily::Memory, false, OperandArityPolicy::Fixed, 0,
-                       0, ResultArityPolicy::Zero,
-                       NodeEffect::ReadsAndWritesMemory, all_node_stages,
-                       Amd64SysVOverflowAggregateMemcpyNode> {};
-template <>
-struct node_kind_traits<NodeKind::Cast>
-    : node_kind_schema<NodeKind::Cast, NodeFamily::Semantic, false,
-                       OperandArityPolicy::Fixed, 1, 1,
-                       ResultArityPolicy::One, NodeEffect::None,
-                       all_node_stages, CastNode> {};
-template <>
-struct node_kind_traits<NodeKind::Phi>
-    : node_kind_schema<NodeKind::Phi, NodeFamily::Semantic, false,
-                       OperandArityPolicy::Variable, 1, variable_arity,
-                       ResultArityPolicy::One, NodeEffect::None,
-                       all_node_stages, PhiNode> {};
-template <>
-struct node_kind_traits<NodeKind::AllocaAuthority>
-    : node_kind_schema<NodeKind::AllocaAuthority, NodeFamily::Authority, false,
-                       OperandArityPolicy::Fixed, 0, 0,
-                       ResultArityPolicy::One, NodeEffect::None,
-                       all_node_stages, AllocaAuthorityNode> {};
-template <>
-struct node_kind_traits<NodeKind::StackSaveAuthority>
-    : node_kind_schema<NodeKind::StackSaveAuthority, NodeFamily::Authority,
-                       false, OperandArityPolicy::Fixed, 0, 0,
-                       ResultArityPolicy::One, NodeEffect::Unknown,
-                       all_node_stages, StackSaveAuthorityNode> {};
-template <>
-struct node_kind_traits<NodeKind::StackRestoreAuthority>
-    : node_kind_schema<NodeKind::StackRestoreAuthority, NodeFamily::Authority,
-                       false, OperandArityPolicy::Fixed, 1, 1,
-                       ResultArityPolicy::Zero, NodeEffect::Unknown,
-                       all_node_stages, StackRestoreAuthorityNode> {};
+inline constexpr std::array<NodeKindRegistryEntry,
+                            static_cast<std::size_t>(NodeKind::Count)>
+    node_kind_registry{{
+        make_node_kind_entry<InlineAsmNode>(
+            NodeKind::InlineAsm, NodeFamily::Semantic,
+            NodeValueModel::MultipleResults, NodeSsaParticipation::SsaEligible,
+            NodeSemanticFamily::Intrinsic, 0, OperandArityPolicy::Variable, 0,
+            variable_arity, ResultArityPolicy::Many, NodeEffect::Unknown,
+            NodeControlBehavior::FallsThrough, NodeTrapBehavior::MayTrap,
+            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::StoredValueType,
+            NodeMirDisposition::RequiresExpansion),
+        make_node_kind_entry<StoreNode, LocalStoreAuthorityNode>(
+            NodeKind::Store, NodeFamily::Memory,
+            NodeValueModel::NoOrdinaryResult,
+            NodeSsaParticipation::NeverSsa, NodeSemanticFamily::Memory, 0,
+            OperandArityPolicy::Fixed, 1, 1, ResultArityPolicy::Zero,
+            NodeEffect::WritesMemory, NodeControlBehavior::FallsThrough,
+            NodeTrapBehavior::MayTrap, NodeStage::Raw, semantic_node_stages,
+            NodeTypePolicy::NoResultType,
+            NodeMirDisposition::OneRecordRealizable),
+        make_node_kind_entry<LoadNode, LocalLoadAuthorityNode>(
+            NodeKind::Load, NodeFamily::Memory,
+            NodeValueModel::SingleOrdinaryResult,
+            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Memory, 0,
+            OperandArityPolicy::Variable, 0, 1, ResultArityPolicy::One,
+            NodeEffect::ReadsMemory, NodeControlBehavior::FallsThrough,
+            NodeTrapBehavior::MayTrap, NodeStage::Raw, semantic_node_stages,
+            NodeTypePolicy::StoredValueType,
+            NodeMirDisposition::OneRecordRealizable),
+        make_node_kind_entry<GetElementPtrNode, LocalArrayGepAuthorityNode>(
+            NodeKind::GetElementPtr, NodeFamily::Semantic,
+            NodeValueModel::SingleOrdinaryResult,
+            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Aggregate, 0,
+            OperandArityPolicy::Variable, 1, variable_arity,
+            ResultArityPolicy::One, NodeEffect::None,
+            NodeControlBehavior::FallsThrough, NodeTrapBehavior::CannotTrap,
+            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::StoredValueType,
+            NodeMirDisposition::OneRecordRealizable),
+        make_node_kind_entry<AbsNode>(
+            NodeKind::Abs, NodeFamily::Semantic,
+            NodeValueModel::SingleOrdinaryResult,
+            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Arithmetic, 0,
+            OperandArityPolicy::Fixed, 1, 1, ResultArityPolicy::One,
+            NodeEffect::None, NodeControlBehavior::FallsThrough,
+            NodeTrapBehavior::CannotTrap, NodeStage::Raw, semantic_node_stages,
+            NodeTypePolicy::StoredValueType,
+            NodeMirDisposition::OneRecordRealizable),
+        make_node_kind_entry<CallNode, IntrinsicCallNode>(
+            NodeKind::Call, NodeFamily::Call, NodeValueModel::MultipleResults,
+            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Call, 0,
+            OperandArityPolicy::Variable, 0, variable_arity,
+            ResultArityPolicy::Many, NodeEffect::Unknown,
+            NodeControlBehavior::FallsThrough, NodeTrapBehavior::MayTrap,
+            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::StoredValueType,
+            NodeMirDisposition::RequiresAllocationOrFrameFacts),
+        make_node_kind_entry<BinaryNode>(
+            NodeKind::Binary, NodeFamily::Semantic,
+            NodeValueModel::SingleOrdinaryResult,
+            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Arithmetic,
+            binary_refinement, OperandArityPolicy::Fixed, 2, 2,
+            ResultArityPolicy::One, NodeEffect::None,
+            NodeControlBehavior::FallsThrough, NodeTrapBehavior::MayTrap,
+            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::StoredValueType,
+            NodeMirDisposition::OneRecordRealizable),
+        make_node_kind_entry<CompareNode>(
+            NodeKind::Compare, NodeFamily::Semantic,
+            NodeValueModel::SingleOrdinaryResult,
+            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Compare,
+            binary_refinement, OperandArityPolicy::Fixed, 2, 2,
+            ResultArityPolicy::One, NodeEffect::None,
+            NodeControlBehavior::FallsThrough, NodeTrapBehavior::CannotTrap,
+            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::StoredValueType,
+            NodeMirDisposition::OneRecordRealizable),
+        make_node_kind_entry<SelectNode>(
+            NodeKind::Select, NodeFamily::Semantic,
+            NodeValueModel::SingleOrdinaryResult,
+            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Compare, 0,
+            OperandArityPolicy::Variable, 0, variable_arity,
+            ResultArityPolicy::One, NodeEffect::None,
+            NodeControlBehavior::FallsThrough, NodeTrapBehavior::CannotTrap,
+            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::StoredValueType,
+            NodeMirDisposition::OneRecordRealizable),
+        make_node_kind_entry<SelectedMemcpyNode>(
+            NodeKind::SelectedMemcpy, NodeFamily::Memory,
+            NodeValueModel::NoOrdinaryResult,
+            NodeSsaParticipation::NeverSsa, NodeSemanticFamily::Memory, 0,
+            OperandArityPolicy::Fixed, 0, 0, ResultArityPolicy::Zero,
+            NodeEffect::ReadsAndWritesMemory,
+            NodeControlBehavior::FallsThrough, NodeTrapBehavior::MayTrap,
+            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::NoResultType,
+            NodeMirDisposition::RequiresExpansion),
+        make_node_kind_entry<Amd64SysVOverflowAggregateMemcpyNode>(
+            NodeKind::Amd64SysVOverflowAggregateMemcpy, NodeFamily::Memory,
+            NodeValueModel::NoOrdinaryResult,
+            NodeSsaParticipation::NeverSsa, NodeSemanticFamily::Memory, 0,
+            OperandArityPolicy::Fixed, 0, 0, ResultArityPolicy::Zero,
+            NodeEffect::ReadsAndWritesMemory,
+            NodeControlBehavior::FallsThrough, NodeTrapBehavior::MayTrap,
+            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::NoResultType,
+            NodeMirDisposition::RequiresExpansion),
+        make_node_kind_entry<CastNode>(
+            NodeKind::Cast, NodeFamily::Semantic,
+            NodeValueModel::SingleOrdinaryResult,
+            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Conversion, 0,
+            OperandArityPolicy::Fixed, 1, 1, ResultArityPolicy::One,
+            NodeEffect::None, NodeControlBehavior::FallsThrough,
+            NodeTrapBehavior::CannotTrap, NodeStage::Raw, semantic_node_stages,
+            NodeTypePolicy::StoredValueType,
+            NodeMirDisposition::OneRecordRealizable),
+        make_node_kind_entry<PhiNode>(
+            NodeKind::Phi, NodeFamily::Semantic,
+            NodeValueModel::SingleOrdinaryResult,
+            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::PhiMerge,
+            phi_refinement, OperandArityPolicy::Variable, 1, variable_arity,
+            ResultArityPolicy::One, NodeEffect::None,
+            NodeControlBehavior::FallsThrough, NodeTrapBehavior::CannotTrap,
+            NodeStage::Raw, semantic_node_stages, NodeTypePolicy::StoredValueType,
+            NodeMirDisposition::ForbiddenAtMirBoundary),
+        make_node_kind_entry<AllocaAuthorityNode>(
+            NodeKind::AllocaAuthority, NodeFamily::Authority,
+            NodeValueModel::SingleOrdinaryResult,
+            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Authority, 0,
+            OperandArityPolicy::Fixed, 0, 0, ResultArityPolicy::One,
+            NodeEffect::None, NodeControlBehavior::FallsThrough,
+            NodeTrapBehavior::CannotTrap, NodeStage::Raw, semantic_node_stages,
+            NodeTypePolicy::StoredValueType,
+            NodeMirDisposition::RequiresAllocationOrFrameFacts),
+        make_node_kind_entry<StackSaveAuthorityNode>(
+            NodeKind::StackSaveAuthority, NodeFamily::Authority,
+            NodeValueModel::SingleOrdinaryResult,
+            NodeSsaParticipation::SsaEligible, NodeSemanticFamily::Authority, 0,
+            OperandArityPolicy::Fixed, 0, 0, ResultArityPolicy::One,
+            NodeEffect::Unknown, NodeControlBehavior::FallsThrough,
+            NodeTrapBehavior::MayTrap, NodeStage::Raw, semantic_node_stages,
+            NodeTypePolicy::StoredValueType,
+            NodeMirDisposition::RequiresAllocationOrFrameFacts),
+        make_node_kind_entry<StackRestoreAuthorityNode>(
+            NodeKind::StackRestoreAuthority, NodeFamily::Authority,
+            NodeValueModel::NoOrdinaryResult,
+            NodeSsaParticipation::NeverSsa, NodeSemanticFamily::Authority, 0,
+            OperandArityPolicy::Fixed, 1, 1, ResultArityPolicy::Zero,
+            NodeEffect::Unknown, NodeControlBehavior::FallsThrough,
+            NodeTrapBehavior::MayTrap, NodeStage::Raw, semantic_node_stages,
+            NodeTypePolicy::NoResultType,
+            NodeMirDisposition::RequiresAllocationOrFrameFacts),
+    }};
+
+constexpr bool valid_stage(NodeStage stage) noexcept {
+  const auto value = static_cast<std::uint8_t>(stage);
+  return value != 0 && (value & (value - 1)) == 0 &&
+         (value & known_node_stages) != 0;
+}
+
+constexpr bool validate_node_kind_schema(const NodeKindSchema& schema) noexcept {
+  const auto& descriptor = schema.descriptor;
+  const bool enums_valid =
+      static_cast<std::uint8_t>(descriptor.family) <
+          static_cast<std::uint8_t>(NodeFamily::Count) &&
+      static_cast<std::uint8_t>(descriptor.operand_arity) <
+          static_cast<std::uint8_t>(OperandArityPolicy::Count) &&
+      static_cast<std::uint8_t>(descriptor.result_arity) <
+          static_cast<std::uint8_t>(ResultArityPolicy::Count) &&
+      static_cast<std::uint8_t>(descriptor.effects) <
+          static_cast<std::uint8_t>(NodeEffect::Count) &&
+      static_cast<std::uint8_t>(schema.value_model) <
+          static_cast<std::uint8_t>(NodeValueModel::Count) &&
+      static_cast<std::uint8_t>(schema.ssa_participation) <
+          static_cast<std::uint8_t>(NodeSsaParticipation::Count) &&
+      static_cast<std::uint8_t>(schema.semantic_family) <
+          static_cast<std::uint8_t>(NodeSemanticFamily::Count) &&
+      static_cast<std::uint8_t>(schema.control) <
+          static_cast<std::uint8_t>(NodeControlBehavior::Count) &&
+      static_cast<std::uint8_t>(schema.trap) <
+          static_cast<std::uint8_t>(NodeTrapBehavior::Count) &&
+      static_cast<std::uint8_t>(schema.type_policy) <
+          static_cast<std::uint8_t>(NodeTypePolicy::Count) &&
+      static_cast<std::uint8_t>(schema.payload_policy) <
+          static_cast<std::uint8_t>(NodePayloadPolicy::Count) &&
+      static_cast<std::uint8_t>(schema.mir_disposition) <
+          static_cast<std::uint8_t>(NodeMirDisposition::Count);
+  const bool fixed_arity_valid =
+      descriptor.operand_arity != OperandArityPolicy::Fixed ||
+      descriptor.minimum_operands == descriptor.maximum_operands;
+  const bool bounds_valid =
+      descriptor.maximum_operands == variable_arity ||
+      descriptor.minimum_operands <= descriptor.maximum_operands;
+  const bool result_valid =
+      (schema.value_model == NodeValueModel::NoOrdinaryResult &&
+       descriptor.result_arity == ResultArityPolicy::Zero &&
+       schema.type_policy == NodeTypePolicy::NoResultType &&
+       schema.ssa_participation == NodeSsaParticipation::NeverSsa) ||
+      (schema.value_model == NodeValueModel::SingleOrdinaryResult &&
+       descriptor.result_arity == ResultArityPolicy::One &&
+       schema.type_policy != NodeTypePolicy::NoResultType) ||
+      (schema.value_model == NodeValueModel::MultipleResults &&
+       descriptor.result_arity == ResultArityPolicy::Many &&
+       schema.type_policy != NodeTypePolicy::NoResultType);
+  const bool refinements_valid =
+      (schema.refinements & ~known_refinements) == 0 &&
+      ((schema.refinements & binary_refinement) == 0 ||
+       (descriptor.operand_arity == OperandArityPolicy::Fixed &&
+        descriptor.minimum_operands == 2)) &&
+      ((schema.refinements & phi_refinement) == 0 ||
+       schema.semantic_family == NodeSemanticFamily::PhiMerge);
+  const auto owner = static_cast<std::uint8_t>(schema.stage_owner);
+  const bool stages_valid = valid_stage(schema.stage_owner) &&
+                            descriptor.legal_stages != 0 &&
+                            (descriptor.legal_stages & ~known_node_stages) == 0 &&
+                            (descriptor.legal_stages & owner) != 0;
+  const bool mir_valid =
+      schema.mir_disposition != NodeMirDisposition::MachineOnly ||
+      (schema.semantic_family == NodeSemanticFamily::Machine &&
+       schema.stage_owner == NodeStage::MirReadyMachine);
+  const bool family_stage_valid =
+      (schema.semantic_family != NodeSemanticFamily::Preparation ||
+       schema.stage_owner == NodeStage::Prepared) &&
+      (schema.semantic_family != NodeSemanticFamily::Pseudo ||
+       schema.stage_owner == NodeStage::PseudoPreallocation) &&
+      (schema.semantic_family != NodeSemanticFamily::AllocationAction ||
+       schema.stage_owner == NodeStage::Allocated) &&
+      (schema.semantic_family != NodeSemanticFamily::Machine ||
+       schema.stage_owner == NodeStage::MirReadyMachine);
+  return enums_valid && fixed_arity_valid && bounds_valid && result_valid &&
+         refinements_valid && stages_valid && mir_valid && family_stage_valid;
+}
+
+constexpr bool validate_node_kind_registry() noexcept {
+  if (node_kind_registry.size() != static_cast<std::size_t>(NodeKind::Count))
+    return false;
+  for (std::size_t i = 0; i < node_kind_registry.size(); ++i) {
+    const auto& entry = node_kind_registry[i];
+    if (static_cast<std::size_t>(entry.schema.kind) != i ||
+        entry.accepts_payload == nullptr ||
+        !validate_node_kind_schema(entry.schema))
+      return false;
+  }
+  return true;
+}
+
+static_assert(validate_node_kind_registry(),
+              "NodeKind registry must be complete, ordered, and valid");
 
 template <NodeKind Kind>
-constexpr NodeKindDescriptor node_kind_descriptor_v =
-    node_kind_traits<Kind>::descriptor;
+constexpr const NodeKindRegistryEntry& node_kind_entry() noexcept {
+  static_assert(static_cast<std::size_t>(Kind) <
+                    static_cast<std::size_t>(NodeKind::Count),
+                "unknown NodeKind is not queryable");
+  return node_kind_registry[static_cast<std::size_t>(Kind)];
+}
 
-template <NodeKind Kind>
-bool payload_accepted_by(const InstPayload& payload) noexcept {
-  return node_kind_traits<Kind>::accepts(payload);
+inline const NodeKindRegistryEntry* node_kind_entry(NodeKind kind) noexcept {
+  const auto index = static_cast<std::size_t>(kind);
+  if (index >= node_kind_registry.size()) return nullptr;
+  return &node_kind_registry[index];
 }
 
 }  // namespace detail
 
 template <NodeKind Kind>
 constexpr NodeKindDescriptor node_kind_descriptor() noexcept {
-  return detail::node_kind_descriptor_v<Kind>;
+  return detail::node_kind_entry<Kind>().schema.descriptor;
+}
+
+template <NodeKind Kind>
+constexpr NodeKindSchema node_kind_schema() noexcept {
+  return detail::node_kind_entry<Kind>().schema;
 }
 
 template <NodeKind Kind>
@@ -575,30 +854,91 @@ constexpr bool is_semantic_node_kind_v =
 template <NodeKind Kind>
 constexpr bool is_binary_node_kind_v = node_kind_descriptor<Kind>().is_binary;
 
+constexpr bool node_schema_has_tag(const NodeKindSchema& schema,
+                                   NodeTag tag) noexcept {
+  switch (tag) {
+    case NodeTag::ValueProducing:
+      return schema.value_model != NodeValueModel::NoOrdinaryResult;
+    case NodeTag::SsaEligible:
+      return schema.ssa_participation == NodeSsaParticipation::SsaEligible;
+    case NodeTag::Semantic:
+      return schema.descriptor.family == NodeFamily::Semantic;
+    case NodeTag::Memory:
+      return schema.semantic_family == NodeSemanticFamily::Memory;
+    case NodeTag::CallLike:
+      return schema.semantic_family == NodeSemanticFamily::Call;
+    case NodeTag::Terminator:
+      return schema.control != NodeControlBehavior::FallsThrough;
+    case NodeTag::ReadsMemory:
+      return schema.descriptor.effects == NodeEffect::ReadsMemory ||
+             schema.descriptor.effects == NodeEffect::ReadsAndWritesMemory ||
+             schema.descriptor.effects == NodeEffect::Unknown;
+    case NodeTag::WritesMemory:
+      return schema.descriptor.effects == NodeEffect::WritesMemory ||
+             schema.descriptor.effects == NodeEffect::ReadsAndWritesMemory ||
+             schema.descriptor.effects == NodeEffect::Unknown;
+    case NodeTag::MayTrap: return schema.trap == NodeTrapBehavior::MayTrap;
+    case NodeTag::RequiresExpansion:
+      return schema.mir_disposition == NodeMirDisposition::RequiresExpansion;
+    case NodeTag::RequiresAllocationOrFrameFacts:
+      return schema.mir_disposition ==
+             NodeMirDisposition::RequiresAllocationOrFrameFacts;
+    case NodeTag::MachineOnly:
+      return schema.mir_disposition == NodeMirDisposition::MachineOnly;
+    case NodeTag::Count: return false;
+  }
+  return false;
+}
+
+template <NodeKind Kind, NodeTag Tag>
+constexpr bool node_has_tag_v = node_schema_has_tag(node_kind_schema<Kind>(), Tag);
+
+template <NodeKind Kind, NodeStage Stage>
+constexpr bool node_kind_admitted_in_v =
+    detail::valid_stage(Stage) &&
+    (node_kind_schema<Kind>().descriptor.legal_stages &
+     static_cast<std::uint8_t>(Stage)) != 0;
+
+template <NodeKind Kind, NodeStage Stage>
+constexpr bool is_ssa_eligible_in_v =
+    node_kind_admitted_in_v<Kind, Stage> &&
+    node_has_tag_v<Kind, NodeTag::SsaEligible>;
+
+template <NodeKind Kind>
+constexpr bool is_value_producing_v =
+    node_has_tag_v<Kind, NodeTag::ValueProducing>;
+template <NodeKind Kind>
+constexpr bool is_memory_op_v = node_has_tag_v<Kind, NodeTag::Memory>;
+template <NodeKind Kind>
+constexpr bool is_call_like_v = node_has_tag_v<Kind, NodeTag::CallLike>;
+template <NodeKind Kind>
+constexpr bool is_terminator_v = node_has_tag_v<Kind, NodeTag::Terminator>;
+template <NodeKind Kind>
+constexpr bool may_read_memory_v = node_has_tag_v<Kind, NodeTag::ReadsMemory>;
+template <NodeKind Kind>
+constexpr bool may_write_memory_v = node_has_tag_v<Kind, NodeTag::WritesMemory>;
+template <NodeKind Kind>
+constexpr bool may_trap_v = node_has_tag_v<Kind, NodeTag::MayTrap>;
+template <NodeKind Kind>
+constexpr bool requires_expansion_v =
+    node_has_tag_v<Kind, NodeTag::RequiresExpansion>;
+template <NodeKind Kind>
+constexpr bool requires_allocation_or_frame_v =
+    node_has_tag_v<Kind, NodeTag::RequiresAllocationOrFrameFacts>;
+template <NodeKind Kind>
+constexpr bool is_machine_only_v = node_has_tag_v<Kind, NodeTag::MachineOnly>;
+
 inline std::optional<NodeKindDescriptor> node_kind_descriptor(
     NodeKind kind) noexcept {
-#define C4C_BIR_KIND_CASE(name)                                               \
-  case NodeKind::name: return node_kind_descriptor<NodeKind::name>()
-  switch (kind) {
-    C4C_BIR_KIND_CASE(InlineAsm);
-    C4C_BIR_KIND_CASE(Store);
-    C4C_BIR_KIND_CASE(Load);
-    C4C_BIR_KIND_CASE(GetElementPtr);
-    C4C_BIR_KIND_CASE(Abs);
-    C4C_BIR_KIND_CASE(Call);
-    C4C_BIR_KIND_CASE(Binary);
-    C4C_BIR_KIND_CASE(Compare);
-    C4C_BIR_KIND_CASE(Select);
-    C4C_BIR_KIND_CASE(SelectedMemcpy);
-    C4C_BIR_KIND_CASE(Amd64SysVOverflowAggregateMemcpy);
-    C4C_BIR_KIND_CASE(Cast);
-    C4C_BIR_KIND_CASE(Phi);
-    C4C_BIR_KIND_CASE(AllocaAuthority);
-    C4C_BIR_KIND_CASE(StackSaveAuthority);
-    C4C_BIR_KIND_CASE(StackRestoreAuthority);
-  }
-#undef C4C_BIR_KIND_CASE
-  return std::nullopt;
+  const auto* entry = detail::node_kind_entry(kind);
+  if (!entry) return std::nullopt;
+  return entry->schema.descriptor;
+}
+
+inline std::optional<NodeKindSchema> node_kind_schema(NodeKind kind) noexcept {
+  const auto* entry = detail::node_kind_entry(kind);
+  if (!entry) return std::nullopt;
+  return entry->schema;
 }
 
 inline bool is_semantic_node_kind(NodeKind kind) noexcept {
@@ -612,36 +952,59 @@ inline bool is_binary_node_kind(NodeKind kind) noexcept {
 }
 
 inline bool node_kind_legal_in(NodeKind kind, NodeStage stage) noexcept {
-  const auto descriptor = node_kind_descriptor(kind);
-  return descriptor &&
-         (descriptor->legal_stages & static_cast<std::uint8_t>(stage)) != 0;
+  const auto schema = node_kind_schema(kind);
+  return schema && detail::valid_stage(stage) &&
+         (schema->descriptor.legal_stages & static_cast<std::uint8_t>(stage)) !=
+             0;
+}
+
+inline bool node_has_tag(NodeKind kind, NodeTag tag) noexcept {
+  const auto schema = node_kind_schema(kind);
+  return schema && static_cast<std::uint8_t>(tag) <
+                       static_cast<std::uint8_t>(NodeTag::Count) &&
+         node_schema_has_tag(*schema, tag);
+}
+
+inline bool is_ssa_eligible_in(NodeKind kind, NodeStage stage) noexcept {
+  return node_kind_legal_in(kind, stage) &&
+         node_has_tag(kind, NodeTag::SsaEligible);
+}
+
+inline bool is_value_producing(NodeKind kind) noexcept {
+  return node_has_tag(kind, NodeTag::ValueProducing);
+}
+inline bool is_memory_op(NodeKind kind) noexcept {
+  return node_has_tag(kind, NodeTag::Memory);
+}
+inline bool is_call_like(NodeKind kind) noexcept {
+  return node_has_tag(kind, NodeTag::CallLike);
+}
+inline bool is_terminator(NodeKind kind) noexcept {
+  return node_has_tag(kind, NodeTag::Terminator);
+}
+inline bool may_read_memory(NodeKind kind) noexcept {
+  return node_has_tag(kind, NodeTag::ReadsMemory);
+}
+inline bool may_write_memory(NodeKind kind) noexcept {
+  return node_has_tag(kind, NodeTag::WritesMemory);
+}
+inline bool may_trap(NodeKind kind) noexcept {
+  return node_has_tag(kind, NodeTag::MayTrap);
+}
+inline bool requires_expansion(NodeKind kind) noexcept {
+  return node_has_tag(kind, NodeTag::RequiresExpansion);
+}
+inline bool requires_allocation_or_frame(NodeKind kind) noexcept {
+  return node_has_tag(kind, NodeTag::RequiresAllocationOrFrameFacts);
+}
+inline bool is_machine_only(NodeKind kind) noexcept {
+  return node_has_tag(kind, NodeTag::MachineOnly);
 }
 
 inline bool node_kind_accepts_payload(NodeKind kind,
                                       const InstPayload& payload) noexcept {
-#define C4C_BIR_PAYLOAD_CASE(name)                                            \
-  case NodeKind::name:                                                       \
-    return detail::payload_accepted_by<NodeKind::name>(payload)
-  switch (kind) {
-    C4C_BIR_PAYLOAD_CASE(InlineAsm);
-    C4C_BIR_PAYLOAD_CASE(Store);
-    C4C_BIR_PAYLOAD_CASE(Load);
-    C4C_BIR_PAYLOAD_CASE(GetElementPtr);
-    C4C_BIR_PAYLOAD_CASE(Abs);
-    C4C_BIR_PAYLOAD_CASE(Call);
-    C4C_BIR_PAYLOAD_CASE(Binary);
-    C4C_BIR_PAYLOAD_CASE(Compare);
-    C4C_BIR_PAYLOAD_CASE(Select);
-    C4C_BIR_PAYLOAD_CASE(SelectedMemcpy);
-    C4C_BIR_PAYLOAD_CASE(Amd64SysVOverflowAggregateMemcpy);
-    C4C_BIR_PAYLOAD_CASE(Cast);
-    C4C_BIR_PAYLOAD_CASE(Phi);
-    C4C_BIR_PAYLOAD_CASE(AllocaAuthority);
-    C4C_BIR_PAYLOAD_CASE(StackSaveAuthority);
-    C4C_BIR_PAYLOAD_CASE(StackRestoreAuthority);
-  }
-#undef C4C_BIR_PAYLOAD_CASE
-  return false;
+  const auto* entry = detail::node_kind_entry(kind);
+  return entry && entry->accepts_payload(payload);
 }
 
 inline bool node_kind_accepts_arity(NodeKind kind, std::size_t operand_count,

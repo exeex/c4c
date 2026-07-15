@@ -3,46 +3,50 @@
 Status: Active
 Source Idea Path: ideas/open/801_bir_node_kind_tag_algebra_and_phase_vocabulary_lowering_contract.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Review and publish the normative artifact
+Current Step ID: 7
+Current Step Title: Land the bounded schema/query proof if required
 
 ## Just Finished
 
-- Completed `plan.md` Step 6 as a read-only conformance review in normative
-  Sections 15-17.
-- Mapped every idea 801 acceptance criterion to exact artifact sections and
-  audited all reject-signal classes: free booleans/flat fields/all-stage masks,
-  SSA ambiguity, duplicate authority/exposed plumbing, TableGen-like DSL,
-  catch-all transitions, identity-by-slot, testcase shaping, docs-only claims,
-  and scope drift are explicitly rejected.
-- Marked the artifact normative-review-complete but production convergence
-  partial. Step 7 is required because landed code still has flat descriptor
-  fields, duplicated 16-kind runtime dispatch inventories, no closed
-  SSA/non-SSA/tag or stage-qualified helper algebra, and the same all-stage mask
-  on every current kind.
-- Bounded Step 7 to one C++17 production inventory for only current kinds,
-  derived compile/runtime/payload/stage helpers, compile-time validation,
-  existing `Binary`/`Store`/`Phi` production representatives, and
-  non-production prepared/pseudo/machine fixtures with focused negative proof.
-  No phase kinds/passes, storage, importer, allocation, MIR, or 732 work is
-  authorized.
-- Recorded the later requirement that idea 732 and each B-F child cite and
-  consume Sections 2-14 without editing or activating 732 now.
+- Completed `plan.md` Step 7 as the bounded C++17 convergence proof.
+- `NodeKind::Count` and one hidden ordered constexpr registry now provide the
+  complete current 16-kind inventory. Each entry owns the legacy-compatible
+  descriptor projection, bounded value/SSA/family/refinement/effect/control/
+  stage/shape/type/payload/MIR facts, and its closed payload predicate.
+- Namespace-scope constexpr validation proves registry size/order/completeness,
+  non-null payload mechanics, known axis values, arity/result/type/SSA
+  relations, refinement constraints, explicit non-empty stage admission/owner,
+  family-stage rules, and MIR constraints before queries instantiate.
+- Compile-time schema/tag/admission and stage-qualified SSA helpers plus runtime
+  wrappers derive from that registry. Named value/memory/call/terminator/read/
+  write/trap/expansion/allocation/machine helpers are derived facts and do not
+  claim B4 graph validity.
+- Removed both repeated 16-kind runtime switch inventories. Descriptor lookup,
+  payload acceptance, arity checks, and classification now consume one entry.
+  Current kinds explicitly admit Raw/Canonical and immutable-reference
+  Prepared, while rejecting PseudoPreallocation/Allocated/MirReadyMachine.
+- Extended the nearby schema test with compile/runtime agreement for
+  `Binary`, `Store`, and `Phi`; stage admission/rejection; unknown kind/tag/
+  stage; payload/arity mismatch; inventory validation; invalid combinations;
+  and non-production constexpr Prepared/Pseudo/Machine fixture schemas. No
+  speculative production kinds or phase/pass/storage code was added.
 
 ## Suggested Next
 
-- Execute only Step 7: land the bounded single-authority schema/query proof and
-  focused validation seam specified in Section 16.1.
+- Execute only Step 8: map final artifact/code/test evidence to every source
+  criterion and hand it to plan-owner for the explicit close decision.
 
 ## Watchouts
 
 - Do not revise or activate idea 732, reopen idea 746, or treat tag
   classification as proof of graph-stage SSA validity.
-- Step 7 must remove duplicate kind inventories rather than layer a tag table
-  beside the landed descriptor, and contract-only later-stage representatives
-  must not become speculative production enum kinds.
+- The complete future B-F production vocabulary remains intentionally absent;
+  later phase work must add kinds only through the reviewed registry contract.
 
 ## Proof
 
-- Passed: `git diff --check > test_after.log 2>&1`.
+- Passed: `cmake --preset default -DENABLE_C4C_BACKEND=ON && cmake --build
+  --preset default && ctest --test-dir build -j --output-on-failure -R
+  '^backend_' > test_after.log`.
+- Backend subset: 6/6 passed, including `backend_bir_node_kind_schema`.
 - Proof log: `test_after.log`.
