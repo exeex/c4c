@@ -3,21 +3,21 @@
 Status: Active
 Source Idea Path: ideas/open/810_lir_gep_producer_result_authority_baseline_blocker.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Trace and classify failing GEP producer families
+Current Step ID: 2
+Current Step Title: Repair the selected GEP result-authority handoff
 
 ## Just Finished
 
-810 Step 1 trace-only: reproduced `c_testsuite_src_00173_c` and traced its
-authoritative GEP failure to pointer postfix increment lowering
-(`emit_load_assignable_value` `fresh_value` base ->
-`emit_assignable_incdec_value` `fresh_tmp` GEP result).  Evidence is in
+810 Step 1 accepted in `f1cb9c510`: the focused command reproduced
+`c_testsuite_src_00173_c`'s missing `LirGepOp.result` authority and the trace
+selected native pointer postfix increment/decrement plus adjacent pointer
+compound add/sub as one evidenced direct GEP-construction family. Evidence:
 `review/810_step1_gep_producer_trace.md`; no repair was made.
 
 ## Suggested Next
 
-Select one bounded native pointer increment/decrement (and, if in scope,
-pointer compound-add/sub) result-authority repair packet; do not group other
+Repair only the selected pointer postfix increment/decrement and adjacent
+pointer compound add/sub GEP result-authority handoff. Do not group other
 partial-log GEP failures without an independent producer trace.
 
 ## Watchouts

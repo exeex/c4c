@@ -48,19 +48,32 @@ Completion check: one bounded producer family is selected with evidence, or
 each unshared family has an explicit successor; no verifier weakening or
 801/804/806 work is selected.
 
+Accepted: `f1cb9c510` records the trace-only packet in
+`review/810_step1_gep_producer_trace.md`. The exact focused command
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_src_00173_c$'`
+reproduced the missing `LirGepOp.result` authority. The selected shared family
+is pointer postfix increment/decrement and adjacent pointer compound add/sub:
+the postfix route loads its base through `fresh_value(ctx)` and constructs the
+GEP result through `fresh_tmp(ctx)` at `lvalue.cpp:645-649`; the adjacent
+`+=`/`-=` route has the same direct construction at `lvalue.cpp:737-741`.
+
 ### Step 2 - Repair the selected GEP result-authority handoff
 
 Goal: publish the smallest checked native `LirValueId` result authority needed
-by the existing authoritative GEP contract.
+by the existing authoritative GEP contract for pointer postfix
+increment/decrement and adjacent pointer compound add/sub only.
 
 Actions:
 
-- repair only the evidenced producer-side/immediate handoff;
+- repair only the evidenced producer-side/immediate handoff in the selected
+  pointer postfix increment/decrement and adjacent pointer compound add/sub
+  family;
 - retain rejection of missing, foreign, stale, and unknown result authority;
 - add nearby same-family positive and malformed-authority coverage.
 
-Completion check: focused coverage demonstrates the selected producer supplies
-valid current-function authority and malformed forms still reject.
+Completion check: focused coverage demonstrates the selected pointer
+increment/decrement and compound add/sub producers supply valid
+current-function authority and malformed forms still reject.
 
 ### Step 3 - Prove the blocker and return control to 801
 

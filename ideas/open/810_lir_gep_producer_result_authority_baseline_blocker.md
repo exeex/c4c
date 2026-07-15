@@ -57,6 +57,19 @@ a summary. A residual PHI failure remains separately owned by 804/806.
   pass, and the supervisor has sufficient accepted evidence to reactivate 801
   unchanged at Step 2 for a comparable full-baseline reattempt.
 
+## Accepted Trace Checkpoint
+
+Step 1 trace-only evidence was accepted in `f1cb9c510`
+(`review/810_step1_gep_producer_trace.md`). The exact focused command
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_src_00173_c$'`
+reproduced the missing `LirGepOp.result` authority in
+`c_testsuite_src_00173_c`. The selected repair family is native pointer postfix
+increment/decrement and adjacent pointer compound add/sub only: postfix
+increment loads its base through `fresh_value(ctx)` and forms the GEP result
+through `fresh_tmp(ctx)` at `lvalue.cpp:645-649`, with the adjacent `+=`/`-=`
+route using the same direct construction at `lvalue.cpp:737-741`. Other
+partial-log GEP failures remain ungrouped pending independent producer traces.
+
 ## Reviewer Reject Signals
 
 - Reject weakening `LirGepOp.result` or `verify_authoritative_gep`, accepting
