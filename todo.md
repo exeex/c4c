@@ -4,7 +4,7 @@ Status: Active
 Source Idea Path: ideas/open/779_lir_cast_result_authority_contract.md
 Source Plan Path: plan.md
 Current Step ID: 2
-Current Step Title: Add malformed-result verifier coverage
+Current Step Title: Add focused positive and malformed cast coverage
 
 ## Just Finished
 
