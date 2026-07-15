@@ -86,3 +86,29 @@ Idea 820's bounded `ull` publication does not own or authorize it.
 - Reject a producer predicate change or an arithmetic test shape (including
   `ull x + 1`) offered without the exact full-route failing operation and a
   standalone reproduction of the definition-type/operation-type mismatch.
+
+## Resumption Record
+
+- Last accepted progress: Step 1, "Trace the binary-LHS producer and authority
+  seam," is accepted and committed as `26c000c01`. It established only the
+  possible producer/verifier seam; it did not prove a failing binary operation.
+- Interrupted step: Step 2, "Identify the actual failing operation and
+  reproduce its type relation."
+- Exact disproof: after a fresh successful `cmake --build --preset default`,
+  the parent diagnostic command
+  `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
+  aborts at `verify_scalar_binary_lhs_authority` on
+  `lir_floating_unary_minus_ternary_phi_authority`. The first operation is
+  `LirBinOp result %t6 value 4, opcode=fneg, type=double, lhs=%p.left value 1,
+  rhs empty`; its matching native parameter is value 1, index 1, type `double`,
+  owner `LinkNameId 1`, ABI `DirectScalar`. The types match. The missing
+  publication is therefore produced by unary lowering in `expr/misc.cpp`, not
+  by this idea's binary producer. A truthful standalone
+  definition-type/operation-type mismatch reproduction cannot be made.
+- Blocker and scope boundary: `ideas/open/828_lir_direct_scalar_unary_fneg_authority.md`
+  owns the newly identified native DirectScalar unary floating `fneg`
+  `LirBinOp` authority gap. It is outside this idea's binary-producer scope.
+- Return disposition: after the unary blocker reports its result, return here
+  only for an explicit repair/close decision. Do not reuse this unproven
+  mismatch premise, and preserve the original binary-LHS scope. Step 2 made no
+  code or test changes and produced no acceptance proof.
