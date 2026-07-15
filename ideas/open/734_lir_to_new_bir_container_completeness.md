@@ -1,7 +1,8 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (paused after accepted Step 7.26 selected-hoisted alloca receipt;
-awaiting the separately scoped next local-operation receiver-authority handoff)
+Status: Open (paused after accepted Step 7.27 selected direct local-scalar
+load receipt; awaiting the separately scoped next local-operation
+receiver-authority handoff)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -869,3 +870,38 @@ reachable verification, and transactional positive/negative coverage.
 Preserve commits `006d79aaf`, `7dc03f23a`, and `2cce9da69` and the proof
 references above; do not repeat their receiver work. Later local/VLA variants
 and all remaining families stay separately scoped and fail-closed.
+
+## Runbook Exhaustion Decision: post-Step 7.27 local-scalar load receipt
+
+Close rejected. Commit `eabf7a3b8` receives exactly closed 789's selected
+direct non-array/non-VLA local-scalar `LirLoadOp` authority into typed Raw-BIR,
+with native result admission, result/pointer/object/owner/type/liveness
+validation, reachable verifier coverage, and transactional positive/negative
+cases. The supervisor acceptance evidence is a fresh build plus
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` passing 5/5 and
+a matching non-decreasing canonical guard.
+
+This one receiver row does not meet the source completion gate. The no-omission
+matrix, lossless verified receipt of every valid current-LIR fact, complete
+dispatcher and neighboring coverage, final whole-module transactional proof,
+and the remaining local store/GEP/VLA, named/local-temporary, memory/va,
+aggregate/vector, body-parameter, module/type/global/metadata, other
+instruction/terminator, and inline-assembly rows remain unmet.
+
+Classification: `separate-blocker`. The earliest remaining local-operation
+family is store/GEP/VLA, but neither closed 752 nor closed 789 authorizes a
+second exact receiver row. New open idea
+`ideas/open/790_lir_next_local_operation_receiver_handoff.md` owns choosing,
+publishing, verifying, and handing off exactly one next valid local-operation
+row. It must not edit Raw-BIR/importer code or derive authority from local
+spellings.
+
+Resumption record: Steps 1 through 7.26 remain accepted historical work,
+including `006d79aaf`, `7dc03f23a`, and `2cce9da69`; Step 7.27 is accepted in
+`eabf7a3b8`. The interrupted/return point is `Step 7.28 - Receive the exact
+next post-local-scalar-load authority row`. After 790 closes with a documented
+native handoff and focused producer proof, reactivate 734 and repair its
+runbook at Step 7.28 to receive only that row with typed destination,
+importer dispatch, reachable verification, and transactional positive/negative
+coverage. Do not repeat accepted alloca/load receipt or absorb later local/VLA
+or other families.

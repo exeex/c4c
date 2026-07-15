@@ -1,33 +1,29 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
+Source Idea Path: ideas/open/790_lir_next_local_operation_receiver_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 7.27
-Current Step Title: Receive the selected direct local-scalar LirLoadOp authority
+Current Step ID: 1
+Current Step Title: Publish one next local-operation authority handoff
 
 ## Just Finished
 
-- Step 7.27 received the one selected native local-scalar `LirLoadOp` into a
-  typed Raw-BIR local-load authority node, with native result/pointer/object/
-  owner/type/liveness validation, reachable verifier coverage, and
-  transactional negative cases. Step 7.26 selected-allocation receipt remains
-  unchanged.
+- Switched from exhausted 734 Step 7.27 after accepted `eabf7a3b8`; this
+  blocker must publish one exact next local-operation authority handoff.
 
 ## Suggested Next
 
-- Supervisor selects the next bounded packet after reviewing this completed
-  receiver slice.
+- Execute Step 1 only: select, verify, and hand off one native local-operation
+  row to 734 Step 7.28.
 
 ## Watchouts
 
-- The local receipt accepts only the selected direct scalar authority tied to
-  the existing selected alloca. Other local load/store/GEP/VLA and later
-  families remain fail-closed; no presentation text is consulted.
+- Do not modify Raw-BIR/importer code or select from local display text. Every
+  unselected local/VLA and later family remains fail-closed.
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^backend_'` passed 5/5. The required proof output is
-  preserved in `test_after.log`; supervisor owns any broader acceptance and
-  canonical regression comparison.
+- 734 Step 7.27 acceptance: fresh build plus `^backend_` passed 5/5 with a
+  matching non-decreasing canonical guard. This blocker must establish its own
+  focused producer proof; supervisor owns broader acceptance and regression
+  logs.

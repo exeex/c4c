@@ -1,60 +1,46 @@
-# LIR-To-New-BIR Container And Import Completeness Runbook
+# Next LIR Local-Operation Authority Handoff Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Resumed from: closed 789 local scalar load authority handoff.
+Source Idea: ideas/open/790_lir_next_local_operation_receiver_handoff.md
+Activated from: exhausted Step 7.27 of idea 734.
 
 ## Purpose
 
-Resume the typed Raw-BIR import route at its next authorized local-operation
-receiver row without repeating accepted alloca receipt.
+Produce one exact, native, receiver-ready local-operation authority handoff
+for 734's Step 7.28.
 
 ## Core Rule
 
-Use only the native fields published by
-`docs/lir_local_operation_authority/handoff_to_734.md`; local display spelling,
-formatted operands, printer output, and LLVM text are never semantic input.
+Select one local store, GEP, or VLA-lifetime row only from structured producer
+facts. Local spellings, formatted operands, printer output, LLVM text, and
+testcase identity are never authority.
 
-## Historical Progress
+## Scope
 
-Steps 1 through 7.26 are accepted, including the selected alloca receiver in
-`2cce9da69`. Preserve `006d79aaf`, `7dc03f23a`, and `2cce9da69`; do not redo
-their work.
-
-## Current Scope
-
-- receive exactly the selected direct non-array/non-VLA local-scalar
-  `LirLoadOp` from its valid `result`, `type_str`, `ptr`, and checked
-  `local_object_authority` fields;
-- add the minimum target-independent Raw-BIR container/importer/reachable
-  verifier and transactional positive/negative coverage;
-- require native result admission, pointer-definition equality,
-  current-function valid/live authority, and pointee/load-type equality.
+- publish and verify one exact current-function local-operation row;
+- write its precise 734 handoff and focused same-feature proof;
+- preserve 734's accepted alloca/load receiver work.
 
 ## Non-Goals
 
-- all other direct/access/array/VLA loads, stores, GEPs, VLA lifetime, and
-  named/local-temporary variants;
-- memory/va, aggregate/vector, body parameters, module/type/global/metadata,
-  CFG/PHI, target lowering, MIR, emission, and every later family;
-- presentation-derived recovery or repeating Step 7.26.
+- Raw-BIR/importer/receiver work or more than one row;
+- all later local, memory/va, aggregate/vector, body-parameter, CFG/PHI, and
+  unrelated families.
 
 ## Ordered Steps
 
-### Step 7.27 - Receive the selected direct local-scalar LirLoadOp authority
+### Step 1 - Publish one next local-operation authority handoff
 
-Goal: transactionally import the one 789-authorized load row into a typed
-Raw-BIR destination.
+Goal: make exactly one native post-local-scalar-load row receiver-ready.
 
 Actions:
 
-- map only the documented result, type, pointer definition, object/owner,
-  pointer/pointee type, and liveness facts;
-- validate all producer contract fields before publication and reject malformed
-  rows transactionally;
-- add nearby positive and negative receiver coverage, then run a fresh build
-  and narrow proof before supervisor-selected broader acceptance proof.
+- identify the earliest valid store, GEP, or VLA-lifetime row with native
+  result/use, pointer/object/type, owner, and liveness facts;
+- add only the required producer/verifier authority and same-feature positive
+  and malformed coverage;
+- document the row and exact 734 Step 7.28 return action.
 
-Completion check: exactly this selected load row imports and verifies without
-presentation recovery; all excluded local and later families remain fail
-closed.
+Completion check: the handoff names one receiver row and rejects all malformed
+or unselected alternatives before downstream use; focused producer proof
+passes.
