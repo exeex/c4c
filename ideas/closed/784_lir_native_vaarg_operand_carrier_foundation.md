@@ -1,6 +1,6 @@
 # LIR Native Vaarg Operand Carrier Foundation
 
-Status: Open
+Status: Closed
 Type: bounded frontend-LIR data-carrier prerequisite
 Blocked Parent: `ideas/open/783_lir_native_vaarg_operand_result_seam_decomposition.md`
 Related Downstream Work: `ideas/open/782_lir_vaarg_phi_input_result_identity_publication.md`, `ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md`
@@ -140,3 +140,37 @@ with the FP128 ptrmask direct call-result carrier now available. Complete the
 remaining three-chain carrier work and retain the separate decision on whether
 value-only PHI incoming transport is required; no PHI verification or
 predecessor/edge work is authorized by 785's closure.
+
+## Closure Decision
+
+Close accepted: capability complete. Step 2, `Bind the minimal generic carrier
+contract`, and Step 3, `Prove the carrier and publish the 783 handoff`, were
+accepted at commit `e45a6b0ee` (`lir: retain native vaarg carrier operands`).
+The accepted contract retains native `LirOperand` authority across the AArch64
+GP, AArch64 FP/alignment, and AMD64 register/stack helper seams at their
+immediate consumers. Focused frontend-LIR structural coverage exercises those
+three chains and the selected carrier's fail-closed behavior.
+
+The necessary `LirPhiIncoming.value` change is deliberately value-only
+transport of already-native authority. `LirPhiIncoming.label` remains
+string-only, and this closure does not claim PHI predecessor/edge identity,
+verification, CFG semantics, or full PHI completion. HFA ptrmask, 782 helper
+fields, backend/importer, and the other stated non-goals remain excluded.
+
+Accepted proof: `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1. The
+supervisor-owned matching regression comparison
+`check_monotonic_regression.py --before test_before.log --after test_after.log
+--allow-non-decreasing-passed` passed with 1 passed, 0 failed, and no new
+timeout or failure. Direct supervisor review found no scope drift.
+
+## Handoff
+
+Resume `ideas/open/783_lir_native_vaarg_operand_result_seam_decomposition.md`
+at Step 3, `Bind focused probes to native operand/result contracts`. Use the
+accepted three-chain carrier contract as the authoritative basis for 783's
+three focused probe bindings; do not reopen this foundation. The remaining
+783 Step 3 work is limited to completing its decomposition-level probes and
+contract evidence, then Step 4's narrowest-contract selection and return to
+782. Any PHI work beyond the value-only transport already accepted here remains
+outside 783 and requires its separately scoped owner.

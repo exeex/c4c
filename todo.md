@@ -1,35 +1,32 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/784_lir_native_vaarg_operand_carrier_foundation.md
+Source Idea Path: ideas/open/783_lir_native_vaarg_operand_result_seam_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Bind the minimal generic carrier contract
+Current Step ID: 3
+Current Step Title: Bind focused probes to native operand/result contracts
 
 ## Just Finished
 
-- Plan Step 2 completed the minimum carrier contract: AArch64 GP/FP helper
-  loads, GEPs, and join inputs plus AMD64 register/stack helper results retain
-  native `LirOperand` authority. `LirPhiOp` now transports only its value half
-  as `LirOperand`; labels remain strings and no PHI verification or edge work
-  was added. Focused structural probes cover all three chains.
+- Resumed 783 at Plan Step 3 after 784 accepted the native three-chain carrier
+  foundation at `e45a6b0ee`; `LirPhiIncoming.value` is value transport only and
+  labels remain string-only.
 
 ## Suggested Next
 
-- Plan Step 3: review the accepted three-chain structural evidence, publish the
-  783 handoff, and explicitly retain the value-only PHI decision as transport
-  only rather than PHI completion.
+- Bind one focused frontend-LIR structural probe to each AArch64 GP,
+  AArch64 FP/alignment, and AMD64 register/stack contract using the accepted
+  native carrier authority at its immediate consumer boundary.
 
 ## Watchouts
 
-- 785 does not authorize HFA ptrmask conversion, unrelated generic call/argument
-  changes, PHI verification, predecessor/edge identity, Raw-BIR/importer,
-  backend, target lowering, MIR, emission, or broad generic-expression work.
-- `LirPhiIncoming::label` remains presentation-only; do not infer predecessor
-  or CFG semantics from this carrier. Do not recover identity from text.
+- Do not add PHI verification, predecessor/edge identity, CFG semantics, 782
+  helper fields, HFA ptrmask work, Raw-BIR/importer, backend, target lowering,
+  MIR, emission, generic migration, or text-derived identity.
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1. Full
-  output: `test_after.log`; this is the supervisor-selected focused proof.
+- 784 acceptance proof: `cmake --build --preset default && ctest --test-dir
+  build -j --output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1;
+  matching `test_before.log`/`test_after.log` regression comparison passed
+  with no new timeout or failure.
