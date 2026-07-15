@@ -156,3 +156,42 @@ This is only the selected-arm producer fact: the other ternary arm, raw ternary
 PHI result and both incoming carriers, and raw later final-consumer input remain
 unresolved. It makes no PHI, 751, or Raw-BIR claim and does not reactivate 775
 or 751 or expand 775's scope.
+
+## Accepted Selected Ternary Then-Arm Producer Handoff
+
+Commits `a67fc07bd` and `b03baa3a6` complete the complementary selected scalar
+ternary `then`-arm fact: its i64-to-i32 coercion enters through
+`emit_rval_operand` and `coerce_operand`, and its emitted `LirCastOp.result`
+has a native valid current-function `LirValueId` before compatibility spelling.
+Focused structural coverage selects the arm by the conditional branch's native
+true-successor ID and proves missing, invalid, same-function-duplicate, and
+foreign authority fail closed through the existing verifier. The required
+focused command `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1, and the
+matching `test_before.log`/`test_after.log` regression guard passed with
+`--allow-non-decreasing-passed`.
+
+## Current Lifecycle Repair: bounded producer-handoff reassessment
+
+The selected ternary `else` and `then` facts, closed 778 logical-RHS fact, and
+closed 777 vaarg fact now establish native producer-result authority for the
+bounded sites that have been accepted. They do not by themselves prove 775's
+remaining criterion that all named helper results structurally reach the
+eventual PHI input seam: the raw ternary/logical PHI result and incoming
+carriers and later consumers remain explicitly unresolved and outside 775.
+
+Disposition: **close rejected — repair-current-route**. The active repaired
+runbook must perform only a bounded reassessment/handoff decision: either
+identify evidence that the existing native producer fields meet the source's
+producer-side handoff criterion without crossing the raw PHI boundary, or
+record the exact remaining criterion and route it to the owner that may change
+the PHI carrier. No generic `emit_rval_*`/`coerce` migration, `LirPhiOp`
+representation/verifier work, Raw-BIR, backend, or 751 implementation is
+authorized by this repair.
+
+Exact return point: resume at Plan Step 3, `Reassess the bounded producer
+handoff and source disposition`, using commits `a67fc07bd` and `b03baa3a6`,
+the accepted 781 selected-else handoff, and closed 777/778 handoffs. If the
+remaining criterion requires raw PHI result/incoming authority, create or
+activate a separately scoped PHI-carrier successor and preserve 775's producer
+facts; do not represent that consumer work as completed 775 scope.

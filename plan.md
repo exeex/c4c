@@ -1,28 +1,31 @@
-# LIR PHI Producer Helper Result Identity Then-Arm Runbook
+# LIR PHI Producer Helper Result Identity Producer-Handoff Runbook
 
 Status: Active
 Source Idea: ideas/open/775_lir_phi_producer_helper_result_identity.md
-Repaired from: Step 1 reassessment, which found the first remaining loss in the
-selected scalar ternary `then` arm.
+Repaired from: completed selected scalar ternary `then`-arm publication and
+proof. The remaining route is a bounded source-level producer reassessment and
+handoff decision; it must not absorb raw PHI-carrier work.
 
 ## Purpose
 
-Publish native result authority for the selected scalar ternary `then`-arm
-coercion before compatibility spelling, completing only this next bounded
-producer repair for 775's later three-family reassessment.
+Reassess the accepted vaarg, logical-RHS, and both selected ternary-arm
+producer facts against 775's remaining acceptance criteria, then publish only
+the producer handoff that is actually supported by native structure and proof.
 
 ## Goal
 
-Route the selected `then` arm from `emit_rval_id` through a bounded typed
-operand/coercion entry so its emitted `LirCastOp.result` has an owning,
-current-function `LirValueId` before rendering.
+Do not claim that raw PHI result/incoming carriers or final consumers are
+authoritative. Decide whether the accepted native producer facts satisfy a
+bounded handoff to 751, or identify the exact unmet criterion and the next
+separate route without generic expression migration or PHI-carrier work.
 
 ## Evidence
 
 In `src/codegen/lir/hir_to_lir/expr/misc.cpp`, accepted 781 already routes the
-selected `else` arm through `emit_rval_operand` to `coerce_operand`. The
-selected `then` arm in the same ternary function remains the first loss:
-`emit_rval_id` followed by string `coerce`.
+selected `else` arm through `emit_rval_operand` to `coerce_operand`; accepted
+commits `a67fc07bd` and `b03baa3a6` establish the equivalent bounded route and
+failure closure for the selected `then` arm. Closed 777 and 778 supply the
+accepted vaarg and logical-RHS producer facts.
 
 ## Core Rule
 
@@ -40,7 +43,7 @@ identity.
 
 ## Non-Goals
 
-- no work beyond the selected ternary `then` arm
+- no new implementation beyond the accepted selected ternary `then` arm
 - retain, without revisiting, accepted selected `else`-arm, logical-RHS, and
   vaarg producer facts
 - no raw ternary PHI result, either incoming carrier, later final-consumer
@@ -113,3 +116,32 @@ Completion check:
 - Required focused proof: `cmake --build --preset default && ctest --test-dir
   build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`.
 - The supervisor owns regression-log and broader acceptance selection.
+
+### Step 3 - Reassess the bounded producer handoff and source disposition
+
+Goal: reconcile 775's accepted one-family producer facts with its remaining
+handoff criterion without treating raw PHI carriers as producer authority.
+
+Primary targets:
+
+- `ideas/open/775_lir_phi_producer_helper_result_identity.md`
+- `plan.md`
+- `todo.md`
+
+Actions:
+
+- inventory only the accepted vaarg, logical-RHS, selected ternary-else, and
+  selected ternary-then native result fields and their proof/commit references;
+- determine whether these facts alone prove the source's stated structural
+  producer-to-eventual-PHI-seam criterion, keeping raw PHI results/incomings
+  and later consumers excluded; and
+- if the criterion remains unmet, record the exact criterion and a bounded
+  return route. Do not repair it through generic `emit_rval_*`/`coerce`
+  migration, `LirPhiOp` representation/verification changes, Raw-BIR, or 751
+  implementation.
+
+Completion check:
+
+- lifecycle state names either an evidence-supported bounded producer handoff
+  or the exact unresolved PHI-boundary criterion with an executable successor
+  or return route; it makes no PHI/751/Raw-BIR capability claim.

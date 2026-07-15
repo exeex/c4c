@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/775_lir_phi_producer_helper_result_identity.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Prove selected then-arm authority and failure closure
+Current Step ID: 3
+Current Step Title: Reassess the bounded producer handoff and source disposition
 
 ## Just Finished
 
@@ -17,8 +17,10 @@ Current Step Title: Prove selected then-arm authority and failure closure
 
 ## Suggested Next
 
-- Supervisor acceptance/commit handling for the completed Plan Step 2 test
-  slice; do not infer source-idea or plan lifecycle completion.
+- Execute Plan Step 3's bounded reassessment. It must determine whether the
+  accepted producer facts support 775's handoff without treating raw PHI
+  carriers as native authority; do not infer source completion from the
+  exhausted then-arm steps.
 
 ## Watchouts
 
@@ -27,6 +29,8 @@ Current Step Title: Prove selected then-arm authority and failure closure
   Raw-BIR, or backend work.
 - The structural selector follows native block IDs only; do not replace it
   with labels, instruction order, rendered text, or testcase-shaped matching.
+- The raw ternary/logical PHI result and incoming carriers plus later consumers
+  remain excluded. Any route that changes them belongs to 751, not this step.
 
 ## Proof
 
