@@ -1,10 +1,10 @@
 # Raw BIR Core Receiving and Ownership Contract
 
-Contract-Status: under-review
+Contract-Status: converging under idea 732; normative NodeKind semantics are external
 Implementation-Status: partial
 Kind: schema
 Phase-ID: A2
-Upstream: complete private A1 `ModuleDraft`
+Upstream: complete private A1 Raw candidate (current adapter: `ModuleBuilder`)
 Downstream: one move-only fully verified target-independent `RawBir`
 Owner-Path: `src/backend/bir/core/README.md`
 Last-Reconciled-Commit: none
@@ -40,32 +40,33 @@ kind and typed semantic facts, never C++ object addresses or pointer identity.
 
 ### One NodeKind schema authority
 
+The [normative NodeKind/tag contract](../../../../docs/backend/bir_node_kind_tag_algebra_and_phase_vocabulary.md)
+alone defines the six axes, tag meanings, stage vocabularies, transition rules,
+identity gate, and common verifier obligations. This core document owns only
+the concrete checked-in storage and helper surface.
+
 [`ir.hpp`](ir.hpp) defines `NodeKind` as the durable closed vocabulary;
-`Opcode` is only a compatibility alias. The hidden
-`detail::node_kind_traits<K>` specializations are the single C++ schema
-authority for the currently admitted 16 kinds. `NodeKindDescriptor` exposes
-family, binary classification, fixed or variable operand bounds, zero/one/many
-result policy, effects and the Raw/Canonical/Prepared legality mask.
+`Opcode` is only a compatibility alias. Its single C++20 registry is authored
+with named `NodeKindSpec` fields, typed stage/arity/refinement policies, a
+`consteval` entry builder, local relational validation, and a registry-wide
+completeness check. Descriptors and all compile-time/runtime queries derive
+from that registry. There is no traits-specialization mirror, generated table,
+or independently maintained stage mask.
 
-Pass-facing compile-time queries are `node_kind_descriptor<K>()`,
-`is_semantic_node_kind_v<K>` and `is_binary_node_kind_v<K>`. Runtime code uses
-`node_kind_descriptor(kind)`, `is_semantic_node_kind(kind)`,
-`is_binary_node_kind(kind)`, `node_kind_legal_in(kind, stage)`,
-`node_kind_accepts_payload(kind, payload)` and
-`node_kind_accepts_arity(kind, operand_count, result_count)`. Every runtime
-query fails closed for an invalid or unhandled kind. The foundation verifier
-uses the shared payload and arity helpers as generic preconditions and retains
-payload-specific checks for signatures, types, phi edges and other facts that
-cannot be answered from kind alone.
+Pass-facing queries include `node_kind_schema<K>()`,
+`node_has_tag_v<K, Tag>`, `node_kind_admitted_in_v<K, Stage>`, and
+`is_ssa_eligible_in_v<K, Stage>` with runtime equivalents, plus the derived
+effect/shape and payload/arity helpers in `ir.hpp`. An unknown runtime kind,
+tag, or stage is a known query failure, never permission to continue. Static
+SSA eligibility does not prove graph SSA; B4 and its verifier own that dynamic
+fact.
 
-A transformation still dispatches explicitly on the vocabulary it accepts,
-normally with `switch (node.kind)`. Classification helpers remove duplicated
-tables; they are not permission for a catch-all visitor, silent pass-through or
-default success. Adding a kind requires one reviewed C++ traits specialization,
-the relevant explicit pass cases and nearby positive/negative coverage. BIR
-therefore needs no TableGen `.td` side language, generated mirror vocabulary or
-second schema: the C++ type system and closed payload variant already provide
-the compile-time and runtime authority used by storage and passes.
+A transformation dispatches explicitly over its closed admitted input
+vocabulary. Helpers remove duplicate classification tables; they do not permit
+silent pass-through, default success, or an implicit remainder. Adding a kind
+requires one reviewed registry entry, every affected explicit pass-matrix row,
+and nearby positive and negative coverage. Shared storage never implies
+admission to a later stage.
 
 ### Results and compatibility storage
 
@@ -86,6 +87,14 @@ not silently coexist with, generic result-vector authority.
 
 ### Phase vocabulary and external products
 
+The six published-stage meanings and transitions are consumed by reference
+from the [normative contract](../../../../docs/backend/bir_node_kind_tag_algebra_and_phase_vocabulary.md).
+Core does not redefine their admitted sets. In particular, `Prepared` is the
+C-phase immutable admission/reference envelope over the exact Canonical graph
+and exact target/preparation products; it is not a second mutable instruction
+graph. E4's later MIR-readiness capability is bound to an `Allocated` revision
+and must not be called “Prepared BIR.”
+
 Raw-to-Canonical is a target-independent vocabulary transition, not a retag of
 the same permissive graph. The historical accepted phase-B contract
 ([idea 736](../../../../ideas/closed/736_bir_phase_b_canonical_document_convergence.md))
@@ -98,7 +107,7 @@ SSA is a Canonical property, not a phase-A import prerequisite.
 Later ownership remains separate: C selects and verifies target-aware
 preparation products; D forms and legalizes pseudos; E owns allocation,
 spill/reload and final frame realization; F owns MIR lowering and emission.
-Core `NodeKind` traits may state stable legality/effect facts, but they do not
+Core `NodeKind` schema queries may state stable legality/effect facts, but they do not
 absorb target selection, pseudo expansion, register assignment, frame placement
 or MIR ownership.
 
@@ -146,8 +155,8 @@ create duplicate BIR families or compatibility side graphs.
 
 ## Inputs
 
-Core accepts one complete move-only private `ModuleDraft` from the sole
-[A1 importer](../lir_to_bir/README.md). The draft contains typed specs,
+Core accepts one complete move-only private Raw candidate from the sole
+[A1 importer](../lir_to_bir/README.md). The candidate contains typed specs,
 reservations, deterministic orders and validation-only dispositions for the
 exact 38/6/18 inventory rooted at [`ir.hpp`](../../../codegen/lir/ir.hpp).
 
@@ -168,7 +177,7 @@ layout semantics, preparation product or allocation state.
 
 | Output | Exact consumer | Required binding and acceptance | Failure / forbidden escape |
 |---|---|---|---|
-| private `ModuleDraft` | shared [A2 verifier](../verify/README.md) | one exact module epoch/revision, closed typed owners, complete orders/def-use/CFG, no active capabilities | gate failure consumes/discards the draft and publishes no module, subset or proof token |
+| private Raw candidate | shared [A2 verifier](../verify/README.md) | one exact module epoch/revision, closed typed owners, complete orders/def-use/CFG, no active capabilities | gate failure consumes/discards the candidate and publishes no module, subset or proof token |
 | move-only verified `RawBir` | [B1 legalize](../passes/legalize/README.md) | immutable published view; every current LIR fact has one owner and all admitted Raw-only forms are typed | B1 receives no draft, importer maps, hidden side table, malformed/unsupported valid row or target/allocation fact |
 | read-only entity/views | later Raw analyses and canonical passes | IDs carry module/function ownership and exact revision; iteration follows explicit order | stale revision/foreign owner rejects; views cannot mutate or create semantic caches |
 | origin/debug attachments | diagnostics/audit consumers only | non-authoritative references to already-owned semantic entities | names/text/sites cannot resolve or replace semantic identity |
@@ -179,7 +188,7 @@ The [top-level importer](../lir_to_bir/README.md) owns closed dispatch and the
 private transaction; the [memory sub-boundary](../lir_to_bir/memory/README.md)
 only contributes row validation/specs. Core owns storage, never their dispatch.
 The shared [A2 verifier](../verify/README.md) alone owns
-`verify_and_publish_raw(ModuleDraft&&)` and Raw acceptance. No builder method,
+the one Raw publication gate and Raw acceptance. No builder method,
 core constructor, diagnostic verifier or importer may bypass that gate.
 
 B1's exact consumer clause accepts only an immutable published `RawBir`. The
@@ -273,7 +282,7 @@ complete merely because import rejects it.
 | `inline-asm-metadata` | one `InlineAsmNode` plus ordinary edges and typed role/index attachment | partial: opaque payload/edges exist; role/index attachment missing | exact bytes/order/clobbers/effects/roles/indices; no parsed constraints or special values |
 | `producer-indexes-caches` | validation/import report only; no semantic core owner | validation-only non-destination | compare deterministically with ordered authority; no pointer/hash/cache identity publication |
 | `source-order-origin` | one explicit `IdOrder` per owned entity sequence plus non-authoritative origin attachments | partial: function/block/inst order and debug block name exist | preserve all module/nested source orders and stable diagnostic sites |
-| `module-publication` | one private `ModuleDraft` consumed by shared full A2 gate into one `RawBir` | partial: `ModuleBuilder::publish()` foundation adapter exists; `ModuleDraft`/full gate path missing | exact revision freeze, no active editor/reservation/fixup and atomic whole-module publication |
+| `module-publication` | one private Raw candidate consumed by the shared A2 gate into one `RawBir` | partial: `ModuleBuilder::publish() &&` foundation adapter exists; Step 8 reconciles the final landed candidate/API | exact revision freeze, no active editor/reservation/fixup and atomic whole-module publication |
 
 ## Ordered Behavior
 
@@ -333,10 +342,11 @@ Validation-only rows create no semantic slot or duplicate authority.
 ## Verification and Publication
 
 Core provides private storage and views, but the shared verifier owns Raw
-acceptance. `ModuleDraft` is move-only and unpublished. Only
-`verify_and_publish_raw(ModuleDraft&&)` may freeze/check the exact revision and
-mint `RawBir`; a builder `publish()`, public constructor, diagnostic report,
-`verify(ModuleView)`, cast or stage-label change cannot bypass this boundary.
+acceptance. The private Raw candidate is move-only and unpublished. Only the
+one A2 publication gate may freeze/check the exact revision and mint `RawBir`;
+a public constructor, diagnostic report, `verify(ModuleView)`, cast, or
+stage-label change cannot bypass this boundary. The current adapter is
+`ModuleBuilder::publish() &&`; Step 8 owns final API reconciliation.
 
 The full gate checks every typed owner, declaration/definition, order, ID,
 def-use edge, payload descriptor, terminator/successor, initializer, unresolved
@@ -386,8 +396,8 @@ Checked-in headers [`ir.hpp`](ir.hpp), [`type.hpp`](type.hpp),
   function/block/instruction order;
 - parameter/instruction-result definitions and generic instruction
   input-operand/bootstrap-result vectors;
-- the closed 16-kind `NodeKind` vocabulary, its payload variant, one hidden
-  traits authority, compile-time/runtime query surfaces and fail-closed
+- the closed 16-kind `NodeKind` vocabulary, its payload variant, one C++20
+  registry authority, compile-time/runtime query surfaces and fail-closed
   payload/arity verifier preconditions;
 - current structured `Type`, constant, symbol/global, function, block,
   instruction, value and selected authority receipts admitted by the bounded

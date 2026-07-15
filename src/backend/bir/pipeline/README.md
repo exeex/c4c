@@ -1,6 +1,6 @@
 # Ordered Canonical BIR Pipeline Contract
 
-Contract-Status: under-review
+Contract-Status: canonical order/publication contract converging under idea 732
 Implementation-Status: partial-foundation
 Kind: pipeline
 Phase-ID: B1 through B8
@@ -16,6 +16,23 @@ It consumes one verified `RawBir`, executes exactly P01-P07 with framework
 support, preserves deterministic checkpoint lineage/re-entry, then submits the
 same frozen B7 candidate to B8. Only a completely green B8 verifier token lets
 the pipeline atomically mint one `CanonicalBir`.
+
+The [root authority spine](../README.md#common-contract-authority-spine) owns
+the A-F order, while this file owns only B1-B8 occurrence order, checkpoint
+lineage, and B8 orchestration. The
+[normative NodeKind/tag contract](../../../../docs/backend/bir_node_kind_tag_algebra_and_phase_vocabulary.md)
+owns Raw/Canonical admission and the common identity/publication rules; this
+pipeline does not copy its tables. Each pass supplies its complete explicit
+lowering matrix through the [pass authoring contract](../passes/README.md#shared-authoring-contract),
+and the [verifier](../verify/README.md) alone decides validity.
+
+Every occurrence consumes one exact immutable checkpoint and constructs a
+private candidate. A successful occurrence advances only after its complete
+postconditions and candidate gate succeed; failure leaves the last-good
+checkpoint and cache state unchanged. B8 alone may atomically publish the
+verified Canonical revision. Unknown/illegal/unhandled vocabulary or an
+incomplete pass matrix is pipeline failure, not a no-op. `SsaEligible` cannot
+substitute for B4's dynamic SSA proof.
 
 ## Owns
 

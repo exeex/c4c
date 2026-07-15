@@ -1,6 +1,7 @@
 # Revision-Bound BIR Analysis Framework Contract
 
-Status: design contract; no implementation is claimed.
+Contract-Status: common analysis/product contract converging under idea 732
+Implementation-Status: absent; no framework implementation is claimed
 
 The root [`BIR README`](../README.md) owns the normative stage order and names
 the first consumer of every analysis family. Analyses are dependency facts,
@@ -14,6 +15,23 @@ revision. Stable BIR IDs are its only persistent entity keys. Dense numbering,
 worklist positions, pointers, names, rendered text, and legacy route records
 are result-local conveniences and never semantic identity or publication
 authority.
+
+The [root common authority spine](../README.md#common-contract-authority-spine)
+and [normative NodeKind/tag contract](../../../../docs/backend/bir_node_kind_tag_algebra_and_phase_vocabulary.md)
+own stage and identity meanings. This framework never infers a domain from a
+kind tag alone: the caller must present the exact published/candidate
+capability admitted by the analysis descriptor. In particular,
+`SsaEligible` does not authorize an SSA-dependent analysis without B4's dynamic
+proof, and C-phase `Prepared` products do not create a mutable graph revision.
+
+Every result and immutable preparation product is keyed by all authority it
+observes: graph epoch/module/function revision and digest, schema/options,
+target/profile/layout identity when applicable, predecessor product
+fingerprints, and algorithm version. Missing, stale, foreign, mixed-target,
+cross-revision, or merely equal-looking keys fail closed. A mutation cannot
+retag an old result; preservation creates or installs a checked result under
+the exact new key only after the private candidate passes its gate. Rollback
+publishes no cache entry, refreshed handle, partial product, or alternate graph.
 
 ## 1. Scope and ownership
 

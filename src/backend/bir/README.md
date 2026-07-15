@@ -1,11 +1,13 @@
 # BIR Architecture and Ordered Review Index
 
-Status: architecture contract and scaffold index. The Raw/Canonical carrier
-has a partial bootstrap implementation; the order below is the target design
-that every BIR document must converge on before the deferred target-aware and
-allocation implementation starts. A listed owner or gate does not imply that
-its implementation is complete. Several owners are intentionally
-build-excluded placeholders.
+Contract-Status: active common architecture and ordered-owner index
+Implementation-Status: partial Raw/Canonical foundation; B1-F3 contracts are
+predominantly absent or unimplemented as stated by their individual owners
+
+A listed owner, capability, or gate is a design claim only unless its owner
+names checked-in production evidence. The complete landed importer inventory
+and exact Raw/B1 seam remain reserved for idea 732 Step 8; the dated factual
+baseline is [the Step 1 audit](../../../docs/backend/bir_732_audit/step1_current_owners_and_factual_inputs.md).
 
 Architecture-Acceptance-Checkpoint: the documentation architecture at
 `8a7404a265ab24e230dcf4d001d6d1033e8d9736` was independently reviewed in
@@ -36,6 +38,38 @@ their own input, output, verification, and invalidation contracts, but cannot
 reorder adjacent stages. If a local document disagrees with this order, that
 document is not yet converged.
 
+## Common contract authority spine
+
+Common facts have one owner. B-F documents reference this table and state only
+their local decisions.
+
+| Common fact | Sole authority | Local-document obligation |
+|---|---|---|
+| closed six-axis `NodeKind` algebra, C++20 query model, stage admission, B-F vocabulary transitions, identity gate, and common publication rejection | [normative NodeKind/tag and phase-vocabulary contract](../../../docs/backend/bir_node_kind_tag_algebra_and_phase_vocabulary.md) | Name the exact admitted input/output set and explicit retain/replace/expand/merge/delete/reject result; never reproduce a second registry or tag table. |
+| flat storage, typed stable IDs, concrete checked-in NodeKind helper surface, and revision ownership | [core](core/README.md) | Do not infer semantic identity or stage legality from a pointer, slot, order, or reusable record. |
+| pass authoring spine, private mutation transaction, mutation summary, and explicit lowering-matrix shape | [pass framework](passes/README.md) | Supply every required section and close the input vocabulary without an implicit remainder. |
+| B1-B8 order, occurrence lineage, checkpoint ownership, and B8 orchestration | [pipeline](pipeline/README.md) | Do not mint or reorder occurrences locally. |
+| validity rules and publication tokens | [verifier](verify/README.md) | Name the exact input revision/profile and fail without publication. |
+| immutable result keys, preservation, and invalidation | [analysis framework](analysis/README.md) | Name exact dependencies and reject stale, foreign, mixed-target, or merely equal-looking products. |
+| architectural review questions | [review template](REVIEW_TEMPLATE.md) | Review both adjacencies and implementation evidence; a Markdown API sketch is not evidence. |
+
+The published-stage vocabulary names are exactly `Raw`, `Canonical`,
+`Prepared`, `PseudoPreallocation`, `Allocated`, and `MirReadyMachine`.
+Admission is explicit and has no inheritance or all-stage default. `Prepared`
+means C-phase immutable admission-by-reference plus exact target/preparation
+products; C does not mutate or republish the Canonical semantic graph.
+E4 instead publishes `Allocated` graph ownership and a distinct MIR-readiness
+capability over that same exact revision. Common documents call the latter
+the **E4 MIR-readiness capability**, never “Prepared BIR.”
+
+`SsaEligible` is a static, stage-qualified kind classification. Only B4's
+whole-graph proof establishes dynamic SSA, and D5 owns its required removal.
+Every mutating pass constructs a private candidate; successful verification
+atomically publishes one exact new revision. Analyses and C products are
+immutable exact-key facts, not graph authority. Unknown kind/tag/stage values,
+illegal admission, an omitted matrix row, and an unhandled kind all fail
+closed.
+
 ## Normative stage and pass order
 
 The letter identifies the major ownership phase; the number gives the strict
@@ -60,8 +94,8 @@ entries in that same pre-allocation chain.
 
 | ID | Stage / pass | Consumes | Publishes or guarantees | Owner |
 |---|---|---|---|---|
-| `A1` | LIR import and draft construction | typed LIR | one private, frozen `ModuleDraft`; importer errors publish no BIR | [LIR-to-BIR](lir_to_bir/README.md), with [memory import](lir_to_bir/memory/README.md) reserved as a build-excluded migration placeholder |
-| `A2` | Draft/Raw verification and publication | `ModuleDraft` | verified, target-independent, unallocated `RawBir` | [BIR verifier](verify/README.md) over [Raw BIR core](core/README.md) |
+| `A1` | LIR import and private candidate construction | typed LIR | one complete private Raw candidate; importer errors publish no BIR | [LIR-to-BIR](lir_to_bir/README.md), with [memory import](lir_to_bir/memory/README.md) reserved as a build-excluded migration placeholder; Step 8 fixes final landed candidate/API wording |
+| `A2` | Raw verification and publication | complete private Raw candidate | verified, target-independent, unallocated `RawBir` | [BIR verifier](verify/README.md) over [Raw BIR core](core/README.md) |
 | `B1` | `P01 legalize` | `RawBir` | legal target-independent type/opcode forms | [legalize pass](passes/legalize/README.md) |
 | `B2` | `P02 scalar` | `P01` output | normalized scalar, comparison, and select forms | [scalar pass](passes/scalar/README.md) |
 | `B3` | `P03 cfg` | `P02` output | normalized terminators, blocks, and edges | [CFG pass](passes/cfg/README.md) |
@@ -87,7 +121,7 @@ entries in that same pre-allocation chain.
 | `E1` | Allocation liveness and interference | exact initial D5 or E3-retry revision plus layout/call facts and the exact current `ProjectedConstraintSet` | revision-bound live ranges, simultaneous-copy interference, and pressure facts covering all uses, definitions, fixed homes, clobbers, and non-spillable `CopyScratch` reservations | shared allocation analysis consumed by the [BIR register allocator](regalloc/README.md) |
 | `E2` | Shared pseudo-physical register allocation | exact current `E1` facts, `ProjectedConstraintSet`, and finite target-layout pools | legal abstract `(category, class/group, slot)` homes for ordinary identities and every non-spillable scratch reservation, or an ordinary eviction request; shortage or forbidden alias fails closed | the same shared BIR allocator for RV64, AArch64, and x86 |
 | `E3` | Explicit spill/reload insertion | allocation candidate, exact current projection, pressure/eviction decisions, and exact liveness | abstract spill-slot identities plus admitted, directly realizable pseudo `Spill`/`Reload` nodes while preserving `ParallelCopy` and scratch-reservation semantics, with one newly keyed projection per retry | [spill/reload](regalloc/spill_reload/README.md); it cannot spill scratch or resolve bundles, and candidate mutation invalidates allocation facts and retries at `E1` until stable or rejected |
-| `E4` | Allocated/MIR-ready verification and publication | exact private D5-resolved candidate, `CopyResolutionFingerprint`, explicit spill state, and predecessor product lineage | E4 builds a private deterministic frame-action draft, materializes every required action as a bounded explicit one-record node, then performs final projection, E1 recomputation, E2/E3 non-mutating validation, final frame-plan derivation, and target-realizability checking; owning `AllocatedBir`, `PreparedBir`, and borrowing `MirReadyBirView` capabilities name that exact materialized revision, `FrameActionFingerprint`, and every final product key | [allocated BIR](allocated/README.md) plus private assigned-candidate and verifier `Allocated` gates |
+| `E4` | Allocated/MIR-ready verification and publication | exact private D5-resolved candidate, `CopyResolutionFingerprint`, explicit spill state, and predecessor product lineage | E4 builds a private deterministic frame-action draft, materializes every required action as a bounded explicit one-record node, then performs final projection, E1 recomputation, E2/E3 non-mutating validation, final frame-plan derivation, and target-realizability checking; owning `AllocatedBir` plus its borrowing E4 MIR-readiness capability and `MirReadyBirView` name that exact materialized revision, `FrameActionFingerprint`, and every final product key | [allocated BIR](allocated/README.md) plus private assigned-candidate and verifier `Allocated` gates |
 | `F1` | Strict one-to-one machine-graph construction | verified `MirReadyBirView`, exact immutable `FrameRealizationPlan`, explicit E4 frame-action nodes, and exact target mapping | target machine graph with fixed homes/placements applied and exactly one machine instruction record for each allocated pseudo instruction, including every frame action | external [machine architecture](../mir/README.md); apply-only mapping cannot alter the explicit graph, fixed ABI/frame/stack placements, assignments, or spill state |
 | `F2` | Machine verification | private target-MIR candidate | verified machine instruction graph; allocation repair is forbidden | external MIR/target verifier |
 | `F3` | Assembly, object, and link emission | verified machine graph, opaque inline-asm text, concrete operand mappings, relocation/object facts | encoded instructions, relocations, object file, and linked output | target assembler and external [object boundary](../mir/object/README.md) |
@@ -153,10 +187,11 @@ installed. E4 rejects every predecessor- or draft-keyed product.
 | `Allocated/MIR-ready` | `E4` | The materialized candidate plus exact-current projection/E1/E2/E3/frame/target products proves every explicit frame action and every other node has one registered one-record mapping. No unresolved copy, hidden frame work, pressure deficit, mixed product, or unrepresented expansion is accepted. |
 
 `PreparedInput` may remain an internal cumulative input-checking capability for
-preparation, but it is not a replacement for any published BIR profile and is
-not `PreparedBir`. E4 alone mints the latter as a readiness capability bound to
-the exact immutable revision owned by `AllocatedBir`; `MirReadyBirView` only
-borrows that same revision and its verified assignments and product keys.
+preparation, but it is not a replacement for the normative `Prepared`
+admission envelope and does not name a graph. E4 alone mints the distinct
+MIR-readiness capability bound to the exact immutable revision owned by
+`AllocatedBir`; `MirReadyBirView` only borrows that same revision and its
+verified assignments and product keys.
 
 ## Analyses are dependencies, not extra stages
 
