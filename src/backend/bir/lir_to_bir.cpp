@@ -47,35 +47,32 @@ using codegen::lir::LirStoreOp;
 using codegen::lir::LirSwitch;
 using codegen::lir::LirUnreachable;
 
-// A LirPhiIncoming names its predecessor, but deliberately does not carry a
-// presentation-derived successor-slot index.  It can therefore select an edge
-// only when that predecessor has exactly one semantic successor occurrence to
-// the PHI block.  Parallel occurrences must remain fail-closed until LIR
-// carries distinct edge authority for each incoming.
-std::optional<std::uint32_t> unique_phi_edge_occurrence(
+// Map native LIR terminator occurrence authority to Raw-BIR's ordinal among
+// only the predecessor's successors that reach the PHI destination. This is
+// intentionally independent of PHI input order and display labels.
+std::optional<std::uint32_t> phi_edge_occurrence(
     const codegen::lir::LirTerminator& terminator,
-    codegen::lir::LirBlockId destination) {
-  std::size_t matches = 0;
-  const auto count = [&](codegen::lir::LirBlockId successor) {
-    if (successor == destination) ++matches;
-  };
-  std::visit(
-      [&](const auto& term) {
-        using Term = std::decay_t<decltype(term)>;
-        if constexpr (std::is_same_v<Term, LirBr>) {
-          count(term.successor);
-        } else if constexpr (std::is_same_v<Term, LirCondBr>) {
-          count(term.true_successor);
-          count(term.false_successor);
-        } else if constexpr (std::is_same_v<Term, LirSwitch>) {
-          count(term.default_successor);
-          for (const auto successor : term.case_successors) count(successor);
-        } else if constexpr (std::is_same_v<Term, LirIndirectBr>) {
-          for (const auto successor : term.targets) count(successor);
-        }
-      },
-      terminator);
-  return matches == 1 ? std::optional<std::uint32_t>{0} : std::nullopt;
+    codegen::lir::LirBlockId destination,
+    codegen::lir::LirSuccessorOccurrenceId selected) {
+  if (!selected.valid()) return std::nullopt;
+  std::vector<codegen::lir::LirBlockId> successors;
+  if (const auto* branch = std::get_if<LirBr>(&terminator)) {
+    if (!(selected == codegen::lir::LirSuccessorOccurrenceId::direct_branch())) return std::nullopt;
+    successors = {branch->successor};
+  } else if (const auto* branch = std::get_if<LirCondBr>(&terminator)) {
+    if (selected.value > codegen::lir::LirSuccessorOccurrenceId::conditional_false().value) return std::nullopt;
+    successors = {branch->true_successor, branch->false_successor};
+  } else if (const auto* sw = std::get_if<LirSwitch>(&terminator)) {
+    if (selected.value > sw->case_successors.size()) return std::nullopt;
+    successors.reserve(sw->case_successors.size() + 1);
+    successors.push_back(sw->default_successor);
+    successors.insert(successors.end(), sw->case_successors.begin(), sw->case_successors.end());
+  } else {
+    return std::nullopt;
+  }
+  if (!(successors[selected.value] == destination)) return std::nullopt;
+  return static_cast<std::uint32_t>(std::count(
+      successors.begin(), successors.begin() + selected.value, destination));
 }
 
 template <class T>
@@ -3667,14 +3664,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                       [&](const LirBlock& candidate) {
                         return candidate.id == incoming.predecessor;
                       });
-                  const auto occurrence = predecessor_source == function.blocks.end()
-                      ? std::optional<std::uint32_t>{}
-                      : unique_phi_edge_occurrence(predecessor_source->terminator,
-                                                   block.id);
+                  const auto occurrence =
+                      predecessor_source == function.blocks.end() ||
+                              !incoming.successor_occurrence
+                          ? std::optional<std::uint32_t>{}
+                          : phi_edge_occurrence(predecessor_source->terminator,
+                                                block.id,
+                                                *incoming.successor_occurrence);
                   if (predecessor == blocks.end() || !occurrence) {
                     edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
                                              name, block.label,
-                                             "phi incoming must select one unambiguous current-function CFG edge occurrence"};
+                                             "phi incoming must select one exact current-function CFG edge occurrence"};
                     return Result<void, BuildError>::failure(BuildError::InvalidValue);
                   }
                   ValueId incoming_value;
