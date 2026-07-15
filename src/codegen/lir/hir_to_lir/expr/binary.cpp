@@ -615,36 +615,38 @@ std::string StmtEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Exp
   TypeSpec rts{};
   const LirOperand rv = emit_rval_operand(ctx, b.rhs, rts);
   const LirOperand rc = to_bool_operand(ctx, rv, rts);
-  std::string rhs_val;
+  LirOperand rhs_val;
   if (res_ty == "i1") {
-    rhs_val = rc.str();
+    rhs_val = rc;
   } else if (is_float_base(res_spec.base)) {
     const std::string as_i32 = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirCastOp{as_i32, lir::LirCastKind::ZExt, "i1", rc, "i32"});
-    rhs_val = fresh_tmp(ctx);
+    rhs_val = fresh_value(ctx);
     emit_lir_op(ctx,
                 lir::LirCastOp{rhs_val, lir::LirCastKind::SIToFP, "i32", as_i32, res_ty});
   } else {
     const LirOperand rhs_result = fresh_value(ctx);
     emit_lir_op(ctx,
                 lir::LirCastOp{rhs_result, lir::LirCastKind::ZExt, "i1", rc, res_ty, true});
-    rhs_val = rhs_result.str();
+    rhs_val = rhs_result;
   }
   emit_fallthrough_lbl(ctx, rhs_end_target);
   emit_br_and_open_lbl(ctx, end_target, skip_target);
-  std::string skip_val;
+  LirOperand skip_val;
   if (res_ty == "i1") {
-    skip_val = (b.op == BinaryOp::LAnd) ? "false" : "true";
+    skip_val = LirOperand((b.op == BinaryOp::LAnd) ? "false" : "true");
   } else if (is_float_base(res_spec.base)) {
-    skip_val = (b.op == BinaryOp::LAnd) ? "0.0" : "1.0";
+    skip_val = LirOperand((b.op == BinaryOp::LAnd) ? "0.0" : "1.0");
   } else {
-    skip_val = (b.op == BinaryOp::LAnd) ? "0" : "1";
+    skip_val = LirOperand::integer((b.op == BinaryOp::LAnd) ? "0" : "1",
+                                   b.op == BinaryOp::LAnd ? 0 : 1);
   }
   emit_fallthrough_lbl(ctx, end_target);
   const std::string tmp = fresh_tmp(ctx);
   emit_lir_op(
       ctx, lir::LirPhiOp{tmp, res_ty,
-                          {{rhs_val, rhs_end_target.label}, {skip_val, skip_target.label}}});
+                          {{rhs_val, rhs_end_target.label, rhs_end_target.id},
+                           {skip_val, skip_target.label, skip_target.id}}});
   return tmp;
 }
 

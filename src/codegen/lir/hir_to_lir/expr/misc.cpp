@@ -223,25 +223,25 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, con
   TypeSpec then_ts{};
   const LirOperand then_source = emit_rval_operand(ctx, t.then_expr, then_ts);
   const LirOperand then_coerced = coerce_operand(ctx, then_source, then_ts, res_spec);
-  const std::string then_v = then_coerced.str();
   emit_fallthrough_lbl(ctx, then_end_target);
   emit_br_and_open_lbl(ctx, end_target, else_target);
   TypeSpec else_ts{};
   const LirOperand else_source = emit_rval_operand(ctx, t.else_expr, else_ts);
   const LirOperand else_coerced = coerce_operand(ctx, else_source, else_ts, res_spec);
-  const std::string else_v = else_coerced.str();
   emit_fallthrough_lbl(ctx, else_end_target);
   emit_fallthrough_lbl(ctx, end_target);
   if (res_ty == "void") return "";
-  auto void_to_zero = [&](const std::string& v) -> std::string {
-    if (!v.empty()) return v;
-    if (res_ty == "ptr") return "null";
-    if (res_ty == "float" || res_ty == "double") return "0.0";
-    return "0";
+  auto void_to_zero = [&](const LirOperand& value) -> LirOperand {
+    if (!value.empty()) return value;
+    if (res_ty == "ptr") return LirOperand("null");
+    if (res_ty == "float" || res_ty == "double") return LirOperand("0.0");
+    return LirOperand::integer("0", 0);
   };
   const std::string tmp = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirPhiOp{
-                       tmp, res_ty, {{void_to_zero(then_v), then_end_target.label}, {void_to_zero(else_v), else_end_target.label}}});
+                       tmp, res_ty,
+                       {{void_to_zero(then_coerced), then_end_target.label, then_end_target.id},
+                        {void_to_zero(else_coerced), else_end_target.label, else_end_target.id}}});
   return tmp;
 }
 

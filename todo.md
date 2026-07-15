@@ -8,22 +8,27 @@ Current Step Title: Publish and verify typed PHI incoming authority
 
 ## Just Finished
 
-- No 751 implementation packet has run. Lifecycle resumed the preserved Step
-  1 after closing 782's bounded producer-only handoff.
+- Plan Step 1 completed: `LirPhiOp` incoming entries now carry typed native
+  values and current-function predecessor `LirBlockId`s for ternary, logical,
+  and AArch64/AMD64 vaarg producers; verifier rejects missing, unknown,
+  cross-function, and edge-incoherent authority.
 
 ## Suggested Next
 
-- Begin Plan Step 1 using the closed 775 and 782 producer-field handoffs;
-  retain the work at the `LirPhiOp` carrier and verifier seam.
+- Ask the supervisor/plan owner to evaluate Step 1 acceptance and select the
+  next runbook packet; do not widen this carrier slice into Raw-BIR or backend
+  consumers.
 
 ## Watchouts
 
 - Do not recover identity from `%t` names, labels, rendered LLVM, instruction
   order, or testcase text.
-- Do not reopen helper-result publication or extend into Raw-BIR, backend,
-  target lowering, MIR, or emission.
+- Display labels remain printer compatibility mirrors; semantic PHI authority
+  is the incoming operand and predecessor block ID.
 
 ## Proof
 
-- See Plan Step 1 completion check. Supervisor selects canonical regression
-  logs and broader acceptance proof.
+- Passed: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_call_type_ref$'`; output preserved in
+  `test_after.log`. This is the delegated focused proof; supervisor selects
+  canonical regression logs and broader acceptance proof.

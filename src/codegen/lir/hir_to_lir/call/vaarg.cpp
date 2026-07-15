@@ -93,7 +93,9 @@ std::string StmtEmitter::emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::st
   emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), stack_next, stack_ptr_ptr});
   emit_fallthrough_lbl(ctx, join_target);
   const LirOperand src_ptr = fresh_value(ctx);
-  emit_lir_op(ctx, lir::LirPhiOp{src_ptr, "ptr", {{reg_addr, reg_target.label}, {stack_ptr, stack_target.label}}});
+  emit_lir_op(ctx, lir::LirPhiOp{src_ptr, "ptr",
+                                 {{reg_addr, reg_target.label, reg_target.id},
+                                  {stack_ptr, stack_target.label, stack_target.id}}});
   return src_ptr.str();
 }
 
@@ -182,7 +184,9 @@ std::string StmtEmitter::emit_aarch64_vaarg_fp_src_ptr(FnCtx& ctx, const std::st
   emit_fallthrough_lbl(ctx, join_target);
   const LirOperand src_ptr = fresh_value(ctx);
   emit_lir_op(
-      ctx, lir::LirPhiOp{src_ptr, "ptr", {{reg_addr, reg_target.label}, {aligned_stack_ptr, stack_target.label}}});
+      ctx, lir::LirPhiOp{src_ptr, "ptr",
+                          {{reg_addr, reg_target.label, reg_target.id},
+                           {aligned_stack_ptr, stack_target.label, stack_target.id}}});
   return src_ptr.str();
 }
 

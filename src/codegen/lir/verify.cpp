@@ -1997,6 +1997,77 @@ void verify_function_value_ownership(const LirModule& mod,
     for (const auto& inst : block.insts) collect_definition(inst);
   }
 
+  const auto terminator_has_successor = [](const LirTerminator& terminator,
+                                           LirBlockId successor) {
+    if (const auto* branch = std::get_if<LirBr>(&terminator)) {
+      return branch->successor == successor;
+    }
+    if (const auto* branch = std::get_if<LirCondBr>(&terminator)) {
+      return branch->true_successor == successor ||
+             branch->false_successor == successor;
+    }
+    if (const auto* sw = std::get_if<LirSwitch>(&terminator)) {
+      return sw->default_successor == successor ||
+             std::find(sw->case_successors.begin(), sw->case_successors.end(),
+                       successor) != sw->case_successors.end();
+    }
+    return false;
+  };
+  const auto verify_phi_incoming = [&](const LirPhiIncoming& incoming,
+                                       const LirBlock& destination) {
+    require_operand_kind(incoming.value, "LirPhiIncoming.value",
+                         {LirOperandKind::SsaValue,
+                          LirOperandKind::DirectConstant,
+                          LirOperandKind::Immediate,
+                          LirOperandKind::SpecialToken});
+    if (incoming.value.kind() == LirOperandKind::SsaValue) {
+      const LirValueId* id = incoming.value.value_id();
+      if (!id || !id->valid() || definitions.find(id->value) == definitions.end()) {
+        fail_verify("LirPhiIncoming.value",
+                    "must identify a known current-function LirValueId");
+      }
+      const auto owners = instruction_result_owners.find(id->value);
+      if (owners != instruction_result_owners.end() &&
+          (owners->second.size() != 1 ||
+           owners->second.find(&function) == owners->second.end())) {
+        fail_verify("LirPhiIncoming.value",
+                    "must not identify a value owned by another LirFunction");
+      }
+    }
+    if (!incoming.predecessor.valid()) {
+      fail_verify("LirPhiIncoming.predecessor",
+                  "must carry a valid current-function LirBlockId");
+    }
+    const auto predecessor = std::find_if(
+        function.blocks.begin(), function.blocks.end(),
+        [&](const LirBlock& block) { return block.id == incoming.predecessor; });
+    if (predecessor == function.blocks.end() ||
+        std::count_if(function.blocks.begin(), function.blocks.end(),
+                      [&](const LirBlock& block) {
+                        return block.id == incoming.predecessor;
+                      }) != 1) {
+      fail_verify("LirPhiIncoming.predecessor",
+                  "must identify exactly one current-function block");
+    }
+    if (incoming.label != predecessor->label) {
+      fail_verify("LirPhiIncoming.label",
+                  "display label must match the predecessor-selected block");
+    }
+    if (!terminator_has_successor(predecessor->terminator, destination.id)) {
+      fail_verify("LirPhiIncoming.predecessor",
+                  "must have an edge to the PHI's containing block");
+    }
+  };
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* phi = std::get_if<LirPhiOp>(&inst)) {
+        for (const LirPhiIncoming& incoming : phi->incoming) {
+          verify_phi_incoming(incoming, block);
+        }
+      }
+    }
+  }
+
   const auto verify_conditional_condition = [&](const LirCondBr& branch) {
     if (!branch.condition.valid()) {
       fail_verify("LirCondBr.condition",

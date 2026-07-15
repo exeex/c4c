@@ -820,11 +820,13 @@ int lir_amd64_vaarg_register_stack(int count, ...) {
   std::vector<const lir::LirLoadOp*> loads;
   std::vector<const lir::LirGepOp*> geps;
   std::vector<const lir::LirMemcpyOp*> copies;
+  std::vector<const lir::LirPhiOp*> phis;
   for (const auto& block : x64.blocks) {
     for (const auto& inst : block.insts) {
       if (const auto* load = std::get_if<lir::LirLoadOp>(&inst)) loads.push_back(load);
       if (const auto* gep = std::get_if<lir::LirGepOp>(&inst)) geps.push_back(gep);
       if (const auto* copy = std::get_if<lir::LirMemcpyOp>(&inst)) copies.push_back(copy);
+      if (const auto* phi = std::get_if<lir::LirPhiOp>(&inst)) phis.push_back(phi);
     }
   }
   const auto load_defines = [&](const lir::LirOperand& value) {
@@ -869,6 +871,12 @@ int lir_amd64_vaarg_register_stack(int count, ...) {
       });
   expect_true(selected_value_loads == 2,
               "AMD64 reg_value and stack_value must each select their final i32 load result");
+  expect_true(phis.size() == 1 && phis[0]->incoming.size() == 2 &&
+                  phis[0]->incoming[0].value.value_id() &&
+                  phis[0]->incoming[1].value.value_id() &&
+                  phis[0]->incoming[0].predecessor.valid() &&
+                  phis[0]->incoming[1].predecessor.valid(),
+              "AMD64 vaarg PHI should retain both helper-input values and predecessor-block IDs");
   lir::verify_module(amd64);
 }
 
@@ -893,6 +901,7 @@ long double lir_aarch64_fp_vaarg_native_result_authority(int count, ...) {
   lir::LirGepOp* reg_addr = nullptr;
   lir::LirLoadOp* stack_ptr = nullptr;
   lir::LirCallOp* aligned_stack_ptr = nullptr;
+  lir::LirPhiOp* source_phi = nullptr;
   for (auto& block : function.blocks) {
     for (auto& inst : block.insts) {
       if (auto* gep = std::get_if<lir::LirGepOp>(&inst);
@@ -913,11 +922,18 @@ long double lir_aarch64_fp_vaarg_native_result_authority(int count, ...) {
                     "FP vaarg fixture should publish one aligned-stack producer");
         aligned_stack_ptr = call;
       }
+      if (auto* phi = std::get_if<lir::LirPhiOp>(&inst)) source_phi = phi;
     }
   }
   expect_true(reg_addr && stack_ptr && aligned_stack_ptr && reg_addr->result.value_id() &&
                   stack_ptr->result.value_id() && aligned_stack_ptr->result.value_id(),
               "FP vaarg PHI helper producers must publish native current-function results");
+  expect_true(source_phi && source_phi->incoming.size() == 2 &&
+                  source_phi->incoming[0].value.value_id() &&
+                  source_phi->incoming[1].value.value_id() &&
+                  source_phi->incoming[0].predecessor.valid() &&
+                  source_phi->incoming[1].predecessor.valid(),
+              "AArch64 vaarg PHI should retain helper-input values and predecessor-block IDs");
   lir::verify_module(lowered);
 
   lir::LirModule missing = lowered;
@@ -4204,7 +4220,7 @@ void test_ternary_coerce_result_authority_boundary() {
 
   lir::LirModule lowered = lower_lir_module_for_target(R"c(
 long long lir_ternary_coerce_result_authority_loss(int condition, long long input) {
-  return (condition ? (int)input : 7) + 1LL;
+  return (condition ? (int)input : (int)input) + 1LL;
 }
 )c", "x86_64-linux-gnu");
 
@@ -4258,11 +4274,62 @@ long long lir_ternary_coerce_result_authority_loss(int condition, long long inpu
   constexpr bool phi_incoming_values_are_operands =
       std::is_same_v<std::decay_t<decltype(phis[0]->incoming.front().value)>, lir::LirOperand>;
   expect_true(phi_incoming_values_are_operands && phis[0]->incoming.size() == 2 &&
-                  !phis[0]->incoming.front().value.has_authority(),
-              "PHI incoming values use the value-only operand carrier without fabricating authority");
+                  phis[0]->incoming.front().predecessor.valid() &&
+                  phis[0]->incoming[1].predecessor.valid() &&
+                  phis[0]->incoming.front().value.value_id() &&
+                  phis[0]->incoming[1].value.value_id() &&
+                  *phis[0]->incoming.front().value.value_id() ==
+                      *selected_coercion.result.value_id(),
+              "ternary PHI should retain selected arm value and predecessor-block authority");
   expect_true(!phis[0]->result.has_authority() && !binary_ops[0]->lhs.has_authority(),
               "ternary PHI carrier and later consumer remain raw outside the selected arm packet");
   lir::verify_module(lowered);
+
+  const auto require_phi = [](lir::LirModule& module) -> lir::LirPhiOp& {
+    lir::LirFunction& focused =
+        require_function(module, "lir_ternary_coerce_result_authority_loss");
+    for (auto& block : focused.blocks)
+      for (auto& inst : block.insts)
+        if (auto* phi = std::get_if<lir::LirPhiOp>(&inst)) return *phi;
+    fail("focused ternary fixture should retain one PHI");
+  };
+  lir::LirModule missing_phi_value = lowered;
+  require_phi(missing_phi_value).incoming.front().value = lir::LirOperand("%missing-phi");
+  expect_identity_verification_rejected(
+      missing_phi_value, "verifier should reject PHI incoming values without native authority");
+
+  lir::LirModule unknown_phi_value = lowered;
+  require_phi(unknown_phi_value).incoming.front().value =
+      lir::LirOperand::ssa("%unknown-phi", lir::LirValueId{999999});
+  expect_identity_verification_rejected(
+      unknown_phi_value, "verifier should reject unknown PHI incoming value authority");
+
+  lir::LirModule foreign_phi_value = lowered;
+  foreign_phi_value.functions.push_back(
+      make_identity_test_function("phi_incoming_foreign_owner", lir::LirValueId{99}));
+  require_phi(foreign_phi_value).incoming.front().value =
+      lir::LirOperand::ssa("%foreign-phi", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      foreign_phi_value, "verifier should reject cross-function PHI incoming value authority");
+
+  lir::LirModule missing_phi_predecessor = lowered;
+  require_phi(missing_phi_predecessor).incoming.front().predecessor = lir::LirBlockId::invalid();
+  expect_identity_verification_rejected(
+      missing_phi_predecessor, "verifier should reject PHI inputs without predecessor authority");
+
+  lir::LirModule mismatched_phi_edge = lowered;
+  lir::LirFunction& edge_function =
+      require_function(mismatched_phi_edge, "lir_ternary_coerce_result_authority_loss");
+  for (auto& block : edge_function.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* edge_phi = std::get_if<lir::LirPhiOp>(&inst)) {
+        edge_phi->incoming.front().predecessor = block.id;
+        edge_phi->incoming.front().label = block.label;
+      }
+    }
+  }
+  expect_identity_verification_rejected(
+      mismatched_phi_edge, "verifier should reject PHI predecessor/edge mismatches");
 
   const auto require_selected_coercion = [](lir::LirModule& module) -> lir::LirCastOp& {
     lir::LirFunction& focused =
@@ -4407,6 +4474,13 @@ int lir_logical_short_circuit_result_authority_loss(int lhs, int rhs) {
                   rhs_conversion->result.has_authority() &&
                   rhs_conversion->requires_native_result_authority,
               "logical RHS conversion should retain native current-function result authority");
+  const auto rhs_incoming = std::find_if(
+      phis[0]->incoming.begin(), phis[0]->incoming.end(), [&](const lir::LirPhiIncoming& incoming) {
+        return incoming.value.value_id() &&
+               *incoming.value.value_id() == *rhs_conversion->result.value_id();
+      });
+  expect_true(rhs_incoming != phis[0]->incoming.end() && rhs_incoming->predecessor.valid(),
+              "logical PHI should retain the selected RHS value and predecessor-block authority");
   expect_true(!phis[0]->result.value_id() && !binary_ops[0]->lhs.value_id(),
               "logical PHI result and final consumer remain outside the RHS result-authority claim");
   lir::verify_module(lowered);

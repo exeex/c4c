@@ -426,11 +426,12 @@ struct LirCmpOp {
   LirOperand rhs;                 // SSA name or literal for right operand
 };
 
-// Value-only PHI transport. The label remains presentation-only; this carrier
-// deliberately adds no predecessor or edge semantics.
+// PHI incoming authority.  `value` selects the native value and `predecessor`
+// selects the current-function CFG edge; `label` is only their display mirror.
 struct LirPhiIncoming {
   LirOperand value;
   std::string label;
+  LirBlockId predecessor = LirBlockId::invalid();
 };
 
 // Typed PHI node.
