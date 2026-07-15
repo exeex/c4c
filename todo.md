@@ -3,31 +3,34 @@
 Status: Active
 Source Idea Path: ideas/open/794_lir_next_local_vla_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish and verify the selected producer authority
+Current Step ID: 3
+Current Step Title: Write the exact 734 handoff and obtain acceptance disposition
 
 ## Just Finished
 
-- Closed 798 completed its selected `LirStackRestoreOp` native-authority
-  handoff. 794 Step 1 evidence remains accepted in `1cbad00d6`; do not redo
-  the candidate inspection.
+- 794 Step 2 confirmed closed 798's selected native `LirStackRestoreOp`
+  authority without a new repair: selected admission, `saved_ptr` binding,
+  current-function object/owner/pointer/pointee/live authority, and the
+  `RestoreSavedVlaStackCheckpoint` transition are emitted and verified.
+  Nearby producer/verifier proof covers the valid selected restore and
+  malformed, foreign, type-incoherent, non-live, unbound, and
+  transition-invalid rejection forms.
 
 ## Suggested Next
 
-- Execute 794 Step 2 using only closed 798's exact selected stack-restore
-  authority and focused producer proof boundary.
+- Execute 794 Step 3 only: write the exact handoff and obtain the required
+  acceptance disposition for this one selected stack-restore row.
 
 ## Watchouts
 
-- The handoff is to 794, not 734. `local_object_authority.live` remains a
-  checkpoint-binding validity fact; the transition does not create per-VLA
-  allocation lifetime state. Do not absorb dynamic-VLA count work, VLA GEP,
-  other local/lifetime rows, Raw-BIR/importer/734 receipt, or
-  presentation-derived facts.
+- The handoff remains to 794, not a 734 receipt. `local_object_authority.live`
+  is checkpoint-binding validity, not a per-VLA allocation lifetime state;
+  retain the boundary against dynamic-VLA count, VLA GEP, other local/lifetime
+  rows, Raw-BIR/importer/734 receipt, and presentation-derived facts.
 
 ## Proof
 
-- Closed 798 acceptance: fresh build, focused
-  `^frontend_lir_call_type_ref$` proof passing 1/1, non-decreasing 1/1 guard,
-  and broader frontend smoke. The implementation proof is `test_after.log`;
-  execute fresh Step 2 proof before accepting new producer work.
+- Fresh Step 2 verification: `cmake --build --preset default && ctest
+  --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
+  passed 1/1. The delegated packet prohibited canonical root-log changes, so
+  the existing `test_after.log` remains owned by supervisor baseline policy.
