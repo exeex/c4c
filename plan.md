@@ -54,10 +54,14 @@ Actions:
 - emit authority only for a direct current-function DirectScalar LHS match;
 - verify owner, value, index, type, ABI, `Lhs` role, LHS identity, and
   operation-type coherence;
-- add focused positive and malformed-authority coverage.
+- add focused positive and malformed-authority coverage in
+  `tests/frontend/frontend_lir_function_signature_type_ref_test.cpp`; this
+  producer/verifier target must not exercise or require the preserved Idea 825
+  selector slice.
 
-Completion check: missing and malformed authority fails closed; no unrelated
-authority family or Idea 825 selector code is edited.
+Completion check: the focused target proves a native DirectScalar binary LHS
+publishes the exact tuple and rejects missing/malformed tuple variants; no
+unrelated authority family or Idea 825 selector code is edited or credited.
 
 ### Step 3 - Prove and return to 825
 
@@ -65,6 +69,8 @@ Goal: establish acceptance proof for this narrow blocker and retain a precise
 return route.
 
 Completion check: fresh `cmake --build --preset default` and exact
-`ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
-pass; record that Idea 825 resumes at Step 2 without accepting its preserved
-selector slice.
+`ctest --test-dir build -j --output-on-failure -R '^frontend_lir_function_signature_type_ref$'`
+pass with the new positive/malformed binary-LHS coverage. The full
+`^frontend_lir_call_type_ref$` CTest is explicitly not 827 acceptance: it is
+the parent/composite checkpoint to run only after Idea 825 resumes at Step 2,
+with its selector slice still unaccepted and untouched by this blocker.

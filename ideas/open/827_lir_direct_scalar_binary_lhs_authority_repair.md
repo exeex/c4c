@@ -29,8 +29,10 @@ does not own or authorize this newly exposed native binary-LHS gap.
   tuple: native parameter `LirValueId`, current-function `LinkNameId` owner,
   parameter index, `LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`,
   `Lhs` role, and exact `LirBinOp.lhs`/operation-type coherence.
-- Add focused nearby positive and malformed-authority coverage, then run a
-  fresh build and the exact focused frontend CTest.
+- Add focused nearby positive and malformed-authority coverage in
+  `tests/frontend/frontend_lir_function_signature_type_ref_test.cpp`, then
+  run a fresh build and that independently attributable CTest. This proof must
+  not exercise or require the preserved Idea 825 selector slice.
 
 ## Out Of Scope
 
@@ -49,9 +51,12 @@ does not own or authorize this newly exposed native binary-LHS gap.
    owner/index/type/ABI/role-invalid, and LHS or operation-type-incoherent
    authority; unselected forms remain fail closed.
 3. A fresh `cmake --build --preset default` and exact
-   `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
-   provide focused acceptance evidence without crediting Idea 825's selector
-   slice.
+   `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_function_signature_type_ref$'`
+   provide independently attributable focused acceptance evidence, including
+   the nearby positive/malformed binary-LHS coverage, without crediting or
+   requiring Idea 825's selector slice. The full
+   `^frontend_lir_call_type_ref$` CTest remains a parent/composite checkpoint
+   for Idea 825 after it resumes; it is not claimed as 827 evidence.
 4. The handoff resumes Idea 825 exactly at Step 2 with its selector work still
    unaccepted and untouched by this blocker.
 
@@ -64,4 +69,7 @@ does not own or authorize this newly exposed native binary-LHS gap.
 - Reject edits to direct switch-selector authority, the unaccepted Idea 825
   worktree slice, Raw-BIR/importer code, or any other parameter-use row.
 - Reject acceptance without nearby positive and malformed coverage plus the
-  exact focused CTest, or any claim that closed 820 already owns this gap.
+  exact independently attributable `^frontend_lir_function_signature_type_ref$`
+  CTest, any use of the dirty selector slice to clear it, or any claim that
+  the parent `^frontend_lir_call_type_ref$` checkpoint already passes or that
+  closed 820 already owns this gap.

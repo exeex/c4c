@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/827_lir_direct_scalar_binary_lhs_authority_repair.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Trace the binary-LHS producer and authority seam
+Current Step ID: 2
+Current Step Title: Publish and verify one binary-LHS authority tuple
 
 ## Just Finished
 
@@ -31,10 +31,11 @@ Current Step Title: Trace the binary-LHS producer and authority seam
 
 ## Suggested Next
 
-- Step 2 candidate: add focused positive and malformed binary-LHS coverage,
-  then repair only `emit_binary_rval_operand`'s DirectScalar LHS publication
-  path so its selected definition and `LirBinOp` operation type satisfy the
-  existing exact tuple contract; do not modify selector authority.
+- Step 2: add focused positive and malformed binary-LHS coverage in
+  `tests/frontend/frontend_lir_function_signature_type_ref_test.cpp`, then
+  repair only `emit_binary_rval_operand`'s DirectScalar LHS publication path
+  so its selected definition and `LirBinOp` operation type satisfy the
+  existing exact tuple contract; do not modify or rely on selector authority.
 
 ## Watchouts
 
@@ -51,5 +52,8 @@ Current Step Title: Trace the binary-LHS producer and authority seam
 
 - `git diff --check` passed. This trace-only packet made no code/test changes;
   no CTest or `test_after.log` is required. Before Step 2 acceptance, require
-  a fresh build and exact focused `^frontend_lir_call_type_ref$` CTest after
-  nearby positive/malformed binary-LHS coverage.
+  a fresh build and exact independently attributable
+  `^frontend_lir_function_signature_type_ref$` CTest after nearby
+  positive/malformed binary-LHS coverage. Do not claim or require the full
+  `^frontend_lir_call_type_ref$` CTest here: it remains the parent/composite
+  checkpoint after Idea 825 resumes.
