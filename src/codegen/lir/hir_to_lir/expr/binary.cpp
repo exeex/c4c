@@ -295,7 +295,8 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
                                                    std::nullopt, std::nullopt,
                                                    coerced.value_id() ? std::optional<lir::LirValueId>(*coerced.value_id()) : std::nullopt,
                                                    shape, shape, std::nullopt,
-                                                   lir::LirNativeVectorIndex{zero_index, lir::LirTypeRef::integer(64)}, {}}});
+                                                   lir::LirNativeVectorIndex{zero_index, lir::LirTypeRef::integer(64)}, {}},
+                                               true});
       const LirOperand shuf = fresh_value(ctx);
       emit_lir_op(ctx, lir::LirShuffleVectorOp{
                            shuf, vec_ty_s, ins, "poison",
@@ -413,7 +414,8 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
     emit_lir_op(ctx, lir::LirInsertElementOp{ins, vec_ty, "poison", elem_ty, coerced, zero_index,
         lir::LirNativeVectorAuthority{ctx.lir_function->link_name_id, *ins.value_id(), std::nullopt,
             std::nullopt, coerced.value_id() ? std::optional<lir::LirValueId>(*coerced.value_id()) : std::nullopt,
-            shape, shape, std::nullopt, lir::LirNativeVectorIndex{zero_index, lir::LirTypeRef::integer(64)}, {}}});
+            shape, shape, std::nullopt, lir::LirNativeVectorIndex{zero_index, lir::LirTypeRef::integer(64)}, {}},
+        true});
     const LirOperand shuf = fresh_value(ctx);
     emit_lir_op(ctx, lir::LirShuffleVectorOp{shuf, vec_ty, ins, "poison",
                                              "<" + std::to_string(lanes) + " x i32>",

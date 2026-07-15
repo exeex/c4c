@@ -2716,7 +2716,28 @@ void verify_function_value_ownership(const LirModule& mod,
   const auto verify_vector_inst = [&](const LirInst& inst, const LirInst* preceding) {
     if (const auto* op = std::get_if<LirInsertElementOp>(&inst)) {
       const LirTypeRef index_type = LirTypeRef::integer(64);
+      if (op->requires_native_vector_authority && !op->native_vector_authority) {
+        fail_verify("LirInsertElementOp.native_vector_authority",
+                    "is required for the scalar-to-vector splat precursor");
+      }
       verify_vector_authority(*op, "LirInsertElementOp", op->vec, nullptr, &op->elem, &op->index, &index_type, op->vec_type);
+      if (op->requires_native_vector_authority) {
+        const auto& authority = *op->native_vector_authority;
+        if (!authority.index || !op->index.integer_immediate() ||
+            op->index.integer_immediate()->value != 0 ||
+            !authority.index->value.integer_immediate() ||
+            authority.index->value.integer_immediate()->value != 0 ||
+            authority.index->type != LirTypeRef::integer(64)) {
+          fail_verify("LirInsertElementOp.native_vector_authority.index",
+                      "must bind the scalar-to-vector splat's native i64 zero index");
+        }
+        if (op->elem_type != authority.result_shape.element_type ||
+            !authority.first_vector_shape ||
+            op->elem_type != authority.first_vector_shape->element_type) {
+          fail_verify("LirInsertElementOp.elem_type",
+                      "must match the scalar-to-vector splat carrier element type");
+        }
+      }
     } else if (const auto* op = std::get_if<LirExtractElementOp>(&inst)) {
       // The only ExtractElement producer is direct vector IndexExpr lowering.
       // That route always coerces its index to i32 and publishes its native

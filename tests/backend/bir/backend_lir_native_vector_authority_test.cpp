@@ -116,6 +116,11 @@ lir::LirModule vector_authority_module() {
 
 lir::LirModule selected_scalar_to_vector_splat_module() {
   auto module = vector_authority_module();
+  auto& insert = std::get<lir::LirInsertElementOp>(module.functions[0].blocks[0].insts[0]);
+  insert.index = lir::LirOperand::integer("selected index mirror", 0);
+  insert.native_vector_authority->index = lir::LirNativeVectorIndex{
+      lir::LirOperand::integer("independent zero authority", 0), lir::LirTypeRef::integer(64)};
+  insert.requires_native_vector_authority = true;
   auto& shuffle = std::get<lir::LirShuffleVectorOp>(module.functions[0].blocks[0].insts[2]);
   shuffle.vec1 = lir::LirOperand::ssa("%insert", lir::LirValueId{5});
   shuffle.vec2 = lir::LirOperand::special_token(lir::LirSpecialToken::Poison);
@@ -123,6 +128,14 @@ lir::LirModule selected_scalar_to_vector_splat_module() {
   shuffle.native_vector_authority->second_vector_use.reset();
   shuffle.requires_native_vector_authority = true;
   std::swap(module.functions[0].blocks[0].insts[1], module.functions[0].blocks[0].insts[2]);
+  return module;
+}
+
+lir::LirModule selected_scalar_to_vector_splat_immediate_module() {
+  auto module = selected_scalar_to_vector_splat_module();
+  auto& insert = std::get<lir::LirInsertElementOp>(module.functions[0].blocks[0].insts[0]);
+  insert.elem = lir::LirOperand::integer("coerced immediate", 17);
+  insert.native_vector_authority->element_use.reset();
   return module;
 }
 
@@ -145,6 +158,64 @@ void test_native_vector_authority_verifier_boundary() {
                   "direct vector extract must require native authority");
 
   lir::verify_module(selected_scalar_to_vector_splat_module());
+  lir::verify_module(selected_scalar_to_vector_splat_immediate_module());
+
+  auto missing_selected_insert_authority = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirInsertElementOp>(missing_selected_insert_authority.functions[0].blocks[0].insts[0])
+      .native_vector_authority.reset();
+  expect_rejected(std::move(missing_selected_insert_authority),
+                  "selected splat insert must require native authority independently of shuffle");
+
+  auto selected_wrong_result = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirInsertElementOp>(selected_wrong_result.functions[0].blocks[0].insts[0])
+      .native_vector_authority->result = lir::LirValueId{6};
+  expect_rejected(std::move(selected_wrong_result), "selected splat must reject a foreign result ID");
+
+  auto selected_missing_vector = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirInsertElementOp>(selected_missing_vector.functions[0].blocks[0].insts[0])
+      .native_vector_authority->first_vector_use.reset();
+  expect_rejected(std::move(selected_missing_vector), "selected splat must reject a missing vector ID");
+
+  auto selected_foreign_vector = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirInsertElementOp>(selected_foreign_vector.functions[0].blocks[0].insts[0])
+      .native_vector_authority->first_vector_use = lir::LirValueId{2};
+  expect_rejected(std::move(selected_foreign_vector), "selected splat must reject a foreign vector ID");
+
+  auto selected_missing_element = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirInsertElementOp>(selected_missing_element.functions[0].blocks[0].insts[0])
+      .native_vector_authority->element_use.reset();
+  expect_rejected(std::move(selected_missing_element), "selected splat must reject a missing element ID");
+
+  auto selected_foreign_element = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirInsertElementOp>(selected_foreign_element.functions[0].blocks[0].insts[0])
+      .native_vector_authority->element_use = lir::LirValueId{4};
+  expect_rejected(std::move(selected_foreign_element), "selected splat must reject a foreign element ID");
+
+  auto selected_bad_shape = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirInsertElementOp>(selected_bad_shape.functions[0].blocks[0].insts[0])
+      .native_vector_authority->first_vector_shape->lane_count = 5;
+  expect_rejected(std::move(selected_bad_shape), "selected splat must reject a mismatched vector shape");
+
+  auto selected_missing_index = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirInsertElementOp>(selected_missing_index.functions[0].blocks[0].insts[0])
+      .native_vector_authority->index.reset();
+  expect_rejected(std::move(selected_missing_index), "selected splat must reject missing index authority");
+
+  auto selected_nonzero_index = selected_scalar_to_vector_splat_module();
+  auto& nonzero_insert = std::get<lir::LirInsertElementOp>(selected_nonzero_index.functions[0].blocks[0].insts[0]);
+  nonzero_insert.index = lir::LirOperand::integer("one", 1);
+  nonzero_insert.native_vector_authority->index->value = lir::LirOperand::integer("one authority", 1);
+  expect_rejected(std::move(selected_nonzero_index), "selected splat must reject a nonzero index");
+
+  auto selected_non_i64_index = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirInsertElementOp>(selected_non_i64_index.functions[0].blocks[0].insts[0])
+      .native_vector_authority->index->type = lir::LirTypeRef::integer(32);
+  expect_rejected(std::move(selected_non_i64_index), "selected splat must reject a non-i64 index type");
+
+  auto selected_wrong_element_type = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirInsertElementOp>(selected_wrong_element_type.functions[0].blocks[0].insts[0])
+      .elem_type = lir::LirTypeRef::integer(64);
+  expect_rejected(std::move(selected_wrong_element_type), "selected splat must reject mismatched element type");
 
   auto missing_required_authority = selected_scalar_to_vector_splat_module();
   std::get<lir::LirShuffleVectorOp>(missing_required_authority.functions[0].blocks[0].insts[1])

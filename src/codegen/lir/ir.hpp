@@ -619,6 +619,9 @@ struct LirInsertElementOp {
   LirOperand elem;        // SSA name of element value
   LirOperand index;       // index value (e.g. "0", "%idx")
   std::optional<LirNativeVectorAuthority> native_vector_authority;
+  // Set only for the scalar-to-vector splat precursor lowering, whose
+  // structured result/use/index facts are mandatory.
+  bool requires_native_vector_authority = false;
 };
 
 struct LirExtractElementOp {
