@@ -1116,6 +1116,69 @@ void test_selected_memcpy_raw_bir_receipt_and_rollback() {
          "unselected memcpy must remain unsupported and publish nothing");
 }
 
+void test_native_scalar_binary_lhs_authority_verifier_boundary() {
+  auto make_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    const c4c::LinkNameId owner = module.link_names.intern("native_scalar_lhs");
+    c4c::TypeSpec scalar{};
+    scalar.base = c4c::TB_INT;
+    lir::LirFunction function;
+    function.name = "native_scalar_lhs";
+    function.link_name_id = owner;
+    function.signature_text = "define void @native_scalar_lhs(i32 %p.x)";
+    function.params.push_back({"%p.x", scalar});
+    function.signature_params.push_back({"%p.x", scalar, false});
+    function.signature_param_type_refs.push_back(lir::LirTypeRef::integer(32));
+    function.native_body_parameter_definitions.push_back({
+        .value = lir::LirValueId{1}, .parameter_index = 0,
+        .type = lir::LirTypeRef::integer(32), .owner = owner,
+        .abi = lir::LirNativeBodyParameterAbi::DirectScalar});
+    lir::LirBlock entry;
+    entry.label = "entry";
+    entry.insts.push_back(lir::LirBinOp{
+        .result = lir::LirOperand::ssa("%sum", lir::LirValueId{2}), .opcode = "add",
+        .type_str = lir::LirTypeRef::integer(32),
+        .lhs = lir::LirOperand::ssa("%p.x", lir::LirValueId{1}),
+        .rhs = lir::LirOperand::integer("1", 1),
+        .scalar_lhs_parameter_authority = lir::LirScalarBinaryLhsParameterAuthority{
+            .value = lir::LirValueId{1}, .parameter_index = 0,
+            .type = lir::LirTypeRef::integer(32), .owner = owner,
+            .abi = lir::LirNativeBodyParameterAbi::DirectScalar,
+            .role = lir::LirScalarBinaryParameterRole::Lhs}});
+    entry.terminator = lir::LirRet{std::nullopt, lir::LirTypeRef("void")};
+    function.blocks.push_back(std::move(entry));
+    module.functions.push_back(std::move(function));
+    return module;
+  };
+  lir::verify_module(make_module());
+  const auto rejects = [&](auto mutate, const std::string& message) {
+    auto module = make_module();
+    auto& op = std::get<lir::LirBinOp>(module.functions[0].blocks[0].insts[0]);
+    mutate(module, op);
+    expect_rejected(std::move(module), message);
+  };
+  rejects([](auto&, auto& op) { op.scalar_lhs_parameter_authority.reset(); },
+          "scalar parameter lhs requires an authority binding");
+  rejects([](auto&, auto& op) { op.scalar_lhs_parameter_authority->value = lir::LirValueId{9}; },
+          "unknown scalar parameter value must reject");
+  rejects([](auto&, auto& op) { op.scalar_lhs_parameter_authority->role = lir::LirScalarBinaryParameterRole::Invalid; },
+          "wrong scalar parameter role must reject");
+  rejects([](auto&, auto& op) { op.scalar_lhs_parameter_authority->parameter_index = 9; },
+          "out-of-range scalar parameter position must reject");
+  rejects([](auto&, auto& op) { op.scalar_lhs_parameter_authority->type = lir::LirTypeRef::integer(64); },
+          "scalar parameter type mismatch must reject");
+  rejects([](auto&, auto& op) { op.scalar_lhs_parameter_authority->abi = lir::LirNativeBodyParameterAbi::DirectPointer; },
+          "scalar parameter ABI mismatch must reject");
+  rejects([](auto&, auto& op) { op.lhs = lir::LirOperand::ssa("%p.x", lir::LirValueId{2}); },
+          "scalar parameter LHS value mismatch must reject");
+  rejects([](auto& module, auto&) {
+    module.functions[0].native_body_parameter_definitions.push_back(
+        module.functions[0].native_body_parameter_definitions.front());
+  }, "duplicate scalar parameter value must reject");
+}
+
 }  // namespace
 
 int main() {
@@ -1126,6 +1189,7 @@ int main() {
   test_native_memory_va_authority_verifier_boundary();
   test_selected_current_function_pointer_authority();
   test_native_body_parameter_authority_verifier_boundary();
+  test_native_scalar_binary_lhs_authority_verifier_boundary();
   test_selected_byval_materialization_populates_authority();
   test_selected_memcpy_authority_verifier_boundary();
   test_selected_memcpy_raw_bir_receipt_and_rollback();

@@ -2113,6 +2113,11 @@ void verify_selected_memcpy_pointer_authority(const LirModule& mod,
   }
 }
 
+bool plain_fixed_scalar_parameter(const TypeSpec& type);
+bool same_plain_fixed_scalar_type(const TypeSpec& lhs, const TypeSpec& rhs);
+bool exact_plain_scalar_mirror(const LirModule& mod, const TypeSpec& type,
+                               const LirTypeRef& mirror);
+
 void verify_native_body_parameter_definitions(
     const LirModule& mod, const LirFunction& function,
     std::unordered_set<uint32_t>& definitions,
@@ -2127,14 +2132,30 @@ void verify_native_body_parameter_definitions(
   for (const auto& definition : function.native_body_parameter_definitions) {
     constexpr std::string_view field =
         "LirFunction.native_body_parameter_definitions";
+    const bool in_range = definition.parameter_index < function.params.size() &&
+                          definition.parameter_index < function.signature_params.size() &&
+                          definition.parameter_index < function.signature_param_type_refs.size();
+    const bool direct_pointer = in_range &&
+                                definition.type.kind() == LirTypeKind::Pointer &&
+                                definition.abi == LirNativeBodyParameterAbi::DirectPointer;
+    const bool direct_scalar = in_range &&
+                               definition.abi == LirNativeBodyParameterAbi::DirectScalar &&
+                               plain_fixed_scalar_parameter(
+                                   function.params[definition.parameter_index].second) &&
+                               !function.signature_params[definition.parameter_index].is_byval &&
+                               plain_fixed_scalar_parameter(
+                                   function.signature_params[definition.parameter_index].type) &&
+                               same_plain_fixed_scalar_type(
+                                   function.params[definition.parameter_index].second,
+                                   function.signature_params[definition.parameter_index].type) &&
+                               exact_plain_scalar_mirror(
+                                   mod, function.signature_params[definition.parameter_index].type,
+                                   definition.type);
     if (!definition.value.valid() || definition.owner != function.link_name_id ||
-        definition.parameter_index >= function.params.size() ||
-        definition.parameter_index >= function.signature_param_type_refs.size() ||
-        definition.type.kind() != LirTypeKind::Pointer ||
-        definition.abi != LirNativeBodyParameterAbi::DirectPointer ||
+        !in_range || (!direct_pointer && !direct_scalar) ||
         function.signature_param_type_refs[definition.parameter_index] != definition.type) {
       fail_verify(field,
-                  "requires a native direct-pointer current-function parameter identity and type");
+                  "requires a native direct-pointer or direct-scalar current-function parameter identity and type");
     }
     if (!parameter_indices.insert(definition.parameter_index).second) {
       fail_verify(field, "must not duplicate a native body parameter index");
@@ -2655,6 +2676,54 @@ void verify_function_value_ownership(const LirModule& mod,
   for (const auto& inst : function.alloca_insts) collect_definition(inst);
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) collect_definition(inst);
+  }
+
+  const auto verify_scalar_binary_lhs_authority = [&](const LirBinOp& op) {
+    const auto scalar_lhs_definition = std::find_if(
+        function.native_body_parameter_definitions.begin(),
+        function.native_body_parameter_definitions.end(), [&](const auto& definition) {
+          return op.lhs.value_id() && definition.value == *op.lhs.value_id() &&
+                 definition.abi == LirNativeBodyParameterAbi::DirectScalar;
+        });
+    if (!op.scalar_lhs_parameter_authority) {
+      if (scalar_lhs_definition != function.native_body_parameter_definitions.end()) {
+        fail_verify("LirBinOp.scalar_lhs_parameter_authority",
+                    "is required when LirBinOp.lhs uses a native direct-scalar parameter");
+      }
+      return;
+    }
+    const auto& authority = *op.scalar_lhs_parameter_authority;
+    constexpr std::string_view field = "LirBinOp.scalar_lhs_parameter_authority";
+    const bool unique_owner = authority.owner != kInvalidLinkName &&
+        authority.owner == function.link_name_id &&
+        std::count_if(mod.functions.begin(), mod.functions.end(), [&](const LirFunction& candidate) {
+          return candidate.link_name_id == authority.owner;
+        }) == 1;
+    if (!authority.value.valid() || !unique_owner ||
+        authority.parameter_index >= function.params.size() ||
+        authority.abi != LirNativeBodyParameterAbi::DirectScalar ||
+        authority.role != LirScalarBinaryParameterRole::Lhs ||
+        op.lhs.kind() != LirOperandKind::SsaValue || !op.lhs.value_id() ||
+        *op.lhs.value_id() != authority.value || op.type_str != authority.type) {
+      fail_verify(field, "requires one native direct-scalar current-function LHS value binding");
+    }
+    const auto matches = std::count_if(
+        function.native_body_parameter_definitions.begin(),
+        function.native_body_parameter_definitions.end(), [&](const auto& definition) {
+          return definition.value == authority.value &&
+                 definition.parameter_index == authority.parameter_index &&
+                 definition.type == authority.type && definition.owner == authority.owner &&
+                 definition.abi == authority.abi;
+        });
+    if (matches != 1 || authority.parameter_index >= function.params.size() ||
+        !plain_fixed_scalar_parameter(function.params[authority.parameter_index].second)) {
+      fail_verify(field, "must exactly mirror one native direct-scalar parameter definition");
+    }
+  };
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* op = std::get_if<LirBinOp>(&inst)) verify_scalar_binary_lhs_authority(*op);
+    }
   }
 
   const auto verify_vector_authority = [&](const auto& op, std::string_view name,

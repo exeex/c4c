@@ -532,6 +532,31 @@ struct LirCallOp {
   bool requires_native_result_authority = false;
 };
 
+// The only body-parameter ABI classes admitted to native body-use authority.
+// Each additional class needs its own producer and verifier contract.
+enum class LirNativeBodyParameterAbi : uint8_t {
+  Invalid,
+  DirectPointer,
+  DirectScalar,
+};
+
+enum class LirScalarBinaryParameterRole : uint8_t {
+  Invalid,
+  Lhs,
+};
+
+// Native authority for exactly a direct plain scalar current-function
+// parameter used as the LHS of this binary operation.  The operand spelling
+// is a checked display mirror only; all selection facts live here.
+struct LirScalarBinaryLhsParameterAuthority {
+  LirValueId value = LirValueId::invalid();
+  uint32_t parameter_index = 0;
+  LirTypeRef type;
+  LinkNameId owner = kInvalidLinkName;
+  LirNativeBodyParameterAbi abi = LirNativeBodyParameterAbi::Invalid;
+  LirScalarBinaryParameterRole role = LirScalarBinaryParameterRole::Invalid;
+};
+
 // Typed binary arithmetic/bitwise/unary operation.
 // Covers: add, sub, mul, sdiv, udiv, srem, urem, fadd, fsub, fmul, fdiv, frem,
 //         and, or, xor, shl, lshr, ashr, fneg.
@@ -541,6 +566,7 @@ struct LirBinOp {
   LirTypeRef type_str;        // LLVM type string (e.g. "i32", "double", "<4 x i32>")
   LirOperand lhs;             // SSA name or literal for left operand
   LirOperand rhs;             // SSA name or literal for right operand (empty for unary fneg)
+  std::optional<LirScalarBinaryLhsParameterAuthority> scalar_lhs_parameter_authority;
 };
 
 // Typed comparison operation (icmp/fcmp).
@@ -879,14 +905,6 @@ struct LirCurrentFunctionPointerDefinition {
 struct LirSelectedMemcpyPointerAuthority {
   LirCurrentFunctionPointerDefinition byval_parameter;
   LirCurrentFunctionPointerDefinition destination_alloca;
-};
-
-// The only body-parameter ABI class currently admitted to native body-use
-// authority. Other ABI forms must remain unrepresented until they have their
-// own explicit contract.
-enum class LirNativeBodyParameterAbi : uint8_t {
-  Invalid,
-  DirectPointer,
 };
 
 // Native fixed pointer parameters that are directly usable by the current

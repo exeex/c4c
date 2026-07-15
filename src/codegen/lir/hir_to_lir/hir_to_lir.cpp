@@ -1408,6 +1408,14 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
         !stmt_emitter_detail::amd64_fixed_aggregate_byval(mod, param_ts) &&
         !is_aarch64_fixed_hfa_param(mod, param_ts) &&
         !llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod);
+    const bool native_body_direct_scalar_parameter =
+        (param_ts.base == TB_INT || param_ts.base == TB_UINT ||
+         param_ts.base == TB_LONG || param_ts.base == TB_ULONG ||
+         param_ts.base == TB_LONGLONG || param_ts.base == TB_ULONGLONG ||
+         param_ts.base == TB_FLOAT || param_ts.base == TB_DOUBLE) &&
+        param_ts.ptr_level == 0 && param_ts.array_rank == 0 &&
+        !param_ts.is_vector && !param_ts.is_lvalue_ref && !param_ts.is_rvalue_ref &&
+        !param_ts.is_fn_ptr;
     if (native_body_pointer_parameter) {
       const LirValueId value = const_cast<LirModule*>(lir_module)->alloc_value();
       ctx.param_value_authorities.emplace(static_cast<uint32_t>(i), value);
@@ -1418,6 +1426,18 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
               .type = LirTypeRef(LirBuiltinType::Pointer),
               .owner = lir_function.link_name_id,
               .abi = LirNativeBodyParameterAbi::DirectPointer,
+          });
+    }
+    if (native_body_direct_scalar_parameter) {
+      const LirValueId value = const_cast<LirModule*>(lir_module)->alloc_value();
+      ctx.param_value_authorities.emplace(static_cast<uint32_t>(i), value);
+      lir_function.native_body_parameter_definitions.push_back(
+          LirCurrentFunctionBodyParameterDefinition{
+              .value = value,
+              .parameter_index = static_cast<uint32_t>(i),
+              .type = LirTypeRef(stmt_emitter_detail::llvm_value_ty(mod, param_ts)),
+              .owner = lir_function.link_name_id,
+              .abi = LirNativeBodyParameterAbi::DirectScalar,
           });
     }
     if (const auto hfa = is_aarch64_fixed_hfa_param(mod, param_ts)

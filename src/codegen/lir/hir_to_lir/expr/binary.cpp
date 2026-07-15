@@ -560,8 +560,29 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
             preserve_exact_binary_operand(source_lv, lv, type);
         const LirOperand rhs =
             preserve_exact_binary_operand(source_rv, rv, type);
-        emit_lir_op(ctx, lir::LirBinOp{result, std::string(instr),
-                                       type, lhs, rhs});
+        std::optional<lir::LirScalarBinaryLhsParameterAuthority> lhs_authority;
+        if (ctx.lir_function != nullptr && lhs.value_id() != nullptr) {
+          const auto definition = std::find_if(
+              ctx.lir_function->native_body_parameter_definitions.begin(),
+              ctx.lir_function->native_body_parameter_definitions.end(),
+              [&](const auto& candidate) {
+                return candidate.value == *lhs.value_id() &&
+                       candidate.type == type &&
+                       candidate.abi == lir::LirNativeBodyParameterAbi::DirectScalar;
+              });
+          if (definition != ctx.lir_function->native_body_parameter_definitions.end()) {
+            lhs_authority = lir::LirScalarBinaryLhsParameterAuthority{
+                .value = definition->value,
+                .parameter_index = definition->parameter_index,
+                .type = definition->type,
+                .owner = definition->owner,
+                .abi = definition->abi,
+                .role = lir::LirScalarBinaryParameterRole::Lhs,
+            };
+          }
+        }
+        emit_lir_op(ctx, lir::LirBinOp{result, std::string(instr), type, lhs, rhs,
+                                       lhs_authority});
         const std::string coerced = coerce(ctx, result.str(), lts, res_spec);
         return coerced == result.str() ? result : LirOperand::raw(coerced);
       }

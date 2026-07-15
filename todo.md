@@ -3,11 +3,20 @@
 Status: Active
 Source Idea Path: ideas/open/819_lir_scalar_binary_lhs_parameter_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Discover the native scalar binary-LHS authority producer
+Current Step ID: 2
+Current Step Title: Publish and verify the one-form authority tuple
 
 ## Just Finished
 
+- Plan Step 2 completed: `LirNativeBodyParameterAbi::DirectScalar` now publishes
+  a native current-function value/position/type/owner tuple for plain fixed
+  scalar parameters, and `LirBinOp.scalar_lhs_parameter_authority` binds only
+  its native lhs value with the explicit `Lhs` role. The verifier joins that
+  binding back to exactly one direct-scalar definition and rejects missing,
+  invalid/duplicate, foreign, wrong-role, out-of-range, type/ABI, and lhs
+  mismatch forms; pointer `DirectPointer` behavior remains unchanged. Focused
+  verifier coverage is in `backend_lir_selected_pointer_authority_test.cpp`
+  because the initially named notes source is not a CMake test target.
 - Plan Step 1 discovery completed with a fail-closed result: no complete native
   scalar `LirBinOp.lhs` parameter map exists. `emit_binary_rval_operand`
   (`src/codegen/lir/hir_to_lir/expr/binary.cpp:162`) preserves an existing
@@ -40,10 +49,8 @@ Current Step Title: Discover the native scalar binary-LHS authority producer
 
 ## Suggested Next
 
-- One minimal publishing packet: extend the native body-parameter schema and
-  producer for exactly one plain fixed scalar current-function parameter
-  `LirValueId` plus position/type/owner/direct-scalar ABI and `LirBinOp.lhs`
-  binding, then make the verifier enforce the enumerated boundary.
+- Plan Step 3 proof/return packet: record the accepted direct-scalar LHS tuple,
+  rejection boundary, and return point for 818 without claiming receiver work.
 
 ## Watchouts
 
@@ -58,5 +65,5 @@ Current Step Title: Discover the native scalar binary-LHS authority producer
 
 - Passed: `cmake --build --preset default && ctest --test-dir build -j
   --output-on-failure -R '^backend_' 2>&1 | tee test_after.log` (6/6 backend
-  tests); log: `test_after.log`. The delegated build-plus-subset proof is
-  sufficient for this trace-only packet.
+  tests); log: `test_after.log`. The selected-pointer authority target rebuilt
+  and exercised the new native scalar LHS verifier cases.
