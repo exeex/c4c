@@ -77,7 +77,25 @@ semantic gaps unless the common memory/va pointer boundary is closed.
   memcpy row. Do not republish, generalize, or reconstruct aggregate/vector
   carrier authority; Step 3 remains the later source proof and one receiver
   handoff.
-- **Remaining work:** publish and verify the one matching 753 consumer row
-  against this contract, then complete 753 Step 3 proof and its one receiver
-  handoff. Do not bridge the row with text recovery or absorb aggregate/vector
-  carrier work.
+- **Remaining work:** Step 2 is now resolved by the accepted closed-799
+  implementation with no additional 753 semantic delta. Complete only 753
+  Step 3 proof and its one receiver handoff. Do not bridge the row with text
+  recovery, absorb aggregate/vector carrier work, or perform Raw-BIR receipt
+  work.
+
+## Step 2 No-Delta Resolution
+
+- **Resolution:** the resumed Step 2 requires no additional 753 implementation
+  claim. Closed 799 commit `c4e820a48` already wholly selects the matching LIR
+  producer row in `vaarg_amd64.cpp`, publishes
+  `requires_native_memory_va_authority` and the checked AMD64 SysV overflow
+  aggregate carrier, and has `verify.cpp` consume and verify that contract.
+  Its nearby focused test covers the positive and malformed boundaries.
+- **Accepted proof:** a fresh `cmake --build --preset default` plus
+  `./build/tests/backend/bir/backend_lir_selected_pointer_authority_test`
+  passed; the matching `test_after.log` baseline is 5/5, and the supervisor
+  regression comparison passed non-decreasing at 5/5.
+- **Exact next boundary:** Step 3 owns the source-required full baseline and
+  exactly one receiver-ready handoff documenting native fields, guarantees,
+  rejected forms, and accepted proof. Raw-BIR is only that later receiver and
+  remains out of scope: do not perform Raw-BIR receipt/lowering work here.

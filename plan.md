@@ -2,13 +2,15 @@
 
 Status: Active
 Source Idea: ideas/open/753_lir_memory_va_pointer_authority_convergence.md
-Resumed from: 753 Step 2 after closed 799 overflow aggregate carrier handoff
+Resumed from: 753 Step 2 after closed 799 overflow aggregate carrier handoff;
+Step 2 is satisfied by accepted 799 evidence with no new 753 semantic delta
 
 ## Purpose
 
-Resume the bounded native memory/VA producer route at the one AMD64 aggregate
-`va_arg` overflow memcpy row now backed by 799's checked carrier, without
-republishing carrier semantics or widening the producer family.
+Finish the bounded native memory/VA producer proof and publish one
+receiver-ready handoff. The one AMD64 aggregate `va_arg` overflow memcpy row
+is already selected, published, and verified by closed 799; do not duplicate
+that completed semantic work or widen the producer family.
 
 ## Core Rule
 
@@ -43,25 +45,28 @@ handoff record.
 
 Completion check: complete; do not redo these accepted packets.
 
-### Step 2 - Consume and verify the checked aggregate overflow carrier
+### Step 2 - Consume and verify the checked aggregate overflow carrier (complete; no delta)
 
-Goal: select only the matching 753 producer row using the closed 799 carrier,
-while retaining 799 as the sole publisher of derived aggregate carrier facts.
+Goal: establish whether the selected 753 row needs any consumer work beyond
+closed 799's carrier contract, while retaining 799 as the sole publisher of
+derived aggregate carrier facts.
 
 Actions:
 
-- inspect the closed 799 carrier contract and the resumed AMD64 aggregate
+- inspected the closed 799 carrier contract and the resumed AMD64 aggregate
   overflow producer seam;
-- make only the matching 753 producer selection/consumption change needed by
-  the source idea; retain 799's native derivation, storage, ownership,
-  lifetime, payload type, and typed-size verification boundary;
-- add nearby consumer-level positive and negative coverage only if the
-  selected row needs it; all nonmatching aggregate/vector and target routes
-  remain fail-closed or compatibility-only.
+- accepted `c4e820a48` as the complete matching selection/publication and
+  verification: `vaarg_amd64.cpp` selects the row and publishes
+  `requires_native_memory_va_authority` plus its carrier; `verify.cpp`
+  consumes/verifies it; nearby focused coverage proves positive and malformed
+  boundaries;
+- recorded no new 753 semantic delta. All nonmatching aggregate/vector and
+  target routes remain fail-closed or compatibility-only.
 
-Completion check: a fresh build and focused authority proof demonstrate that
-the one AMD64 aggregate overflow producer row consumes the checked carrier
-without text recovery or carrier generalization.
+Completion check: satisfied by `c4e820a48`: fresh build plus
+`./build/tests/backend/bir/backend_lir_selected_pointer_authority_test` passed,
+the matching `test_after.log` baseline is 5/5, and the supervisor comparison
+is non-decreasing 5/5. Do not redo this as a new code claim.
 
 ### Step 3 - Prove the bounded producer slice and hand off one receiver row
 
