@@ -1,8 +1,8 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (resumed after accepted Step 7.24 and closed PHI incoming
-authority successor 751; the next packet is the bounded typed `LirPhiOp`
-Raw-BIR receiver)
+Status: Open (paused after the accepted fail-closed partial Step 7.25 PHI
+receiver; exact parallel incoming CFG-edge occurrence authority is owned by
+open blocker 788 before this source resumes)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -730,3 +730,40 @@ Exact return point: reactivate 734 at the unchanged Step 7.25 and reattempt
 only complete PHI receiver coverage, including exact parallel edge occurrences.
 The remaining action is that one bounded PHI receiver packet; preserve
 accepted Steps 1 through 7.24 and do not treat the current WIP as accepted.
+
+## Resumption Record: post-partial-Step-7.25 PHI incoming occurrence-identity blocker
+
+Last accepted progress is historical Steps 1 through 7.24; closed 751's typed
+PHI incoming value/predecessor handoff (`6ece9fe8f`); closed 786's native PHI
+SpecialToken handoff (`91b5bde43`); closed 787's typed parallel conditional and
+switch successor-occurrence handoff (`a889ce33f`); and the safe partial
+Raw-BIR Step 7.25 receiver in `006d79aaf`. The latter receives unambiguous PHI
+edges, reserves loop-backedge results, preserves native SpecialToken authority,
+retains Raw-BIR successor-occurrence topology, and fails closed before
+publication when a predecessor-only PHI row is ambiguous. Its supervisor
+acceptance is a fresh build, matching `^backend_` 5/5 before-and-after
+non-decreasing guard (`--allow-non-decreasing-passed`), and fresh full `ctest`
+3037/3037 passing. It is accepted safe partial receiver progress, not full Step
+7.25 completion.
+
+Interrupted step: Step 7.25, `Receive typed PHI incoming authority`. The
+remaining exact-parallel portion cannot be implemented in this source: each
+`LirPhiIncoming` carries typed incoming value and predecessor `LirBlockId`, but
+no typed successor-occurrence ID selecting one duplicate conditional or switch
+edge from that predecessor. Raw-BIR must not infer this identity from PHI
+incoming order, labels, spelling, printer output, LLVM text, or instruction
+order.
+
+Classification: `separate-blocker`. Open
+`ideas/open/788_lir_phi_incoming_successor_occurrence_identity.md` owns only
+the selected LIR PHI producer/schema/verifier publication and handoff of a
+native per-incoming CFG successor-occurrence identifier. It must not edit
+Raw-BIR code, backend importer/container/verifier, target lowering, or later
+LIR families.
+
+Exact return point: after 788 has an accepted typed handoff, reactivate 734 at
+the unchanged Step 7.25 and repair/complete only the parallel-edge portion of
+the Raw-BIR PHI receiver, consuming its occurrence authority alongside closed
+751 value/predecessor and closed 786 SpecialToken authority. Preserve
+`006d79aaf`; do not repeat Steps 7.20 through 7.24 or the already accepted
+unambiguous/loop-backedge partial receipt.

@@ -1,119 +1,107 @@
-# LIR-To-New-BIR Container And Import Completeness Runbook
+# LIR PHI Incoming Successor-Occurrence Identity Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Resumed from: accepted Steps 1 through 7.24; closed idea 751's typed PHI
-incoming value/predecessor handoff (`6ece9fe8f`); closed idea 786's native PHI
-SpecialToken authority handoff (`91b5bde43`); and closed idea 787's accepted
-parallel CFG-edge occurrence handoff (`a889ce33f`, lifecycle closure
-`a0a3ff33b` / `8af2421df`).
+Source Idea: ideas/open/788_lir_phi_incoming_successor_occurrence_identity.md
+Activated from: paused 734 Step 7.25 after accepted safe partial receiver `006d79aaf`
 
 ## Purpose
 
-Resume the Raw-BIR receiver route at the unchanged Step 7.25 without resetting
-accepted receiver work or accepting the preserved PHI WIP.
+Supply the one missing native LIR authority required to select an exact PHI
+incoming CFG successor occurrence when a predecessor has parallel conditional
+or switch edges.
 
 ## Goal
 
-Receive one structured `LirPhiOp` result and its ordered typed incoming
-value/predecessor pairs into verified, target-independent Raw BIR, preserving
-each exact CFG-edge occurrence, including parallel occurrences, without
-presentation recovery or partial publication.
+Publish, verify, and hand off a per-`LirPhiIncoming` typed successor-occurrence
+identifier for the selected PHI producer families.
 
 ## Core Rule
 
-Use only `LirPhiOp`'s typed result/type, closed 751's `LirPhiIncoming` value
-and current-function `LirBlockId` predecessor authority, and closed 786's
-native SpecialToken authority. Closed 787 establishes that duplicate typed
-conditional and switch successors are distinct ordered CFG-edge occurrences.
-Value spellings, labels, printer output, LLVM text, and instruction order are
-never semantic inputs.
+A predecessor `LirBlockId` is not an occurrence selector. Derive and validate
+the new identifier only from typed producer CFG structure; never use incoming
+order, labels, spellings, printer output, LLVM text, or testcase identity.
 
 ## Read First
 
-- `ideas/open/734_lir_to_new_bir_container_completeness.md`
-- the closed 751, 786, and 787 handoff records
-- existing Raw-BIR value, block, instruction, builder/view, and verifier seams
-- `src/backend/bir/lir_to_bir.cpp` and nearby LIR-to-Raw-BIR dispatch/tests
-- `src/backend/bir/lir_to_bir/README.md` PHI and values-def-use matrix rows
-
-## Landed Progress And Acceptance Boundary
-
-- Steps 1 through 7.24 are accepted historical work and must not be repeated.
-- Closed 751 supplies verified PHI incoming value/predecessor authority for the
-  selected ternary, logical, AArch64-vaarg, and AMD64-vaarg producers.
-- Closed 786 supplies native semantic authority for the relevant PHI
-  `SpecialToken` operands; no spelling/classification recovery is permitted.
-- Closed 787 accepts duplicate conditional and switch successor occurrences as
-  distinct ordered edges. It accepted no Raw-BIR receiver work.
-- Existing Raw-BIR PHI receiver worktree changes and its focused 1/1 after
-  result are unaccepted WIP. Do not commit, repeat, or retroactively accept
-  them as Step 7.25 evidence.
+- `ideas/open/788_lir_phi_incoming_successor_occurrence_identity.md`
+- `ideas/open/734_lir_to_new_bir_container_completeness.md` resumption record
+- closed 751, 786, and 787 handoffs
+- the selected `LirPhiIncoming` schema, PHI producers, and LIR verifier seams
 
 ## Non-Goals
 
-- no LIR producer/schema changes, presentation recovery, canonicalization,
-  target lowering, MIR, emission, or legacy-BIR revival
-- no alternate PHI producer, local/object, memory/va, aggregate/vector,
-  body-parameter, or any other unreceived receiver family
-- no inferred CFG edge, predecessor, or value identity; preserve only the
-  typed authority already carried by the selected `LirPhiOp` row
-
-## Execution Rules
-
-1. Implement exactly one typed `LirPhiOp` Raw-BIR receiving path.
-2. Preserve the result/type, each incoming value, and each predecessor as
-   current-function typed identities; bind every incoming to the exact existing
-   predecessor-to-PHI-block CFG edge occurrence, preserving multiplicity/order.
-3. Treat duplicate conditional/switch successor occurrences as distinct ordered
-   edges. Do not collapse repeated predecessor blocks or infer edge identity.
-4. Reject absent, invalid, foreign, duplicate/ambiguous occurrence,
-   type-incoherent, or predecessor/edge-mismatched authority before Raw-BIR
-   publication.
-5. Add reachable nearby positive/negative transactional coverage covering the
-   closed-751 ternary, logical, and vaarg producer families, including exact
-   parallel-edge coverage where applicable. Do not use test names or rendered
-   text as matching inputs.
-6. Run a fresh build and narrow proof. The supervisor owns regression logs and
-   broader/full acceptance.
+- Do not edit Raw-BIR, its importer/container/verifier, backend tests, target
+  lowering, MIR/emission, or later LIR families.
+- Do not complete parent 734 Step 7.25 in this plan.
 
 ## Ordered Steps
 
-### Step 7.25 - Receive typed PHI incoming authority
+### Step 1 - Trace the selected PHI incoming occurrence source
 
-Goal: receive one structured `LirPhiOp` result and ordered incoming
-value/predecessor authority into a typed Raw-BIR PHI container with exact
-CFG-edge occurrence binding.
-
-Primary targets:
-
-- the smallest existing/new Raw-BIR PHI container, builder/view, and verifier
-  seams required by this row
-- LIR-to-Raw-BIR instruction dispatch, current-function value/block mapping,
-  and transactional module boundary
-- focused PHI receiver coverage plus malformed-authority neighbours
+Goal: identify the typed producer CFG occurrence and the smallest carrier seam
+for the selected ternary, logical, AArch64-vaarg, and AMD64-vaarg PHI families.
 
 Actions:
 
-- map only the typed `LirPhiOp` result/type and ordered `LirPhiIncoming`
-  value/predecessor fields, including native SpecialToken authority; resolve
-  their IDs through current-function maps and exact received terminator
-  successor occurrences
-- represent one typed PHI result and one typed incoming per exact edge
-  occurrence; preserve source incoming order, repeated predecessor blocks, and
-  accepted parallel successor occurrences
-- validate result and incoming values, types, ownership, predecessor presence
-  and ownership, exact predecessor-edge coherence, and complete/unique incoming
-  occurrence coverage before publication
-- prove selected ternary, logical, AArch64-vaarg, and AMD64-vaarg positive
-  receipts; prove missing/unknown/cross-function value, missing/foreign
-  predecessor, predecessor-edge mismatch, duplicate/ambiguous occurrence,
-  parallel-edge preservation, misleading-display, and rollback failures
-- retain every later family as unsupported fail-closed; return source completion
-  state to plan-owner after this bounded receiver rather than inferring closure
+- inspect `LirPhiIncoming`, its producer construction sites, and verifier
+  ownership/coherence checks;
+- identify the existing typed conditional/switch occurrence representation
+  without inferring from presentation or PHI ordering;
+- record unsupported producer forms as fail-closed boundaries.
 
-Completion check:
+Completion check: one minimal native occurrence-ID contract and producer list
+are identified without expanding into receiver/lowering work.
 
-- a fresh build and focused positive/negative proof establish one typed,
-  transactional PHI receiver with exact ordinary and parallel edge-occurrence
-  semantics and no presentation recovery.
+### Step 2 - Publish native per-incoming occurrence authority
+
+Goal: extend the LIR carrier and selected producers so each incoming names its
+exact successor occurrence.
+
+Actions:
+
+- add the typed carrier field and populate it from the producer's exact CFG
+  occurrence;
+- preserve duplicate conditional and ordered switch occurrences distinctly;
+- leave unsupported producers absent/fail-closed.
+
+Completion check: selected producers emit structural, current-function
+occurrence authority rather than a predecessor-only approximation.
+
+### Step 3 - Verify authority and prove malformed rejection
+
+Goal: make invalid per-incoming occurrence authority fail closed before
+downstream use.
+
+Actions:
+
+- verify presence, validity, same-function ownership, predecessor/destination
+  coherence, uniqueness, and multiplicity/order;
+- add nearby selected-family positive coverage and malformed missing, foreign,
+  mismatched, duplicate, and parallel-occurrence cases;
+- avoid all text-based semantic probes and testcase-shaped matching.
+
+Completion check: positive parallel occurrences remain distinct and malformed
+authority cannot publish as valid LIR.
+
+### Step 4 - Record the exact parent handoff
+
+Goal: provide the evidence and contract needed for 734 to resume unchanged at
+Step 7.25.
+
+Actions:
+
+- document carrier field/type, producer populations, verifier guarantees,
+  coverage, proof, and implementation commit;
+- state the exact parent return point and prohibition on repeating accepted
+  `006d79aaf` partial receiver work;
+- request lifecycle return to 734 after supervisor accepts the handoff.
+
+Completion check: a new agent can resume only the parent parallel-edge receiver
+portion without rediscovering the authority contract.
+
+## Proof Ladder
+
+For implementation packets: fresh build, selected focused proof, matching
+`^backend_` 5/5 before-and-after guard with `--allow-non-decreasing-passed`,
+then fresh full `ctest` 3037/3037. The supervisor owns canonical regression
+logs and final acceptance.
