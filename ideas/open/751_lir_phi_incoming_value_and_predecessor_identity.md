@@ -80,3 +80,15 @@ predecessor-block contract, add the PHI value/predecessor carrier and
 fail-closed verification, then prove the three producer families. Accepted
 751 proof references: none. Accepted 751 implementation commit references:
 none.
+
+## Resumption Update: 782 handoff accepted
+
+Closed 782 is capability-complete and this idea resumes at its preserved Step
+1, `Publish and verify typed PHI incoming authority`; no 751 implementation
+packet was completed while it was blocked. Its accepted producer-only handoff
+is `97d305332`, `4830e94a5`, `11a45f173`, and `774b44b5e`: AArch64 GP selects
+the `reg_addr` GEP and `stack_ptr` load, AArch64 FP selects those results plus
+the `aligned_stack_ptr` ptrmask call (>8 bytes) or `inttoptr` cast (<=8 bytes),
+and AMD64 selects final `reg_value` and `stack_value` loads. The handoff has
+focused structural/malformed proof and does not itself establish a PHI carrier,
+verification, predecessor/edge, CFG, or downstream consumer fact.

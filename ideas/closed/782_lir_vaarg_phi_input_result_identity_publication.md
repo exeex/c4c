@@ -109,6 +109,34 @@ without extending into PHI carrier/verifier, predecessor/edge, CFG,
 Raw-BIR/importer, backend, target lowering, MIR, emission, or generic
 migration.
 
+## Closure Decision: capability complete
+
+Disposition: close accepted. All source acceptance criteria are satisfied by
+the bounded producer-only route; this closure makes no `LirPhiOp`, PHI
+carrier/verifier, predecessor/edge, CFG, or downstream-consumer claim.
+
+Accepted implementation and repair chain: `97d305332` published the native
+helper-result authority, `4830e94a5` selected the AMD64 stack result,
+`11a45f173` repaired authoritative `inttoptr` validation without weakening the
+contract, and `774b44b5e` completed the all-constructor map and focused proof.
+Step 2 passed the named variadic regression family 20/20 and the matching full
+suite 3037/3037 after a fresh build. Step 3 passed the fresh-build focused
+`frontend_lir_call_type_ref` proof 1/1 with its matching guard.
+
+Accepted handoff to 751, available at its preserved Step 1:
+
+- AArch64 GP: selected `reg_addr` GEP and `stack_ptr` load results.
+- AArch64 FP: selected `reg_addr` GEP and `stack_ptr` load results, plus the
+  selected `aligned_stack_ptr` ptrmask-call result for values wider than eight
+  bytes or `inttoptr`-cast result for values at most eight bytes.
+- AMD64: selected final-register `reg_value` load and final-overflow
+  `stack_value` load results.
+
+The focused coverage structurally reaches that map and rejects missing,
+invalid, duplicate, and foreign selected producer authority. Compatibility
+spelling remains non-authoritative. This is exactly the native input authority
+required for 751's PHI carrier/verifier work, not completion of that consumer.
+
 ## Reviewer Reject Signals
 
 - Reject parsing `%` names, labels, rendered LLVM/printer output, instruction
