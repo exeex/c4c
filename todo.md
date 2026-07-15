@@ -3,12 +3,12 @@
 Status: Active
 Source Idea Path: ideas/open/816_lir_next_residual_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit and select one residual producer row
+Current Step ID: 2
+Current Step Title: Publish and verify the selected authority
 
 ## Just Finished
 
-Step 1 selected exactly one row: scalar integer output-only
+Step 1 complete — selected exactly one row: scalar integer output-only
 `LirInlineAsmOp.ordinary_results[0]`. `StmtEmitter::emit_inline_asm` publishes
 it with `fresh_value()` plus a typed `LirInlineAsmValueBinding` (Output, index
 0); the compatibility `result` remains presentation-only. The schema carries
@@ -25,20 +25,19 @@ vector/aggregate, body-parameter, module-shadow, and local/VLA/memory rows.
 
 ## Suggested Next
 
-Step 2: preserve this one scalar output-only producer contract and add only
-nearby malformed-authority proof if a producer/schema/verifier gap is found;
-do not receive it in Raw-BIR.
+Execute Step 2: preserve or correct only this scalar output-only producer,
+schema, and verifier contract; add nearby malformed-authority proof if a
+gap exists, and do not receive it in Raw-BIR.
 
 ## Watchouts
 
 Do not derive authority from rendered operands, labels, templates, constraints,
-`args_str`, or testcase identity. Do not modify Raw-BIR/importer code or
-expand into other authority families. Read/write and input-bound inline asm
-remain nonselected.
+`args_str`, or testcase identity. Do not modify Raw-BIR/importer code,
+downstream compatibility `result` text, or other inline-assembly authority
+families. Read/write and input-bound inline asm remain nonselected.
 
 ## Proof
 
-Recommended focused proof for the selected row: `cmake --build --preset
-default && ctest --test-dir build -j --output-on-failure -R
-'^backend_lir_to_bir_interface$'` (its inline-asm output receipt/rejection
-coverage). No proof was run for this audit-only packet.
+Required: `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^backend_lir_to_bir_interface$'`; retain matching
+before/after evidence if the supervisor selects regression comparison.

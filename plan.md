@@ -28,7 +28,7 @@ labels, and inline-assembly text never establish semantic authority.
 
 ## Steps
 
-### Step 1 - Audit and select one residual producer row — current
+### Step 1 - Audit and select one residual producer row — complete
 
 Goal: identify exactly one residual instruction, terminator, or inline-assembly
 row whose authority can be published without text recovery.
@@ -44,12 +44,33 @@ Actions:
 Completion check: one row has an explicit producer contract and exact proof
 ladder, or a separately scoped blocker preserves this return point.
 
-### Step 2 - Publish and verify the selected authority — pending
+Accepted in `68bd79809`: selected only scalar integer output-only
+`LirInlineAsmOp.ordinary_results[0]`, with a native fresh value ID, typed
+`Output` binding at index 0, and existing verifier ownership/tuple checks.
+Any later 734 receipt may consume only those structured facts; compatibility
+`result` text remains receiver scope.
+
+### Step 2 - Publish and verify the selected authority — current
 
 Goal: implement only the Step 1 selected producer/schema/verifier contract.
 
-Completion check: selected facts are native and checked; malformed, missing,
-foreign, and incoherent forms reject; no nonselected residual family changes.
+Actions:
+
+- Trace the scalar integer output-only `LirInlineAsmOp.ordinary_results[0]`
+  producer through native fresh-value assignment, the typed `Output` binding,
+  and existing verifier ownership/tuple checks.
+- Publish or correct only the missing structured fact needed to make this row
+  authoritative. Do not use downstream compatibility `result` text; it is a
+  future receiver concern.
+- Add nearby positive and malformed-authority coverage for missing, foreign,
+  incoherent, or non-output/index-mismatched facts while preserving every
+  nonselected inline-assembly form as fail closed.
+- Build and run the designated focused backend interface proof.
+
+Completion check: the selected output-only scalar-integer row has native value
+ID, typed output binding/index, and checked verifier ownership/tuple facts;
+malformed alternatives reject; no receiver/importer, result-text, or other
+inline-assembly family change occurs.
 
 ### Step 3 - Prove and hand off the bounded row — pending
 
