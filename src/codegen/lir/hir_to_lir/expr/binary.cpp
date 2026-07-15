@@ -301,7 +301,7 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
                            shuf, vec_ty_s, ins, "poison",
                            "<" + std::to_string(lanes) + " x i32>", "zeroinitializer",
                            lir::LirNativeVectorAuthority{ctx.lir_function->link_name_id, *shuf.value_id(),
-                               *ins.value_id(), std::nullopt, std::nullopt, shape, shape, std::nullopt,
+                               *ins.value_id(), std::nullopt, std::nullopt, shape, shape, shape,
                                std::nullopt, std::vector<lir::LirShuffleMaskLane>(static_cast<size_t>(lanes))}});
       return shuf.str();
     };
@@ -415,7 +415,7 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
                                              "<" + std::to_string(lanes) + " x i32>",
                                              "zeroinitializer", lir::LirNativeVectorAuthority{
                                               ctx.lir_function->link_name_id, *shuf.value_id(), *ins.value_id(), std::nullopt,
-                                              std::nullopt, shape, shape, std::nullopt, std::nullopt,
+                                              std::nullopt, shape, shape, shape, std::nullopt,
                                               std::vector<lir::LirShuffleMaskLane>(static_cast<size_t>(lanes))}});
     return shuf.str();
   };

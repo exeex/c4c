@@ -112,6 +112,13 @@ lir::LirModule vector_authority_module() {
 void test_native_vector_authority_verifier_boundary() {
   lir::verify_module(vector_authority_module());
 
+  auto structured_poison_second = vector_authority_module();
+  auto& poison_shuffle = std::get<lir::LirShuffleVectorOp>(
+      structured_poison_second.functions[0].blocks[0].insts[2]);
+  poison_shuffle.vec2 = lir::LirOperand::special_token(lir::LirSpecialToken::Poison);
+  poison_shuffle.native_vector_authority->second_vector_use.reset();
+  lir::verify_module(structured_poison_second);
+
   auto missing_owner = vector_authority_module();
   std::get<lir::LirInsertElementOp>(missing_owner.functions[0].blocks[0].insts[0])
       .native_vector_authority->owner = c4c::kInvalidLinkName;
@@ -153,6 +160,31 @@ void test_native_vector_authority_verifier_boundary() {
   std::get<lir::LirShuffleVectorOp>(missing_second_shape.functions[0].blocks[0].insts[2])
       .native_vector_authority->second_vector_shape.reset();
   expect_rejected(std::move(missing_second_shape), "shuffle carrier must reject a missing second vector shape");
+
+  auto poison_missing_second_shape = vector_authority_module();
+  auto& poison_missing_shape_shuffle = std::get<lir::LirShuffleVectorOp>(
+      poison_missing_second_shape.functions[0].blocks[0].insts[2]);
+  poison_missing_shape_shuffle.vec2 = lir::LirOperand::special_token(lir::LirSpecialToken::Poison);
+  poison_missing_shape_shuffle.native_vector_authority->second_vector_use.reset();
+  poison_missing_shape_shuffle.native_vector_authority->second_vector_shape.reset();
+  expect_rejected(std::move(poison_missing_second_shape),
+                  "poison shuffle carrier must reject a missing second vector shape");
+
+  auto poison_incoherent_second_shape = vector_authority_module();
+  auto& poison_incoherent_shape_shuffle = std::get<lir::LirShuffleVectorOp>(
+      poison_incoherent_second_shape.functions[0].blocks[0].insts[2]);
+  poison_incoherent_shape_shuffle.vec2 = lir::LirOperand::special_token(lir::LirSpecialToken::Poison);
+  poison_incoherent_shape_shuffle.native_vector_authority->second_vector_use.reset();
+  poison_incoherent_shape_shuffle.native_vector_authority->second_vector_shape->lane_count = 5;
+  expect_rejected(std::move(poison_incoherent_second_shape),
+                  "poison shuffle carrier must reject an incoherent second vector shape");
+
+  auto poison_with_second_use = vector_authority_module();
+  auto& poison_with_use_shuffle = std::get<lir::LirShuffleVectorOp>(
+      poison_with_second_use.functions[0].blocks[0].insts[2]);
+  poison_with_use_shuffle.vec2 = lir::LirOperand::special_token(lir::LirSpecialToken::Poison);
+  expect_rejected(std::move(poison_with_second_use),
+                  "poison shuffle carrier must reject second vector-use evidence");
 
   auto wrong_index_value = vector_authority_module();
   std::get<lir::LirExtractElementOp>(wrong_index_value.functions[0].blocks[0].insts[1])

@@ -3,21 +3,21 @@
 Status: Active
 Source Idea Path: ideas/open/814_lir_shuffle_vector_poison_second_shape_carrier_repair.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair and cover the bounded carrier/lowering seam
+Current Step ID: 3
+Current Step Title: Prove the blocker handoff and return decision
 
 ## Just Finished
 
-Plan Step 1 completed: both scalar-to-vector splat `LirShuffleVectorOp` constructions in `src/codegen/lir/hir_to_lir/expr/binary.cpp` pass poison as `vec2` and omit only `native_vector_authority.second_vector_shape`. The exact structured valid form keeps that field present as the same known local vector `shape` used for `result_shape` and `first_vector_shape`; poison has no `second_vector_use`. `LirNativeVectorAuthority` owns this native fact, and the verifier requires it for every shuffle second operand—without display-text inference.
+Plan Step 2 completed: both scalar-to-vector splat `LirShuffleVectorOp` constructions now pass poison as `vec2` with no `second_vector_use` and the local native `shape` recorded as `second_vector_shape`. Nearby verifier coverage accepts that structured poison form and rejects missing, incoherent, and extraneous second-use carrier evidence without display-text inference.
 
 ## Suggested Next
 
-Execute plan Step 2 only: populate the known `shape` as `second_vector_shape` at the two splat shuffle constructions and add nearby coverage for the valid structured poison form and fail-closed malformed forms.
+Execute plan Step 3 only: prove the blocker handoff and make the return decision using the preserved 754 Step 9 return point.
 
 ## Watchouts
 
-Focused Step 1 matrix: valid = poison `vec2`, no `second_vector_use`, and a coherent `second_vector_shape` equal to the native result/first shape; invalid = absent second shape; foreign, unknown, or incoherent second shape or owner/use; malformed poison representation. This is only a native carrier/lowering prerequisite: do not implement shuffle semantics, select a 754 row, infer from display text, or widen into aggregate, ExtractElement, InsertElement, provenance, CFG/PHI, target/MIR, or emission.
+The focused matrix remains fail-closed: valid poison has no `second_vector_use` and a coherent native second shape; malformed absence, incoherent shape, and extraneous/unknown carrier evidence reject. This is only a native carrier/lowering prerequisite: do not implement shuffle semantics, select a 754 row, infer from display text, or widen into aggregate, ExtractElement, InsertElement, provenance, CFG/PHI, target/MIR, or emission.
 
 ## Proof
 
-No proof required or run for this documentation-only Step 1 audit. The incoming 754 full checkpoint was 3037/3038 with one failure, `llvm_gcc_c_torture_src_scal_to_vec1_c`, and is not an accepted baseline.
+Narrow proof: `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`. The incoming 754 full checkpoint was 3037/3038 with one failure, `llvm_gcc_c_torture_src_scal_to_vec1_c`, and is not an accepted baseline.
