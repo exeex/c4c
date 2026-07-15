@@ -1,6 +1,6 @@
 # LIR Stack-Restore Lifetime-Consumer Authority
 
-Status: Open
+Status: Closed (capability complete)
 Type: bounded LIR producer/schema/verifier authority publication
 Predecessor: `ideas/open/794_lir_next_local_vla_authority_handoff.md`
 Future consumer: `ideas/open/794_lir_next_local_vla_authority_handoff.md`
@@ -61,3 +61,26 @@ one-row local/VLA handoff.
 - Reject dynamic-VLA count work, VLA GEP, another local/lifetime row,
   Raw-BIR/importer/734 work, broad lifetime rewrites, weakened expectations,
   or named-case-only verifier shortcuts as stack-restore capability progress.
+
+## Closure Record
+
+Disposition: capability complete. Exactly one selected `LirStackRestoreOp`
+authority contract is now published: the native saved-pointer/object/owner/
+pointer-type/pointee-type/live checkpoint binding plus the structured
+`RestoreSavedVlaStackCheckpoint` transition. The verifier admits only the
+selected native row and rejects malformed, foreign, type-incoherent, non-live,
+or transition-invalid authority without presentation-derived recovery.
+
+Accepted implementation and handoff commits are `cdeacb2cd` and `f5cfa52b7`;
+`8bd881842` records the contract definition. Supervisor acceptance includes a
+fresh build, focused `^frontend_lir_call_type_ref$` proof passing 1/1, its
+non-decreasing 1/1 guard, and broader frontend smoke proof. The exact selected
+fields, rejected forms, proof, and return boundary are durable in
+`docs/lir_local_operation_authority/handoff_to_734.md`.
+
+The predecessor returns to
+`ideas/open/794_lir_next_local_vla_authority_handoff.md` at **Step 2 - Publish
+and verify the selected producer authority**. It may consume only this exact
+stack-restore handoff to complete its one-row authority process; it must not
+perform Raw-BIR/importer/734 receipt, dynamic-VLA count work, VLA GEP, or any
+other local/VLA row.

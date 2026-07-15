@@ -1,22 +1,21 @@
 # Current Packet
 
-Status: Exhausted — plan-owner decision required
-Source Idea Path: ideas/open/798_lir_stack_restore_lifetime_consumer_authority.md
+Status: Active
+Source Idea Path: ideas/open/794_lir_next_local_vla_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Publish the exact return handoff to 794 (complete)
+Current Step ID: 2
+Current Step Title: Publish and verify the selected producer authority
 
 ## Just Finished
 
-- Plan Step 3: published the exact 798-to-794 `LirStackRestoreOp` return
-  handoff in `docs/lir_local_operation_authority/handoff_to_734.md`, including
-  selected admission, native binding and checkpoint-transition facts, rejected
-  forms, the focused 1/1 proof, and the explicit no-734/no-other-row boundary.
+- Closed 798 completed its selected `LirStackRestoreOp` native-authority
+  handoff. 794 Step 1 evidence remains accepted in `1cbad00d6`; do not redo
+  the candidate inspection.
 
 ## Suggested Next
 
-- Ask plan-owner to decide whether exhausted 798 should close, conclude, or
-  require a lifecycle repair; if 794 resumes, it may return at Step 2 only.
+- Execute 794 Step 2 using only closed 798's exact selected stack-restore
+  authority and focused producer proof boundary.
 
 ## Watchouts
 
@@ -28,8 +27,7 @@ Current Step Title: Publish the exact return handoff to 794 (complete)
 
 ## Proof
 
-- Passed: `git diff --check` plus the supervisor-specified structural check
-  covering selected fields, rejected forms, focused proof, return restriction,
-  and only the owned docs/`todo.md` changes. No build/test was needed because
-  this packet changes no code. The prior focused implementation proof remains
-  `test_after.log` (1/1 passed).
+- Closed 798 acceptance: fresh build, focused
+  `^frontend_lir_call_type_ref$` proof passing 1/1, non-decreasing 1/1 guard,
+  and broader frontend smoke. The implementation proof is `test_after.log`;
+  execute fresh Step 2 proof before accepting new producer work.

@@ -54,10 +54,10 @@ candidate boundary.  The preceding umbrella evidence chain is `dc6b18421`,
 Interrupted step: Step 2, **Publish and verify the selected producer
 authority**.  The exact blocking fact is that `LirStackRestoreOp` has native
 saved-pointer/object/owner/type/liveness binding, but no selected-row
-admission and no structured lifetime-consumer or transition facts.  That
-producer/schema/verifier work is outside 794's candidate-selection boundary,
-so `ideas/open/798_lir_stack_restore_lifetime_consumer_authority.md` owns it
-as a separate blocker.
+admission and no structured lifetime-consumer or transition facts. That
+producer/schema/verifier work was outside 794's candidate-selection boundary,
+so separate blocker 798 owned it; its completed durable record is now
+`ideas/closed/798_lir_stack_restore_lifetime_consumer_authority.md`.
 
 Return condition and exact next action: after 798 publishes and verifies one
 exact native stack-restore handoff with accepted focused proof, resume 794 at
@@ -65,3 +65,13 @@ Step 2 only to publish and verify that selected authority, or complete its
 handoff process.  Do not widen the return to dynamic VLA allocation/count,
 VLA GEP, other local rows, Raw-BIR/importer/734 receipt, or
 presentation-derived facts.
+
+## Resumption Confirmation: 798 closed
+
+798 is capability-complete and archived at
+`ideas/closed/798_lir_stack_restore_lifetime_consumer_authority.md`. Its exact
+return handoff is in `docs/lir_local_operation_authority/handoff_to_734.md`;
+accepted contract, implementation, and handoff commits are `8bd881842`,
+`cdeacb2cd`, and `f5cfa52b7`. Resume now at Step 2 only, preserving accepted
+Step 1 evidence `1cbad00d6`; the selected row remains `LirStackRestoreOp` and
+the original no-expansion boundary remains in force.
