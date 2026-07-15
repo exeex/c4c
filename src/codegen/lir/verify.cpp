@@ -1432,6 +1432,16 @@ void verify_extract_value_authority(const LirExtractValueOp& op) {
   }
 }
 
+void verify_insert_value_authority(const LirInsertValueOp& op) {
+  if (!op.requires_native_result_authority) return;
+  if (op.result.kind() != LirOperandKind::SsaValue || !op.result.value_id() ||
+      !op.result.value_id()->valid() || !op.aggregate_result_type ||
+      *op.aggregate_result_type != op.agg_type) {
+    fail_verify("LirInsertValueOp.result",
+                "native insertvalue aggregate producer requires matching result and type authority");
+  }
+}
+
 void verify_inst(const LirModule& mod, const LirInst& inst) {
   if (const auto* op = std::get_if<LirMemcpyOp>(&inst)) {
     verify_pointer_operand(op->dst, "LirMemcpyOp.dst");
@@ -1498,6 +1508,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     verify_value_operand(op->agg, "LirInsertValueOp.agg");
     require_module_type_ref(mod, op->elem_type, "LirInsertValueOp.elem_type");
     verify_value_operand(op->elem, "LirInsertValueOp.elem");
+    verify_insert_value_authority(*op);
     return;
   }
   if (const auto* op = std::get_if<LirLoadOp>(&inst)) {
@@ -2837,7 +2848,8 @@ void verify_function_value_ownership(const LirModule& mod,
         }
       }
       if (const auto* extract = std::get_if<LirExtractValueOp>(&inst);
-          extract && extract->agg.kind() == LirOperandKind::SsaValue) {
+          extract && extract->requires_native_result_authority &&
+          extract->agg.kind() == LirOperandKind::SsaValue) {
         const LirValueId* aggregate_id = extract->agg.value_id();
         if (!aggregate_id || !aggregate_id->valid()) {
           fail_verify("LirExtractValueOp.agg",
@@ -2848,16 +2860,32 @@ void verify_function_value_ownership(const LirModule& mod,
           fail_verify("LirExtractValueOp.agg",
                       "aggregate SSA authority must identify a current-function definition");
         }
-        const auto* call = std::get_if<LirCallOp>(definition->second);
-        if (!call || !call->result.value_id() ||
-            *call->result.value_id() != *aggregate_id ||
-            call->return_type != extract->agg_type) {
-          fail_verify("LirExtractValueOp.agg",
-                      "aggregate SSA authority must select a matching current-function call result type");
+        const LirOperand* producer_result = modeled_result_operand(*definition->second);
+        const LirTypeRef* producer_type = nullptr;
+        bool selected_producer = false;
+        if (const auto* call = std::get_if<LirCallOp>(definition->second)) {
+          producer_type = &call->return_type;
+          // Calls are the pre-existing aggregate SSA handoff.  The selected
+          // load/insert extensions below must not narrow that legacy route.
+          selected_producer = true;
+        } else if (const auto* load = std::get_if<LirLoadOp>(definition->second)) {
+          producer_type = load->aggregate_result_type
+                              ? &*load->aggregate_result_type : nullptr;
+          selected_producer = load->requires_native_result_authority && producer_type;
+        } else if (const auto* insert = std::get_if<LirInsertValueOp>(definition->second)) {
+          producer_type = insert->aggregate_result_type
+                              ? &*insert->aggregate_result_type : nullptr;
+          selected_producer = insert->requires_native_result_authority && producer_type;
         }
-        if (extract->agg.str() != call->result.str()) {
+        if (!selected_producer || !producer_result || !producer_result->value_id() ||
+            *producer_result->value_id() != *aggregate_id || !producer_type ||
+            *producer_type != extract->agg_type) {
           fail_verify("LirExtractValueOp.agg",
-                      "aggregate SSA display must mirror its selected call result");
+                      "aggregate SSA authority must select a matching current-function aggregate producer type");
+        }
+        if (extract->agg.str() != producer_result->str()) {
+          fail_verify("LirExtractValueOp.agg",
+                      "aggregate SSA display must mirror its selected producer result");
         }
       }
       if (const auto* store = std::get_if<LirStoreOp>(&inst)) {

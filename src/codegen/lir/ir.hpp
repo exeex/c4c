@@ -359,6 +359,9 @@ struct LirInsertValueOp {
   LirTypeRef elem_type;   // element type string
   LirOperand elem;        // SSA name of element to insert
   int index = 0;          // field index
+  // Opt-in native aggregate producer authority for the selected terminal row.
+  bool requires_native_result_authority = false;
+  std::optional<LirTypeRef> aggregate_result_type;
 };
 
 struct LirLoadOp {
@@ -368,6 +371,7 @@ struct LirLoadOp {
   // Opt-in standalone native result ownership; compatibility loads remain false.
   bool requires_native_result_authority = false;
   std::optional<LirCurrentFunctionLocalObjectPointer> local_object_authority;
+  std::optional<LirTypeRef> aggregate_result_type;
 };
 
 struct LirStoreOp {

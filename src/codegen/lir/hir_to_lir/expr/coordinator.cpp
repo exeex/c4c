@@ -525,8 +525,14 @@ LirOperand StmtEmitter::emit_rval_operand(FnCtx& ctx, ExprId id,
     if (call_target.ret_ty == "void") return {};
     return emit_call_with_result(ctx, call_target, args, true);
   }
+  if (const auto* ref = std::get_if<DeclRef>(&e.payload);
+      require_direct_aggregate_ssa && ref && (ref->local || ref->param_index)) {
+    const LirOperand result = emit_decl_ref_rval_operand(ctx, *ref, e);
+    return result;
+  }
   if (const auto* binary = std::get_if<BinaryExpr>(&e.payload)) {
-    LirOperand result = emit_binary_rval_operand(ctx, *binary, e);
+    LirOperand result = emit_binary_rval_operand(ctx, *binary, e,
+                                                 require_direct_aggregate_ssa);
     return result.has_authority() ? result : LirOperand::raw(result.str());
   }
   if (const auto* cast = std::get_if<CastExpr>(&e.payload)) {
@@ -686,6 +692,12 @@ LirOperand StmtEmitter::emit_decl_ref_rval_operand(FnCtx& ctx, const DeclRef& r,
     const std::string ty = llvm_value_ty(mod_, ts);
     if (ty == "void") return LirOperand::raw("0");
     const LirOperand result = fresh_value(ctx);
+    const std::optional<LirTypeRef> aggregate_result_type =
+        is_complex_base(ts.base) && ts.ptr_level == 0 && ts.array_rank == 0
+            ? std::optional<LirTypeRef>(LirTypeRef::anonymous_struct(
+                  {LirTypeRef(llvm_ty(complex_component_ts(ts.base))),
+                   LirTypeRef(llvm_ty(complex_component_ts(ts.base)))}))
+            : std::nullopt;
     const auto authority = ctx.local_object_authorities.find(r.local->value);
     if (authority == ctx.local_object_authorities.end()) {
       throw std::logic_error("local object authority was not hoisted");
@@ -693,7 +705,7 @@ LirOperand StmtEmitter::emit_decl_ref_rval_operand(FnCtx& ctx, const DeclRef& r,
     emit_lir_op(ctx, lir::LirLoadOp{
                          result, lir::LirTypeRef(ty),
                          lir::LirOperand::ssa(it->second, authority->second.pointer_definition),
-                         true, authority->second});
+                         true, authority->second, aggregate_result_type});
     return result;
   }
 

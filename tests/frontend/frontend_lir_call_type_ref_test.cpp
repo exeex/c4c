@@ -8200,6 +8200,75 @@ long long lir_scalar_llabs_immediate_authority(void) {
       "verifier should reject global authority on scalar abs argument");
 }
 
+void test_selected_aggregate_producer_authority_boundary() {
+  namespace lir = c4c::codegen::lir;
+  const lir::LirTypeRef pair = lir::LirTypeRef::anonymous_struct(
+      {lir::LirTypeRef("float"), lir::LirTypeRef("float")});
+  const auto make_module = [&](bool terminal_insert) {
+    lir::LirModule module;
+    lir::LirFunction function;
+    function.name = terminal_insert ? "aggregate_insert_authority" :
+                                      "aggregate_load_authority";
+    function.signature_text = "define void @" + function.name + "() {";
+    function.blocks.push_back(lir::LirBlock{});
+    auto& insts = function.blocks.back().insts;
+    if (terminal_insert) {
+      insts.push_back(lir::LirInsertValueOp{"%seed", pair, "undef", "float", "0.0", 0});
+      insts.push_back(lir::LirInsertValueOp{
+          lir::LirOperand::ssa("%aggregate", lir::LirValueId{2}), pair, "%seed", "float",
+          "0.0", 1, true, pair});
+    } else {
+      insts.push_back(lir::LirLoadOp{
+          lir::LirOperand::ssa("%aggregate", lir::LirValueId{2}), pair, "%slot", true,
+          std::nullopt, pair});
+    }
+    insts.push_back(lir::LirExtractValueOp{
+        lir::LirOperand::ssa("%field", lir::LirValueId{3}), pair,
+        lir::LirOperand::ssa("%aggregate", lir::LirValueId{2}), 0, true});
+    module.functions.push_back(std::move(function));
+    return module;
+  };
+  const auto producer_index = [](bool terminal_insert) { return terminal_insert ? 1U : 0U; };
+  const auto check_rejects = [&](bool terminal_insert, auto mutate, const char* message) {
+    lir::LirModule module = make_module(terminal_insert);
+    lir::verify_module(module);
+    auto& insts = module.functions.front().blocks.front().insts;
+    mutate(insts, producer_index(terminal_insert));
+    expect_identity_verification_rejected(module, message);
+  };
+
+  for (const bool terminal_insert : {false, true}) {
+    check_rejects(terminal_insert, [](auto& insts, unsigned index) {
+      if (auto* load = std::get_if<lir::LirLoadOp>(&insts[index])) load->result = {};
+      if (auto* insert = std::get_if<lir::LirInsertValueOp>(&insts[index])) insert->result = {};
+    }, "selected aggregate producer must reject missing native result authority");
+    check_rejects(terminal_insert, [](auto& insts, unsigned) {
+      auto& extract = std::get<lir::LirExtractValueOp>(insts.back());
+      extract.agg = lir::LirOperand::ssa("%foreign", lir::LirValueId{99});
+    }, "selected aggregate producer must reject foreign aggregate ID");
+    check_rejects(terminal_insert, [](auto& insts, unsigned) {
+      auto& extract = std::get<lir::LirExtractValueOp>(insts.back());
+      extract.agg = lir::LirOperand::ssa("%stale", lir::LirValueId{2});
+    }, "selected aggregate producer must reject stale aggregate display");
+    check_rejects(terminal_insert, [](auto& insts, unsigned index) {
+      if (auto* load = std::get_if<lir::LirLoadOp>(&insts[index])) {
+        load->requires_native_result_authority = false;
+      }
+      if (auto* insert = std::get_if<lir::LirInsertValueOp>(&insts[index])) {
+        insert->requires_native_result_authority = false;
+      }
+    }, "selected aggregate extract must reject an unselected producer kind");
+    check_rejects(terminal_insert, [](auto& insts, unsigned index) {
+      if (auto* load = std::get_if<lir::LirLoadOp>(&insts[index])) {
+        load->aggregate_result_type = lir::LirTypeRef::integer(32);
+      }
+      if (auto* insert = std::get_if<lir::LirInsertValueOp>(&insts[index])) {
+        insert->aggregate_result_type = lir::LirTypeRef::integer(32);
+      }
+    }, "selected aggregate producer must reject type-incoherent receipt");
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -8623,6 +8692,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_builtin_clz_call_narrow_result_use_identity_boundary();
   test_builtin_popcount_call_narrow_result_use_identity_boundary();
   test_scalar_abs_result_use_identity_boundary();
+  test_selected_aggregate_producer_authority_boundary();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
   return 0;

@@ -8,37 +8,15 @@ Current Step Title: Publish checked authority for selected aggregate producers
 
 ## Just Finished
 
-- Step 1 trace selected two producer-specific extensions to the existing
-  `LirOperand::ssa(display, LirValueId)` handoff. Aggregate local loads already
-  create `fresh_value(ctx)` in `emit_decl_ref_rval_operand` and retain the
-  local-pointer receipt; mark only the selected aggregate load as a native
-  result producer, then carry that operand through unary real/imag to
-  `LirExtractValueOp.agg`. Constructed complex aggregates in
-  `emit_complex_binary_arith` / conversion helpers instead use `fresh_tmp` and
-  return strings; the selected terminal `LirInsertValueOp` must publish a
-  `fresh_value` result plus a narrow opt-in native-result flag and retain that
-  operand to its extract use.
-- The ownership seam is `definition_insts` in
-  `verify_function_value_ownership`: accept only opted-in `LirCallOp`, selected
-  `LirLoadOp`, or selected `LirInsertValueOp` producers; require producer
-  result-ID equality, current-function definition, producer aggregate type
-  (`return_type`, `type_str`, or `agg_type`) equality with `extract.agg_type`,
-  and an exact display mirror. Keep all other producer kinds fail-closed.
-- First Step 2 implementation attempt rejected and unaccepted: its fresh build
-  passed, but the eight-test focused command failed 3/8. Generalized producer
-  verification incorrectly imposed an opt-in flag on legacy SSA extracts
-  (`backend_lir_to_bir_interface`), and modeling aggregate load type as the
-  anonymous pointee violated `LirAllocaOp.local_object_authority` raw-pointee
-  equality. The GCC complex path still lacks a valid aggregate ID.
+- Step 2 repaired selected aggregate local-load and terminal-insertvalue
+  authority handoffs and added compact mutation coverage for both forms:
+  missing result authority, foreign/unknown ID, stale display, unselected
+  producer, and type-incoherent aggregate receipt. The exact focused command
+  passed (8/8) without changing canonical logs.
 
 ## Suggested Next
 
-- Step 2 repair only: restore the rejected 803-specific hunks without touching
-  preserved 801/802 work. Gate authority checks on explicit selected-extract
-  `requires_native_result_authority`; publish selected producer IDs plus a
-  dedicated aggregate producer-type carrier, leaving raw local-object pointee
-  facts unchanged. Add malformed proof for missing/invalid, foreign or
-  unknown, stale display, wrong producer kind, and type-incoherent authority.
+- Supervisor acceptance of completed Step 2, or the next in-scope plan packet.
 
 ## Watchouts
 
@@ -52,14 +30,6 @@ Current Step Title: Publish checked authority for selected aggregate producers
 
 ## Proof
 
-- Reproduce with fresh build then `ctest --test-dir build -R
-  '^(positive_sema_ok_call_builtin_runtime_c|llvm_gcc_c_torture_src_complex_2_c|frontend_hir_tests$|backend_)' --output-on-failure`.
-- Current named failures are the runtime and direct-complex aggregate paths;
-  raw classification is explicitly rejected because it evades authority.
-- No new proof was run for this trace-only packet; retain the existing focused
-  reproduction evidence and do not overwrite canonical logs.
-- Before accepting Step 2, run a fresh build, focused positive/malformed
-  aggregate proof, and the supervisor-selected broader acceptance required
-  for the 754 handoff.
-- Required focused command: `ctest --test-dir build -R
-  '^(positive_sema_ok_call_builtin_runtime_c|llvm_gcc_c_torture_src_complex_2_c|frontend_hir_tests$|backend_)' --output-on-failure`.
+- Passed fresh `cmake --build --preset default`, then the exact required CTest
+  command with `-j --output-on-failure` and the specified regex: 8/8 passed.
+  Canonical `test_before.log` and `test_after.log` were not modified.

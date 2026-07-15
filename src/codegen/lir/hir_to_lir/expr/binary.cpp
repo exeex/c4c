@@ -33,12 +33,13 @@ LirOperand preserve_exact_binary_operand(const LirOperand& source,
 
 }  // namespace
 
-std::string StmtEmitter::emit_complex_binary_arith(FnCtx& ctx, BinaryOp op,
-                                                   const std::string& lv,
-                                                   const TypeSpec& lts,
-                                                   const std::string& rv,
-                                                   const TypeSpec& rts,
-                                                   const TypeSpec& res_spec) {
+LirOperand StmtEmitter::emit_complex_binary_arith(FnCtx& ctx, BinaryOp op,
+                                                  const std::string& lv,
+                                                  const TypeSpec& lts,
+                                                  const std::string& rv,
+                                                  const TypeSpec& rts,
+                                                  const TypeSpec& res_spec,
+                                                  bool require_direct_aggregate_ssa) {
   TypeSpec complex_ts = lts;
   if (!is_complex_base(complex_ts.base) ||
       (is_complex_base(rts.base) && sizeof_ts(mod_, rts) > sizeof_ts(mod_, complex_ts))) {
@@ -143,14 +144,25 @@ std::string StmtEmitter::emit_complex_binary_arith(FnCtx& ctx, BinaryOp op,
 
   const std::string with_real = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirInsertValueOp{with_real, cplx_ty, "undef", elem_ty, out_real, 0});
+  if (cplx_ty == llvm_ty(res_spec) && require_direct_aggregate_ssa) {
+    const LirOperand out = fresh_value(ctx);
+    const LirTypeRef aggregate_type = LirTypeRef::anonymous_struct(
+        {LirTypeRef(elem_ty), LirTypeRef(elem_ty)});
+    emit_lir_op(ctx, lir::LirInsertValueOp{out, aggregate_type, with_real,
+                                           LirTypeRef(elem_ty), out_imag, 1,
+                                           true, aggregate_type});
+    return out;
+  }
   const std::string out = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirInsertValueOp{out, cplx_ty, with_real, elem_ty, out_imag, 1});
-  return cplx_ty == llvm_ty(res_spec) ? out : coerce(ctx, out, complex_ts, res_spec);
+  return LirOperand(cplx_ty == llvm_ty(res_spec) ? out :
+                    coerce(ctx, out, complex_ts, res_spec));
 }
 
 LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
                                                  const BinaryExpr& b,
-                                                 const Expr& e) {
+                                                 const Expr& e,
+                                                 bool require_direct_aggregate_ssa) {
   if (b.op == BinaryOp::Comma) {
     TypeSpec lts{};
     emit_rval_id(ctx, b.lhs, lts);
@@ -259,7 +271,8 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
   if ((b.op == BinaryOp::Add || b.op == BinaryOp::Sub || b.op == BinaryOp::Mul ||
        b.op == BinaryOp::Div) &&
       (is_complex_base(lts.base) || is_complex_base(rts.base))) {
-    return emit_complex_binary_arith(ctx, b.op, lv, lts, rv, rts, res_spec);
+    return emit_complex_binary_arith(ctx, b.op, lv, lts, rv, rts, res_spec,
+                                     require_direct_aggregate_ssa);
   }
 
   if (is_vector_value(res_spec)) {

@@ -62,14 +62,16 @@ LirOperand emit_decl_ref_rval_operand(FnCtx& ctx, const DeclRef& r, const Expr& 
 std::string emit_rval_payload(FnCtx& ctx, const DeclRef& r, const Expr& e);
 
 // Binary expression helpers.
-std::string emit_complex_binary_arith(FnCtx& ctx, BinaryOp op,
-                                      const std::string& lv,
-                                      const TypeSpec& lts,
-                                      const std::string& rv,
-                                      const TypeSpec& rts,
-                                      const TypeSpec& res_spec);
+LirOperand emit_complex_binary_arith(FnCtx& ctx, BinaryOp op,
+                                     const std::string& lv,
+                                     const TypeSpec& lts,
+                                     const std::string& rv,
+                                     const TypeSpec& rts,
+                                     const TypeSpec& res_spec,
+                                     bool require_direct_aggregate_ssa = false);
 LirOperand emit_binary_rval_operand(FnCtx& ctx, const BinaryExpr& b,
-                                    const Expr& e);
+                                    const Expr& e,
+                                    bool require_direct_aggregate_ssa = false);
 std::string emit_rval_payload(FnCtx& ctx, const BinaryExpr& b, const Expr& e);
 std::string emit_logical(FnCtx& ctx, const BinaryExpr& b, const Expr& e);
 
