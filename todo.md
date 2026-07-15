@@ -1,36 +1,33 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/808_lir_phi_scalar_bit_not_xor_authority.md
+Source Idea Path: ideas/open/806_lir_phi_residual_producer_family_authority_trace.md
 Source Plan Path: plan.md
 Current Step ID: 3
-Current Step Title: Prove the focused successor and hand off the parent gate
+Current Step Title: Prove the blocker and return to 804
+你該做code review了
 
 ## Just Finished
 
-- Step 2 complete: the scalar `UnaryOp::BitNot` branch now creates its `xor`
-  result with `fresh_value(ctx)`, publishing a checked native
-  current-function ID while vector lowering remains unchanged. Added adjacent
-  `condition ? ~left : ~right` coverage that verifies two scalar `xor`
-  producers, one PHI, incoming producer-ID equality, and rejection after the
-  selected PHI-referenced `xor` producer result is removed.
+- Lifecycle resumption: 808 closed capability-complete after its fresh
+  focused 1/1 proof and supervisor-accepted non-decreasing guard. 806 Steps
+  1–2 remain accepted; the exact return point is Step 3 full-baseline proof.
 
 ## Suggested Next
 
-- Supervisor acceptance of the Step 2 focused proof, then resume 806 Step 3
-  for its required 100% full baseline; do not claim 806 or 804 clearance here.
+- Supervisor: obtain and evaluate the required fresh 100% full baseline. On
+  acceptance, reactivate 804 at its unchanged Step 3; do not repeat completed
+  806 producer work.
 
 ## Watchouts
 
-- Keep this route limited to scalar bit-not `xor`; vector and complex bit-not,
-  floating or scalar unary-minus, postfix old-value, PHI/ternary consumer,
-  and verifier contracts remain out of scope. Existing verifier coverage
-  preserves missing, unknown, foreign, and stale authority rejection.
+- 808's strict guard rejected unchanged 1/1 -> 1/1 counts, while the matching
+  `--allow-non-decreasing-passed` guard exited 0 and was accepted. That closes
+  808 only; it is not 806/804 clearance. Do not reopen accepted producer,
+  PHI/verifier, or 804 unary-minus work.
 
 ## Proof
 
-- Passed: `cmake --build --preset default`; then `ctest --test-dir build -j
-  --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log`.
-  The supervisor-selected focused proof is sufficient for this packet;
-  `test_after.log` is preserved. After acceptance, 806 still requires the
-  100% full baseline before 804 can resume.
+- Accepted predecessor evidence: `961ce9fda`, `8f31e2535`, and `b86df3b9d`;
+  808 fresh build/focused CTest and non-decreasing guard are accepted. Required
+  next proof: supervisor-owned fresh 100% full baseline; none is recorded yet.

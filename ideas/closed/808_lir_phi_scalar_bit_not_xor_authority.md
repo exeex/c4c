@@ -1,6 +1,6 @@
 # LIR PHI Scalar Bit-Not `xor` Authority
 
-Status: Open
+Status: Closed
 Type: bounded PHI producer-handoff successor
 Blocked Parent: `ideas/open/806_lir_phi_residual_producer_family_authority_trace.md`
 
@@ -55,3 +55,22 @@ and floating unary-minus `fneg`.
   downgrades, or a named-test-only pass without nearby malformed coverage.
 - Reject weakening PHI verification or accepting missing, foreign, stale, or
   unknown native authority merely to make `pr68376-2.c` pass.
+
+## Completion Record
+
+Disposition: capability complete.
+
+- Step 1 bounded the route to scalar `UnaryOp::BitNot` / `xor`; Step 2 is
+  accepted in `b86df3b9d` (`Publish scalar bit-not xor PHI authority`), where
+  `fresh_value(ctx)` publishes checked native current-function authority and
+  nearby positive/malformed coverage preserves the existing verifier contract.
+- Step 3 evidence: fresh `cmake --build --preset default` and the focused
+  `frontend_lir_call_type_ref` CTest passed for the matching 1/1 scope before
+  and after. The strict pass-count-increase attempt correctly exited 1 on the
+  unchanged 1/1 -> 1/1 count; the supervisor then accepted the matching
+  `check_monotonic_regression.py --before test_before.log --after
+  test_after.log --allow-non-decreasing-passed` comparison, which exited 0.
+
+This closure resumes 806 exactly at Step 3, *Prove the blocker and return to
+804*. It does not clear 806 or 804: a supervisor-accepted fresh 100% full
+baseline remains required before returning 804 at its unchanged Step 3.

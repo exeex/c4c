@@ -54,9 +54,9 @@ unary-minus seam from 804: its focused `vrp_2.c` proof remains passing.
 Step 1. The unshared producer families are separately scoped and must not be
 absorbed into its Step 2 repair:
 
-- `ideas/open/807_lir_phi_floating_unary_minus_fneg_authority.md` owns
-  `ieee/pr50310.c` and floating unary-minus `fneg` authority.
-- `ideas/open/808_lir_phi_scalar_bit_not_xor_authority.md` owns
+- Closed `ideas/closed/807_lir_phi_floating_unary_minus_fneg_authority.md`
+  resolved `ieee/pr50310.c` and floating unary-minus `fneg` authority.
+- Closed `ideas/closed/808_lir_phi_scalar_bit_not_xor_authority.md` resolved
   `pr68376-2.c` and scalar bit-not `xor` authority.
 
 ## Reviewer Reject Signals
@@ -83,17 +83,24 @@ reactivate 804 at Step 3, *Prove the blocker and return it to 754*.
   residual families; Step 2 repaired only the postfix-increment old-value
   producer handoff.
 - Interrupted runbook step: Step 3, *Prove the blocker and return to 804*.
-- Blocker and scope boundary: `ideas/open/807_lir_phi_floating_unary_minus_fneg_authority.md`
-  must resolve floating unary-minus `fneg`, followed by
-  `ideas/open/808_lir_phi_scalar_bit_not_xor_authority.md` for bit-not `xor`;
-  both producer families are outside 806's selected postfix scope.
+- Resolved blockers and scope boundary: 807 closed floating unary-minus
+  `fneg` authority in `8f31e2535`; 808 closed scalar bit-not `xor` authority
+  in `b86df3b9d`. Both producer families were separately scoped outside 806's
+  selected postfix route.
 - Exact return point: resume at Step 3 full-baseline proof only after 807 and
   808 have accepted their focused routes and the follow-on full baseline can
   be evaluated.
-- Remaining next action: obtain and have the supervisor accept the required
-  100% full baseline, then reactivate 804 at its unchanged Step 3.
+- Remaining next action: resume Step 3 by obtaining and having the supervisor
+  accept the required 100% full baseline, then reactivate 804 at its unchanged
+  Step 3.
 - Accepted implementation and proof: commit `961ce9fda` accepted the Step 2
   postfix authority repair. Focused proof passed via
   `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$' > test_after.log 2>&1`,
   with the matching non-decreasing frontend-HIR before/after guard and
   `build/tests/frontend/frontend_lir_call_type_ref_test` also passing.
+- Successor closure evidence: 808's fresh focused
+  `frontend_lir_call_type_ref` proof passed 1/1 after a fresh build. Its
+  strict guard rejected unchanged 1/1 -> 1/1 counts, then the matching
+  non-decreasing guard mode `--allow-non-decreasing-passed` exited 0 and was
+  supervisor-accepted. This is focused successor acceptance, not parent
+  clearance.
