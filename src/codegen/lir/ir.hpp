@@ -235,25 +235,48 @@ struct LirSelectedMemcpyAuthority {
   bool source_live_at_site = false;
 };
 
+// Operation-local native authority for the opt-in memory/VA family.  The
+// operand remains a display mirror; this record binds it to the current
+// function's checked local pointer/object/owner/type/liveness tuple.
+struct LirMemoryVaPointerAuthority {
+  LirCurrentFunctionLocalObjectPointer local_pointer;
+};
+
+struct LirMemoryVaIntegerAuthority {
+  LirTypeRef type;
+  LirIntegerImmediate value;
+};
+
 struct LirMemcpyOp {
   LirOperand dst;         // ptr operand
   LirOperand src;         // ptr operand
   LirOperand size;        // i64 operand
   bool is_volatile = false;
   std::optional<LirSelectedMemcpyAuthority> selected_authority;
+  bool requires_native_memory_va_authority = false;
+  std::optional<LirMemoryVaPointerAuthority> dst_authority;
+  std::optional<LirMemoryVaPointerAuthority> src_authority;
+  std::optional<LirMemoryVaIntegerAuthority> size_authority;
 };
 
 struct LirVaStartOp {
   LirOperand ap_ptr;      // ptr operand
+  bool requires_native_memory_va_authority = false;
+  std::optional<LirMemoryVaPointerAuthority> ap_authority;
 };
 
 struct LirVaEndOp {
   LirOperand ap_ptr;      // ptr operand
+  bool requires_native_memory_va_authority = false;
+  std::optional<LirMemoryVaPointerAuthority> ap_authority;
 };
 
 struct LirVaCopyOp {
   LirOperand dst_ptr;     // ptr operand
   LirOperand src_ptr;     // ptr operand
+  bool requires_native_memory_va_authority = false;
+  std::optional<LirMemoryVaPointerAuthority> dst_authority;
+  std::optional<LirMemoryVaPointerAuthority> src_authority;
 };
 
 struct LirStackSaveOp {
@@ -338,6 +361,10 @@ struct LirMemsetOp {
   LirOperand byte_val;    // i8-compatible byte value
   LirOperand size;        // i64 byte count
   bool is_volatile = false;
+  bool requires_native_memory_va_authority = false;
+  std::optional<LirMemoryVaPointerAuthority> dst_authority;
+  std::optional<LirMemoryVaIntegerAuthority> byte_authority;
+  std::optional<LirMemoryVaIntegerAuthority> size_authority;
 };
 
 // Cast opcode for LirCastOp
@@ -554,6 +581,10 @@ struct LirVaArgOp {
   LirOperand result;      // SSA name for result
   LirOperand ap_ptr;      // SSA name of va_list pointer
   LirTypeRef type_str;    // result type string
+  bool requires_native_memory_va_authority = false;
+  std::optional<LirMemoryVaPointerAuthority> ap_authority;
+  std::optional<LirValueId> result_authority;
+  std::optional<LirTypeRef> result_type_authority;
 };
 
 // Typed inline (non-hoisted) alloca instruction.

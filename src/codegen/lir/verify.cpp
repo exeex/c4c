@@ -2098,6 +2098,150 @@ void verify_local_object_authority_bindings(
   }
 }
 
+void verify_native_memory_va_authority(
+    const LirModule& mod, const LirFunction& function,
+    const std::unordered_map<uint32_t, const LirInst*>& definition_insts) {
+  std::unordered_map<uint32_t, const LirCurrentFunctionLocalObjectPointer*>
+      canonical_pointers;
+  const auto record_local = [&](const auto& op) {
+    if (!op.local_object_authority) return;
+    canonical_pointers.emplace(op.local_object_authority->pointer_definition.value,
+                               &*op.local_object_authority);
+  };
+  const auto record = [&](const LirInst& inst) {
+    if (const auto* op = std::get_if<LirAllocaOp>(&inst)) record_local(*op);
+    if (const auto* op = std::get_if<LirStoreOp>(&inst)) record_local(*op);
+    if (const auto* op = std::get_if<LirGepOp>(&inst)) record_local(*op);
+    if (const auto* op = std::get_if<LirLoadOp>(&inst)) record_local(*op);
+    if (const auto* op = std::get_if<LirStackSaveOp>(&inst)) record_local(*op);
+    if (const auto* op = std::get_if<LirStackRestoreOp>(&inst)) record_local(*op);
+  };
+  for (const auto& inst : function.alloca_insts) record(inst);
+  for (const auto& block : function.blocks)
+    for (const auto& inst : block.insts) record(inst);
+
+  const auto verify_pointer = [&](const LirOperand& operand,
+                                  const LirMemoryVaPointerAuthority& binding,
+                                  std::string_view field) {
+    const auto& authority = binding.local_pointer;
+    verify_local_object_authority(mod, function, authority, field);
+    if (operand.kind() != LirOperandKind::SsaValue || !operand.value_id() ||
+        *operand.value_id() != authority.pointer_definition) {
+      fail_verify(std::string(field),
+                  "native memory/VA authority must bind its current-function pointer operand");
+    }
+    const auto definition = definition_insts.find(authority.pointer_definition.value);
+    if (definition == definition_insts.end() || !definition->second ||
+        !modeled_pointer_result(*definition->second)) {
+      fail_verify(std::string(field),
+                  "native memory/VA authority must identify a pointer definition");
+    }
+    const auto canonical = canonical_pointers.find(authority.pointer_definition.value);
+    if (canonical == canonical_pointers.end() || !canonical->second ||
+        canonical->second->object != authority.object ||
+        canonical->second->owner != authority.owner ||
+        canonical->second->pointer_type != authority.pointer_type ||
+        canonical->second->pointee_type != authority.pointee_type ||
+        canonical->second->live != authority.live) {
+      fail_verify(std::string(field),
+                  "native memory/VA authority disagrees with canonical local pointer facts");
+    }
+  };
+  const auto verify_integer = [&](const LirOperand& operand,
+                                  const LirMemoryVaIntegerAuthority& authority,
+                                  unsigned width, bool positive,
+                                  std::string_view field) {
+    if (authority.type != LirTypeRef::integer(width) ||
+        !integer_immediate_representable(authority.value.value, width) ||
+        (positive && authority.value.value <= 0) ||
+        !operand.integer_immediate() ||
+        operand.integer_immediate()->value != authority.value.value) {
+      fail_verify(std::string(field),
+                  "native memory/VA integer authority must bind a matching typed immediate");
+    }
+  };
+  const auto verify_memcpy = [&](const LirMemcpyOp& op) {
+    const bool fields = op.dst_authority || op.src_authority || op.size_authority;
+    if (!op.requires_native_memory_va_authority) {
+      if (fields) fail_verify("LirMemcpyOp.requires_native_memory_va_authority",
+                              "unselected memcpy must not carry native memory/VA authority");
+      return;
+    }
+    if (!op.dst_authority || !op.src_authority || !op.size_authority || op.is_volatile)
+      fail_verify("LirMemcpyOp.native_memory_va_authority",
+                  "selected memcpy requires non-volatile pointer and i64 size authority");
+    verify_pointer(op.dst, *op.dst_authority, "LirMemcpyOp.dst_authority");
+    verify_pointer(op.src, *op.src_authority, "LirMemcpyOp.src_authority");
+    verify_integer(op.size, *op.size_authority, 64, true, "LirMemcpyOp.size_authority");
+  };
+  const auto verify_memset = [&](const LirMemsetOp& op) {
+    const bool fields = op.dst_authority || op.byte_authority || op.size_authority;
+    if (!op.requires_native_memory_va_authority) {
+      if (fields) fail_verify("LirMemsetOp.requires_native_memory_va_authority",
+                              "unselected memset must not carry native memory/VA authority");
+      return;
+    }
+    if (!op.dst_authority || !op.byte_authority || !op.size_authority || op.is_volatile)
+      fail_verify("LirMemsetOp.native_memory_va_authority",
+                  "selected memset requires non-volatile pointer, byte, and size authority");
+    verify_pointer(op.dst, *op.dst_authority, "LirMemsetOp.dst_authority");
+    verify_integer(op.byte_val, *op.byte_authority, 8, false, "LirMemsetOp.byte_authority");
+    verify_integer(op.size, *op.size_authority, 64, true, "LirMemsetOp.size_authority");
+  };
+  const auto verify_single_va = [&](const LirOperand& operand, bool selected,
+                                    const std::optional<LirMemoryVaPointerAuthority>& authority,
+                                    std::string_view field) {
+    if (!selected) {
+      if (authority) fail_verify(std::string(field),
+                                 "unselected VA operation must not carry native pointer authority");
+      return;
+    }
+    if (!authority) fail_verify(std::string(field), "selected VA operation requires pointer authority");
+    verify_pointer(operand, *authority, field);
+  };
+  const auto verify_inst = [&](const LirInst& inst) {
+    if (const auto* op = std::get_if<LirMemcpyOp>(&inst)) verify_memcpy(*op);
+    if (const auto* op = std::get_if<LirMemsetOp>(&inst)) verify_memset(*op);
+    if (const auto* op = std::get_if<LirVaStartOp>(&inst))
+      verify_single_va(op->ap_ptr, op->requires_native_memory_va_authority,
+                       op->ap_authority, "LirVaStartOp.ap_authority");
+    if (const auto* op = std::get_if<LirVaEndOp>(&inst))
+      verify_single_va(op->ap_ptr, op->requires_native_memory_va_authority,
+                       op->ap_authority, "LirVaEndOp.ap_authority");
+    if (const auto* op = std::get_if<LirVaCopyOp>(&inst)) {
+      const bool fields = op->dst_authority || op->src_authority;
+      if (!op->requires_native_memory_va_authority) {
+        if (fields) fail_verify("LirVaCopyOp.requires_native_memory_va_authority",
+                                "unselected va_copy must not carry native pointer authority");
+      } else {
+        if (!op->dst_authority || !op->src_authority)
+          fail_verify("LirVaCopyOp.native_memory_va_authority",
+                      "selected va_copy requires both pointer authorities");
+        verify_pointer(op->dst_ptr, *op->dst_authority, "LirVaCopyOp.dst_authority");
+        verify_pointer(op->src_ptr, *op->src_authority, "LirVaCopyOp.src_authority");
+      }
+    }
+    if (const auto* op = std::get_if<LirVaArgOp>(&inst)) {
+      const bool fields = op->ap_authority || op->result_authority || op->result_type_authority;
+      if (!op->requires_native_memory_va_authority) {
+        if (fields) fail_verify("LirVaArgOp.requires_native_memory_va_authority",
+                                "unselected va_arg must not carry native authority");
+      } else {
+        if (!op->ap_authority || !op->result_authority || !op->result_type_authority ||
+            !op->result.value_id() || *op->result.value_id() != *op->result_authority ||
+            op->type_str != *op->result_type_authority) {
+          fail_verify("LirVaArgOp.native_memory_va_authority",
+                      "selected va_arg requires matching result and pointer authority");
+        }
+        verify_pointer(op->ap_ptr, *op->ap_authority, "LirVaArgOp.ap_authority");
+      }
+    }
+  };
+  for (const auto& inst : function.alloca_insts) verify_inst(inst);
+  for (const auto& block : function.blocks)
+    for (const auto& inst : block.insts) verify_inst(inst);
+}
+
 void verify_selected_stack_save_authority(const LirFunction& function) {
   std::size_t selected_count = 0;
   const auto count_selected = [&](const LirInst& inst) {
@@ -2265,6 +2409,7 @@ void verify_function_value_ownership(const LirModule& mod,
   }
 
   verify_local_object_authority_bindings(function, definition_insts);
+  verify_native_memory_va_authority(mod, function, definition_insts);
 
   const auto successor_at_occurrence = [](const LirTerminator& terminator,
                                           LirSuccessorOccurrenceId occurrence)

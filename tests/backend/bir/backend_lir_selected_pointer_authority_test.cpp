@@ -88,6 +88,109 @@ void expect_rejected(lir::LirModule module, const std::string& message) {
   }
 }
 
+lir::LirModule native_memset_authority_module() {
+  lir::LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  const c4c::LinkNameId owner = module.link_names.intern("native_memset_owner");
+  const lir::LirCurrentFunctionLocalObjectPointer pointer{
+      .pointer_definition = lir::LirValueId{1},
+      .object = lir::LirObjectId{1},
+      .owner = owner,
+      .pointer_type = lir::LirTypeRef("ptr"),
+      .pointee_type = lir::LirTypeRef("i32"),
+      .live = true,
+  };
+  lir::LirFunction function;
+  function.name = "native_memset_authority";
+  function.link_name_id = owner;
+  function.signature_text = "declare void @native_memset_authority()";
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand::ssa("%slot", pointer.pointer_definition),
+      .type_str = pointer.pointee_type,
+      .local_object_authority = pointer,
+  });
+  lir::LirBlock block;
+  block.id = lir::LirBlockId{0};
+  block.label = "entry";
+  block.insts.push_back(lir::LirMemsetOp{
+      .dst = lir::LirOperand::ssa("%slot", pointer.pointer_definition),
+      .byte_val = lir::LirOperand::integer("0", 0),
+      .size = lir::LirOperand::integer("4", 4),
+      .requires_native_memory_va_authority = true,
+      .dst_authority = lir::LirMemoryVaPointerAuthority{pointer},
+      .byte_authority = lir::LirMemoryVaIntegerAuthority{
+          lir::LirTypeRef::integer(8), lir::LirIntegerImmediate{0}},
+      .size_authority = lir::LirMemoryVaIntegerAuthority{
+          lir::LirTypeRef::integer(64), lir::LirIntegerImmediate{4}},
+  });
+  block.terminator = lir::LirRet{std::nullopt, lir::LirTypeRef("void")};
+  function.blocks.push_back(std::move(block));
+  function.entry = lir::LirBlockId{0};
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+void test_native_memory_va_authority_verifier_boundary() {
+  auto valid = native_memset_authority_module();
+  lir::verify_module(valid);
+
+  auto missing = native_memset_authority_module();
+  std::get<lir::LirMemsetOp>(missing.functions[0].blocks[0].insts[0])
+      .dst_authority.reset();
+  expect_rejected(std::move(missing), "selected memset must reject missing authority");
+
+  auto foreign = native_memset_authority_module();
+  const auto foreign_owner = foreign.link_names.intern("foreign_memset_owner");
+  std::get<lir::LirMemsetOp>(foreign.functions[0].blocks[0].insts[0])
+      .dst_authority->local_pointer.owner = foreign_owner;
+  expect_rejected(std::move(foreign), "selected memset must reject foreign authority");
+
+  auto wrong_type = native_memset_authority_module();
+  std::get<lir::LirMemsetOp>(wrong_type.functions[0].blocks[0].insts[0])
+      .dst_authority->local_pointer.pointer_type = lir::LirTypeRef::integer(32);
+  expect_rejected(std::move(wrong_type), "selected memset must reject type-mismatched authority");
+
+  auto dead = native_memset_authority_module();
+  std::get<lir::LirMemsetOp>(dead.functions[0].blocks[0].insts[0])
+      .dst_authority->local_pointer.live = false;
+  expect_rejected(std::move(dead), "selected memset must reject dead authority");
+
+  auto wrong_size = native_memset_authority_module();
+  std::get<lir::LirMemsetOp>(wrong_size.functions[0].blocks[0].insts[0])
+      .size_authority->value = lir::LirIntegerImmediate{8};
+  expect_rejected(std::move(wrong_size), "selected memset must reject size disagreement");
+
+  const auto compatibility_pointer = native_memset_authority_module();
+  const auto binding = std::get<lir::LirMemsetOp>(
+      compatibility_pointer.functions[0].blocks[0].insts[0]).dst_authority;
+  auto reject_unselected_fields = [&](lir::LirInst inst, const std::string& message) {
+    auto module = native_memset_authority_module();
+    module.functions[0].blocks[0].insts.push_back(std::move(inst));
+    expect_rejected(std::move(module), message);
+  };
+  reject_unselected_fields(lir::LirMemcpyOp{
+      .dst = lir::LirOperand::ssa("%slot", lir::LirValueId{1}),
+      .src = lir::LirOperand::ssa("%slot", lir::LirValueId{1}),
+      .size = lir::LirOperand::integer("4", 4), .dst_authority = binding},
+      "unselected memcpy authority fields must reject");
+  reject_unselected_fields(lir::LirVaStartOp{
+      .ap_ptr = lir::LirOperand::ssa("%slot", lir::LirValueId{1}), .ap_authority = binding},
+      "unselected va_start authority fields must reject");
+  reject_unselected_fields(lir::LirVaEndOp{
+      .ap_ptr = lir::LirOperand::ssa("%slot", lir::LirValueId{1}), .ap_authority = binding},
+      "unselected va_end authority fields must reject");
+  reject_unselected_fields(lir::LirVaCopyOp{
+      .dst_ptr = lir::LirOperand::ssa("%slot", lir::LirValueId{1}),
+      .src_ptr = lir::LirOperand::ssa("%slot", lir::LirValueId{1}), .dst_authority = binding},
+      "unselected va_copy authority fields must reject");
+  reject_unselected_fields(lir::LirVaArgOp{
+      .result = lir::LirOperand::ssa("%va", lir::LirValueId{2}),
+      .ap_ptr = lir::LirOperand::ssa("%slot", lir::LirValueId{1}),
+      .type_str = lir::LirTypeRef::integer(32), .ap_authority = binding},
+      "unselected va_arg authority fields must reject");
+}
+
 c4c::TypeSpec long_long_type() {
   c4c::TypeSpec type{};
   type.base = c4c::TB_LONGLONG;
@@ -103,6 +206,79 @@ c4c::TypeSpec large_aggregate_type(c4c::TextId tag_id) {
   type.tag_text_id = tag_id;
   type.array_size = -1;
   return type;
+}
+
+hir::Module local_aggregate_zero_memset_module() {
+  hir::Module module;
+  module.target_profile = c4c::default_target_profile(c4c::TargetArch::X86_64);
+
+  c4c::TypeSpec int_type{};
+  int_type.base = c4c::TB_INT;
+  int_type.enum_underlying_base = c4c::TB_VOID;
+  int_type.array_size = -1;
+  c4c::TypeSpec array_type = int_type;
+  array_type.array_rank = 1;
+  array_type.array_size = 4;
+  array_type.array_dims[0] = 4;
+
+  hir::Expr zero;
+  zero.id = module.alloc_expr_id();
+  zero.type.spec = int_type;
+  zero.type.category = hir::ValueCategory::RValue;
+  zero.payload = hir::IntLiteral{0, false};
+
+  hir::LocalDecl local;
+  local.id = module.alloc_local_id();
+  local.name = "zeroed";
+  local.type.spec = array_type;
+  local.type.category = hir::ValueCategory::LValue;
+  local.init = zero.id;
+
+  hir::Function function;
+  function.id = module.alloc_function_id();
+  function.name = "local_aggregate_zero_memset";
+  function.link_name_id = module.link_names.intern(function.name);
+  function.return_type.spec.base = c4c::TB_VOID;
+  function.return_type.spec.enum_underlying_base = c4c::TB_VOID;
+  function.return_type.spec.array_size = -1;
+  function.entry = module.alloc_block_id();
+  hir::Block entry;
+  entry.id = function.entry;
+  entry.stmts.push_back(hir::Stmt{.payload = local});
+  function.blocks.push_back(std::move(entry));
+  module.expr_pool.push_back(std::move(zero));
+  module.index_function_decl(function);
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+void test_local_aggregate_zero_memset_populates_authority() {
+  const lir::LirModule module = lir::lower(local_aggregate_zero_memset_module());
+  const auto& function = module.functions.front();
+  const lir::LirMemsetOp* memset = nullptr;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* candidate = std::get_if<lir::LirMemsetOp>(&inst)) {
+        memset = candidate;
+        break;
+      }
+    }
+    if (memset) break;
+  }
+  expect(memset != nullptr, "aggregate-zero local lowering must emit memset");
+  expect(memset->requires_native_memory_va_authority && memset->dst_authority &&
+             memset->byte_authority && memset->size_authority,
+         "aggregate-zero local memset must opt into native authority");
+  const auto& pointer = memset->dst_authority->local_pointer;
+  expect(memset->dst.value_id() && *memset->dst.value_id() == pointer.pointer_definition &&
+             pointer.owner == function.link_name_id && pointer.object.valid() &&
+             pointer.pointer_type.kind() == lir::LirTypeKind::Pointer && pointer.live &&
+             memset->byte_authority->type == lir::LirTypeRef::integer(8) &&
+             memset->byte_authority->value.value == 0 &&
+             memset->size_authority->type == lir::LirTypeRef::integer(64) &&
+             memset->size_authority->value.value == 16,
+         "aggregate-zero local memset must retain pointer/object/owner/type/live and typed size facts");
+  lir::verify_module(module);
 }
 
 hir::Module selected_byval_materialization_module() {
@@ -501,6 +677,8 @@ void test_selected_memcpy_raw_bir_receipt_and_rollback() {
 }  // namespace
 
 int main() {
+  test_local_aggregate_zero_memset_populates_authority();
+  test_native_memory_va_authority_verifier_boundary();
   test_selected_current_function_pointer_authority();
   test_selected_byval_materialization_populates_authority();
   test_selected_memcpy_authority_verifier_boundary();

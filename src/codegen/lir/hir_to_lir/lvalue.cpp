@@ -592,8 +592,31 @@ std::string StmtEmitter::emit_store_assignable_value(FnCtx& ctx, const Assignabl
         (lhs.pointee_ts.base == TB_STRUCT || lhs.pointee_ts.base == TB_UNION)));
   if (zero_init_aggregate) {
     module_->need_memset = true;
-    emit_lir_op(ctx, lir::LirMemsetOp{lhs.ptr.str(), "0",
-                                      std::to_string(sizeof_ts(mod_, lhs.pointee_ts)), false});
+    const auto authority = std::find_if(
+        ctx.local_object_authorities.begin(), ctx.local_object_authorities.end(),
+        [&](const auto& entry) {
+          return lhs.ptr.value_id() &&
+                 *lhs.ptr.value_id() == entry.second.pointer_definition;
+        });
+    if (authority == ctx.local_object_authorities.end()) {
+      emit_lir_op(ctx, lir::LirMemsetOp{lhs.ptr, "0",
+                                        std::to_string(sizeof_ts(mod_, lhs.pointee_ts)), false});
+    } else {
+      const long long size = sizeof_ts(mod_, lhs.pointee_ts);
+      emit_lir_op(ctx, lir::LirMemsetOp{
+                           .dst = lhs.ptr,
+                           .byte_val = lir::LirOperand::integer("0", 0),
+                           .size = lir::LirOperand::integer(std::to_string(size), size),
+                           .is_volatile = false,
+                           .requires_native_memory_va_authority = true,
+                           .dst_authority = lir::LirMemoryVaPointerAuthority{
+                               authority->second},
+                           .byte_authority = lir::LirMemoryVaIntegerAuthority{
+                               lir::LirTypeRef::integer(8), lir::LirIntegerImmediate{0}},
+                           .size_authority = lir::LirMemoryVaIntegerAuthority{
+                               lir::LirTypeRef::integer(64), lir::LirIntegerImmediate{size}},
+                       });
+    }
     return value.str();
   }
   emit_lir_op(ctx, lir::LirStoreOp{llvm_value_ty(mod_, lhs.pointee_ts), value, lhs.ptr});

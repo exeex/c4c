@@ -217,8 +217,21 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const LocalDecl& d) {
          d.type.spec.ptr_level == 0 &&
          (d.type.spec.base == TB_STRUCT || d.type.spec.base == TB_UNION))) {
       module_->need_memset = true;
+      const long long size = sizeof_ts(mod_, d.type.spec);
       emit_lir_op(ctx, lir::LirMemsetOp{
-                           slot, "0", std::to_string(sizeof_ts(mod_, d.type.spec)), false});
+                           .dst = lir::LirOperand::ssa(
+                               slot, authority->second.pointer_definition),
+                           .byte_val = lir::LirOperand::integer("0", 0),
+                           .size = lir::LirOperand::integer(std::to_string(size), size),
+                           .is_volatile = false,
+                           .requires_native_memory_va_authority = true,
+                           .dst_authority = lir::LirMemoryVaPointerAuthority{
+                               authority->second},
+                           .byte_authority = lir::LirMemoryVaIntegerAuthority{
+                               lir::LirTypeRef::integer(8), lir::LirIntegerImmediate{0}},
+                           .size_authority = lir::LirMemoryVaIntegerAuthority{
+                               lir::LirTypeRef::integer(64), lir::LirIntegerImmediate{size}},
+                       });
     } else {
       store_with_local_authority(lir::LirOperand::raw("zeroinitializer"), ty);
     }
