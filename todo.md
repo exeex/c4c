@@ -3,40 +3,39 @@
 Status: Active
 Source Idea Path: ideas/open/762_lir_module_declaration_type_shadow_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Reassess remaining module-level surfaces
+Current Step ID: 4
+Current Step Title: Make structured extern return type authoritative
 
 ## Just Finished
 
-Step 2 complete — `backend_lir_to_bir_interface` now derives both retained
-`type_decls` lines from the structured `LirStructDecl` carrier, verifies the
-positive packed/recursive declaration pair, and proves Raw-BIR receives its
-structured names, fields, and references.  The same fixture mutates only one
-legacy shadow (`%struct.Outer = type { i64 }`) and requires
-`lir::verify_module` to reject it before BIR import.  Production authority
-remains `LirModule::struct_decls`; `type_decls` is only a checked
-compatibility/emission shadow.
+Step 3 complete — the AST-backed route audit found an in-scope extern-return
+authority defect: `LirExternDecl::return_type` is structured and verifier-
+checked against `return_type_str`, yet
+`BirFunctionLowerer::lower_extern_decl` lowers the rendered shadow first and
+uses the structured ref only as fallback. This does not require a missing-
+carrier blocker. A fresh build and the exact paired baseline passed 2/2; the
+before-run is in `test_before.log`.
 
 ## Suggested Next
 
-Step 3: reassess the three excluded module surfaces against the completed
-struct row and decide whether 762 can close or needs one further bounded row;
-do not implement extern, function-signature, or global text routes as part of
-this completed packet.
+Step 4: lower extern return data from `decl.return_type` first in
+`BirFunctionLowerer::lower_extern_decl`; consult `decl.return_type_str` only
+when the structured carrier is absent. Add stale-shadow proof spanning
+`frontend_lir_extern_decl_type_ref` and `backend_lir_to_bir_interface`, then
+build and run exactly those two tests while preserving valid LLVM output.
 
 ## Watchouts
 
-`type_decls` must never be reparsed to recover selected struct identity or
-layout when the matching `LirStructDecl` exists; stale text fails closed in the
-verified selected seam.  Keep extern `return_type_str`, function
-`signature_text`, and global `llvm_type` out of this row.
+A present `decl.return_type` must always win over `return_type_str`; rendered
+text is compatibility fallback only for an absent structured carrier. Do not
+broaden this packet into function `signature_text`, global `llvm_type`, printer
+rewrites, Raw-BIR, target lowering, or unrelated module surfaces. Do not weaken
+verifier behavior merely to admit a stale shadow.
 
 ## Proof
 
-Passed: `cmake --build --preset default && ctest --test-dir build
---output-on-failure -R '^backend_lir_to_bir_interface$'` (1/1). Build emitted
-only existing deprecated runtime-text constructor warnings. Test output:
-`test_after.log`. A fresh broader `^backend_` run passed 6/6 after the build;
-the matching regression guard passed with the equal-count allowance. The
-supervisor's direct code review found no defect; its hook-managed review
-obligation is satisfied.
+Baseline passed before Step 4: fresh build, then `ctest --test-dir build -j
+--output-on-failure -R '^(frontend_lir_extern_decl_type_ref|backend_lir_to_bir_interface)$'`
+(2/2); output is recorded in `test_before.log`. Required packet proof: fresh
+build and the same exact paired command after the change, recorded for the
+supervisor's matching regression comparison. Preserve valid LLVM output.

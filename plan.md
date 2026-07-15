@@ -96,7 +96,7 @@ shadow line rejects before BIR import. Fresh builds passed the target 1/1 and
 the broader `^backend_` 6/6 run; the matching equal-count regression guard
 passed and supervisor direct review found no defect.
 
-### Step 3 - Reassess remaining module-level surfaces — current
+### Step 3 - Reassess remaining module-level surfaces — complete
 
 Goal: decide whether the other extern/signature/global/struct surfaces require
 another in-scope one-row route or whether the source acceptance criteria are
@@ -105,3 +105,36 @@ complete.
 Completion check: close only with all source criteria and accepted proof;
 otherwise repair this runbook for the next bounded surface or create/switch to
 an out-of-scope blocker with an exact return point.
+
+Reassessed by AST-backed route audit: `LirExternDecl::return_type` is an exact
+structured carrier and the verifier already validates `return_type_str` only
+as its shadow, but `BirFunctionLowerer::lower_extern_decl` still lowers the
+rendered `decl.return_type_str` first and uses the structured carrier only as a
+fallback. This is an in-scope authority defect, not a missing-carrier blocker.
+Before-change proof passed: a fresh build and
+`ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_extern_decl_type_ref|backend_lir_to_bir_interface)$'`
+passed 2/2; the baseline is recorded in `test_before.log`.
+
+### Step 4 - Make structured extern return type authoritative — current
+
+Goal: make `LirExternDecl::return_type` the primary input to
+`BirFunctionLowerer::lower_extern_decl`, retaining `return_type_str` only for
+the absent-structured-carrier compatibility path.
+
+Actions:
+
+- Lower extern return information from `decl.return_type` whenever it is
+  present; never let a present structured carrier be overridden by rendered
+  `decl.return_type_str`.
+- Use `return_type_str` only when the structured carrier is absent, preserving
+  the existing valid LLVM output and fail-closed verifier contract.
+- Add same-feature stale-shadow coverage across
+  `frontend_lir_extern_decl_type_ref` and `backend_lir_to_bir_interface` that
+  proves misleading rendered return text cannot override the structured ref.
+- Build, run both exact tests, and retain the matching after-run evidence for
+  supervisor regression comparison.
+
+Completion check: the backend consumes the structured extern return type first,
+the renderer text is fallback-only when no structured carrier exists, both
+focused frontend/backend tests prove stale-shadow rejection or non-authority,
+and valid LLVM output remains unchanged.
