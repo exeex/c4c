@@ -1,7 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (active; resumed at Step 7.31 selected VLA stack-restore receipt
-after closed 794's accepted native authority handoff)
+Status: Open (parked after accepted Step 7.32 selected AMD64 SysV aggregate
+`va_arg` overflow receipt; composite type-model prerequisite active)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -1096,3 +1096,39 @@ accepted proof, reactivate 734 and repair its runbook at **Step 7.32** for only
 that matching typed Raw-BIR receiver row. Do not repeat Step 7.31 or absorb
 other memory/va, local/VLA, aggregate/vector, parameter, module/type/global,
 instruction/terminator, inline-assembly, or later families.
+
+## Runbook Exhaustion Decision: post-Step 7.32 AMD64 aggregate VA-arg overflow receipt
+
+Close rejected. Commit `cf8c05985` receives exactly closed 753's selected
+non-volatile direct-local AMD64 SysV aggregate-overflow `va_arg` `LirMemcpyOp`
+carrier into a typed Raw-BIR receipt. The accepted evidence is a fresh build,
+focused `^backend_lir_to_bir_interface$` proof, and matching non-decreasing
+`^backend_` guard, each passing 5/5. This proves only the selected overflow
+carrier and does not authorize other memory/VA or source-wide rows.
+
+The unmet source criteria remain the no-omission checked coverage matrix and
+its per-row typed authority/destination/importer/verifier/proof disposition;
+lossless verified Raw-BIR receipt of every valid current-LIR semantic fact;
+complete explicit dispatcher and neighboring coverage; and final
+whole-module transactional, documentation-convergence, focused, and broader
+acceptance proof. Valid unreceived families include the remaining memory/VA,
+aggregate/vector, body-parameter, module/type/global/metadata, residual
+instruction/terminator, and inline-assembly families. They remain fail-closed;
+no authority may be inferred from text, names, rendered operands, `monostate`,
+or unclassified values.
+
+Classification: `separate-blocker`. The dependency-ordered next first owner
+is existing open idea
+`ideas/open/763_lir_composite_type_ref_model.md`, as recorded in
+`docs/lir_to_new_bir_remaining_coverage/successor_queue.md`. It owns the
+structured composite `LirTypeRef` prerequisite; it is not a 734 receiver row.
+
+Resumption record: Steps 1 through 7.32 are accepted, including receiver
+commit `cf8c05985` and the prior accepted history recorded above. The exact
+return point is not preselected: after 763 has accepted its structured
+composite-type model, follow the dependency-ordered queue and obtain an exact
+producer/verifier handoff for one later receiver row before reactivating 734.
+Do not repeat Step 7.32, receive a residual row merely because 763 closes, or
+absorb remaining memory/VA, aggregate/vector, parameter, module/type/global,
+instruction/terminator, or inline-assembly work without its separately scoped
+first owner and checked handoff.

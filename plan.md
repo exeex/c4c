@@ -1,72 +1,83 @@
-# LIR-To-New-BIR AMD64 Aggregate VA-Arg Receiver Runbook
+# LIR Composite Type Reference Model Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Resumed from: closed 753 selected AMD64 SysV aggregate-overflow `va_arg`
-receiver handoff.
+Source Idea: ideas/open/763_lir_composite_type_ref_model.md
+Activated from: 734 post-Step 7.32 receiver exhaustion; 763 is the next
+dependency-ordered first owner in the remaining-coverage queue.
 
 ## Purpose
 
-Receive exactly closed 753's selected AMD64 SysV aggregate
-`layout.needs_memory` overflow `va_arg` memcpy row in Raw-BIR. This is one
-bounded receiver packet; it does not claim completion of the remaining
-memory/VA or source-wide coverage matrix.
-
-## Historical Progress
-
-Steps 1 through 7.31 are accepted historical 734 receiver work. Closed 753
-completed the selected producer/verifier handoff and the source requires this
-resume at Step 7.32. Do not repeat those earlier receiver steps or producer
-authority work.
+Replace string-primary handling for the selected composite LIR type forms with
+a structured `LirTypeRef` representation while preserving LLVM emission text
+and existing ABI/layout behavior.
 
 ## Core Rule
 
-Consume only the checked native fields from closed 753's Step 3 receiver-ready
-handoff. Do not derive pointer, object, owner, liveness, type, size, storage,
-or row-selection authority from names, formatted operands, rendered LIR/LLVM,
-testcase shape, `monostate`, or unclassified operands.
+Store supported composite type semantics as ids, enums, and typed nodes. Render
+only at output boundaries. Never recover composite semantics by reparsing
+`str()` or other rendered LLVM text.
 
 ## Read First
 
-- `ideas/closed/753_lir_memory_va_pointer_authority_convergence.md` (Step 3
-  receiver-ready handoff and closure record)
-- `ideas/closed/799_lir_amd64_vaarg_overflow_aggregate_carrier_authority.md`
-- `docs/lir_to_new_bir_remaining_coverage/successor_queue.md`
-- `ideas/open/734_lir_to_new_bir_container_completeness.md` (post-Step 7.31
-  exhaustion decision)
+- `ideas/open/763_lir_composite_type_ref_model.md`
+- `src/codegen/lir/types.hpp`
+- `src/codegen/lir/ir.hpp`
+- `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`
+- `src/codegen/lir/print.cpp`
+- `src/codegen/lir/verify.cpp`
 
 ## Non-Goals
 
-- Any other memory/VA, aggregate/vector, local/VLA, parameter, module/type,
-  global/metadata, instruction/terminator, or inline-assembly authority row;
-- producer/schema/verifier republishing, target lowering, MIR, emission, or a
-  broad importer/dispatcher sweep;
-- presentation-derived recovery or weaker verifier/test contracts.
+- Remove `runtime_text`, migrate every type-shadow surface, or rewrite HIR
+  type lowering.
+- Change LLVM output, ABI layout, verifier strictness, Raw-BIR semantics,
+  target lowering, or MIR behavior.
+- Absorb call/signature or module/global convergence owned by 761 and 762.
 
 ## Ordered Steps
 
-### Step 7.32 - Receive selected AMD64 aggregate VA-arg overflow authority
+### Step 1 - Establish structured composite representation
 
-Goal: transactionally import closed 753's one selected AMD64 SysV aggregate
-`layout.needs_memory` overflow `va_arg` memcpy row into a typed Raw-BIR
-destination.
+Goal: extend `LirTypeRef` with queryable array and named struct/union composite
+structure while retaining builtin and integer-width forms.
 
 Actions:
 
-- consume only the selected direct current-function `va_list` local, typed
-  field-2 GEP address, overflow-pointer load, `Amd64SysVOverflowArgArea`
-  storage kind, live aggregate temporary, final load identity, struct payload
-  `LirTypeRef`, and positive typed i64 byte size;
-- bind the selected `LirMemcpyOp` source, destination, and immediate size to
-  those identities; add only the minimum Raw-BIR destination, importer
-  dispatch, reachable verification, and nearby positive/negative receiver
-  coverage;
-- reject partial, unselected, mixed, foreign, dead, non-derived,
-  destination-disagreeing, or type/size-disagreeing input transactionally;
-- run a fresh build and focused receiver proof before the supervisor-selected
-  broader proof.
+- inspect current type storage, construction, equality, and query seams;
+- add typed kind/field representation and factories needed for array and named
+  struct/union references, designed to admit later vector, aggregate, packed,
+  and function forms without string-primary storage;
+- retain `runtime_text` as an explicit compatibility escape hatch only.
 
-Completion check: exactly the selected non-volatile direct-local AMD64 SysV
-aggregate-overflow memcpy row imports and verifies without presentation
-recovery. All other rows remain fail closed; source completion is reassessed
-after this bounded receipt.
+Completion check: supported composite semantic fields are available without
+parsing a rendered type string and existing builtin behavior is preserved.
+
+### Step 2 - Render and migrate the selected layout path
+
+Goal: render structured refs at the LLVM output boundary and migrate the
+representative struct-layout padding/storage array path.
+
+Actions:
+
+- add or adapt a boundary render helper for structured `LirTypeRef` values;
+- replace the selected `[N x i8]`-like layout field construction with the
+  structured array factory;
+- keep emitted LLVM text and layout behavior identical.
+
+Completion check: the selected layout path no longer uses `runtime_text` for a
+supported array form and produces the same emission text.
+
+### Step 3 - Verify and prove the bounded model
+
+Goal: add nearby focused coverage for structured construction, equality/query,
+rendering, and the migrated layout path.
+
+Actions:
+
+- cover builtin, integer-width, named struct/union, and array queries;
+- cover array element/length and render behavior without string reparsing;
+- build, run focused LIR/frontend/backend tests, then obtain the
+supervisor-selected broader proof.
+
+Completion check: focused tests demonstrate structural semantics and unchanged
+emission; no test weakens a contract or relies on text parsing as authority.
