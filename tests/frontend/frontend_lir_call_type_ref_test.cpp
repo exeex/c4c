@@ -5230,6 +5230,59 @@ int lir_postfix_increment_ternary_phi_authority(int condition, int left, int rig
   fail("postfix ternary fixture should retain one PHI for malformed-authority coverage");
 }
 
+void test_scalar_dereference_ternary_phi_incoming_authority() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int lir_scalar_dereference_ternary_phi_authority(int condition, int *left, int *right) {
+  return condition ? *left : *right;
+}
+)c", "x86_64-linux-gnu");
+
+  const auto require_phi_and_loads = [](lir::LirModule& module)
+      -> std::pair<lir::LirPhiOp&, std::vector<lir::LirLoadOp*>> {
+    lir::LirFunction& function =
+        require_function(module, "lir_scalar_dereference_ternary_phi_authority");
+    lir::LirPhiOp* phi = nullptr;
+    std::vector<lir::LirLoadOp*> loads;
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* load = std::get_if<lir::LirLoadOp>(&inst)) loads.push_back(load);
+        if (auto* candidate = std::get_if<lir::LirPhiOp>(&inst)) {
+          expect_true(phi == nullptr, "scalar dereference ternary fixture should retain one PHI");
+          phi = candidate;
+        }
+      }
+    }
+    expect_true(phi && phi->incoming.size() == 2,
+                "scalar dereference ternary fixture should retain both load PHI inputs");
+    return {*phi, loads};
+  };
+
+  auto [phi, loads] = require_phi_and_loads(lowered);
+  for (const lir::LirPhiIncoming& incoming : phi.incoming) {
+    expect_true(incoming.value.value_id() && incoming.value.value_id()->valid(),
+                "scalar dereference PHI input should retain native load-result authority");
+    const auto producer = std::find_if(
+        loads.begin(), loads.end(), [&](const lir::LirLoadOp* load) {
+          return load->result.value_id() &&
+                 *load->result.value_id() == *incoming.value.value_id();
+        });
+    expect_true(producer != loads.end(),
+                "scalar dereference PHI input should refer to its load producer's native ID");
+  }
+  lir::verify_module(lowered);
+
+  lir::LirModule unknown_authority = lowered;
+  auto [malformed_phi, ignored_loads] = require_phi_and_loads(unknown_authority);
+  (void)ignored_loads;
+  malformed_phi.incoming.front().value =
+      lir::LirOperand::ssa("%unknown-dereference-load", lir::LirValueId{999999});
+  expect_identity_verification_rejected(
+      unknown_authority,
+      "verifier should reject scalar dereference PHI input with unknown load-result authority");
+}
+
 void test_pointer_postfix_and_compound_gep_result_authority() {
   namespace lir = c4c::codegen::lir;
 
@@ -9028,6 +9081,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_ternary_coerce_result_authority_boundary();
   test_complex_coerce_cast_result_authority_boundary();
   test_postfix_increment_ternary_phi_incoming_authority();
+  test_scalar_dereference_ternary_phi_incoming_authority();
   test_pointer_postfix_and_compound_gep_result_authority();
   test_floating_unary_minus_ternary_phi_incoming_authority();
   test_scalar_bit_not_ternary_phi_incoming_authority();

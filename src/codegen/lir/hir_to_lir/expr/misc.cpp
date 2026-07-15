@@ -175,7 +175,7 @@ LirOperand StmtEmitter::emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u,
       if (load_ts.array_rank > 0) return val;
       if (load_ts.is_fn_ptr && load_ts.ptr_level == 0) return val;
       const std::string load_ty = llvm_ty(load_ts);
-      const std::string tmp = fresh_tmp(ctx);
+      const LirOperand tmp = fresh_value(ctx);
       emit_lir_op(ctx,
                   lir::LirLoadOp{tmp, load_ty, LirOperand::raw(val)});
       return tmp;
