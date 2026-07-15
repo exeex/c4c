@@ -627,7 +627,7 @@ std::string StmtEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Exp
   } else {
     const LirOperand rhs_result = fresh_value(ctx);
     emit_lir_op(ctx,
-                lir::LirCastOp{rhs_result, lir::LirCastKind::ZExt, "i1", rc, res_ty});
+                lir::LirCastOp{rhs_result, lir::LirCastKind::ZExt, "i1", rc, res_ty, true});
     rhs_val = rhs_result.str();
   }
   emit_fallthrough_lbl(ctx, rhs_end_target);
