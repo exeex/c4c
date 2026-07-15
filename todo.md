@@ -3,65 +3,50 @@
 Status: Active
 Source Idea Path: ideas/open/802_project_wide_cpp20_host_toolchain_contract.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit host-standard ownership and capture baseline
+Current Step ID: 3
+Current Step Title: Publish the durable host-toolchain contract
 
 ## Just Finished
 
-- Plan Step 1 completed the host-standard ownership audit and classified every
-  versioned build-input declaration found by repository-wide search.
-- Production declarations are the root `c4c_target_profile`, `c4cll`, and
-  `c4c-objdump` targets plus `c4c_frontend`, `c4c_codegen`, and `c4c_backend`.
-  They currently mix four `cxx_std_17` feature declarations with two local
-  `CXX_STANDARD 17` properties.
-- Native-test declarations are the preprocessor executable, the frontend test
-  factory, all six BIR executables, and both MIR test factories. They use local
-  `CXX_STANDARD 17` properties; the two MIR factories also cover source-audit
-  executables that intentionally do not link a production library.
-- The manual `-std=gnu++20` flags in `tests/c/internal/cmake` and
-  `tests/cpp/{eastl,external}` compile language-under-test/workflow inputs and
-  are not host-target standard authorities. No versioned third-party CMake
-  target declares C++17. Historical docs and the repo-local clang-tool skill
-  contain example `--std=c++17` invocations, not build inputs.
-- The configured acceptance host is Homebrew LLVM clang 22.1.7 on
-  arm64-apple-darwin with libc++ `_LIBCPP_VERSION=220107`. Its C++20 mode
-  reports `__cplusplus=202002L` and provides designated initialization,
-  `consteval`, and `std::span`. Generated commands contain 59 `-std=gnu++17`
-  occurrences, confirming both the old standard and extension-mode drift.
-- The exact pre-change baseline was
-  `cmake --preset default -DENABLE_C4C_BACKEND=ON && cmake --build --preset default && ctest --test-dir build -j --output-on-failure -E 'llvm_gcc_c_torture' > test_before.log`:
-  configure/build succeeded; 1312 tests ran, 1272 passed, and 40 failed.
+- Plan Step 2 established one root CMake-3.20-compatible host authority with
+  required C++20 and compiler extensions disabled for all in-tree production
+  and native-test targets.
+- Removed every in-scope target-local C++17 declaration while preserving the
+  separate manual `gnu++20` language-under-test/workflow flags.
+- Added configure-time probes for `__cplusplus >= 202002L`, designated
+  initialization, `consteval`, and `std::span`, with a fatal diagnostic that
+  names the selected compiler ID/version and each missing capability.
+- Generated `build/compile_commands.json` contains 139 C++ commands; all 139
+  use `-std=c++20`, with no host `gnu++17`, `gnu++20`, or `c++17` command.
 
 ## Suggested Next
 
-- Execute plan Step 2 by establishing the root CMake-3.20-compatible authority
-  with required C++20 and extensions disabled, removing every in-scope local
-  C++17 pin, and verifying representative production and native-test commands
-  use `-std=c++20` rather than `gnu++20`.
+- Execute plan Step 3 by publishing the durable host-toolchain contract and
+  future-target consumption pattern without overstating compiler-family or
+  version support beyond the capability probes and acceptance host evidence.
 
 ## Watchouts
 
 - Keep c4cll language-under-test modes distinct from host compilation.
 - Do not touch idea 732.
-- `c4c_target_profile` is not a sufficient project-wide standard authority:
-  `c4c-objdump` and source-audit MIR tests do not consume it, and forcing an
-  unrelated link dependency solely for a language mode would obscure intent.
-  Prefer one top-level `CMAKE_CXX_STANDARD 20`,
-  `CMAKE_CXX_STANDARD_REQUIRED ON`, and `CMAKE_CXX_EXTENSIONS OFF` contract.
-- Add a small configure-time C++20 capability probe rather than inferring
-  standard-library support from compiler identity alone. The probe should
-  compile under the selected project mode and require `__cplusplus >= 202002L`,
-  designated initialization, immediate (`consteval`) evaluation, and
-  `<span>`/`std::span`. Report compiler ID/version and the missing capability
-  in the failure diagnostic. Only clang 22.1.7 plus libc++ 220107 is evidenced
-  by this audit; do not claim untested GCC, AppleClang, MSVC, or version floors
-  solely from this host.
+- The central authority is intentionally top-level rather than propagated by
+  `c4c_target_profile`, because standalone tools and source-audit tests do not
+  consume that library.
+- Only clang 22.1.7 plus libc++ 220107 is evidenced by the current acceptance
+  host; Step 3 must not turn that observation into unsupported portability
+  claims for other compiler families or versions.
 - Preserve the four manual `-std=gnu++20` language-under-test/workflow flags;
   they are outside the host-target migration.
 
 ## Proof
 
-- Supervisor-owned `test_before.log` records the exact Step 1 baseline command:
-  configure/build succeeded and full relevant CTest excluding
-  `llvm_gcc_c_torture` ran 1312 tests with 1272 passed and 40 pre-existing
-  failures. This audit packet did not rewrite the canonical log.
+- `cmake --preset default -DENABLE_C4C_BACKEND=ON && cmake --build --preset default`
+  succeeded with all four C++20 capability probes passing.
+- Compile-command inspection found `-std=c++20` on all 139 generated C++ host
+  commands and no old or extension-mode host standard flag.
+- Focused native proof passed 6/6 tests: `backend_bir_node_kind_schema`,
+  `backend_bir_pipeline_identity`, `frontend_lexer_tests`,
+  `frontend_parser_tests`, `frontend_hir_lookup_tests`, and
+  `frontend_cxx_preprocessor_tests`.
+- Per the delegated Step 2 proof contract, canonical `test_after.log` remains
+  supervisor-owned and was not rewritten by this packet.

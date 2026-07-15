@@ -2,11 +2,6 @@ add_executable(frontend_cxx_preprocessor_tests
     "${CMAKE_CURRENT_SOURCE_DIR}/frontend_cxx_preprocessor_tests.cpp"
 )
 target_link_libraries(frontend_cxx_preprocessor_tests PRIVATE c4c_frontend)
-set_target_properties(frontend_cxx_preprocessor_tests PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
-
 add_test(NAME frontend_cxx_preprocessor_tests COMMAND frontend_cxx_preprocessor_tests)
 set_tests_properties(frontend_cxx_preprocessor_tests PROPERTIES LABELS "internal;preprocessor")
 

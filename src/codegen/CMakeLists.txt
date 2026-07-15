@@ -18,7 +18,6 @@ if(ENABLE_C4C_BACKEND)
 endif()
 target_link_libraries(c4c_codegen PUBLIC c4c_frontend)
 target_compile_definitions(c4c_codegen PUBLIC C4C_ENABLE_BACKEND=$<BOOL:${ENABLE_C4C_BACKEND}>)
-target_compile_features(c4c_codegen PUBLIC cxx_std_17)
 set_target_properties(c4c_codegen PROPERTIES
     PREFIX ""
     OUTPUT_NAME "c4c_codegen"

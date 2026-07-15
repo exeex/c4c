@@ -17,11 +17,6 @@ function(c4c_add_aarch64_cpp_test test_name)
         c4c_backend
     )
   endif()
-  set_target_properties(${test_name}_test PROPERTIES
-      CXX_STANDARD 17
-      CXX_STANDARD_REQUIRED ON
-  )
-
   add_test(
     NAME ${test_name}
     COMMAND $<TARGET_FILE:${test_name}_test>
@@ -38,11 +33,6 @@ function(c4c_add_mir_cpp_test test_name)
   target_link_libraries(${test_name}_test PRIVATE
       c4c_backend
   )
-  set_target_properties(${test_name}_test PROPERTIES
-      CXX_STANDARD 17
-      CXX_STANDARD_REQUIRED ON
-  )
-
   add_test(
     NAME ${test_name}
     COMMAND $<TARGET_FILE:${test_name}_test>

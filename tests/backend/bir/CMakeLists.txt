@@ -7,10 +7,6 @@ target_include_directories(backend_lir_to_bir_interface_test PRIVATE
 target_link_libraries(backend_lir_to_bir_interface_test PRIVATE
     c4c_backend
 )
-set_target_properties(backend_lir_to_bir_interface_test PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
 add_test(
   NAME backend_lir_to_bir_interface
   COMMAND $<TARGET_FILE:backend_lir_to_bir_interface_test>
@@ -27,10 +23,6 @@ target_include_directories(backend_lir_selected_pointer_authority_test PRIVATE
 )
 target_link_libraries(backend_lir_selected_pointer_authority_test PRIVATE
     c4c_backend
-)
-set_target_properties(backend_lir_selected_pointer_authority_test PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
 )
 add_test(
   NAME backend_lir_selected_pointer_authority
@@ -49,10 +41,6 @@ target_include_directories(backend_bir_pipeline_identity_test PRIVATE
 target_link_libraries(backend_bir_pipeline_identity_test PRIVATE
     c4c_backend
 )
-set_target_properties(backend_bir_pipeline_identity_test PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
 add_test(
   NAME backend_bir_pipeline_identity
   COMMAND $<TARGET_FILE:backend_bir_pipeline_identity_test>
@@ -69,10 +57,6 @@ target_include_directories(backend_bir_execution_control_test PRIVATE
 )
 target_link_libraries(backend_bir_execution_control_test PRIVATE
     c4c_backend
-)
-set_target_properties(backend_bir_execution_control_test PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
 )
 add_test(
   NAME backend_bir_execution_control
@@ -91,10 +75,6 @@ target_include_directories(backend_bir_checkpoint_test PRIVATE
 target_link_libraries(backend_bir_checkpoint_test PRIVATE
     c4c_backend
 )
-set_target_properties(backend_bir_checkpoint_test PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
 add_test(
   NAME backend_bir_checkpoint
   COMMAND $<TARGET_FILE:backend_bir_checkpoint_test>
@@ -111,10 +91,6 @@ target_include_directories(backend_bir_node_kind_schema_test PRIVATE
 )
 target_link_libraries(backend_bir_node_kind_schema_test PRIVATE
     c4c_backend
-)
-set_target_properties(backend_bir_node_kind_schema_test PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
 )
 add_test(
   NAME backend_bir_node_kind_schema

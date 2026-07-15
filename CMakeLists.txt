@@ -1,6 +1,55 @@
 cmake_minimum_required(VERSION 3.20)
 project(tiny_c2ll LANGUAGES CXX)
 
+# All in-tree host tools, libraries, and native tests use the same strict C++20
+# dialect. Source-language tests select their own modes independently.
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+include(CheckCXXSourceCompiles)
+
+check_cxx_source_compiles(
+  "static_assert(__cplusplus >= 202002L); int main() { return 0; }"
+  C4C_HAS_CXX20_LANGUAGE_MODE
+)
+check_cxx_source_compiles(
+  "struct Pair { int first; int second; }; int main() { Pair value{.first = 1, .second = 2}; return value.second - 2; }"
+  C4C_HAS_CXX20_DESIGNATED_INITIALIZERS
+)
+check_cxx_source_compiles(
+  "consteval int answer() { return 42; } static_assert(answer() == 42); int main() { return 0; }"
+  C4C_HAS_CXX20_CONSTEVAL
+)
+check_cxx_source_compiles(
+  "#include <span>\nint main() { int values[] = {1, 2}; std::span<int> view{values}; return view.size() == 2 ? 0 : 1; }"
+  C4C_HAS_CXX20_STD_SPAN
+)
+
+set(C4C_MISSING_CXX20_CAPABILITIES)
+if(NOT C4C_HAS_CXX20_LANGUAGE_MODE)
+  list(APPEND C4C_MISSING_CXX20_CAPABILITIES "__cplusplus >= 202002L")
+endif()
+if(NOT C4C_HAS_CXX20_DESIGNATED_INITIALIZERS)
+  list(APPEND C4C_MISSING_CXX20_CAPABILITIES "designated initialization")
+endif()
+if(NOT C4C_HAS_CXX20_CONSTEVAL)
+  list(APPEND C4C_MISSING_CXX20_CAPABILITIES "consteval")
+endif()
+if(NOT C4C_HAS_CXX20_STD_SPAN)
+  list(APPEND C4C_MISSING_CXX20_CAPABILITIES "std::span")
+endif()
+if(C4C_MISSING_CXX20_CAPABILITIES)
+  list(JOIN C4C_MISSING_CXX20_CAPABILITIES ", " C4C_MISSING_CXX20_CAPABILITIES_TEXT)
+  message(FATAL_ERROR
+    "The selected host C++ compiler does not satisfy c4c's required C++20 contract. "
+    "Compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}. "
+    "Missing capabilities: ${C4C_MISSING_CXX20_CAPABILITIES_TEXT}. "
+    "Select a compiler and standard library that provide the complete contract."
+  )
+endif()
+
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
 endif()
@@ -35,7 +84,6 @@ add_library(c4c_target_profile STATIC
 target_include_directories(c4c_target_profile PUBLIC
     "${PROJECT_SOURCE_DIR}/src"
 )
-target_compile_features(c4c_target_profile PUBLIC cxx_std_17)
 
 add_executable(c4cll
     "${PROJECT_SOURCE_DIR}/src/apps/c4cll.cpp"
@@ -45,17 +93,9 @@ if(ENABLE_C4C_BACKEND)
   target_link_libraries(c4cll PRIVATE c4c_backend)
 endif()
 target_compile_definitions(c4cll PRIVATE C4C_ENABLE_BACKEND=$<BOOL:${ENABLE_C4C_BACKEND}>)
-set_target_properties(c4cll PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
 
 add_executable(c4c-objdump
     "${PROJECT_SOURCE_DIR}/src/apps/c4c-objdump.cpp"
-)
-set_target_properties(c4c-objdump PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
 )
 
 
