@@ -5108,6 +5108,73 @@ long long lir_ternary_coerce_result_authority_loss(int condition, long long inpu
       foreign_result, "verifier should reject foreign selected ternary coercion result ID");
 }
 
+void test_complex_coerce_cast_result_authority_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+double _Complex lir_complex_coerce_result_authority(float _Complex input) {
+  return input;
+}
+)c", "x86_64-linux-gnu");
+
+  const auto require_coercions = [](lir::LirModule& module) {
+    lir::LirFunction& function =
+        require_function(module, "lir_complex_coerce_result_authority");
+    std::vector<lir::LirCastOp*> coercions;
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* cast = std::get_if<lir::LirCastOp>(&inst);
+            cast && cast->kind == lir::LirCastKind::FPExt &&
+            cast->from_type == lir::LirTypeRef("float") &&
+            cast->to_type == lir::LirTypeRef("double")) {
+          coercions.push_back(cast);
+        }
+      }
+    }
+    expect_true(coercions.size() == 2,
+                "complex coercion should lower both components through the selected FPExt seam");
+    return coercions;
+  };
+
+  std::vector<lir::LirCastOp*> coercions = require_coercions(lowered);
+  for (const lir::LirCastOp* cast : coercions) {
+    expect_true(cast->requires_native_result_authority && cast->result.value_id() &&
+                    cast->result.value_id()->valid(),
+                "selected complex/coerce FPExt must publish a native result authority");
+  }
+  lir::verify_module(lowered);
+
+  lir::LirModule missing_result = lowered;
+  require_coercions(missing_result).front()->result = lir::LirOperand{};
+  expect_identity_verification_rejected(
+      missing_result,
+      "verifier should reject selected complex/coerce FPExt without result authority");
+
+  lir::LirModule invalid_result = lowered;
+  require_coercions(invalid_result).front()->result =
+      lir::LirOperand::ssa("%invalid.complex.coerce", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_result,
+      "verifier should reject invalid selected complex/coerce FPExt result ID");
+
+  lir::LirModule duplicate_result = lowered;
+  std::vector<lir::LirCastOp*> duplicate_coercions = require_coercions(duplicate_result);
+  duplicate_coercions[1]->result = lir::LirOperand::ssa(
+      "%duplicate.complex.coerce", *duplicate_coercions[0]->result.value_id());
+  expect_identity_verification_rejected(
+      duplicate_result,
+      "verifier should reject duplicate selected complex/coerce FPExt result ID");
+
+  lir::LirModule foreign_result = lowered;
+  foreign_result.functions.push_back(
+      make_identity_test_function("complex_coerce_foreign_owner", lir::LirValueId{99}));
+  require_coercions(foreign_result).front()->result =
+      lir::LirOperand::ssa("%foreign.complex.coerce", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      foreign_result,
+      "verifier should reject foreign selected complex/coerce FPExt result ID");
+}
+
 void test_postfix_increment_ternary_phi_incoming_authority() {
   namespace lir = c4c::codegen::lir;
 
@@ -8939,6 +9006,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_floating_binary_result_use_identity_boundary();
   test_scalar_cast_result_use_identity_boundary();
   test_ternary_coerce_result_authority_boundary();
+  test_complex_coerce_cast_result_authority_boundary();
   test_postfix_increment_ternary_phi_incoming_authority();
   test_pointer_postfix_and_compound_gep_result_authority();
   test_floating_unary_minus_ternary_phi_incoming_authority();

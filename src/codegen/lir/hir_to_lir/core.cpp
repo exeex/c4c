@@ -1653,6 +1653,19 @@ std::string StmtEmitter::coerce(FnCtx& ctx, const std::string& val, const TypeSp
   const std::string tt = llvm_value_ty(mod_, to_ts);
   const TypeBase from_scalar_base = llvm_storage_base(from_ts);
   const TypeBase to_scalar_base = llvm_storage_base(to_ts);
+  const auto emit_native_scalar_cast = [&](lir::LirCastKind kind,
+                                           const std::string& destination_type) {
+    const lir::LirOperand result = fresh_value(ctx);
+    emit_lir_op(ctx, lir::LirCastOp{
+                        .result = result,
+                        .kind = kind,
+                        .from_type = lir::LirTypeRef(ft),
+                        .operand = lir::LirOperand::raw(val),
+                        .to_type = lir::LirTypeRef(destination_type),
+                        .requires_native_result_authority = true,
+                    });
+    return result.str();
+  };
   if (tt == "ptr" && val == "0") return "null";
   if (ft == tt) return val;
   if (ft == "ptr" && tt == "ptr") return val;
@@ -1714,10 +1727,9 @@ std::string StmtEmitter::coerce(FnCtx& ctx, const std::string& val, const TypeSp
     return out;
   }
 
-  if (ft == "i1" && tt != "ptr" && tt != "void") {
-    const std::string tmp = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::ZExt, "i1", val, tt});
-    return tmp;
+  if (ft == "i1" && to_ts.ptr_level == 0 && to_ts.array_rank == 0 &&
+      !is_vector_value(to_ts) && is_any_int(to_ts.base)) {
+    return emit_native_scalar_cast(lir::LirCastKind::ZExt, tt);
   }
 
   if (from_ts.ptr_level == 0 && from_ts.array_rank == 0 && to_ts.ptr_level == 0 &&
@@ -1725,46 +1737,43 @@ std::string StmtEmitter::coerce(FnCtx& ctx, const std::string& val, const TypeSp
     const int fb = int_bits(from_scalar_base);
     const int tb = int_bits(to_scalar_base);
     if (fb == tb) return val;
-    const std::string tmp = fresh_tmp(ctx);
     if (tb > fb) {
       const auto kind =
           is_signed_int(from_scalar_base) ? lir::LirCastKind::SExt
                                           : lir::LirCastKind::ZExt;
-      emit_lir_op(ctx, lir::LirCastOp{tmp, kind, ft, val, tt});
+      return emit_native_scalar_cast(kind, tt);
     } else {
-      emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::Trunc, ft, val, tt});
+      return emit_native_scalar_cast(lir::LirCastKind::Trunc, tt);
     }
-    return tmp;
   }
 
-  if (is_float_base(from_ts.base) && is_float_base(to_ts.base)) {
+  if (from_ts.ptr_level == 0 && from_ts.array_rank == 0 &&
+      to_ts.ptr_level == 0 && to_ts.array_rank == 0 &&
+      !is_vector_value(from_ts) && !is_vector_value(to_ts) &&
+      is_float_base(from_ts.base) && is_float_base(to_ts.base)) {
     const int fb = (from_ts.base == TB_FLOAT) ? 32 : (from_ts.base == TB_LONGDOUBLE ? 128 : 64);
     const int tb = (to_ts.base == TB_FLOAT) ? 32 : (to_ts.base == TB_LONGDOUBLE ? 128 : 64);
     if (fb == tb) return val;
-    const std::string tmp = fresh_tmp(ctx);
     const auto kind = (tb > fb) ? lir::LirCastKind::FPExt : lir::LirCastKind::FPTrunc;
-    emit_lir_op(ctx, lir::LirCastOp{tmp, kind, ft, val, tt});
-    return tmp;
+    return emit_native_scalar_cast(kind, tt);
   }
 
-  if (is_any_int(from_ts.base) && from_ts.ptr_level == 0 && is_float_base(to_ts.base) &&
-      to_ts.ptr_level == 0 && to_ts.array_rank == 0) {
-    const std::string tmp = fresh_tmp(ctx);
+  if (is_any_int(from_ts.base) && from_ts.ptr_level == 0 && from_ts.array_rank == 0 &&
+      !is_vector_value(from_ts) && is_float_base(to_ts.base) &&
+      to_ts.ptr_level == 0 && to_ts.array_rank == 0 && !is_vector_value(to_ts)) {
     const auto kind =
         is_signed_int(from_scalar_base) ? lir::LirCastKind::SIToFP
                                         : lir::LirCastKind::UIToFP;
-    emit_lir_op(ctx, lir::LirCastOp{tmp, kind, ft, val, tt});
-    return tmp;
+    return emit_native_scalar_cast(kind, tt);
   }
 
   if (is_float_base(from_ts.base) && from_ts.ptr_level == 0 && from_ts.array_rank == 0 &&
-      is_any_int(to_ts.base) && to_ts.ptr_level == 0) {
-    const std::string tmp = fresh_tmp(ctx);
+      !is_vector_value(from_ts) && is_any_int(to_ts.base) &&
+      to_ts.ptr_level == 0 && to_ts.array_rank == 0 && !is_vector_value(to_ts)) {
     const auto kind =
         is_signed_int(to_scalar_base) ? lir::LirCastKind::FPToSI
                                       : lir::LirCastKind::FPToUI;
-    emit_lir_op(ctx, lir::LirCastOp{tmp, kind, ft, val, tt});
-    return tmp;
+    return emit_native_scalar_cast(kind, tt);
   }
 
   if (ft == "ptr" && (from_ts.is_lvalue_ref || from_ts.is_rvalue_ref) && to_ts.ptr_level == 0 &&
@@ -1774,15 +1783,13 @@ std::string StmtEmitter::coerce(FnCtx& ctx, const std::string& val, const TypeSp
     return tmp;
   }
 
-  if (ft == "ptr" && is_any_int(to_ts.base)) {
-    const std::string tmp = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::PtrToInt, "ptr", val, tt});
-    return tmp;
+  if (ft == "ptr" && is_any_int(to_ts.base) && to_ts.ptr_level == 0 &&
+      to_ts.array_rank == 0 && !is_vector_value(to_ts)) {
+    return emit_native_scalar_cast(lir::LirCastKind::PtrToInt, tt);
   }
-  if (is_any_int(from_ts.base) && tt == "ptr") {
-    const std::string tmp = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::IntToPtr, ft, val, "ptr"});
-    return tmp;
+  if (is_any_int(from_ts.base) && from_ts.ptr_level == 0 && from_ts.array_rank == 0 &&
+      !is_vector_value(from_ts) && tt == "ptr") {
+    return emit_native_scalar_cast(lir::LirCastKind::IntToPtr, "ptr");
   }
 
   return val;
