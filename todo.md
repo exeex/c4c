@@ -1,29 +1,31 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md
+Source Idea Path: ideas/open/782_lir_vaarg_phi_input_result_identity_publication.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Publish and verify typed PHI incoming authority
+Current Step Title: Publish native vaarg PHI-helper input fields
 
 ## Just Finished
 
-- Closed 775 capability-complete for native ternary, logical-RHS, and vaarg
-  helper-producer result authority, and activated 751 at its preserved Step 1.
+- Lifecycle switch: 751 Step 1 is parked pending this bounded vaarg helper-input
+  identity prerequisite; no 751 implementation packet or after-proof was
+  accepted.
 
 ## Suggested Next
 
-- Begin Plan Step 1 using the closed 775 producer-field handoff; retain the
-  work at the `LirPhiOp` carrier and verifier seam.
+- Begin Plan Step 1 by tracing the native defining operations for all raw inputs
+  to the AArch64 GP, AArch64 FP, and AMD64 vaarg PHI constructors.
 
 ## Watchouts
 
-- Do not recover identity from `%t` names, labels, rendered LLVM, instruction
-  order, or testcase text.
-- Do not reopen generic helper result publication or extend into Raw-BIR,
-  backend, target lowering, MIR, or emission.
+- `LirVaArgOp.result` is a later result and does not identify helper PHI inputs.
+- Do not change `LirPhiOp`, PHI verification, predecessor/edge authority,
+  Raw-BIR/importer, backend, target lowering, MIR, or emission.
+- Do not recover IDs from names, labels, rendered text, instruction order, or
+  testcase text; do not introduce side tables or result-name maps.
 
 ## Proof
 
-- See Plan Step 1 completion check. Supervisor selects canonical regression
-  logs and broader acceptance proof.
+- Plan Step 2 requires a fresh build and focused three-constructor vaarg
+  result-authority proof. The supervisor selects any broader acceptance proof.

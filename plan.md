@@ -1,77 +1,92 @@
-# LIR PHI Incoming Authority Runbook
+# LIR Vaarg PHI Input Identity Runbook
 
 Status: Active
-Source Idea: ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md
-Activated from: closed `ideas/closed/775_lir_phi_producer_helper_result_identity.md`.
+Source Idea: ideas/open/782_lir_vaarg_phi_input_result_identity_publication.md
+Supersedes: active 751 Step 1 pending this bounded prerequisite.
 
 ## Purpose
 
-Make `LirPhiOp` incoming entries retain structured value and predecessor-block
-authority now that the bounded ternary, logical-RHS, and vaarg producer facts
-are available.
+Give 751 native value authority for the intermediate vaarg values that already
+feed its three existing PHI constructors, without changing the PHI consumer.
 
 ## Goal
 
-Replace or augment raw PHI incoming `(value, label)` compatibility pairs with
-native current-function `LirOperand` value authority and `LirBlockId`
-predecessor authority, without recovering either from display text.
+Publish native, current-function typed result/value identity for every existing
+vaarg PHI helper input before its compatibility spelling is consumed.
 
 ## Core Rule
 
-PHI incoming values and predecessors are semantic authority. `%t` names,
-labels, rendered LLVM, instruction order, and testcase names are never
-recovery inputs.
+The helper-input field is semantic authority. Textual result names, labels,
+rendered LLVM, instruction order, and testcase identity are never recovery
+inputs; closed 775's `LirVaArgOp.result` is not a substitute for it.
 
 ## Read First
 
+- `ideas/open/782_lir_vaarg_phi_input_result_identity_publication.md`
 - `ideas/open/751_lir_phi_incoming_value_and_predecessor_identity.md`
-- `ideas/closed/775_lir_phi_producer_helper_result_identity.md`
-- `ideas/closed/750_lir_cfg_terminator_block_identity_completion.md`
-- active `LirPhiOp` producers, verifier, and focused PHI coverage
+- closed `ideas/closed/775_lir_phi_producer_helper_result_identity.md`
+- `src/codegen/lir/hir_to_lir/call/vaarg.cpp`
+- `src/codegen/lir/hir_to_lir/call/vaarg_amd64.cpp`
 
 ## Non-Goals
 
-- no helper-producer, generic expression API, Raw-BIR/importer, backend,
-  target-lowering, MIR, or emission work
-- no terminator successor publication; closed 750 owns that completed contract
-- no parsing of value names, labels, printer text, rendered LLVM, or test text
+- Do not change `LirPhiOp`, its verifier, predecessor/edge authority,
+  Raw-BIR/importer, backend, target lowering, MIR, or emission.
+- Do not broaden into other vaarg paths, generic expression APIs, side tables,
+  result-name maps, or text recovery.
 
 ## Execution Rules
 
-1. Start from the accepted 775 handoff: `LirVaArgOp.result`, the selected
-   logical RHS `LirCastOp.result`, and both selected ternary-arm
-   `LirCastOp.result` fields are authoritative producer facts, not text.
-2. Keep the repair in the `LirPhiOp` carrier and verification seam while
-   retaining rendering compatibility.
-3. Fail closed for missing, unknown, cross-function, and predecessor/edge
-   incoherent authority.
-4. Prove a fresh build and focused positive/malformed PHI coverage before the
-   supervisor selects broader or full baseline acceptance.
+1. Keep native helper-input result fields current-function-owned and adjacent
+   to the operations that define the PHI input values.
+2. Preserve raw spelling only as rendering compatibility after authority is
+   available.
+3. Fail closed for missing, invalid, duplicate, and foreign authority.
+4. Cover all three existing constructors: AArch64 GP, AArch64 FP, and AMD64.
+5. Do not assert PHI carrier/verifier completion; the only downstream handoff
+   is the named input fields needed when 751 resumes Step 1.
 
 ## Ordered Steps
 
-### Step 1 - Publish and verify typed PHI incoming authority
+### Step 1 - Publish native vaarg PHI-helper input fields
 
-Goal: replace or augment raw PHI incoming `(value, label)` facts with checked
-structured current-function value and predecessor-block authority.
+Goal: make each existing vaarg PHI input retain its native typed,
+current-function result/value identity before the PHI construction site.
 
 Primary targets:
 
-- `LirPhiOp` representation and verifier
-- active ternary, logical short-circuit, and vaarg PHI producers
-- nearby focused positive and malformed-authority coverage
+- `src/codegen/lir/hir_to_lir/call/vaarg.cpp`
+- `src/codegen/lir/hir_to_lir/call/vaarg_amd64.cpp`
+- the smallest shared LIR helper-result seam required by those inputs
 
 Actions:
 
-- trace the accepted producer IDs to each raw PHI creation site and retain
-  them structurally with predecessor block IDs;
-- verify ownership, predecessor existence, and predecessor/edge coherence
-  before printing or downstream use;
-- retain the current rendered form as compatibility only; and
-- add nearby positive and malformed cases for all three producer families.
+- trace every raw input to the AArch64 GP, AArch64 FP, and AMD64 vaarg PHI
+  constructors to its defining helper operation;
+- add or forward only native typed fields needed for those inputs, retaining
+  compatibility spelling without recovering from it; and
+- reject absent, invalid, duplicate, and foreign current-function authority at
+  the existing producer-verification seam.
 
 Completion check:
 
-- a fresh build and focused PHI production/malformed proof pass with unknown,
-  cross-function, missing, and edge-mismatched authority rejected; publish the
-  bounded typed PHI contract to 734 without claiming Raw-BIR receiver work.
+- every existing vaarg PHI input has a native current-function typed helper
+  result field; no `LirPhiOp`, predecessor/edge, or downstream change occurs.
+
+### Step 2 - Prove the bounded handoff and return to 751
+
+Goal: demonstrate structural authority for all three vaarg PHI constructors
+and publish the exact consumer handoff.
+
+Actions:
+
+- add nearby positive and malformed coverage for AArch64 GP, AArch64 FP, and
+  AMD64 input chains;
+- run a fresh build and the focused vaarg/result-authority proof; and
+- record the accepted field names, covered constructors, proof, and commit for
+  751 without claiming its PHI carrier/verifier work.
+
+Completion check:
+
+- the supervisor accepts fresh focused proof for all three constructors and
+  751 can be reactivated at its recorded Step 1.
