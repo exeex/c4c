@@ -1,6 +1,6 @@
 # BIR NodeKind Tag Algebra and Phase Vocabulary
 
-Status: Normative contract in progress (idea 801, Step 2)
+Status: Normative contract and bounded production convergence proof complete
 
 ## 1. Authority, scope, and terminology
 
@@ -13,9 +13,8 @@ groups. There is no free-form bag of boolean properties.
 
 The schema entry is the sole authority for kind classification. A descriptor,
 compile-time trait, runtime query, verifier check, or pass admission test is a
-derived view of that entry, never an independent table. The query mechanics
-are intentionally pending Step 3; this step fixes the meanings they must
-preserve.
+derived view of that entry, never an independent table. The landed query
+mechanics described in Sections 11 and 16 preserve these meanings.
 
 Terms used below are normative:
 
@@ -986,7 +985,9 @@ machine identity is required.
 ## 15. Normative conformance review
 
 Status of this artifact: **normative review complete**. Status of production
-convergence: **partial; Step 7 proof required**.
+convergence: **complete for idea 801's bounded schema/query proof**. Commit
+`2f569b624` lands the proof, and matching supervisor-owned backend regression
+evidence passes 6/6 before and 6/6 after with zero new failures.
 
 ### 15.1 Acceptance-criterion map
 
@@ -998,9 +999,9 @@ convergence: **partial; Step 7 proof required**.
 | Explicit B/C/D/E/F admitted sets and complete boundary matrix | Section 12 defines closed groups and all B-to-C, C-to-D, D-to-E, and E-to-F rows with tag deltas and outcomes. |
 | Identity preservation versus replacement/projection | Section 13 defines the eight-condition gate and every retain/lower/insert/delete/expand/project/split/merge consequence. |
 | Publication verifier obligations and no catch-all | Sections 12.11 and 14 define common plus Raw/Canonical/Prepared/Pseudo/Allocated/MIR-ready rejection gates. |
-| Resolve flat descriptor, missing SSA algebra, and all-stage default | Sections 2-11 replace flat facts normatively with validated axes and explicit admission; Section 16 requires production convergence proof. |
+| Resolve flat descriptor, missing SSA algebra, and all-stage default | Sections 2-11 replace flat facts normatively with validated axes and explicit admission; Section 16 records the landed production convergence proof. |
 | Ready as normative input to idea 732 | Section 16.2 names its later mandatory adoption contract without editing or activating 732. |
-| Bounded proof across semantic/prepared/pseudo/machine categories | Sections 10 and 11.6 bound the representatives; Section 16.1 defines the exact code/test seam. |
+| Bounded proof across semantic/prepared/pseudo/machine categories | Sections 10 and 11.6 bound the representatives; Section 16.1 records the exact landed code/test seam and accepted proof. |
 | No storage/pass/importer/allocation/MIR scope expansion | Sections 1, 12.1, and 13 retain shared storage and separate products; the artifact contains no implementation or enum/pass inventory. |
 
 ### 15.2 Reject-signal audit
@@ -1028,8 +1029,9 @@ The reviewed artifact rejects every source-idea reject class:
 - **testcase shaping or weak proof:** Sections 10, 11.6, and 16.1 use bounded
   semantic categories, negative schema cases, and compile/runtime agreement,
   never named-case production matching or expectation downgrades;
-- **documentation-only completion claims:** this review explicitly marks
-  production convergence partial and requires Step 7;
+- **documentation-only completion claims:** commit `2f569b624` supplies the
+  bounded production registry/query implementation and nearby positive and
+  negative proof required by Section 16.1;
 - **scope drift:** the matrices describe contracts but do not implement phases,
   rewrite `Node`/arena/storage, normalize all results, change importer/734,
   implement allocation/MIR/emission, reopen 746, or edit/activate 732.
@@ -1039,56 +1041,41 @@ shared storage being mistaken for semantic pass-through.
 
 ## 16. Production convergence decision and adoption
 
-### 16.1 Step 7 is required
+### 16.1 Step 7 bounded proof landed
 
-Documentation alone cannot honestly close idea 801. Current production code
-still exposes flat `NodeKindDescriptor` fields, repeats the current 16-kind
-runtime dispatch inventory for descriptor and payload queries, has no closed
-value/SSA/non-SSA tag algebra or stage-qualified SSA query, and assigns every
-current specialization the same Raw/Canonical/Prepared `all_node_stages` mask.
-Those are precisely the landed limitations this contract claims to resolve.
+Commit `2f569b624` resolves the audited production limitations with the bounded
+feasibility/convergence seam required by this contract:
 
-Step 7 therefore must land one bounded feasibility/convergence proof with this
-exact seam:
+- **Production scope:** only the existing core schema/query surface and nearby
+  schema test changed. No pass, graph/storage, importer, allocation, MIR, or
+  phase implementation entered the slice.
+- **One inventory:** every current production `NodeKind` appears exactly once
+  in one validated C++17 registry. Compile-time schema access, runtime
+  descriptor lookup, payload admission, and named helpers derive from it;
+  duplicate hand-maintained runtime inventories were removed.
+- **Validated facts and stages:** all 16 current kinds have complete bounded
+  axis facts and explicit admission over Raw, Canonical, Prepared,
+  PseudoPreallocation, Allocated, and MirReadyMachine. Unknown kinds/stages,
+  invalid combinations, and premature pseudo/allocated/machine admission fail
+  closed; no all-stage default is inferred.
+- **Stable queries and SSA boundary:** compile-time and runtime tag/admission
+  queries agree, named value/SSA/effect/control/MIR helpers derive from the
+  registry, and SSA eligibility remains stage-qualified static classification,
+  never a claim of B4 graph validity.
+- **Bounded representatives:** production coverage uses existing `Binary`,
+  `Store`, and `Phi`; Prepared, pseudo, and machine/MIR-ready feasibility
+  categories remain non-production test fixtures rather than speculative enum
+  kinds.
+- **Negative and regression proof:** nearby tests cover invalid combinations,
+  registry completeness, unknown runtime inputs, illegal stage admission,
+  payload/arity mismatch, and compile-time/runtime agreement. The accepted
+  matching backend proof passes 6/6 both before and after, with zero new
+  failures.
 
-- **Production files:** only the existing core schema declaration/inline-query
-  surface needed for the authority, plus its existing nearby schema test;
-  build-list edits are allowed only if mechanically required to compile that
-  test. No pass, graph/storage, importer, allocation, MIR, or phase code.
-- **One inventory:** represent every currently production-admitted `NodeKind`
-  exactly once in one hidden C++17 constexpr registry or internal X-macro-fed
-  registry. Derive compile-time schema access, runtime descriptor lookup,
-  payload admission, and named helpers from it; delete the duplicated
-  hand-maintained runtime kind inventories.
-- **Validated facts:** give every current kind a structurally complete schema
-  entry and compile-time relational validation. Preserve compatible landed
-  payload/arity/effect behavior; do not use a default schema or infer all-stage
-  admission.
-- **Stage convergence:** make Raw, Canonical, Prepared,
-  PseudoPreallocation, Allocated, and MirReadyMachine closed stage values;
-  explicitly declare each current kind's admitted subset. Existing semantic
-  kinds may be Prepared-admitted by immutable reference where Section 12 says
-  so, but must reject premature pseudo/allocated/machine admission.
-- **Stable queries:** prove generic compile-time tag/admission queries and
-  runtime tag/admission wrappers plus named value/SSA/effect/control/MIR
-  helpers. SSA queries must be stage-qualified unless invariance is validated;
-  none may claim B4 graph validity.
-- **Bounded representatives:** production semantic coverage uses existing
-  `Binary`, `Store`, and `Phi`. Prepared, pseudo, and machine/MIR-ready
-  feasibility categories remain non-production test/constexpr fixtures; do not
-  add speculative future enum kinds.
-- **Negative proof:** cover invalid tag combinations, incomplete/duplicate
-  registry entries where compile-fail/static validation can express them,
-  unknown runtime kind/tag/stage, illegal stage admission, payload/arity
-  mismatch, and compile-time/runtime agreement across representatives.
-- **Validation ladder:** fresh build of the affected target, the focused BIR
-  node-kind schema test, then the supervisor-selected matching shared-backend
-  checkpoint. No expectation downgrade or supported-to-unsupported change.
-
-Step 7 is a schema/query proof, not implementation of the Section 12 phase
-groups or matrices. If feasibility exposes a contradiction, stop and repair
-the normative contract through lifecycle ownership rather than adding a second
-authority or broadening code scope.
+The landed Step 7 slice is a schema/query proof, not implementation of the
+Section 12 phase groups or matrices. Future feasibility contradictions still
+require lifecycle-owned repair of this normative contract rather than a second
+authority or broader code scope.
 
 ### 16.2 Later mandatory adoption by idea 732
 
@@ -1101,8 +1088,13 @@ products but must not redefine the taxonomy, helper semantics, cross-phase
 outcomes, or catch-all policy. This requirement does not revise, activate, or
 execute idea 732 in the current lifecycle.
 
-## 17. Pending completion handoff
+## 17. Completion handoff
 
-Step 7 must land the bounded proof above. Step 8 then maps landed code/tests and
-this normative artifact to every acceptance criterion before plan-owner makes
-the explicit lifecycle close decision.
+The normative contract and bounded production convergence proof now map to
+every idea 801 acceptance criterion. Commit `2f569b624` is the landed code/test
+evidence; matching supervisor-owned backend logs pass 6/6 before and after,
+with zero new failures. Structural review found one registry authority,
+explicit fail-closed stage admission, no implicit pass-through, no testcase
+shaping, and no storage, pass, importer, allocation, MIR, idea 746, or idea 732
+scope drift. This evidence is ready for plan-owner's explicit lifecycle close
+decision; it does not itself revise or activate idea 732.

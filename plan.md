@@ -217,6 +217,9 @@ Goal: prove the contract is complete before lifecycle closure is considered.
 Actions:
 
 - map the artifact and any bounded proof to every source acceptance criterion;
+- update the normative artifact's own status and completion handoff so it
+  records the landed Step 7 proof instead of still claiming that proof is
+  pending;
 - inspect the final diff for duplicate authority, implicit pass-through,
   weaker contracts, testcase shaping, and scope drift;
 - run documentation/structural checks and the supervisor-selected code proof

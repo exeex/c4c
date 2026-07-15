@@ -3,38 +3,26 @@
 Status: Active
 Source Idea Path: ideas/open/801_bir_node_kind_tag_algebra_and_phase_vocabulary_lowering_contract.md
 Source Plan Path: plan.md
-Current Step ID: 7
-Current Step Title: Land the bounded schema/query proof if required
+Current Step ID: 8
+Current Step Title: Verify source completion and hand off
 
 ## Just Finished
 
-- Completed `plan.md` Step 7 as the bounded C++17 convergence proof.
-- `NodeKind::Count` and one hidden ordered constexpr registry now provide the
-  complete current 16-kind inventory. Each entry owns the legacy-compatible
-  descriptor projection, bounded value/SSA/family/refinement/effect/control/
-  stage/shape/type/payload/MIR facts, and its closed payload predicate.
-- Namespace-scope constexpr validation proves registry size/order/completeness,
-  non-null payload mechanics, known axis values, arity/result/type/SSA
-  relations, refinement constraints, explicit non-empty stage admission/owner,
-  family-stage rules, and MIR constraints before queries instantiate.
-- Compile-time schema/tag/admission and stage-qualified SSA helpers plus runtime
-  wrappers derive from that registry. Named value/memory/call/terminator/read/
-  write/trap/expansion/allocation/machine helpers are derived facts and do not
-  claim B4 graph validity.
-- Removed both repeated 16-kind runtime switch inventories. Descriptor lookup,
-  payload acceptance, arity checks, and classification now consume one entry.
-  Current kinds explicitly admit Raw/Canonical and immutable-reference
-  Prepared, while rejecting PseudoPreallocation/Allocated/MirReadyMachine.
-- Extended the nearby schema test with compile/runtime agreement for
-  `Binary`, `Store`, and `Phi`; stage admission/rejection; unknown kind/tag/
-  stage; payload/arity mismatch; inventory validation; invalid combinations;
-  and non-production constexpr Prepared/Pseudo/Machine fixture schemas. No
-  speculative production kinds or phase/pass/storage code was added.
+- Step 8 updated the normative artifact's status, conformance review,
+  production-convergence record, and completion handoff to cite landed commit
+  `2f569b624` rather than claiming Steps 2, 3, or 7 remain pending.
+- The final handoff maps the single validated 16-kind registry, derived
+  compile/runtime queries, explicit fail-closed stage admission, bounded
+  fixtures, and accepted matching backend evidence: 6/6 before, 6/6 after,
+  zero new failures.
+- Focused structural searches and `git diff --check` pass; the normative
+  contract remains unchanged and no code, test, source idea, plan, lifecycle
+  placement, or idea 732 content was edited by this packet.
 
 ## Suggested Next
 
-- Execute only Step 8: map final artifact/code/test evidence to every source
-  criterion and hand it to plan-owner for the explicit close decision.
+- Return the completed Step 8 evidence to plan-owner for the explicit idea 801
+  close decision. No further C++ change or phase implementation is required.
 
 ## Watchouts
 
@@ -50,3 +38,6 @@ Current Step Title: Land the bounded schema/query proof if required
   '^backend_' > test_after.log`.
 - Backend subset: 6/6 passed, including `backend_bir_node_kind_schema`.
 - Proof log: `test_after.log`.
+- Matching regression guard: PASS; before 6/6, after 6/6, no new failures.
+- Documentation checks: `git diff --check` and focused stale-status/pending-step
+  searches passed.
