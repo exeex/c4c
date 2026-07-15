@@ -7227,6 +7227,46 @@ int call_helper(int value) { return helper(value); }
               "printer should not trust a corrupted raw direct-call operand");
 }
 
+void test_hir_direct_complex_call_unary_extract_keeps_aggregate_ssa_authority() {
+  const c4c::hir::Module hir_module = lower_hir_module(R"cpp(
+extern __complex__ float complex_source(int value);
+
+float extract_real(int value) {
+  return __real__ complex_source(value);
+}
+
+float extract_imag(int value) {
+  return __imag__ complex_source(value);
+}
+)cpp");
+  const c4c::codegen::lir::LirModule lir_module = c4c::codegen::lir::lower(hir_module);
+
+  for (const std::string_view name : {"extract_real", "extract_imag"}) {
+    const auto function = std::find_if(
+        lir_module.functions.begin(), lir_module.functions.end(),
+        [&](const c4c::codegen::lir::LirFunction& candidate) { return candidate.name == name; });
+    expect_true(function != lir_module.functions.end() && !function->blocks.empty(),
+                "complex unary extract fixture should emit its caller function");
+
+    const c4c::codegen::lir::LirCallOp* aggregate_call = nullptr;
+    const c4c::codegen::lir::LirExtractValueOp* extract = nullptr;
+    for (const auto& inst : function->blocks.front().insts) {
+      if (const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst);
+          call && call->return_type.kind() == c4c::codegen::lir::LirTypeKind::Struct) {
+        aggregate_call = call;
+      }
+      if (const auto* candidate = std::get_if<c4c::codegen::lir::LirExtractValueOp>(&inst)) {
+        extract = candidate;
+      }
+    }
+    expect_true(aggregate_call != nullptr && aggregate_call->result.value_id() != nullptr &&
+                    extract != nullptr && extract->agg.value_id() != nullptr &&
+                    *aggregate_call->result.value_id() == *extract->agg.value_id() &&
+                    aggregate_call->result.str() == extract->agg.str(),
+                "direct complex call and unary extractvalue must retain one native aggregate SSA authority");
+  }
+}
+
 void test_lir_printer_resolves_extern_decl_link_names_at_emission_boundary() {
   c4c::codegen::lir::LirModule lir_module = make_link_name_aware_lir_module();
 
@@ -8173,6 +8213,7 @@ int main() {
   test_lir_printer_resolves_link_names_at_emission_boundary();
   test_lir_printer_resolves_specialization_metadata_link_names();
   test_lir_printer_resolves_direct_call_link_names_at_emission_boundary();
+  test_hir_direct_complex_call_unary_extract_keeps_aggregate_ssa_authority();
   test_lir_printer_resolves_extern_decl_link_names_at_emission_boundary();
   test_hir_preserves_c4c_builtin_vrm_carrier_types();
   test_inline_asm_string_literal_plus_folds_to_literal_metadata();

@@ -3,46 +3,40 @@
 Status: Active
 Source Idea Path: ideas/open/798_lir_operand_provenance_authority_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Propagate checked SSA operand provenance
+Current Step ID: 3
+Current Step Title: Prove and publish the 754 handoff
 
 ## Just Finished
 
-- Completed Plan Step 2. A `require_direct_aggregate_ssa` opt-in reaches only
-  a direct structured aggregate/composite call consumed by unary `BitNot`,
-  `RealPart`, or `ImagPart`. That selected call now uses `fresh_value(ctx)`;
-  its existing `LirOperand` carrier reaches `emit_unary_rval_operand` and is
-  passed directly as `LirExtractValueOp.agg`. The old string payload API is a
-  wrapper, and unselected expression paths retain their raw compatibility path.
-- `verify_function_value_ownership` checks an authoritative extract aggregate
-  against the current function: SSA alternative, known definition, matching
-  `LirCallOp` result ID and structured return/aggregate type, plus an exact
-  display mirror. Existing definition collection rejects missing, unknown,
-  duplicate, and foreign IDs; no display text selects or repairs authority.
-  The gate now enters on `SsaValue` kind itself and explicitly rejects an SSA
-  spelling with missing or invalid `LirValueId`; raw legacy operands remain
-  compatibility paths outside this opt-in check.
-  No `LirExtractValueOp` schema/result/index work, backend receiver work, or
-  tests changed.
+- Completed Plan Step 3. Focused HIR-to-LIR coverage lowers direct
+  `__complex__ float` calls consumed by both `__real__` and `__imag__`; each
+  observed `LirExtractValueOp.agg` carries the same native `LirValueId` and
+  display mirror as its aggregate `LirCallOp.result`.
+- Focused verifier coverage starts from that structured aggregate call/extract
+  shape and rejects an SSA spelling with no ID, unknown/foreign authority,
+  stale/misleading display, and return-type-incoherent `agg_type`. The accepted
+  754-consumable contract is: an opt-in direct composite call defines
+  `LirOperand::ssa(display, LirValueId)`; unary real/imag extraction forwards
+  that exact operand as `agg`; the ID must resolve to the same current-function
+  call result with equal structured return/aggregate `LirTypeRef`, and display
+  is only a checked mirror. Raw legacy operands remain compatibility paths;
+  no text recovery, schema/result/index, Raw-BIR, or receiver work was added.
 
 ## Suggested Next
 
-- Step 3 only: add focused positive and malformed same-feature proof for the
-  direct aggregate-call/unary-extract carrier, then publish the exact 754
-  handoff contract.
+- Lifecycle handoff only: have the plan owner accept this completed blocker,
+  reactivate 754 at its unchanged Step 2, and consume the published aggregate
+  operand contract there.
 
 ## Watchouts
 
-- Do not widen the opt-in call/unary route into generic expression authority,
-  add `LirExtractValueOp` result/use fields, or recover an ID from a
-  `std::string`; 754 remains blocked until Step 3 proof accepts this handoff.
+- 798 does not publish `LirExtractValueOp` row result/index semantics. 754
+  owns its unchanged Step 2; it may consume only this checked aggregate operand
+  carrier and must not recover authority from text.
 
 ## Proof
 
 - `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^backend_' > test_after.log` passed: build succeeded
-  and the selected backend subset passed 5/5 (rerun after missing-authority
-  repair). `test_after.log` is the proof log. AST trace used
-  `c4c-clang-tool-ccdb` signature/caller/callee queries;
-  cross-TU caller queries reported targets outside the queried TU, then the
-  named source seams were read directly.
+  --output-on-failure -R '^(backend_|frontend_hir_tests$)' > test_after.log`
+  passed: build succeeded and the selected frontend/backend subset passed 6/6.
+  `test_after.log` is the proof log.

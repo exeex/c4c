@@ -6884,6 +6884,50 @@ int expect_rv64_anonymous_aggregate_return_extractvalue_publishes_lane_facts() {
   return 0;
 }
 
+int expect_extractvalue_aggregate_ssa_authority_rejects_malformed_forms() {
+  const auto rejects = [](auto mutate, const char* message) {
+    LirModule module = make_rv64_anonymous_aggregate_return_extractvalue_module();
+    auto& insts = module.functions.front().blocks.front().insts;
+    auto& call = std::get<LirCallOp>(insts.front());
+    auto& extract = std::get<LirExtractValueOp>(insts[1]);
+    call.result = LirOperand::ssa("%t0", lir::LirValueId{41});
+    extract.agg = LirOperand::ssa("%t0", lir::LirValueId{41});
+    try {
+      lir::verify_module(module);
+    } catch (const lir::LirVerifyError&) {
+      return fail("well-formed extractvalue aggregate SSA authority must verify");
+    }
+    mutate(module, call, extract);
+    try {
+      lir::verify_module(module);
+      return fail(message);
+    } catch (const lir::LirVerifyError&) {
+      return 0;
+    }
+  };
+
+  if (const int status = rejects(
+          [](auto&, auto&, auto& extract) {
+            extract.agg = LirOperand("%t0", lir::LirOperandKind::SsaValue);
+          }, "missing extractvalue aggregate SSA authority must reject");
+      status != 0) return status;
+  if (const int status = rejects(
+          [](auto&, auto&, auto& extract) {
+            extract.agg = LirOperand::ssa("%foreign", lir::LirValueId{77});
+          }, "unknown or foreign extractvalue aggregate SSA authority must reject");
+      status != 0) return status;
+  if (const int status = rejects(
+          [](auto&, auto&, auto& extract) {
+            extract.agg = LirOperand::ssa("%stale", lir::LirValueId{41});
+          }, "stale extractvalue aggregate display must not repair authority");
+      status != 0) return status;
+  if (const int status = rejects(
+          [](auto&, auto&, auto& extract) { extract.agg_type = lir::LirTypeRef::integer(32); },
+          "return-type-incoherent extractvalue aggregate authority must reject");
+      status != 0) return status;
+  return 0;
+}
+
 LirModule make_direct_call_symbol_identity_boundary_module(bool structured_metadata,
                                                            c4c::LinkNameId override_callee_id) {
   LirModule module;
@@ -14819,6 +14863,11 @@ int main() {
           expect_rv64_anonymous_aggregate_return_extractvalue_publishes_lane_facts();
       rv64_anonymous_aggregate_return_extract_status != 0) {
     return rv64_anonymous_aggregate_return_extract_status;
+  }
+  if (const int extractvalue_authority_status =
+          expect_extractvalue_aggregate_ssa_authority_rejects_malformed_forms();
+      extractvalue_authority_status != 0) {
+    return extractvalue_authority_status;
   }
 
   if (const int missing_direct_link_name_status =
