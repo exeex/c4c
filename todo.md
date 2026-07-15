@@ -9,18 +9,17 @@ Current Step Title: Verify and prove the producer boundary
 
 ## Just Finished
 
-- Accepted Step 1: `ca26a8242` established selected local authority across
-  alloca, direct local load/store/GEP, and VLA save/restore routes; `b200ac033`
-  repaired the reviewed VLA pointer-slot store mismatch. Fresh builds passed,
-  and matching `^backend_` baseline/after runs were 5/5 with the regression
-  guard accepted using `--allow-non-decreasing-passed`.
+- Completed Step 2: the verifier now binds every populated selected local-object
+  authority record to its instruction pointer/result and a current-function
+  pointer definition; repeated records for the same pointer must agree on
+  object, owner, pointer/pointee type, and liveness. Nearby frontend coverage
+  keeps alloca, local load/store/GEP, and VLA save/restore positives and rejects
+  missing/invalid, foreign, pointer/object/type-mismatched, and dead records.
 
 ## Suggested Next
 
-- Execute Step 2 malformed producer-boundary checks: verify
-  current-function ownership, pointer/object and type relations, and live
-  lifetime; add nearby positive and missing/invalid/foreign/mismatched/dead
-  negative coverage. Do not begin the Step 3 Raw-BIR handoff.
+- Supervisor should review the completed Step 2 slice, then choose the bounded
+  Step 3 Raw-BIR handoff packet. Do not absorb Raw-BIR/importer work here.
 
 ## Watchouts
 
@@ -28,8 +27,11 @@ Current Step Title: Verify and prove the producer boundary
   ordinary VLA fixtures do not cover it. The VLA pointer-slot store is selected
   through its dynamic-allocation value ID, never its rendered spelling. Keep
   Raw-BIR/importer, memory/va, aggregate/vector, PHI/CFG, and target-lowering
-  outside this packet.
+  outside this packet. Local-object authority remains opt-in for compatibility
+  rows; this packet fail-closes malformed populated selected records.
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log` passed (5/5). `test_after.log` is the required proof log.
+- Focused `^frontend_lir_call_type_ref$` coverage passed. The required
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log`
+  proof passed (5/5); `test_after.log` is the required proof log.

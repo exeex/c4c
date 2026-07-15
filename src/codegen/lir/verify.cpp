@@ -1912,6 +1912,83 @@ void verify_local_object_authorities(const LirModule& mod, const LirFunction& fu
   }
 }
 
+void verify_local_object_authority_bindings(
+    const LirFunction& function,
+    const std::unordered_map<uint32_t, const LirInst*>& definition_insts) {
+  std::unordered_map<uint32_t, const LirCurrentFunctionLocalObjectPointer*>
+      authorities_by_pointer;
+
+  const auto verify = [&](const LirCurrentFunctionLocalObjectPointer& authority,
+                          const LirOperand& pointer,
+                          const LirTypeRef* expected_pointee,
+                          std::string_view field) {
+    const LirValueId* pointer_id = pointer.value_id();
+    if (!pointer_id || *pointer_id != authority.pointer_definition) {
+      fail_verify(std::string(field),
+                  "local object authority must identify this instruction's pointer operand");
+    }
+    const auto definition = definition_insts.find(pointer_id->value);
+    if (definition == definition_insts.end() || definition->second == nullptr ||
+        !modeled_pointer_result(*definition->second)) {
+      fail_verify(std::string(field),
+                  "local object authority must identify a current-function pointer definition");
+    }
+    if (expected_pointee && authority.pointee_type != *expected_pointee) {
+      fail_verify(std::string(field),
+                  "local object authority pointee type disagrees with the instruction type");
+    }
+
+    const auto [existing, inserted] =
+        authorities_by_pointer.emplace(authority.pointer_definition.value, &authority);
+    if (!inserted) {
+      const auto& canonical = *existing->second;
+      if (authority.object != canonical.object || authority.owner != canonical.owner ||
+          authority.pointer_type != canonical.pointer_type ||
+          authority.pointee_type != canonical.pointee_type ||
+          authority.live != canonical.live) {
+        fail_verify(std::string(field),
+                    "local object authority disagrees with the pointer's canonical object facts");
+      }
+    }
+  };
+
+  const auto verify_inst = [&](const LirInst& inst) {
+    if (const auto* op = std::get_if<LirAllocaOp>(&inst);
+        op && op->local_object_authority) {
+      verify(*op->local_object_authority, op->result, &op->type_str,
+             "LirAllocaOp.local_object_authority");
+    } else if (const auto* op = std::get_if<LirStoreOp>(&inst);
+               op && op->local_object_authority) {
+      verify(*op->local_object_authority, op->ptr, nullptr,
+             "LirStoreOp.local_object_authority");
+    } else if (const auto* op = std::get_if<LirLoadOp>(&inst);
+               op && op->local_object_authority) {
+      verify(*op->local_object_authority, op->ptr, nullptr,
+             "LirLoadOp.local_object_authority");
+    } else if (const auto* op = std::get_if<LirGepOp>(&inst);
+               op && op->local_object_authority) {
+      // A selected GEP may step from an aggregate local to an element, so its
+      // element type is not necessarily the local object's pointee type.  The
+      // canonical pointer facts below still bind its object and pointee type.
+      verify(*op->local_object_authority, op->ptr, nullptr,
+             "LirGepOp.local_object_authority");
+    } else if (const auto* op = std::get_if<LirStackSaveOp>(&inst);
+               op && op->local_object_authority) {
+      verify(*op->local_object_authority, op->result, nullptr,
+             "LirStackSaveOp.local_object_authority");
+    } else if (const auto* op = std::get_if<LirStackRestoreOp>(&inst);
+               op && op->local_object_authority) {
+      verify(*op->local_object_authority, op->saved_ptr, nullptr,
+             "LirStackRestoreOp.local_object_authority");
+    }
+  };
+
+  for (const auto& inst : function.alloca_insts) verify_inst(inst);
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) verify_inst(inst);
+  }
+}
+
 void verify_selected_memcpy_authority(const LirFunction& function) {
   const auto& pointer_authority = function.selected_memcpy_pointer_authority;
   std::size_t selected_count = 0;
@@ -2058,6 +2135,8 @@ void verify_function_value_ownership(const LirModule& mod,
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) collect_definition(inst);
   }
+
+  verify_local_object_authority_bindings(function, definition_insts);
 
   const auto successor_at_occurrence = [](const LirTerminator& terminator,
                                           LirSuccessorOccurrenceId occurrence)

@@ -1807,12 +1807,19 @@ loop:
   }
   lir::LirFunction& vla_function = require_function(module, "vla_lifetime_authority");
   std::optional<lir::LirValueId> dynamic_vla_pointer;
-  for (const auto& inst : vla_function.alloca_insts) {
-    if (const auto* op = std::get_if<lir::LirAllocaOp>(&inst);
-        op && op->count.value_id() && op->result.value_id()) {
-      dynamic_vla_pointer = *op->result.value_id();
-      break;
+  const auto find_dynamic_vla_pointer = [&](const auto& instructions) {
+    for (const auto& inst : instructions) {
+      if (const auto* op = std::get_if<lir::LirAllocaOp>(&inst);
+          op && !op->count.empty() && op->result.value_id()) {
+        dynamic_vla_pointer = *op->result.value_id();
+        return;
+      }
     }
+  };
+  find_dynamic_vla_pointer(vla_function.alloca_insts);
+  for (const auto& block : vla_function.blocks) {
+    if (dynamic_vla_pointer) break;
+    find_dynamic_vla_pointer(block.insts);
   }
   expect_true(dynamic_vla_pointer.has_value(),
               "VLA fixture should contain a counted dynamic alloca result");
@@ -1836,6 +1843,101 @@ loop:
   expect_true(vla_pointer_slot_store,
               "VLA fixture should identify its dynamic-pointer slot store by value identity");
   lir::verify_module(module);
+
+  const auto selected_alloca = [](lir::LirModule& candidate) -> lir::LirAllocaOp* {
+    for (auto& function : candidate.functions) {
+      for (auto& inst : function.alloca_insts) {
+        if (auto* op = std::get_if<lir::LirAllocaOp>(&inst);
+            op && op->local_object_authority) {
+          return op;
+        }
+      }
+    }
+    return nullptr;
+  };
+  const auto selected_store = [](lir::LirModule& candidate) -> lir::LirStoreOp* {
+    for (auto& function : candidate.functions) for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* op = std::get_if<lir::LirStoreOp>(&inst);
+            op && op->local_object_authority) {
+          return op;
+        }
+      }
+    }
+    return nullptr;
+  };
+
+  lir::LirModule missing_pointer = module;
+  lir::LirAllocaOp* missing_alloca = selected_alloca(missing_pointer);
+  expect_true(missing_alloca != nullptr,
+              "local authority fixture should retain a selected alloca record");
+  missing_alloca->local_object_authority->pointer_definition = lir::LirValueId::invalid();
+  expect_identity_verification_rejected(
+      missing_pointer, "verifier should reject local authority without a pointer definition");
+
+  lir::LirModule invalid_object = module;
+  lir::LirAllocaOp* invalid_alloca = selected_alloca(invalid_object);
+  expect_true(invalid_alloca != nullptr,
+              "local authority fixture should retain a mutable alloca record");
+  invalid_alloca->local_object_authority->object = lir::LirObjectId::invalid();
+  expect_identity_verification_rejected(
+      invalid_object, "verifier should reject local authority with an invalid object");
+
+  lir::LirModule foreign_owner = module;
+  lir::LirAllocaOp* foreign_alloca = selected_alloca(foreign_owner);
+  expect_true(foreign_alloca != nullptr && foreign_owner.functions.size() > 1,
+              "local authority fixture should retain independent function ownership");
+  foreign_alloca->local_object_authority->owner = foreign_owner.functions[1].link_name_id;
+  expect_identity_verification_rejected(
+      foreign_owner, "verifier should reject local authority owned by another function");
+
+  lir::LirModule mismatched_pointer = module;
+  lir::LirStoreOp* mismatched_store = selected_store(mismatched_pointer);
+  expect_true(mismatched_store != nullptr && mismatched_store->local_object_authority,
+              "local authority fixture should retain a mutable store record");
+  std::optional<lir::LirValueId> alternate_pointer;
+  for (const auto& function : mismatched_pointer.functions) {
+    for (const auto& inst : function.alloca_insts) {
+      const auto* op = std::get_if<lir::LirAllocaOp>(&inst);
+      if (op && op->local_object_authority &&
+          op->local_object_authority->pointer_definition !=
+              mismatched_store->local_object_authority->pointer_definition) {
+        alternate_pointer = op->local_object_authority->pointer_definition;
+        break;
+      }
+    }
+    if (alternate_pointer) break;
+  }
+  expect_true(alternate_pointer.has_value(),
+              "local authority fixture should retain distinct selected pointer definitions");
+  mismatched_store->local_object_authority->pointer_definition = *alternate_pointer;
+  expect_identity_verification_rejected(
+      mismatched_pointer, "verifier should reject local authority bound to another pointer");
+
+  lir::LirModule mismatched_object = module;
+  lir::LirStoreOp* object_store = selected_store(mismatched_object);
+  expect_true(object_store != nullptr && object_store->local_object_authority,
+              "local authority fixture should retain a mutable store record");
+  object_store->local_object_authority->object = lir::LirObjectId{
+      object_store->local_object_authority->object.value + 1};
+  expect_identity_verification_rejected(
+      mismatched_object, "verifier should reject inconsistent local object authority");
+
+  lir::LirModule mismatched_type = module;
+  lir::LirStoreOp* type_store = selected_store(mismatched_type);
+  expect_true(type_store != nullptr && type_store->local_object_authority,
+              "local authority fixture should retain a typed store record");
+  type_store->local_object_authority->pointee_type = lir::LirTypeRef::integer(1);
+  expect_identity_verification_rejected(
+      mismatched_type, "verifier should reject inconsistent local pointee type authority");
+
+  lir::LirModule dead_authority = module;
+  lir::LirStoreOp* dead_store = selected_store(dead_authority);
+  expect_true(dead_store != nullptr && dead_store->local_object_authority,
+              "local authority fixture should retain a live store record");
+  dead_store->local_object_authority->live = false;
+  expect_identity_verification_rejected(
+      dead_authority, "verifier should reject a dead local object authority");
 }
 
 c4c::LinkNameId add_identity_test_global(
