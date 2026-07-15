@@ -90,12 +90,12 @@ lir::LirModule vector_authority_module() {
       .result = lir::LirOperand::ssa("%extract", lir::LirValueId{6}),
       .vec_type = vector_type,
       .vec = lir::LirOperand::ssa("%v1", lir::LirValueId{1}),
-      .index_type = lir::LirTypeRef::integer(64),
+      .index_type = lir::LirTypeRef::integer(32),
       .index = lir::LirOperand::ssa("%index", lir::LirValueId{4}),
       .native_vector_authority = authority(
           owner, lir::LirValueId{6}, lir::LirValueId{1}, std::nullopt, std::nullopt,
           lir::LirNativeVectorIndex{
-              lir::LirOperand::ssa("%index", lir::LirValueId{4}), lir::LirTypeRef::integer(64)}),
+              lir::LirOperand::ssa("%index", lir::LirValueId{4}), lir::LirTypeRef::integer(32)}),
   });
   block.insts.push_back(lir::LirShuffleVectorOp{
       .result = lir::LirOperand::ssa("%shuffle", lir::LirValueId{7}),
@@ -128,6 +128,21 @@ lir::LirModule selected_scalar_to_vector_splat_module() {
 
 void test_native_vector_authority_verifier_boundary() {
   lir::verify_module(vector_authority_module());
+
+  auto immediate_index = vector_authority_module();
+  auto& immediate_extract = std::get<lir::LirExtractElementOp>(
+      immediate_index.functions[0].blocks[0].insts[1]);
+  immediate_extract.index = lir::LirOperand::integer("i32 2", 2);
+  immediate_extract.native_vector_authority->index = lir::LirNativeVectorIndex{
+      lir::LirOperand::integer("misleading immediate index display", 2),
+      lir::LirTypeRef::integer(32)};
+  lir::verify_module(std::move(immediate_index));
+
+  auto missing_extract_authority = vector_authority_module();
+  std::get<lir::LirExtractElementOp>(missing_extract_authority.functions[0].blocks[0].insts[1])
+      .native_vector_authority.reset();
+  expect_rejected(std::move(missing_extract_authority),
+                  "direct vector extract must require native authority");
 
   lir::verify_module(selected_scalar_to_vector_splat_module());
 
@@ -166,6 +181,36 @@ void test_native_vector_authority_verifier_boundary() {
       .native_vector_authority->result = lir::LirValueId{999};
   expect_rejected(std::move(unknown_result), "carrier must reject an undefined result ID");
 
+  auto invalid_extract_result = vector_authority_module();
+  std::get<lir::LirExtractElementOp>(invalid_extract_result.functions[0].blocks[0].insts[1])
+      .native_vector_authority->result = lir::LirValueId::invalid();
+  expect_rejected(std::move(invalid_extract_result),
+                  "extract carrier must reject an invalid result ID");
+
+  auto foreign_extract_result = vector_authority_module();
+  std::get<lir::LirExtractElementOp>(foreign_extract_result.functions[0].blocks[0].insts[1])
+      .native_vector_authority->result = lir::LirValueId{5};
+  expect_rejected(std::move(foreign_extract_result),
+                  "extract carrier must reject a result ID from another row");
+
+  auto missing_extract_use = vector_authority_module();
+  std::get<lir::LirExtractElementOp>(missing_extract_use.functions[0].blocks[0].insts[1])
+      .native_vector_authority->first_vector_use.reset();
+  expect_rejected(std::move(missing_extract_use),
+                  "extract carrier must reject a missing vector use ID");
+
+  auto foreign_extract_use = vector_authority_module();
+  std::get<lir::LirExtractElementOp>(foreign_extract_use.functions[0].blocks[0].insts[1])
+      .native_vector_authority->first_vector_use = lir::LirValueId{5};
+  expect_rejected(std::move(foreign_extract_use),
+                  "extract carrier must reject a foreign vector use ID");
+
+  auto undefined_extract_use = vector_authority_module();
+  std::get<lir::LirExtractElementOp>(undefined_extract_use.functions[0].blocks[0].insts[1])
+      .native_vector_authority->first_vector_use = lir::LirValueId{999};
+  expect_rejected(std::move(undefined_extract_use),
+                  "extract carrier must reject an undefined vector use ID");
+
   auto unknown_use = vector_authority_module();
   std::get<lir::LirShuffleVectorOp>(unknown_use.functions[0].blocks[0].insts[2])
       .native_vector_authority->second_vector_use = lir::LirValueId{999};
@@ -181,6 +226,18 @@ void test_native_vector_authority_verifier_boundary() {
       .native_vector_authority->first_vector_shape->element_type = lir::LirTypeRef::integer(64);
   expect_rejected(std::move(incoherent_element_shape),
                   "carrier must reject an incoherent vector element shape");
+
+  auto missing_extract_shape = vector_authority_module();
+  std::get<lir::LirExtractElementOp>(missing_extract_shape.functions[0].blocks[0].insts[1])
+      .native_vector_authority->first_vector_shape.reset();
+  expect_rejected(std::move(missing_extract_shape),
+                  "extract carrier must reject a missing vector shape");
+
+  auto zero_extract_lanes = vector_authority_module();
+  std::get<lir::LirExtractElementOp>(zero_extract_lanes.functions[0].blocks[0].insts[1])
+      .native_vector_authority->result_shape.lane_count = 0;
+  expect_rejected(std::move(zero_extract_lanes),
+                  "extract carrier must reject zero structured vector lanes");
 
   auto missing_second_shape = vector_authority_module();
   std::get<lir::LirShuffleVectorOp>(missing_second_shape.functions[0].blocks[0].insts[2])
@@ -216,6 +273,29 @@ void test_native_vector_authority_verifier_boundary() {
   std::get<lir::LirExtractElementOp>(wrong_index_value.functions[0].blocks[0].insts[1])
       .native_vector_authority->index->value = lir::LirOperand::ssa("%other", lir::LirValueId{999});
   expect_rejected(std::move(wrong_index_value), "carrier must reject an incoherent index value");
+
+  auto missing_extract_index = vector_authority_module();
+  std::get<lir::LirExtractElementOp>(missing_extract_index.functions[0].blocks[0].insts[1])
+      .native_vector_authority->index.reset();
+  expect_rejected(std::move(missing_extract_index),
+                  "extract carrier must reject a missing native index");
+
+  auto undefined_extract_index = vector_authority_module();
+  auto& undefined_index_extract = std::get<lir::LirExtractElementOp>(
+      undefined_extract_index.functions[0].blocks[0].insts[1]);
+  undefined_index_extract.index = lir::LirOperand::ssa("%undefined-index", lir::LirValueId{999});
+  undefined_index_extract.native_vector_authority->index->value =
+      lir::LirOperand::ssa("%different-display", lir::LirValueId{999});
+  expect_rejected(std::move(undefined_extract_index),
+                  "extract carrier must reject an undefined structured index ID");
+
+  auto non_i32_extract_index = vector_authority_module();
+  auto& non_i32_extract = std::get<lir::LirExtractElementOp>(
+      non_i32_extract_index.functions[0].blocks[0].insts[1]);
+  non_i32_extract.index_type = lir::LirTypeRef::integer(64);
+  non_i32_extract.native_vector_authority->index->type = lir::LirTypeRef::integer(64);
+  expect_rejected(std::move(non_i32_extract_index),
+                  "direct vector extract must reject a non-i32 index type");
 
   auto wrong_index_type = vector_authority_module();
   std::get<lir::LirInsertElementOp>(wrong_index_type.functions[0].blocks[0].insts[0])

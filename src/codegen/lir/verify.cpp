@@ -2698,7 +2698,8 @@ void verify_function_value_ownership(const LirModule& mod,
       check_shape(*authority.second_vector_shape, vector_type, "second_vector_shape");
     }
     if (index) {
-      if (!authority.index || !index_type || authority.index->value.str() != index->str() ||
+      if (!authority.index || !index_type ||
+          authority.index->value.kind() != index->kind() ||
           authority.index->value.authority() != index->authority() || authority.index->type.str().empty())
         fail_verify(std::string(name) + ".native_vector_authority.index", "must mirror the structured index operand");
       if (authority.index->type != *index_type) {
@@ -2716,9 +2717,20 @@ void verify_function_value_ownership(const LirModule& mod,
     if (const auto* op = std::get_if<LirInsertElementOp>(&inst)) {
       const LirTypeRef index_type = LirTypeRef::integer(64);
       verify_vector_authority(*op, "LirInsertElementOp", op->vec, nullptr, &op->elem, &op->index, &index_type, op->vec_type);
-    } else if (const auto* op = std::get_if<LirExtractElementOp>(&inst))
+    } else if (const auto* op = std::get_if<LirExtractElementOp>(&inst)) {
+      // The only ExtractElement producer is direct vector IndexExpr lowering.
+      // That route always coerces its index to i32 and publishes its native
+      // result/vector/index/shape carrier at the LIR boundary.
+      if (!op->native_vector_authority) {
+        fail_verify("LirExtractElementOp.native_vector_authority",
+                    "is required for direct vector IndexExpr lowering");
+      }
+      if (op->index_type != LirTypeRef::integer(32)) {
+        fail_verify("LirExtractElementOp.index_type",
+                    "must be the direct vector IndexExpr i32 index type");
+      }
       verify_vector_authority(*op, "LirExtractElementOp", op->vec, nullptr, nullptr, &op->index, &op->index_type, op->vec_type);
-    else if (const auto* op = std::get_if<LirShuffleVectorOp>(&inst)) {
+    } else if (const auto* op = std::get_if<LirShuffleVectorOp>(&inst)) {
       if (op->requires_native_vector_authority && !op->native_vector_authority) {
         fail_verify("LirShuffleVectorOp.native_vector_authority",
                     "is required for the scalar-to-vector zero-initializer splat");
