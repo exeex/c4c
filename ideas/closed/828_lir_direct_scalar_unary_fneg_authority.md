@@ -71,8 +71,20 @@ or verifier shape is selected.
 - Capability closure is rejected for now: the expanded baseline comparison
   changed from 0/3038 failures to `frontend_hir_tests` SEGFAULT (1 failure),
   recorded in `test_baseline.new.log`.
-- The shared worktree also contains preserved unrelated 821/822/825 changes,
-  so the regression's relation to `524b24f64` is not yet established. Step
-  2R must isolate that attribution and either restore the baseline within this
-  unary route or name and activate the proven separate blocker before 828 can
-  return to parent 827.
+- The shared worktree also contains preserved unrelated 821/822/825 changes.
+  Clean detached before/after comparison now proves the regression is not
+  attributable to `524b24f64`; the dirty selector-authority route is owned by
+  existing Idea 825.
+
+## Closure Record
+
+Disposition: capability complete.
+
+- `524b24f64` implements the bounded unary `fneg` authority route; its fresh
+  build and focused `^frontend_lir_function_signature_type_ref$` CTest passed.
+- Clean detached `524b24f64^` and clean detached `524b24f64`, both
+  backend-enabled, built and directly executed `frontend_hir_tests` with
+  `PASS: frontend_hir_tests`; the aggregate dirty CTest SEGFAULT is not 828
+  regression evidence.
+- Return: parent Idea 827 resumes at Step 2 for its explicit repair/close
+  decision; no binary-LHS implementation is authorized by this closure.

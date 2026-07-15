@@ -112,3 +112,18 @@ Idea 820's bounded `ull` publication does not own or authorize it.
   only for an explicit repair/close decision. Do not reuse this unproven
   mismatch premise, and preserve the original binary-LHS scope. Step 2 made no
   code or test changes and produced no acceptance proof.
+
+## Blocker Return Record
+
+- Idea 828 returned with its unary `fneg` scope accepted: clean detached
+  `524b24f64^` and clean detached `524b24f64`, each configured with
+  `-DENABLE_C4C_BACKEND=ON`, built and directly ran `frontend_hir_tests`, each
+  printing `PASS: frontend_hir_tests`.
+- The preserved dirty aggregate still makes the CTest-form
+  `^frontend_hir_tests$` probe SEGFAULT. The dirty selector-authority work in
+  `core.cpp`, `ir.hpp`, `verify.cpp`, and
+  `frontend_lir_call_type_ref_test.cpp` is owned by existing Idea 825, not by
+  828; it is not evidence against 828's committed unary route.
+- Exact return point: make the explicit 827 repair/close disposition. Its
+  documented binary type-mismatch premise remains disproved, so do not begin
+  a binary producer change without a newly observed in-scope first bad fact.
