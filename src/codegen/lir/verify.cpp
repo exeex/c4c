@@ -1871,7 +1871,11 @@ void verify_selected_memcpy_authority(const LirFunction& function) {
 }
 
 void verify_function_value_ownership(const LirModule& mod,
-                                     const LirFunction& function) {
+                                     const LirFunction& function,
+                                     const std::unordered_map<
+                                         uint32_t,
+                                         std::unordered_set<const LirFunction*>>&
+                                         instruction_result_owners) {
   std::unordered_set<uint32_t> definitions;
   std::unordered_map<uint32_t, const LirInst*> definition_insts;
 
@@ -1913,6 +1917,16 @@ void verify_function_value_ownership(const LirModule& mod,
       fail_verify("LirFunction.value_definitions",
                   "duplicate LirValueId result authority " +
                       std::to_string(id->value));
+    }
+    if (const auto* cast = std::get_if<LirCastOp>(&inst);
+        cast && cast->requires_native_result_authority) {
+      const auto owners = instruction_result_owners.find(id->value);
+      if (owners != instruction_result_owners.end() &&
+          std::any_of(owners->second.begin(), owners->second.end(),
+                      [&](const LirFunction* owner) { return owner != &function; })) {
+        fail_verify("LirCastOp.result",
+                    "standalone native cast result LirValueId is owned by another LirFunction");
+      }
     }
     definition_insts.emplace(id->value, &inst);
   };
@@ -2984,8 +2998,39 @@ void verify_module(const LirModule& mod) {
   verify_global_type_ref_shadows(mod);
   verify_global_initializer_elements(mod);
   verify_function_signature_type_ref_shadows(mod);
+
+  std::unordered_map<uint32_t, std::unordered_set<const LirFunction*>>
+      instruction_result_owners;
+  const auto record_result_owner = [&](const LirFunction& function,
+                                       const LirOperand& result) {
+    if (const LirValueId* id = result.value_id(); id && id->valid()) {
+      instruction_result_owners[id->value].insert(&function);
+    }
+  };
+  const auto record_instruction_result_owners = [&](const LirFunction& function,
+                                                     const LirInst& inst) {
+    if (const auto* inline_asm = std::get_if<LirInlineAsmOp>(&inst)) {
+      for (const LirInlineAsmValueBinding& result : inline_asm->ordinary_results) {
+        record_result_owner(function, result.value);
+      }
+      return;
+    }
+    if (const LirOperand* result = modeled_result_operand(inst)) {
+      record_result_owner(function, *result);
+    }
+  };
   for (const auto& function : mod.functions) {
-    verify_function_value_ownership(mod, function);
+    for (const auto& inst : function.alloca_insts) {
+      record_instruction_result_owners(function, inst);
+    }
+    for (const auto& block : function.blocks) {
+      for (const auto& inst : block.insts) {
+        record_instruction_result_owners(function, inst);
+      }
+    }
+  }
+  for (const auto& function : mod.functions) {
+    verify_function_value_ownership(mod, function, instruction_result_owners);
     for (const auto& inst : function.alloca_insts) verify_inst(mod, inst);
     for (const auto& block : function.blocks) {
       for (const auto& inst : block.insts) {
