@@ -1,74 +1,57 @@
-# LIR Aggregate and Vector Value Identity Convergence Runbook
+# LIR Shuffle-Vector Poison Second-Shape Carrier Repair Runbook
 
 Status: Active
-Source Idea: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
-Resumed from: 811 native vector authority carrier closure
+Source Idea: ideas/open/814_lir_shuffle_vector_poison_second_shape_carrier_repair.md
+Switched from: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md Step 9
 
 ## Purpose
 
-Complete the remaining representative vector rows one bounded, row-local
-authority route at a time without reopening accepted aggregate work.
+Restore the existing shuffle splat lowering's coherent native carrier for a poison second operand so the full baseline can run without an unrelated carrier-validation failure.
 
 ## Core Rule
 
-Use checked current-function IDs and native row-specific facts only. Display
-text is compatibility rendering and cannot select, recover, or repair
-authority. Keep every unselected row fail closed.
+Repair only the required native `second_vector_shape` fact and structured poison-second-operand handoff. Do not turn this prerequisite into a shuffle row-semantic capability or a 754 vector-row selection.
 
 ## Read First
 
+- `ideas/open/814_lir_shuffle_vector_poison_second_shape_carrier_repair.md`
 - `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`
 - `ideas/closed/811_lir_native_vector_authority_carrier_publication.md`
-- `src/codegen/lir/ir.hpp`, `src/codegen/lir/operands.hpp`, and
-  `src/codegen/lir/verify.cpp`
-- `src/codegen/lir/hir_to_lir/expr/binary.cpp` and `expr/misc.cpp`
+- Existing `LirShuffleVectorOp` construction, verifier, and splat lowering seams named by the diagnosis.
 
 ## Non-Goals
 
-- Do not repeat accepted Steps 1--8, including the extractvalue and
-  insertvalue routes or 811 carrier publication.
-- Do not widen into generic provenance, vector-layout publication, aggregate,
-  CFG/PHI, pointer/object, Raw-BIR, target lowering, MIR, or emission.
-- Do not select more than one vector row or use presentation text as facts.
-
-## Accepted History
-
-- Steps 1--4: selected `LirExtractValueOp` work is accepted; its full
-  baseline closure proof is recorded in the source idea.
-- Steps 5--7: selected terminal direct-complex `LirInsertValueOp` route is
-  accepted in `270c6a93e` and `8fe6c3569`; source closure correctly remained
-  rejected because vector rows remain.
-- Step 8: no vector row was selectable from existing structured facts. The
-  separate 811 prerequisite is now accepted in `76f92ad60` and `56203cbf9`.
+- Do not alter aggregate, ExtractElement, InsertElement, generic provenance, CFG/PHI, target/MIR/emission, or parse/display-text behavior.
+- Do not select or implement shuffle operation semantics for 754.
 
 ## Steps
 
-### Step 9 - Implement and prove the Step 8 selection
+### Step 1 - Diagnose the poison second-operand carrier handoff
 
-Goal: perform the required fresh one-row audit against 811's accepted carrier,
-then implement and prove only the selected row.
+Goal: identify the precise existing shuffle splat construction path that omits `second_vector_shape` for poison, and define the smallest structured representation that keeps the carrier coherent.
 
 Actions:
 
-- before changing code, inspect only `LirInsertElementOp`,
-  `LirExtractElementOp`, and `LirShuffleVectorOp` seams against the new carrier;
-  record in `todo.md` the selected seam, exact carrier facts, positive and
-  malformed matrix, and the two excluded rows;
-- select exactly one row only when its complete result/use and row-specific
-  vector/index/mask contract is natively available and fail closed;
-- publish and verify only that row's authority; add nearby valid,
-  missing/foreign, and selected type/index/mask malformed coverage;
-- run a fresh build, selected same-feature proof, and matching regression
-  guard. Escalate to a full baseline when the supervisor judges the shared
-  surface requires it.
+- trace the splat lowering, carrier construction, and verifier requirement;
+- record the valid poison-second-operand form plus absent, foreign, malformed, and incoherent forms in `todo.md`;
+- confirm the repair neither adds row semantics nor derives facts from display text.
 
-Completion check: one and only one vector row has a proven structural contract;
-the two unselected rows and all non-vector scope remain unchanged.
+Completion check: a single native carrier/lowering repair seam and a focused valid/malformed matrix are documented for executor implementation.
 
-### Step 10 - Reassess remaining source completion
+### Step 2 - Repair and cover the bounded carrier/lowering seam
 
-Goal: make the next explicit lifecycle decision after the Step 9 packet.
+Goal: implement only the Step 1 contract and add nearby coverage.
 
-Completion check: repair to one fresh row audit, atomically switch to a
-separately scoped blocker, or produce source-closure evidence. Never silently
-widen Step 9.
+Completion check: the valid structured poison form supplies a coherent `second_vector_shape`; malformed carrier/lowering forms fail closed; no out-of-scope route changes.
+
+### Step 3 - Prove the blocker handoff and return decision
+
+Goal: obtain the bounded proof and make the prerequisite handoff decision.
+
+Actions:
+
+- run a fresh build, focused same-feature proof, and matching regression guard;
+- require supervisor-owned fresh full-baseline acceptance before declaring the blocker return-ready;
+- return to 754 Step 9 only with the source's exact preserved return point.
+
+Completion check: accepted narrow proof and supervisor acceptance of a 100% full baseline are recorded, or the remaining failure has its own explicit lifecycle route.

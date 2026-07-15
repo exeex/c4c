@@ -419,3 +419,15 @@ matrix, and two excluded rows in `todo.md`. Select exactly one of
 the carrier supports its complete row-local contract. Do not repeat Steps
 1--8, repeat 811 publication work, or implement a vector row merely because
 the carrier exists.
+
+## Resumption Update: Step 9 shuffle poison-second-shape blocker
+
+Last accepted progress: Steps 1--8 remain accepted. Step 9 completed its required fresh audit and selected only the scalar-to-vector splat `LirInsertElementOp` seam. `LirExtractElementOp` was excluded because it has no row-local result-element type; `LirShuffleVectorOp` was excluded because its mask semantics are not row-specific. No Step 9 implementation is accepted.
+
+Interrupted step: Step 9, *Implement and prove the Step 8 selection*.
+
+Blocker evidence: the rejected candidate packet's fresh build and selected `^backend_` proof passed 6/6, and its matching regression guard remained 6 to 6. The supervisor's fresh full command `cmake --build --preset default && ctest --test-dir build -j --output-on-failure` completed 3037/3038, with the sole failure `llvm_gcc_c_torture_src_scal_to_vec1_c`: `LirShuffleVectorOp.native_vector_authority.second_vector_shape: must be present`. The existing unselected shuffle splat lowering emits a native carrier without the required second-vector shape when its second operand is poison.
+
+Classification: `separate-blocker`. New open `ideas/open/814_lir_shuffle_vector_poison_second_shape_carrier_repair.md` owns only the native carrier/lowering repair, structured poison-second-operand treatment, and nearby valid/malformed coverage. It must not claim a 754 row capability, select shuffle semantics, or widen into aggregate, ExtractElement, InsertElement, generic provenance, CFG/PHI, target/MIR/emission, or parse display text.
+
+Exact return point: after 814 has an accepted narrow repair and the supervisor accepts a 100% fresh full baseline, reactivate 754 at unchanged Step 9. Reuse the completed audit but make a fresh row selection/proof decision. Do not repeat accepted Steps 1--8 or silently implement ExtractElement/ShuffleVector as a 754 row.
