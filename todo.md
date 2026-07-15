@@ -8,18 +8,17 @@ Current Step Title: Diagnose and repair the variadic baseline regression
 
 ## Just Finished
 
-- The focused frontend-LIR proof passed 1/1 for the Step 1 implementation
-  commits `97d305332` and `4830e94a5`, but baseline review rejected the slice:
-  `test_baseline.new.log` has 20/3037 failures versus 0/3037 in
-  `test_baseline.log`. No new 782 capability claim is accepted.
+- Step 2 repaired the exact 20-test variadic baseline family: AArch64 FP
+  vaarg stack alignment publishes an authoritative `inttoptr` result, but the
+  selected native-result cast verifier accepted only scalar integer casts.
+  `verify_cast_op_authority` now validates the `inttoptr` integer-to-pointer
+  endpoints and exact integer source width; the producer authority remains
+  native and adjacent to the defining cast.
 
 ## Suggested Next
 
-- Diagnose the common mechanism behind the exact 20-test variadic/ABI/stdarg
-  family introduced by `97d305332` and `4830e94a5`, then make the smallest
-  producer-only repair. Prove either a matching full-suite 0/3037 candidate or
-  a credible command that covers the complete named failure family, followed
-  by the required full-suite baseline recheck before acceptance.
+- Supervisor-owned full-suite baseline recheck against the 0/3037 candidate;
+  keep Step 2 pending until that matching comparison accepts the repair.
 
 ## Watchouts
 
@@ -38,13 +37,12 @@ Current Step Title: Diagnose and repair the variadic baseline regression
   `llvm_gcc_c_torture` cases, `stdarg_{1,2,3,4}`, and
   `va_arg_{12,15,16,17,26,5,6,trap_1}`. Do not hide it with named-case logic,
   expectation downgrades, or weaker malformed-authority checks.
+- Do not start Step 3/handoff from this packet; this repair only unblocks the
+  required Step 2 full-suite baseline recheck.
 
 ## Proof
 
-- Rejected baseline evidence: `test_baseline.log` is 0/3037 failures;
-  `test_baseline.new.log` at `4830e94a5` is 20/3037 failures. The focused
-  command `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1, but is not
-  sufficient for acceptance. Step 2 requires the matching full-suite candidate
-  or the provisional complete-family targeted proof plus later full-suite
-  baseline recheck stated in `plan.md`.
+- `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^(positive_sema_ok_call_variadic_aggregate_runtime_c|positive_sema_ok_fn_returns_variadic_fn_ptr_c|abi_abi_variadic_forward_wrapper_c|abi_abi_variadic_va_copy_accumulate_c|llvm_gcc_c_torture_src_(pr56205|980205|pr44942|pr64979|stdarg_[1234]|va_arg_(12|15|16|17|26|5|6|trap_1))_c)$'`
+  passed 20/20 after a fresh build. Per packet scope, no root test log was
+  written; the supervisor owns the required full-suite baseline logs.

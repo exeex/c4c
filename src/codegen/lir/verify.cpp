@@ -613,6 +613,18 @@ void verify_cast_op_authority(const LirCastOp& op) {
     }
     return;
   }
+  if (op.kind == LirCastKind::IntToPtr) {
+    if (op.from_type.kind() != LirTypeKind::Integer ||
+        op.to_type.kind() != LirTypeKind::Pointer) {
+      fail_verify("LirCastOp.from_type",
+                  "authoritative integer-to-pointer cast requires integer-to-pointer endpoint type refs");
+    }
+    if (!op.from_type.integer_bit_width()) {
+      fail_verify("LirCastOp.from_type",
+                  "authoritative integer-to-pointer cast requires an exact integer source type");
+    }
+    return;
+  }
   if (op.from_type.kind() != LirTypeKind::Integer ||
       op.to_type.kind() != LirTypeKind::Integer) {
     fail_verify("LirCastOp.from_type",
