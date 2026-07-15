@@ -173,7 +173,7 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const LocalDecl& d) {
     emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), dynamic_pointer,
                                      lir::LirOperand::ssa(
                                          slot, local_authority->second.pointer_definition),
-                                     dynamic_authority});
+                                     local_authority->second});
   }
 
   if (!d.init) return;

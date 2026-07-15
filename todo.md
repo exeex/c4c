@@ -9,24 +9,25 @@ Current Step Title: Establish the selected local-object authority contract
 
 ## Just Finished
 
-- Step 1 implementation was committed in `ca26a8242`; its focused coverage
-  passed. Supervisor review identified a remaining VLA pointer-slot-store
-  authority mismatch, so Step 1 is not accepted as complete.
+- Step 1 VLA repair: the pointer-slot `LirStoreOp` now carries the hoisted slot
+  authority that matches its pointer operand, while the dynamic alloca retains
+  its own result authority. Focused coverage identifies that store by the
+  dynamic alloca value ID and checks the pointer-authority ID equality.
 
 ## Suggested Next
 
-- Repair the VLA pointer-slot-store authority so it describes that store's
-  pointer operand, then rerun the bounded Step 1 proof. Do not start Step 2
-  malformed-authority checks or Step 3 handoff work.
+- Supervisor: review this bounded Step 1 repair and decide the next packet.
+  Do not start Step 2 malformed-authority checks or Step 3 handoff work until
+  this repair is accepted.
 
 ## Watchouts
 
 - Stack restore is emitted only on a backward goto with a VLA lifetime route;
-  ordinary VLA fixtures do not cover it. Keep authority selection keyed by
-  LocalId/current-function facts, never local names, `%t`, or formatted
-  operands. Keep Raw-BIR/importer, memory/va, aggregate/vector, PHI/CFG, and
-  target-lowering outside this packet.
+  ordinary VLA fixtures do not cover it. The VLA pointer-slot store is selected
+  through its dynamic-allocation value ID, never its rendered spelling. Keep
+  Raw-BIR/importer, memory/va, aggregate/vector, PHI/CFG, and target-lowering
+  outside this packet.
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log` passed (1/1). `test_after.log` contains the result.
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log` passed (5/5). `test_after.log` is the required proof log.

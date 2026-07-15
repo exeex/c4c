@@ -1805,6 +1805,27 @@ loop:
       }
     }
   }
+  lir::LirFunction& vla_function = require_function(module, "vla_lifetime_authority");
+  std::optional<lir::LirValueId> dynamic_vla_pointer;
+  for (const auto& inst : vla_function.alloca_insts) {
+    if (const auto* op = std::get_if<lir::LirAllocaOp>(&inst);
+        op && op->count.value_id() && op->result.value_id()) {
+      dynamic_vla_pointer = *op->result.value_id();
+      break;
+    }
+  }
+  expect_true(dynamic_vla_pointer.has_value(),
+              "VLA fixture should contain a counted dynamic alloca result");
+  bool vla_pointer_slot_store = false;
+  for (const auto& block : vla_function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* op = std::get_if<lir::LirStoreOp>(&inst);
+      if (!op || !op->val.value_id() || *op->val.value_id() != *dynamic_vla_pointer) continue;
+      expect_true(has_local_pointer_authority(*op, op->ptr),
+                  "VLA pointer-slot store authority must describe its pointer operand");
+      vla_pointer_slot_store = true;
+    }
+  }
   expect_true(alloca, "selected local alloca producer requires typed authority");
   expect_true(store, "selected direct local store producer requires typed authority");
   expect_true(gep, "selected local indexed GEP producer requires typed authority");
@@ -1812,6 +1833,8 @@ loop:
   expect_true(stack_save, "selected VLA stack save producer requires typed authority");
   expect_true(stack_restore,
               "selected VLA backward-goto stack restore producer requires typed authority");
+  expect_true(vla_pointer_slot_store,
+              "VLA fixture should identify its dynamic-pointer slot store by value identity");
   lir::verify_module(module);
 }
 
