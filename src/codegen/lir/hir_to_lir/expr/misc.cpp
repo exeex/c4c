@@ -226,8 +226,9 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, con
   emit_fallthrough_lbl(ctx, then_end_target);
   emit_br_and_open_lbl(ctx, end_target, else_target);
   TypeSpec else_ts{};
-  std::string else_v = emit_rval_id(ctx, t.else_expr, else_ts);
-  else_v = coerce(ctx, else_v, else_ts, res_spec);
+  const LirOperand else_source = emit_rval_operand(ctx, t.else_expr, else_ts);
+  const LirOperand else_coerced = coerce_operand(ctx, else_source, else_ts, res_spec);
+  const std::string else_v = else_coerced.str();
   emit_fallthrough_lbl(ctx, else_end_target);
   emit_fallthrough_lbl(ctx, end_target);
   if (res_ty == "void") return "";

@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <variant>
 #include <vector>
 
@@ -3875,7 +3876,7 @@ long long lir_scalar_cast_result_use_identity(void) {
       "verifier should reject cast destination type conflicting with extension kind");
 }
 
-void test_ternary_coerce_result_authority_loss_boundary() {
+void test_ternary_coerce_result_authority_boundary() {
   namespace lir = c4c::codegen::lir;
 
   lir::LirModule lowered = lower_lir_module_for_target(R"c(
@@ -3915,13 +3916,73 @@ long long lir_ternary_coerce_result_authority_loss(int condition, int input) {
                   binary_ops[0]->type_str.kind() == lir::LirTypeKind::Integer &&
                   binary_ops[0]->type_str.integer_bit_width() == 64,
               "later ternary consumer should retain an i64 Add fact");
-  expect_true(!(*coercion)->result.value_id() && !phis[0]->result.value_id() &&
-                  !binary_ops[0]->lhs.value_id(),
-              "ternary arm coercion, PHI result, and later consumer lack LirValueId authority");
-  expect_true(!(*coercion)->result.has_authority() && !phis[0]->result.has_authority() &&
-                  !binary_ops[0]->lhs.has_authority(),
-              "ternary path exposes only raw result spellings, so no verifier-backed malformed-ID proof exists");
+  expect_true((*coercion)->result.value_id() && (*coercion)->result.value_id()->valid() &&
+                  (*coercion)->result.has_authority(),
+              "selected ternary arm coercion should retain native SSA result authority");
+  constexpr bool phi_incoming_values_are_raw_strings =
+      std::is_same_v<std::decay_t<decltype(phis[0]->incoming.front().first)>, std::string>;
+  expect_true(phi_incoming_values_are_raw_strings && phis[0]->incoming.size() == 2,
+              "both ternary PHI incoming values remain raw string carriers without native authority");
+  expect_true(!phis[0]->result.has_authority() && !binary_ops[0]->lhs.has_authority(),
+              "ternary PHI carrier and later consumer remain raw outside the selected arm packet");
   lir::verify_module(lowered);
+
+  const auto require_selected_coercion = [](lir::LirModule& module) -> lir::LirCastOp& {
+    lir::LirFunction& focused =
+        require_function(module, "lir_ternary_coerce_result_authority_loss");
+    lir::LirCastOp* selected = nullptr;
+    for (auto& block : focused.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirCastOp>(&inst);
+            candidate && candidate->kind == lir::LirCastKind::Trunc &&
+            candidate->from_type.kind() == lir::LirTypeKind::Integer &&
+            candidate->from_type.integer_bit_width() == 64 &&
+            candidate->to_type.kind() == lir::LirTypeKind::Integer &&
+            candidate->to_type.integer_bit_width() == 32) {
+          expect_true(selected == nullptr,
+                      "focused ternary fixture should contain one selected arm coercion");
+          selected = candidate;
+        }
+      }
+    }
+    expect_true(selected && selected->result.value_id() && selected->result.value_id()->valid(),
+                "focused ternary fixture should contain an authoritative selected arm coercion");
+    return *selected;
+  };
+
+  lir::LirModule missing_result = lowered;
+  auto& missing_cast = require_selected_coercion(missing_result);
+  missing_cast.requires_native_result_authority = true;
+  missing_cast.result = lir::LirOperand{};
+  expect_identity_verification_rejected(
+      missing_result, "verifier should reject selected ternary coercion without result authority");
+
+  lir::LirModule invalid_result = lowered;
+  auto& invalid_cast = require_selected_coercion(invalid_result);
+  invalid_cast.requires_native_result_authority = true;
+  invalid_cast.result = lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid_result, "verifier should reject invalid selected ternary coercion result ID");
+
+  lir::LirModule duplicate_result = lowered;
+  auto& duplicate_cast = require_selected_coercion(duplicate_result);
+  const lir::LirValueId duplicate_id = *duplicate_cast.result.value_id();
+  lir::LirFunction& duplicate_function =
+      require_function(duplicate_result, "lir_ternary_coerce_result_authority_loss");
+  duplicate_function.blocks.front().insts.push_back(
+      lir::LirStackSaveOp{lir::LirOperand::ssa("%duplicate.selected.ternary.coercion", duplicate_id)});
+  expect_identity_verification_rejected(
+      duplicate_result, "verifier should reject duplicate selected ternary coercion result ID");
+
+  lir::LirModule foreign_result = lowered;
+  foreign_result.functions.push_back(
+      make_identity_test_function("ternary_coercion_foreign_owner", lir::LirValueId{99}));
+  auto& foreign_cast = require_selected_coercion(foreign_result);
+  foreign_cast.requires_native_result_authority = true;
+  foreign_cast.result =
+      lir::LirOperand::ssa("%foreign.selected.ternary.coercion", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      foreign_result, "verifier should reject foreign selected ternary coercion result ID");
 }
 
 void test_logical_short_circuit_result_authority_loss_boundary() {
@@ -7375,7 +7436,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_ordinary_value_chain_identity_boundary();
   test_scalar_floating_binary_result_use_identity_boundary();
   test_scalar_cast_result_use_identity_boundary();
-  test_ternary_coerce_result_authority_loss_boundary();
+  test_ternary_coerce_result_authority_boundary();
   test_logical_short_circuit_result_authority_loss_boundary();
   test_vaarg_helper_result_authority_boundary();
   test_scalar_fptrunc_result_use_identity_boundary();
