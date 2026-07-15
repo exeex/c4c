@@ -131,8 +131,8 @@ LirOperand StmtEmitter::emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u,
         emit_lir_op(ctx, lir::LirInsertValueOp{out, op_ty, with_real, elem_ty_str, imag_v, 1});
         return out;
       }
-      const std::string tmp = fresh_tmp(ctx);
       if (is_vector_value(op_ts)) {
+        const std::string tmp = fresh_tmp(ctx);
         TypeSpec elem_ts = op_ts;
         elem_ts.is_vector = false;
         elem_ts.vector_lanes = 0;
@@ -144,7 +144,9 @@ LirOperand StmtEmitter::emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u,
         }
         mask += ">";
         emit_lir_op(ctx, lir::LirBinOp{tmp, "xor", ty, val, mask});
+        return tmp;
       } else {
+        const LirOperand tmp = fresh_value(ctx);
         std::string promoted_val = val;
         std::string promoted_ty = op_ty;
         if (op_ty != ty && !is_vector_value(op_ts)) {
@@ -157,8 +159,8 @@ LirOperand StmtEmitter::emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u,
           promoted_ty = ty;
         }
         emit_lir_op(ctx, lir::LirBinOp{tmp, "xor", promoted_ty, promoted_val, "-1"});
+        return tmp;
       }
-      return tmp;
     }
     case UnaryOp::AddrOf:
       __builtin_unreachable();
