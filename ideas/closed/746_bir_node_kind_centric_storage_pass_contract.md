@@ -1,6 +1,6 @@
 # BIR Node-Kind-Centric Storage and Pass Contract
 
-Status: Open (active)
+Status: Closed (capability complete)
 Type: Architecture review and implementation-contract refinement
 Source Context:
 - `ideas/closed/735_bir_phase_a_import_raw_document_convergence.md`
@@ -391,3 +391,38 @@ machine opcodes, or MIR records. Those remain later target-aware stages.
   architecture without addressing arena/range-oriented alternatives.
 - The same old ambiguity is preserved behind a renamed `Node`, `Opcode`,
   `InstData`, or pass-framework abstraction.
+
+## Closure Record
+
+Disposition: capability complete.
+
+The bounded idea landed one C++ `NodeKind` traits/descriptor authority for the
+current 16-kind BIR vocabulary, compile-time and runtime helper surfaces, and
+fail-closed payload and arity queries. The verifier now consumes the shared
+schema for payload matching and generic arity validation. The core README
+publishes the durable node/storage/pass contract, identifies retained vectors
+and result indices as bootstrap compatibility, and selects single ordinary
+results with normalization/projection as the preferred durable direction while
+reserving any compact `ResultSpan` or external result table for separately
+approved future scope.
+
+Accepted implementation and documentation commits:
+
+- `2bfee915a` — NodeKind schema/helpers and verifier payload consumer;
+- `cef885b15` — generic arity verifier gate and compatibility-storage comments;
+- `6e803a664` — durable BIR core storage/pass contract documentation.
+
+Supervisor-owned acceptance evidence recorded at closure:
+
+- backend-enabled configure and fresh build completed successfully;
+- matching canonical `^backend_` guard passed 6/6 before and 6/6 after,
+  including `backend_bir_node_kind_schema`, with the accepted
+  allow-non-decreasing comparison;
+- `git diff --check` passed.
+
+The broader checkpoint is not green: all 1312 registered tests ran and 40
+failed outside this idea's bounded backend core/schema ownership, covering
+frontend metadata, macOS ABI/linker/LLVM, parser/EASTL recipes, and external
+cases. Configure also skipped the external c-testsuite tests because the
+expected submodule contents were absent. These limitations are preserved here
+and are not claimed as acceptance evidence for broader repository health.
