@@ -1484,3 +1484,47 @@ materialize an `add`, admit another parameter row, or absorb memory/VA,
 aggregate/vector, module/type/global, instruction/terminator, or
 inline-assembly work. Reapply this source completion gate after the one
 receipt.
+
+## Runbook Exhaustion Decision: post-Step 7.38 DirectScalar switch-selector receipt
+
+Close rejected. Commit `ab6e08fa8` receives exactly closed 825's
+`LirSwitch.selector_parameter_authority` DirectScalar switch-selector tuple
+into the typed Raw-BIR switch receiver. Its importer and reachable verifier
+retain native value/owner/index/type/ABI/role authority plus exact selector and
+selector-type equality, rejecting missing, invalid, duplicate, foreign,
+owner/index/type/ABI/role-mismatched, and consumer-incoherent authority before
+publication. Supervisor acceptance is a fresh `cmake --build --preset default`
+and exact `ctest --test-dir build -j --output-on-failure -R '^backend_'` pass
+(6/6), with a matching 6/6 before/after non-regression guard accepted with
+`--allow-non-decreasing-passed` because executable count is unchanged.
+
+This bounded receiver row does not satisfy the source completion gate. The
+checked no-omission coverage matrix and its per-row typed
+authority/destination/importer/verifier/proof dispositions remain incomplete;
+lossless verified Raw-BIR receipt of every valid current-LIR semantic fact,
+complete explicit dispatcher and neighboring coverage, whole-module
+transactional proof, and documentation convergence are still unmet. Valid
+unreceived families include additional function-body parameter uses, memory/VA,
+aggregate/vector, module/type/global/metadata, residual
+instruction/terminator, and inline-assembly forms. They remain fail closed; no
+receiver may recover authority from text, names, rendered operands, signatures,
+`monostate`, or unclassified values.
+
+Classification: `separate-blocker`. New open idea
+`ideas/open/826_lir_next_body_parameter_authority_handoff.md` owns only
+tracing, publishing, verifying, and handing off exactly one next valid
+function-body parameter-use row. It must not edit Raw-BIR/importer code,
+reopen accepted DirectPointer or DirectScalar GEP/binary-LHS/binary-RHS/
+ReturnValue/switch-selector receipts, select a row from presentation fields,
+or absorb another family.
+
+Resumption record: Steps 1 through 7.38 are accepted historical work, most
+recently receiver commit `ab6e08fa8` with the fresh 6/6 focused broader proof
+and matching 6/6 guard above. Interrupted point: source completion
+reassessment after Step 7.38; no further 734 receiver row is authorized.
+After 826 closes with one exact structured handoff and accepted focused
+producer proof, reactivate 734 and repair its runbook for only that matching
+typed Raw-BIR receiver row. Do not repeat Step 7.38 or receive another
+parameter, memory/VA, aggregate/vector, module/type/global, instruction/
+terminator, or inline-assembly form without its separately scoped first-owner
+handoff.

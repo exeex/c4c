@@ -1,37 +1,31 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
+Source Idea Path: ideas/open/826_lir_next_body_parameter_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 7.38
-Current Step Title: Receive the 825-authorized DirectScalar switch-selector parameter authority row
+Current Step ID: 1
+Current Step Title: Trace and select one native body-parameter authority row
+你該做code review了
 
 ## Just Finished
 
-- Step 7.38: received only `LirSwitch.selector_parameter_authority` for the
-  closed-825 DirectScalar switch-selector row. The importer now checks native
-  value/owner/index/type/ABI/role plus exact selector and selector-type
-  equality before mapping the selected parameter directly to the typed
-  Raw-BIR `SwitchTerm` selector; nearby coverage proves positive receipt and
-  missing, invalid, duplicate, foreign, index/type/ABI/role, and both
-  consumer-incoherent rollback paths.
+- Lifecycle switch: 734 Step 7.38 is accepted in `ab6e08fa8`; the source gate
+  rejected closure and routed one separately scoped producer handoff to 826.
 
 ## Suggested Next
 
-- Return the exhausted 734 runbook to plan-owner for the source completion
-  gate; do not infer source-idea completion from this one receiver row.
+- Execute Step 1 only: trace and select one native structured body-parameter
+  authority row, or route the first missing prerequisite separately.
 
 ## Watchouts
 
-- Do not touch preserved dirty Idea 821/822 work or reopen the accepted 734
-  DirectPointer, DirectScalar binary-LHS/RHS, and ReturnValue rows.
-- Do not reuse binary-LHS authority, materialize an `add`, or derive facts from
-  names, signatures, rendered operands, diagnostics, or `monostate`.
-- This packet intentionally adds no new Raw-BIR authority carrier: the typed
-  switch destination retains the selected function parameter as its selector.
+- Do not edit Raw-BIR/importer/receiver code or reopen accepted 734 parameter
+  rows.
+- Do not derive identity from names, signatures, rendered operands,
+  diagnostics, `monostate`, or testcase shape.
 
 ## Proof
 
-- Passed fresh `cmake --build --preset default` and
-  `ctest --test-dir build -j --output-on-failure -R '^backend_'` (6/6).
-  Canonical regression logs were not changed; they remain supervisor-owned.
+- Before publication, select focused same-feature producer proof for the one
+  bounded candidate. The Step 7.38 receiver acceptance proof is recorded in
+  734's resumption record.
