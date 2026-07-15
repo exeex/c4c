@@ -1741,6 +1741,10 @@ int local_scalar_authority(int input) {
   value = 7;
   return value;
 }
+int local_scalar_store_authority(void) {
+  int value = 7;
+  return value;
+}
 int local_indexed_authority(int index) {
   int values[2];
   values[index] = 7;
@@ -1878,6 +1882,16 @@ loop:
     }
     return nullptr;
   };
+  const auto selected_local_scalar_store = [](lir::LirModule& candidate) -> lir::LirStoreOp* {
+    lir::LirFunction& function = require_function(candidate, "local_scalar_store_authority");
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* op = std::get_if<lir::LirStoreOp>(&inst);
+            op && op->requires_native_store_authority) return op;
+      }
+    }
+    return nullptr;
+  };
 
   lir::LirLoadOp* scalar_load = selected_local_scalar_load(module);
   expect_true(scalar_load != nullptr && scalar_load->local_object_authority,
@@ -1891,6 +1905,49 @@ loop:
               "selected local scalar load should use its authority pointer definition");
   expect_true(scalar_load->type_str == scalar_load->local_object_authority->pointee_type,
               "selected local scalar load type should equal its authority pointee type");
+
+  lir::LirStoreOp* scalar_store = selected_local_scalar_store(module);
+  expect_true(scalar_store != nullptr && scalar_store->local_object_authority &&
+                  scalar_store->val.integer_immediate() &&
+                  scalar_store->ptr.value_id() &&
+                  *scalar_store->ptr.value_id() ==
+                      scalar_store->local_object_authority->pointer_definition &&
+                  scalar_store->type_str == scalar_store->local_object_authority->pointee_type,
+              "selected local scalar declaration store should retain native immediate and matching local authority");
+
+  const auto reject_selected_store = [&](const auto& base, auto mutate,
+                                         const std::string& message) {
+    lir::LirModule candidate = base;
+    lir::LirStoreOp* store = selected_local_scalar_store(candidate);
+    expect_true(store != nullptr, "selected local scalar store should remain mutable");
+    mutate(candidate, *store);
+    expect_identity_verification_rejected(candidate, message);
+  };
+  reject_selected_store(module, [](auto&, auto& store) {
+    store.val = lir::LirOperand::raw("7");
+  }, "verifier should reject selected local scalar store without native immediate authority");
+  reject_selected_store(module, [](auto&, auto& store) {
+    store.local_object_authority.reset();
+  }, "verifier should reject selected local scalar store without local object authority");
+  reject_selected_store(module, [](auto&, auto& store) {
+    store.ptr = lir::LirOperand::ssa("%other", lir::LirValueId::invalid());
+  }, "verifier should reject selected local scalar store with an invalid pointer definition");
+  reject_selected_store(module, [](auto& candidate, auto& store) {
+    store.local_object_authority->owner = candidate.functions.front().link_name_id;
+  }, "verifier should reject selected local scalar store with a foreign owner");
+  reject_selected_store(module, [](auto&, auto& store) {
+    store.local_object_authority->object = lir::LirObjectId{
+        store.local_object_authority->object.value + 1};
+  }, "verifier should reject selected local scalar store with an incoherent object");
+  reject_selected_store(module, [](auto&, auto& store) {
+    store.type_str = lir::LirTypeRef::integer(64);
+  }, "verifier should reject selected local scalar store with mismatched stored type");
+  reject_selected_store(module, [](auto&, auto& store) {
+    store.local_object_authority->pointee_type = lir::LirTypeRef::integer(64);
+  }, "verifier should reject selected local scalar store with mismatched pointee type");
+  reject_selected_store(module, [](auto&, auto& store) {
+    store.local_object_authority->live = false;
+  }, "verifier should reject dead selected local scalar store authority");
 
   lir::LirModule missing_load_result = module;
   lir::LirLoadOp* result_load = selected_local_scalar_load(missing_load_result);

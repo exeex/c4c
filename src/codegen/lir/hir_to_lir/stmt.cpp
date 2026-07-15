@@ -179,11 +179,13 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const LocalDecl& d) {
   if (!d.init) return;
   const std::string slot = ctx.local_slots.at(d.id.value);
   const auto authority = ctx.local_object_authorities.find(d.id.value);
-  const auto store_with_local_authority = [&](lir::LirOperand value, const std::string& type) {
+  const auto store_with_local_authority = [&](lir::LirOperand value, const std::string& type,
+                                              bool requires_native_store_authority = false) {
     emit_lir_op(ctx, lir::LirStoreOp{type, std::move(value),
                                      lir::LirOperand::ssa(
                                          slot, authority->second.pointer_definition),
-                                     authority->second});
+                                     authority->second,
+                                     requires_native_store_authority});
   };
   if (authority == ctx.local_object_authorities.end()) {
     throw std::logic_error("local object authority was not hoisted");
@@ -197,7 +199,8 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const LocalDecl& d) {
     store_with_local_authority(coerce_operand(ctx, direct, rhs_ts, d.type.spec), ty);
     return;
   }
-  std::string rhs = emit_rval_id(ctx, *d.init, rhs_ts);
+  lir::LirOperand rhs_operand = emit_rval_operand(ctx, *d.init, rhs_ts);
+  std::string rhs = rhs_operand.str();
   const std::string ty =
       (d.type.spec.array_rank > 0) ? llvm_alloca_ty(mod_, d.type.spec)
                                    : llvm_value_ty(mod_, d.type.spec);
@@ -219,6 +222,17 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const LocalDecl& d) {
       store_with_local_authority(lir::LirOperand::raw("zeroinitializer"), ty);
     }
     return;
+  }
+  const bool candidate_native_local_scalar_store =
+      d.type.spec.array_rank == 0 && d.type.spec.ptr_level == 0 &&
+      is_any_int(d.type.spec.base) && rhs_operand.integer_immediate() != nullptr;
+  if (candidate_native_local_scalar_store) {
+    const lir::LirOperand coerced = coerce_operand(ctx, rhs_operand, rhs_ts,
+                                                    d.type.spec);
+    if (coerced.integer_immediate()) {
+      store_with_local_authority(coerced, ty, true);
+      return;
+    }
   }
   rhs = coerce(ctx, rhs, rhs_ts, d.type.spec);
   store_with_local_authority(lir::LirOperand::raw(rhs), ty);

@@ -1159,6 +1159,21 @@ void verify_global_store_authority(const LirModule& mod,
   }
 }
 
+void verify_native_local_store_authority(const LirStoreOp& op) {
+  if (!op.requires_native_store_authority) return;
+  const auto* authority = op.local_object_authority
+                              ? &*op.local_object_authority
+                              : nullptr;
+  const auto* value = op.val.integer_immediate();
+  const auto width = op.type_str.integer_bit_width();
+  if (!authority || op.type_str.kind() != LirTypeKind::Integer || !value ||
+      !width || !integer_immediate_representable(value->value, *width) ||
+      authority->pointee_type != op.type_str) {
+    fail_verify("LirStoreOp.local_object_authority",
+                "selected local-scalar store requires native immediate, matching type, and local authority");
+  }
+}
+
 void verify_global_load_authority(const LirModule& mod,
                                   const LirLoadOp& op) {
   // CC-LOAD-1 owns direct-global pointer and result identity. Local/SSA
@@ -1957,10 +1972,12 @@ void verify_local_object_authority_bindings(
         op && op->local_object_authority) {
       verify(*op->local_object_authority, op->result, &op->type_str,
              "LirAllocaOp.local_object_authority");
-    } else if (const auto* op = std::get_if<LirStoreOp>(&inst);
-               op && op->local_object_authority) {
-      verify(*op->local_object_authority, op->ptr, nullptr,
-             "LirStoreOp.local_object_authority");
+    } else if (const auto* op = std::get_if<LirStoreOp>(&inst)) {
+      verify_native_local_store_authority(*op);
+      if (op->local_object_authority) {
+        verify(*op->local_object_authority, op->ptr, nullptr,
+               "LirStoreOp.local_object_authority");
+      }
     } else if (const auto* op = std::get_if<LirLoadOp>(&inst);
                op && op->local_object_authority) {
       if (!op->requires_native_result_authority || !op->result.value_id() ||

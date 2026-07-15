@@ -315,6 +315,8 @@ struct LirStoreOp {
   LirOperand val;         // SSA name of value (or "zeroinitializer")
   LirOperand ptr;         // SSA name of pointer operand
   std::optional<LirCurrentFunctionLocalObjectPointer> local_object_authority;
+  // Opt-in receipt for the one selected native local-scalar declaration store.
+  bool requires_native_store_authority = false;
 };
 
 struct LirMemsetOp {

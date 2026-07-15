@@ -43,8 +43,9 @@ representative coverage.
 
 - One exact next local-operation row has a documented native typed contract
   sufficient for 734 to consume at Step 7.28.
-- Missing, invalid, foreign, object/pointer/type-incoherent, dead, or
-  display-mismatched authority rejects before downstream use.
+- Missing, invalid, foreign, object/pointer/type-incoherent, or dead native
+  authority rejects before downstream use. Display spelling is ignored: it is
+  neither recovered nor used as a validity check.
 - Focused same-feature producer positive and negative proof passes, and the
   handoff preserves all other rows as fail-closed.
 

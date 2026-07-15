@@ -8,22 +8,24 @@ Current Step Title: Publish one next local-operation authority handoff
 
 ## Just Finished
 
-- Switched from exhausted 734 Step 7.27 after accepted `eabf7a3b8`; this
-  blocker must publish one exact next local-operation authority handoff.
+- Step 1 selected and published the direct non-array/non-VLA integer local
+  scalar declaration `LirStoreOp` with native immediate value and checked
+  local-object authority for 734 Step 7.28.
 
 ## Suggested Next
 
-- Execute Step 1 only: select, verify, and hand off one native local-operation
-  row to 734 Step 7.28.
+- Supervisor selects the next lifecycle action after reviewing this completed
+  one-row producer handoff.
 
 ## Watchouts
 
-- Do not modify Raw-BIR/importer code or select from local display text. Every
-  unselected local/VLA and later family remains fail-closed.
+- The handoff authorizes only declaration-initializer integer-immediate stores;
+  assignment, SSA-valued, pointer/aggregate/vector, array/VLA stores, GEP,
+  and later families remain fail-closed and presentation is nonsemantic.
 
 ## Proof
 
-- 734 Step 7.27 acceptance: fresh build plus `^backend_` passed 5/5 with a
-  matching non-decreasing canonical guard. This blocker must establish its own
-  focused producer proof; supervisor owns broader acceptance and regression
-  logs.
+- `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1. Output is
+  preserved in `test_after.log`; supervisor owns broader acceptance and
+  canonical regression comparison.
