@@ -320,3 +320,34 @@ Runbook exhaustion alone does not close 732. Closure requires:
 - Reject broad formatting churn, helper renames, or classification-only edits
   claimed as complete pass planning while ownership, vocabulary, identity,
   publication, or failure seams remain unresolved.
+
+## Resumption Record — switched to idea 803
+
+Idea 732 remains incomplete and resumable. Steps 1 through 8A are accepted;
+Step 8B was interrupted before execution:
+
+- `Current Step ID: 8B`
+- `Current Step Title: Reconcile the landed importer and decide closure`
+- Last accepted result: all 47 current BIR Markdown paths and all 31 A1-F3
+  rows were audited, the 26 pass owners were converged to the adapted
+  17-section contract, and every non-importer cross-phase seam was closed.
+- Accepted documentation history: `dbff4a028`, `3dda842fc`, `820c1c633`,
+  `e495edf69`, `e7882e727`, `518499625`, `9a79261c6`, `670d6ff24`,
+  `07761ce16`, `dd1c535e7`, `07c0c3dd0`, `3d7c9dd92`, and `1e01e8b8a`.
+- Accepted proof: Markdown-only changed-path checks, 47/47 document inventory,
+  31/31 ordered A1-F3 rows, 26 exact adapted pass spines, 166 relative links
+  checked with zero broken links, focused authority/status searches, and
+  `git diff --check`.
+- Waiting condition: the importer completion gate remains unmet.
+  `origin/new_bir@13123e7524c12a307bae372007be60e0a4e656a3` still identifies
+  active blocker idea 763 rather than a named completed importer revision with
+  inspectable code and matching test/acceptance proof. This wait is outside
+  732's Markdown-only execution scope and is not evidence that 732 is closed.
+- Exact return action: once such a completed importer revision exists, audit
+  the landed Raw NodeKind/payload/operand/result/type, graph/CFG/order,
+  identity/metadata, builder publication/rollback, verifier, accepted/rejected
+  LIR, and absence-of-later-stage facts; reconcile A1/A2/B1 and any downstream
+  effects; then request an explicit closure decision for idea 732.
+
+Until that gate is met, do not guess importer facts, weaken the closure gate,
+or redo accepted Steps 1 through 8A.

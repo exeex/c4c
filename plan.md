@@ -1,348 +1,272 @@
-# BIR B-F Pass Documentation Convergence Runbook
+# BIR Exceptional Control, Allocation, And Frame Design Completion Runbook
 
 Status: Active
-Source Idea: ideas/open/732_bir_stage_document_convergence_umbrella.md
+Source Idea: ideas/open/803_bir_exceptional_control_allocation_and_frame_design_completion.md
 
 ## Purpose
 
-Converge the Markdown architecture from factual Raw-BIR publication through
-every B/C/D/E/F pass, using the landed shared Node/identity model and the
-746/801/802 NodeKind/tag contract as fixed inputs.
+Complete six hard BIR backend design contracts in Markdown while preserving
+the accepted A1-F3 phase spine and strict apply-only F1 boundary.
 
 ## Goal
 
-Leave every ordered B-F pass with an agent-executable Markdown contract for
-input/output vocabulary, tag lowering, identity, verification, dependencies,
-invalidation, failure, and adjacency, then close only after reconciling those
-contracts with the landed LIR-to-BIR Raw publication behavior.
+Leave exceptional control flow, instruction-point SSA visibility, bounded
+promotion, allocation policy, frame layout, and over-aligned objects with
+single normative owner chains that later implementation can follow without
+inventing ownership, repair, retry, or verifier behavior.
 
 ## Core Rule
 
-This runbook is Markdown-only. Proposed C++, schemas, and APIs may appear only
-inside fenced code blocks in Markdown. Never modify implementation, tests,
-headers, CMake/build files, scripts, generated sources, logs, or other
-non-Markdown artifacts.
+This runbook is documentation-only. Modify only BIR or strictly necessary
+adjacent Markdown. Proposed types, APIs, and algorithms belong only in fenced
+code blocks and must be labeled as documentation sketches, never as landed
+capability.
 
 ## Read First
 
-- `ideas/open/732_bir_stage_document_convergence_umbrella.md`
-- `ideas/closed/746_bir_node_kind_centric_storage_pass_contract.md`
-- `ideas/closed/801_bir_node_kind_tag_algebra_and_phase_vocabulary_lowering_contract.md`
-- `ideas/closed/802_project_wide_cpp20_host_toolchain_contract.md`
-- `docs/backend/bir_node_kind_tag_algebra_and_phase_vocabulary.md`
+- `ideas/open/803_bir_exceptional_control_allocation_and_frame_design_completion.md`
 - `src/backend/bir/README.md`
-- `src/backend/bir/core/README.md`
-- current `src/backend/bir/core/ir.hpp` only as read-only interface evidence
-- current LIR-to-BIR code/tests only as read-only Raw-publication evidence
+- `src/backend/bir/LEGACY_COVERAGE.md`
+- affected B3-B5, C6, D4, E1-E4, F1, analysis, verifier, MIR, ABI, and target
+  Markdown owners
+- `ref/claudes-c-compiler/` only as read-only behavioral evidence
 
 ## Scope
 
-- Markdown owners for B1-B8, C1-C9, D1-D5, E1-E4, and F1-F3.
-- BIR root, phase, pass, analysis, verifier, schema, and boundary Markdown
-  needed to make those pass contracts adjacent-compatible.
-- A final factual audit of the landed importer and Raw/B1 seam.
-- Missing-owner Markdown placeholders when a real authority is absent.
+- Normative placement/conflict matrix for all six design areas.
+- End-to-end Markdown contracts for non-local return and `asm goto`.
+- One deterministic B4 phi-growth/promotion policy.
+- Versioned E1/E2 allocation facts and decision policy.
+- Closed subordinate E4 frame-object and packing contract.
+- Complete B5 -> C6 -> D4 -> E1/E2 -> E4 -> F1 over-aligned-object route.
+- Cross-document reconciliation, truthful implementation status, and
+  Markdown-only structural proof.
 
 ## Non-Goals
 
-- No production, test, build, script, generated, or log changes.
-- No importer or LIR modification.
-- No redesign of shared Node storage, stable identity, NodeKind schema, tag
-  algebra, query helpers, or phase vocabulary.
-- No implementation-completeness claim based on a proposed code block.
-- No downstream implementation activation.
+- No code, headers, tests, build files, scripts, generated files, binaries,
+  canonical regression logs, or implementation claims.
+- No A1-F3 reorder, new major phase, second CFG/graph/allocation/frame
+  authority, or weakened F1 boundary without a proven irreducible conflict.
+- No redesign of shared BIR storage, stable identity, NodeKind/tag algebra, or
+  unrelated optimization and target-tuning policy.
+- No routine follow-up ideas; only a concrete irreducible phase contradiction
+  may produce a separately scoped architecture question.
 
 ## Working Model
 
-- Shared graph storage is common across phases; admitted NodeKind vocabulary is
-  not inherited implicitly.
-- The 801 contract is normative. Pass documents reference it and add only
-  pass-specific retain/lower/reject decisions.
-- `SsaEligible` is static classification. B4 proves dynamic SSA; D5 owns its
-  required removal.
-- Analyses and C-phase preparation are immutable exact-revision products, not
-  semantic graph mutations.
-- Every mutating pass builds a private candidate and publishes only after its
-  verifier gate succeeds.
-- The importer is the factual Raw producer. Until its parallel route lands,
-  record observations as provisional evidence and reserve final reconciliation
-  for Step 8.
+- Preserve B3 CFG topology, B4 SSA, B5 memory/effects, E1
+  liveness/interference, E2 allocation choice, E3 explicit rewrite, E4
+  frame/final publication, and F1 apply-only ownership.
+- Preparation and analysis products are immutable and exact-revision keyed.
+- Mutations happen in private candidates and publish only after verification.
+- One-to-many target realization and every allocatable temporary are explicit
+  before E1.
+- Correctness constraints are normative; tunable profitability policy is
+  versioned and deterministic.
 
 ## Execution Rules
 
-- Before and after every step, verify the changed-path set contains only
-  Markdown.
-- Follow `src/backend/bir/README.md` order; do not silently reorder rows.
-- Give every pass the per-pass section spine required by the source idea.
-- Use explicit, closed NodeKind/tag lowering rows; do not use an unbounded
-  “everything else passes through” rule.
-- Label every fenced API/schema example as proposed or documentation-only.
-- State implementation status from repository evidence; use `absent` or
-  `partial` when appropriate.
-- Record cross-phase disagreements at the narrowest Markdown owner. A required
-  code change is a separate idea, not a 732 packet.
+- Audit the authoritative owner before editing a consumer; link to one owner
+  instead of duplicating independent rules.
+- For each design area, state inputs/products, mutation owner, downstream
+  consumer, verifier/publication gate, invalidation, failure, and adjacency.
+- Preserve exact edge occurrence, stable identity/provenance, exact revision,
+  and failure-atomicity contracts.
+- Keep implementation status factual and label proposed surfaces explicitly.
+- Before accepting each step, inspect changed paths and run focused Markdown,
+  link, ownership, and contradiction checks appropriate to that packet.
 - Update `todo.md` after each accepted step; do not rewrite this runbook for
-  routine progress.
+  routine packet progress.
 
-## Step 1 — Audit current Markdown owners and factual inputs
-
-### Goal
-
-Establish the current documentation and implementation-truth baseline without
-changing any code.
-
-### Actions
-
-- Inventory every `src/backend/bir/**/*.md` file and map each to root phase,
-  pass, analysis, verifier, schema, boundary, support, or audit ownership.
-- Inspect the landed shared-node/identity and NodeKind helper surfaces only as
-  needed to identify facts that documents may claim.
-- Record the current LIR-to-BIR branch/revision evidence available locally and
-  distinguish landed Raw behavior from parallel work not yet present.
-- Identify stale phase order, duplicate authority, missing owners, speculative
-  APIs, and implementation-status drift.
-- Publish the audit in Markdown and state which Raw facts remain provisional
-  until Step 8.
-
-### Completion Check
-
-- Every current BIR Markdown file is accounted for.
-- The audit names authoritative inputs, current implementation truth, missing
-  owners, and the deferred importer-finalization evidence.
-- The diff contains Markdown only.
-
-## Step 2 — Converge the root vocabulary and common pass contract
+## Step 1 — Establish the placement and conflict baseline
 
 ### Goal
 
-Make the root and shared documentation consume the landed Node/NodeKind
-contracts and provide one uniform authoring spine for all B-F pass owners.
+Map every requirement to its exact A-F owner chain before local contract work.
 
 ### Actions
 
-- Reconcile `src/backend/bir/README.md`, core documentation, pass framework,
-  pipeline, verifier, and analysis framework ownership with the 801 contract.
-- Define stage-qualified vocabulary admission, dynamic SSA distinction,
-  identity preservation/replacement, private-candidate publication, exact
-  revision/product keys, and fail-closed unknown-kind handling once.
-- Define the required per-pass lowering matrix and implementation-status
-  language without duplicating the NodeKind registry or tag algebra.
-- Correct stale top-level implementation claims while preserving normative
-  B-F order.
+- Inventory the root and subordinate owners for B3-B5, C6, D4, E1-E4, F1,
+  relevant analyses/verifiers, and adjacent MIR/target boundaries.
+- Build the normative placement/conflict matrix with first owner, upstream
+  facts and keys, mutation owner, consumer, gate, invalidation, failure, and
+  adjacency rationale for every requirement.
+- Record existing gaps and contradictions without changing the A1-F3 order.
+- If a requirement cannot fit the accepted spine, stop only that portion and
+  document the exact smallest irreducible architecture question.
 
 ### Completion Check
 
-- Root/common documents form one non-duplicated authority spine.
-- A later pass document can reference exact shared identity, tag, verifier,
-  publication, and invalidation rules.
-- No second NodeKind/tag authority or non-Markdown change exists.
+- Every requirement in all six areas has one provisional owner chain.
+- Every affected Markdown owner is inventoried and conflicts are explicit.
+- The changed-path set is permitted Markdown only.
 
-## Step 3 — Plan phase B and Canonical publication
+## Step 2 — Define non-local control-transfer safety
 
 ### Goal
 
-Complete B1/P01 through B8 contracts from factual Raw admission to verified
-Canonical publication.
+Specify `setjmp`, `longjmp`, `returns_twice`, and equivalent behavior from B4
+through E4 verification without inventing a second CFG.
 
 ### Actions
 
-- Review and edit B1 legalize, B2 scalar, B3 CFG, B4 SSA, B5 memory, B6
-  aggregate, B7 intrinsics, and B8 pipeline/verifier owners in order.
-- For every pass, enumerate input/output NodeKind/tag vocabulary and explicit
-  retain/replace/expand/merge/delete/reject behavior.
-- Bind CFG, dominance, effects, provenance, call graph, comparison,
-  publication/value-flow, and related analyses to their earliest consumers
-  and invalidation points.
-- Make B4 the sole dynamic SSA establishment/proof point and define exact phi
-  admission without confusing it with `SsaEligible`.
-- Prove B8 forbids target, allocation, pseudo, frame, and machine vocabulary.
+- Define B4 promotion and definition visibility, B5 memory observability and
+  ordering, and the roles of `volatile`, address escape, and memory identity.
+- Define immutable exceptional-boundary facts, E1 liveness/clobber/reload
+  exposure, E2 assignment constraints, E3 rewrite placement, and bounded retry.
+- Define E4 memory-home/frame obligations and stage-local fail-closed verifier
+  diagnostics for stale values, unsafe assignments, and missing homes.
+- Trace at least one complete non-local-return scenario through the owner chain.
 
 ### Completion Check
 
-- B1-B8 each satisfy the per-pass Markdown contract.
-- Raw-to-Canonical vocabulary and every adjacency are closed and explicit.
-- Canonical publication is target-independent, unallocated, dynamically SSA
-  valid, and fail-closed.
+- Stale register-only state after non-local return is structurally forbidden.
+- Topology, semantic effect, allocation, spill, and frame responsibilities are
+  explicit and adjacent-compatible.
 
-## Step 4 — Plan phase C immutable preparation
+## Step 3 — Define `asm goto` instruction-point SSA snapshots
 
 ### Goal
 
-Complete C1-C9 contracts without mutating Canonical BIR or inventing a second
-graph authority.
+Separate B3 edge topology from B4 value visibility at the exact instruction
+point, including duplicate edge occurrences and fallthrough outputs.
 
 ### Actions
 
-- Plan TargetProfile validation, target layout, ABI, calls, variadic, address,
-  inline-asm context, runtime helpers, and constraint binding in order.
-- Define exact Canonical revision and target/profile keys for every immutable
-  product, cumulative bundle, and projected constraint product.
-- Distinguish static NodeKind admission from product-based D1 readiness.
-- Define stale-result rejection, invalidation, diagnostics, rollback, and the
-  precise D1 admission seam.
+- Define B3 fallthrough/label edge occurrences and B4 definition-stack
+  snapshots at the `asm goto` program point.
+- Specify label versus fallthrough visibility for zero, one, and multiple
+  targets, outputs, clobbers, and critical-edge normalization.
+- Key phi inputs by exact edge occurrence and prohibit later/block-end
+  definitions from leaking backward.
+- Define revision, ambiguity, missing-snapshot, and illegal-input verifier
+  failures, then trace one end-to-end scenario.
 
 ### Completion Check
 
-- C1-C9 each satisfy the per-pass/product-owner Markdown contract.
-- No C owner silently mutates Canonical nodes or claims a new published graph
-  stage without the normative 801 transition.
-- D1 can consume one exact verified Canonical revision and matching products.
+- Every successor sees exactly the permitted instruction-point state.
+- No rule relies on rendered labels, block names, or ambiguous block-end state.
 
-## Step 5 — Plan phase D pseudo lowering and out-of-SSA
+## Step 4 — Resolve bounded B4 promotion planning
 
 ### Goal
 
-Complete D1-D5 contracts for Canonical/Prepared to verified, directly
-realizable pre-allocation pseudo vocabulary.
+Choose and fully specify one deterministic pre-mutation phi-growth and
+promotion policy.
 
 ### Actions
 
-- Plan generic pseudo lowering, shared ABI-aware call lowering, Pseudo
-  publication, target legalization/expansion, and out-of-SSA in order.
-- Enumerate every retained/replaced input family and introduced pseudo family,
-  including exact projected-constraint revision updates.
-- Make all one-to-many target expansion occur before allocation.
-- Define D5's dynamic SSA removal, edge-copy/parallel-copy semantics, scratch
-  reservations, stable identity/provenance, and later copy-resolution owner.
-- Prove every introduced value, definition, use, clobber, and constraint enters
-  E1/E2 normally.
+- Evaluate fail-closed complete promotion against deterministic partial
+  promotion under the accepted B4/B5 vocabulary.
+- Select one policy and record the rationale in the normative B4 owner and
+  root placement matrix.
+- Define versioned metrics, checked arithmetic, hard bounds, stable ordering,
+  diagnostics, identity behavior, private-candidate rollback, and B5 admission.
+- Forbid mid-pass fallback, incomplete selected promotion, and success after
+  resource or construction failure.
 
 ### Completion Check
 
-- D1-D5 each satisfy the per-pass Markdown contract.
-- No Canonical-only, unresolved expansion, ABI ambiguity, or unowned SSA form
-  reaches E1.
-- Pseudo publication and later private candidate gates are distinct and
-  failure-atomic.
+- Identical graph and policy version produce the same plan.
+- Every admitted selected value is completely promoted or the candidate is
+  discarded; any retained memory form is explicitly admitted and verified.
 
-## Step 6 — Plan phase E allocation and MIR-ready publication
+## Step 5 — Define allocation facts and deterministic choice policy
 
 ### Goal
 
-Complete E1-E4 contracts from allocation facts through exact-revision
-MIR-ready capability publication.
+Give E1 and E2 a versioned division between immutable cost facts and bounded,
+deterministic allocation/coalescing/eviction decisions.
 
 ### Actions
 
-- Plan liveness/interference, shared allocation, spill/reload insertion, retry,
-  copy closure, frame actions, final recomputation, and E4 verification.
-- Enumerate allocation/spill/frame NodeKind/tag vocabulary and forbidden
-  residual kinds at each private/public gate.
-- Define `E3 -> E1` invalidation/retry, termination/failure behavior, and exact
-  current-product rejection.
-- Apply the identity gate to inserted spill/reload, copy, and frame nodes.
-- Prove E4 publishes no hidden expansion, unresolved copy, pressure deficit,
-  stale product, or unrepresented frame work.
+- Define E1 facts for loop/profile weight, use/def frequency, range shape,
+  pressure, fixed homes, call crossing, rematerialization, copies, and spills.
+- Define E2 correctness constraints, profitability weights, coalescing,
+  assignment, victim selection, eviction, progress, and stable tie breaks.
+- Bind policy versions to exact-revision product keys and invalidation.
+- Require E3 to realize the selected rewrite without re-deciding policy, and
+  keep `E3 -> E1` as the bounded retry route.
 
 ### Completion Check
 
-- E1-E4 each satisfy the per-pass Markdown contract.
-- Analysis products, graph revisions, private assigned candidates, and public
-  Allocated/MIR-ready capabilities are unambiguous.
-- The E3 retry and E4 atomic publication contracts are complete.
+- Pointer/hash/incidental traversal order cannot affect a decision.
+- Correctness constraints, tuning inputs, chosen decisions, and E3 realization
+  are owned and verifiable at their proper stages.
 
-## Step 7 — Plan phase F machine construction and emission
+## Step 6 — Define the E4 frame-object and packing contract
 
 ### Goal
 
-Complete F1-F3 contracts for the final vocabulary transition and terminal
-consumers.
+Create or converge one subordinate E4 authority with a closed object taxonomy
+and explicit stack-slot sharing legality.
 
 ### Actions
 
-- Plan strict apply-only machine construction, machine verification, and
-  assembly/object/relocation/link emission boundaries.
-- Enumerate the MIR-ready pseudo-to-machine mapping contract and exact
-  rejection of anything requiring expansion, allocation, spilling, ABI work,
-  or frame repair.
-- State that machine identity is distinct and BIR IDs survive only as explicit
-  provenance.
-- Define opaque inline-assembly transport and late parsing without hidden
-  value/allocation authority.
-- Identify every F3 terminal output and its consumer/failure behavior.
+- Cover addressable/fixed locals, spills, copy scratch, ABI areas, callee-save
+  and bookkeeping, fixed/dynamic/runtime-aligned objects, and explicitly
+  introduced emergency/address scratch.
+- For each class define size/alignment, lifetime source, interference, escape,
+  fixed placement, sharing prohibitions/permissions, ordering, reachability,
+  deterministic packing, bounds, and verifier evidence.
+- Define when locals, spills, ABI areas, and scratch may share storage using
+  proved non-interference and compatible semantics, never coincident offsets.
+- Trace one representative frame construction and publication scenario.
 
 ### Completion Check
 
-- F1-F3 each satisfy the per-pass Markdown contract.
-- Every admitted MIR-ready kind has an explicit machine disposition and every
-  machine/emission output has an owner.
-- F cannot repair an earlier-stage failure.
+- Every admitted frame object belongs to exactly one governed class.
+- E4 privately constructs and verifies the frame; no consumer repairs layout.
 
-## Step 8A — Close the non-importer cross-phase Markdown contract
+## Step 7 — Complete over-aligned object realization
 
 ### Goal
 
-Finish the currently executable cross-phase inventory, adjacency, authority,
-and implementation-status audit without treating the unfinished importer route
-as landed evidence.
+Close the continuous B5 -> C6 -> D4 -> E1/E2 -> E4 -> F1 contract for fixed
+and dynamic over-aligned objects.
 
 ### Actions
 
-- Inventory every current BIR Markdown owner and every A1/A2, B1-B8, C1-C9,
-  D1-D5, E1-E4, and F1-F3 row against the root ordered index.
-- Prove unique ownership, producer/consumer adjacency, vocabulary and identity
-  compatibility, exact revision/target/product keys, invalidation, verifier
-  ownership, failure atomicity, and terminal consumer ownership wherever the
-  result does not depend on final importer behavior.
-- Reconcile cross-document terminology and authority so no pass-local owner
-  duplicates the shared NodeKind/tag algebra, stable-identity gate, phase
-  vocabulary, analysis framework, or external MIR/emission authority.
-- Audit implementation-state claims against the current repository and mark
-  unimplemented or incomplete behavior truthfully as `absent` or `partial`.
-- Record final non-importer closure findings in Markdown, including an explicit
-  list of facts that remain provisional and are reserved for Step 8B.
-- Record the external route evidence exactly: `origin/new_bir` at
-  `13123e7524c12a307bae372007be60e0a4e656a3` has retired the exhausted 734
-  runbook and activated blocker idea 763 at Step 1; this is progress evidence,
-  not a completed importer revision.
+- Preserve semantic extent, lifetime, observability, and alignment in B5.
+- Define C6 target-keyed natural alignment, realignment, legal address forms,
+  offset ranges, base requirements, and dynamic-stack facts without mutation.
+- Require D4 to expose all align/mask/round, large-offset, address calculation,
+  one-to-many operations, and allocatable temporaries before E1.
+- Define allocation, E4 placement/base/restore behavior, unwind/non-local
+  interaction, and target rejection; keep F1 strictly apply-only.
+- Trace fixed, VLA/runtime-aligned, and unencodable-offset scenarios.
 
 ### Completion Check
 
-- Every current BIR Markdown file and every A1-F3 row is accounted for once.
-- Every non-importer-dependent seam accepts the exact predecessor artifact;
-  remaining importer-dependent facts are isolated explicitly for Step 8B.
-- No duplicate authority, stale product, implicit kind carry-forward,
-  unresolved identity rule, or overstated implementation status remains in the
-  non-importer contract.
-- The Step 8A changed-path set is Markdown-only and the runbook remains active
-  at Step 8B rather than requesting closure.
+- No hidden temporary, expansion, frame action, or repair occurs after
+  allocation or inside F1.
+- Unsupported target realizations fail at their documented gate.
 
-## Step 8B — Reconcile the landed importer and decide closure
+## Step 8 — Reconcile all owners and prove documentation closure
 
 ### Goal
 
-Replace every provisional Raw assumption with final landed importer evidence,
-reconcile the Raw/A1/B1 boundary, and submit the complete A1-F3 Markdown
-contract for an explicit close decision.
-
-### Entry Gate
-
-- The parallel LIR-to-BIR route has a named completed revision, not merely a
-  work-in-progress branch, exhausted parent runbook, active blocker, or intent.
-- That revision contains inspectable importer code and matching tests or other
-  accepted code-level proof of the published Raw behavior.
+Make the six owner chains mutually consistent and decide whether idea 803 is
+complete or has proven one minimal architecture conflict.
 
 ### Actions
 
-- Name the completed importer revision and the exact code/test evidence used.
-- Audit its actual Raw kinds, payload alternatives, operand/result roles,
-  types, CFG/terminators, stable source identities, metadata, verifier gate,
-  rejection behavior, and publication atomicity.
-- Reconcile the factual Raw producer contract across A1/A2 and B1 admission;
-  remove or correct every provisional assumption recorded by Step 8A.
-- Recheck every downstream adjacency affected by the factual Raw matrix while
-  preserving the already accepted non-importer findings.
-- Record remaining implementation gaps as truthful `absent`/`partial` state or
-  separately scoped open ideas; do not modify code.
-- Verify the complete accepted diff contains Markdown only and request
-  plan-owner closure judgment.
+- Reconcile the root placement matrix, normative owners, linked consumers,
+  implementation status, exact-revision keys, identity, failure atomicity,
+  retry boundaries, and F1 handoff.
+- Trace one normative end-to-end scenario for each design area.
+- Audit stale contradictory ownership with focused searches and verify the
+  unchanged A1-F3 table and strict F1 boundary.
+- Check all changed paths, Markdown links/paths, fenced sketch labeling, and
+  `git diff --check`.
+- Record the chosen phi policy, every changed/added owner, all six chains,
+  conflict-audit result, and deliberately unresolved tuning before requesting
+  an explicit closure decision.
 
 ### Completion Check
 
-- A completed landed importer revision and its code/test proof are named.
-- The factual Raw publication matrix is explicit and A1/A2/B1 agree with it.
-- Every A1-F3 producer/consumer seam accepts the exact predecessor artifact.
-- No speculative implementation claim, duplicate authority, stale product,
-  implicit kind carry-forward, or unresolved identity rule remains.
-- Markdown-only scope is proven and all source acceptance criteria are met or
-  the exact unmet criterion is returned as a runbook repair/blocker route.
+- Every source acceptance criterion and reject signal is accounted for.
+- The diff contains only permitted Markdown and no implementation claim.
+- No follow-up idea exists unless a concrete irreducible spine conflict was
+  proven and bounded.
