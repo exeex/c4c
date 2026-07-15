@@ -140,3 +140,32 @@ the current unaccepted Step 2 repair and 802's parked unaccepted hunk; first
 complete 801's fresh build, focused call/frontend/backend proof, and
 supervisor-accepted full baseline before Step 3. Do not repeat Step 1 or
 claim the preserved repair as accepted progress.
+
+## Resumption Update: return to the 802 selector gate
+
+Last accepted progress remains only Step 1, `Trace and select anonymous
+aggregate layout facts`, in `827dae5bd3`. Step 2 remains an unaccepted
+working-tree repair based on `201f229d3`; its native anonymous-layout and
+direct-complex structured-call compatibility changes must stay preserved but
+must not be committed or credited as accepted 801 progress.
+
+The supervisor's fresh `cmake --build --preset default` followed by
+`ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
+passes with the preserved Step 2 repair and the parked 802 selector hunk. When
+the 802 hunk alone was temporarily rolled back, that same focused test failed
+at `LirSwitch.selector_type_ref`'s selector assertion; the hunk was restored.
+This proves the 801 repair now reaches, but does not accept or own, the 802
+Step 1 selector-verifier gate.
+
+Classification: `separate-blocker`. Reactivate
+`ideas/open/802_lir_switch_selector_type_reference_verifier.md` at unchanged
+Step 1 to evaluate only its parked switch verifier/test hunk. The unrelated
+754 aggregate-use authority changes and tests in the mixed working tree remain
+unaccepted and unowned by both this 801 resumption and 802.
+
+Exact return point: after 802 accepts its bounded selector-type-reference
+repair and proof, reactivate 801 at unchanged Step 2. Preserve Step 1's
+acceptance and the current unaccepted Step 2 repair; complete its required
+fresh build, focused call/frontend/backend checks, and supervisor-accepted
+full baseline before Step 3. Do not repeat Step 1 or claim the narrow focused
+proof as 801 acceptance.
