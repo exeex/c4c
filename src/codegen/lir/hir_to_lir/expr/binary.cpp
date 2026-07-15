@@ -581,8 +581,29 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
             };
           }
         }
+        std::optional<lir::LirScalarBinaryRhsParameterAuthority> rhs_authority;
+        if (ctx.lir_function != nullptr && rhs.value_id() != nullptr) {
+          const auto definition = std::find_if(
+              ctx.lir_function->native_body_parameter_definitions.begin(),
+              ctx.lir_function->native_body_parameter_definitions.end(),
+              [&](const auto& candidate) {
+                return candidate.value == *rhs.value_id() &&
+                       candidate.type == type &&
+                       candidate.abi == lir::LirNativeBodyParameterAbi::DirectScalar;
+              });
+          if (definition != ctx.lir_function->native_body_parameter_definitions.end()) {
+            rhs_authority = lir::LirScalarBinaryRhsParameterAuthority{
+                .value = definition->value,
+                .parameter_index = definition->parameter_index,
+                .type = definition->type,
+                .owner = definition->owner,
+                .abi = definition->abi,
+                .role = lir::LirScalarBinaryParameterRole::Rhs,
+            };
+          }
+        }
         emit_lir_op(ctx, lir::LirBinOp{result, std::string(instr), type, lhs, rhs,
-                                       lhs_authority});
+                                       lhs_authority, rhs_authority});
         const std::string coerced = coerce(ctx, result.str(), lts, res_spec);
         return coerced == result.str() ? result : LirOperand::raw(coerced);
       }

@@ -2737,9 +2737,54 @@ void verify_function_value_ownership(const LirModule& mod,
       fail_verify(field, "must exactly mirror one native direct-scalar parameter definition");
     }
   };
+  const auto verify_scalar_binary_rhs_authority = [&](const LirBinOp& op) {
+    const auto scalar_rhs_definition = std::find_if(
+        function.native_body_parameter_definitions.begin(),
+        function.native_body_parameter_definitions.end(), [&](const auto& definition) {
+          return op.rhs.value_id() && definition.value == *op.rhs.value_id() &&
+                 definition.abi == LirNativeBodyParameterAbi::DirectScalar;
+        });
+    if (!op.scalar_rhs_parameter_authority) {
+      if (scalar_rhs_definition != function.native_body_parameter_definitions.end()) {
+        fail_verify("LirBinOp.scalar_rhs_parameter_authority",
+                    "is required when LirBinOp.rhs uses a native direct-scalar parameter");
+      }
+      return;
+    }
+    const auto& authority = *op.scalar_rhs_parameter_authority;
+    constexpr std::string_view field = "LirBinOp.scalar_rhs_parameter_authority";
+    const bool unique_owner = authority.owner != kInvalidLinkName &&
+        authority.owner == function.link_name_id &&
+        std::count_if(mod.functions.begin(), mod.functions.end(), [&](const LirFunction& candidate) {
+          return candidate.link_name_id == authority.owner;
+        }) == 1;
+    if (!authority.value.valid() || !unique_owner ||
+        authority.parameter_index >= function.params.size() ||
+        authority.abi != LirNativeBodyParameterAbi::DirectScalar ||
+        authority.role != LirScalarBinaryParameterRole::Rhs ||
+        op.rhs.kind() != LirOperandKind::SsaValue || !op.rhs.value_id() ||
+        *op.rhs.value_id() != authority.value || op.type_str != authority.type) {
+      fail_verify(field, "requires one native direct-scalar current-function RHS value binding");
+    }
+    const auto matches = std::count_if(
+        function.native_body_parameter_definitions.begin(),
+        function.native_body_parameter_definitions.end(), [&](const auto& definition) {
+          return definition.value == authority.value &&
+                 definition.parameter_index == authority.parameter_index &&
+                 definition.type == authority.type && definition.owner == authority.owner &&
+                 definition.abi == authority.abi;
+        });
+    if (matches != 1 || authority.parameter_index >= function.params.size() ||
+        !direct_scalar_parameter_type(function.params[authority.parameter_index].second)) {
+      fail_verify(field, "must exactly mirror one native direct-scalar parameter definition");
+    }
+  };
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
-      if (const auto* op = std::get_if<LirBinOp>(&inst)) verify_scalar_binary_lhs_authority(*op);
+      if (const auto* op = std::get_if<LirBinOp>(&inst)) {
+        verify_scalar_binary_lhs_authority(*op);
+        verify_scalar_binary_rhs_authority(*op);
+      }
     }
   }
 

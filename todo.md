@@ -5,32 +5,26 @@ Source Idea Path: ideas/open/823_lir_next_body_parameter_authority_handoff.md
 Source Plan Path: plan.md
 Current Step ID: 2
 Current Step Title: Publish and verify one DirectScalar binary-RHS authority contract
-你該做code review了
 
 ## Just Finished
 
-- Step 1 traced the next adjacent candidate, a native `DirectScalar`
-  `LirBinOp.rhs` use, and selected no row. Its value identity, owner,
-  parameter index, type, and ABI exist in
-  `LirCurrentFunctionBodyParameterDefinition`, but the first required missing
-  fact is a native RHS role/use binding: `LirScalarBinaryParameterRole` has
-  only `Lhs`, `LirBinOp` carries only `scalar_lhs_parameter_authority`, and
-  the producer/verifier inspect and validate only `lhs`. This is distinct from
-  the accepted pointer GEP-base and DirectScalar binary-LHS rows, but it is
-  not receiver-ready and remains fail-closed.
+- Step 2 published one `LirBinOp.rhs` DirectScalar authority contract: the
+  producer binds a distinct RHS carrier only from a matching current-function
+  definition, and the verifier requires RHS role, value, owner, parameter
+  index, type, and ABI coherence. Nearby LIR-only coverage accepts the exact
+  tuple and rejects missing, foreign, wrong-role, type, ABI, and value-mismatch
+  variants; no Raw-BIR receipt was added.
 
 ## Suggested Next
 
-- Implement only the in-scope Step 2 repair: publish one explicit
-  `LirBinOp.rhs` DirectScalar parameter role and independent authority carrier,
-  bind it from the existing checked current-function definition facts, and
-  verify matching RHS role/value/type coherence with nearby fail-closed tests.
-  Do not begin Raw-BIR receiver work.
+- Complete Step 3 by recording this exact RHS producer/schema/verifier tuple,
+  rejected forms, and focused proof in the source idea, then hand the bounded
+  receiver contract back to 734. Do not begin Raw-BIR receiver work here.
 
 ## Watchouts
 
-- Do not infer a RHS role from `LirBinOp.rhs`, operand spelling, or the LHS
-  carrier. The current schema and verifier intentionally have no RHS role.
+- Do not infer RHS authority from `LirBinOp.rhs`, operand spelling, or the LHS
+  carrier; the distinct RHS carrier is the only selected authority source.
 - Ideas 821 and 822 retain pending, unaccepted implementation work; do not
   modify, discard, or claim acceptance for either slice.
 - No generic scalar/parameter admission, Raw-BIR/importer/builder work, or
@@ -40,5 +34,4 @@ Current Step Title: Publish and verify one DirectScalar binary-RHS authority con
 
 ## Proof
 
-- No proof run: this was a read-only producer/schema/verifier trace with no
-  code change and no selected row. No `test_after.log` was produced.
+- `cmake --build --preset default --target backend_lir_selected_pointer_authority_test && ctest --test-dir build --output-on-failure -R '^backend_lir_selected_pointer_authority$'` passed; output is preserved in `test_after.log`.

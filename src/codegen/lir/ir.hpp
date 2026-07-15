@@ -543,12 +543,25 @@ enum class LirNativeBodyParameterAbi : uint8_t {
 enum class LirScalarBinaryParameterRole : uint8_t {
   Invalid,
   Lhs,
+  Rhs,
 };
 
 // Native authority for exactly a direct plain scalar current-function
 // parameter used as the LHS of this binary operation.  The operand spelling
 // is a checked display mirror only; all selection facts live here.
 struct LirScalarBinaryLhsParameterAuthority {
+  LirValueId value = LirValueId::invalid();
+  uint32_t parameter_index = 0;
+  LirTypeRef type;
+  LinkNameId owner = kInvalidLinkName;
+  LirNativeBodyParameterAbi abi = LirNativeBodyParameterAbi::Invalid;
+  LirScalarBinaryParameterRole role = LirScalarBinaryParameterRole::Invalid;
+};
+
+// Native authority for exactly a direct plain scalar current-function
+// parameter used as the RHS of this binary operation.  The operand spelling
+// is a checked display mirror only; all selection facts live here.
+struct LirScalarBinaryRhsParameterAuthority {
   LirValueId value = LirValueId::invalid();
   uint32_t parameter_index = 0;
   LirTypeRef type;
@@ -567,6 +580,7 @@ struct LirBinOp {
   LirOperand lhs;             // SSA name or literal for left operand
   LirOperand rhs;             // SSA name or literal for right operand (empty for unary fneg)
   std::optional<LirScalarBinaryLhsParameterAuthority> scalar_lhs_parameter_authority;
+  std::optional<LirScalarBinaryRhsParameterAuthority> scalar_rhs_parameter_authority;
 };
 
 // Typed comparison operation (icmp/fcmp).
