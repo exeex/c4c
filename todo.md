@@ -3,40 +3,39 @@
 Status: Active
 Source Idea Path: ideas/open/820_lir_directscalar_parameter_producer_verifier_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish and verify the typed DirectScalar authority
+Current Step ID: 3
+Current Step Title: Prove the boundary and record the 734 handoff
 
 ## Just Finished
 
-- Step 2 completed the typed DirectScalar producer/verifier repair. `init_fn_ctx`
-  now publishes the body-parameter definition with its existing typed signature
-  mirror, rather than reconstructing a parallel rendered scalar type.
-- The verifier admits only the producer's bounded direct-scalar structural
-  family and still requires matching logical/signature bases, an exact typed
-  mirror, valid current-function value identity, and current-function owner.
-  Source alias/qualification metadata remains non-authoritative.
-- `frontend_lir_function_signature_type_ref_test` now covers a typedef-backed
-  `ull` DirectScalar authority plus missing/invalid value identity, foreign
-  owner, and type-incoherent typed-mirror rejection. The gcc-torture case
-  passes before any Raw-BIR receipt changes.
+- Step 3 causal probe reproduced `frontend_lir_call_type_ref` failing at
+  `LirSwitch.selector: must identify a current-function integer value definition`.
+  It is independent of Idea 820: the failure is in that test's manually-built
+  switch fixture, which is exercised before every DirectScalar test, while
+  820 changed only `init_fn_ctx` body-parameter publication and the native
+  DirectScalar verifier predicate.
+- `git show 4bcc7c8ff^` confirms the switch fixture and the switch-selector
+  verifier branch are byte-for-byte outside the 820 commit. The smallest
+  repair is a separate frontend LIR switch-fixture/modelled-result-authority
+  packet; it is out of scope for 820 and does not authorize Raw-BIR receipt.
 
 ## Suggested Next
 
-- Advance to the next supervisor-selected Step 3 packet; retain this packet's
-  DirectScalar boundary and do not broaden it into generic scalar receipt.
+- Return to 734 only with its selected `LirBinOp.lhs` receiver authorization
+  after the separate frontend switch blocker is resolved or explicitly routed;
+  retain the DirectScalar boundary and do not broaden it into generic scalar
+  receipt.
 
 ## Watchouts
 
-- No Raw-BIR/importer files were changed. Unselected DirectScalar rows remain
-  outside Raw-BIR receipt.
-- The selected scalar-LHS verifier uses the same bounded DirectScalar admission
-  predicate so source aliases cannot make a valid `ull` identity disappear
-  downstream.
+- The focused failure occurs before the test's DirectScalar boundary tests and
+  cannot be attributed to the producer/verifier changes in 4bcc7c8ff. No
+  implementation or Raw-BIR files were changed by this probe.
 
 ## Proof
 
-- Focused LIR authority test passed:
-  `ctest --test-dir build --output-on-failure -R '^frontend_lir_function_signature_type_ref$'`.
-- Supervisor-selected proof passed:
-  `cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^llvm_gcc_c_torture_src_20041011_1_c$' 2>&1 | tee test_after.log`.
-  Canonical proof log: `test_after.log`.
+- Focused causal probe failed as expected:
+  `ctest --test-dir build --output-on-failure -R '^frontend_lir_call_type_ref$'`.
+  It aborts at `LirSwitch.selector: must identify a current-function integer
+  value definition`. This diagnosis-only packet intentionally did not write a
+  root proof log and does not establish full acceptance.
