@@ -3,27 +3,43 @@
 Status: Active
 Source Idea Path: ideas/open/803_lir_aggregate_ssa_producer_authority_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Trace and select aggregate producer authority seams
+Current Step ID: 2
+Current Step Title: Publish checked authority for selected aggregate producers
 
 ## Just Finished
 
-- Lifecycle switch from 754 Step 2: the formerly accepted direct-call-only
-  contract cannot authorize local-load or constructed-insertvalue aggregate
-  producer provenance. The two focused failures require a separate bounded
-  prerequisite; no 754 repair is accepted.
+- Step 1 trace selected two producer-specific extensions to the existing
+  `LirOperand::ssa(display, LirValueId)` handoff. Aggregate local loads already
+  create `fresh_value(ctx)` in `emit_decl_ref_rval_operand` and retain the
+  local-pointer receipt; mark only the selected aggregate load as a native
+  result producer, then carry that operand through unary real/imag to
+  `LirExtractValueOp.agg`. Constructed complex aggregates in
+  `emit_complex_binary_arith` / conversion helpers instead use `fresh_tmp` and
+  return strings; the selected terminal `LirInsertValueOp` must publish a
+  `fresh_value` result plus a narrow opt-in native-result flag and retain that
+  operand to its extract use.
+- The ownership seam is `definition_insts` in
+  `verify_function_value_ownership`: accept only opted-in `LirCallOp`, selected
+  `LirLoadOp`, or selected `LirInsertValueOp` producers; require producer
+  result-ID equality, current-function definition, producer aggregate type
+  (`return_type`, `type_str`, or `agg_type`) equality with `extract.agg_type`,
+  and an exact display mirror. Keep all other producer kinds fail-closed.
 
 ## Suggested Next
 
-- Step 1 only: trace the two selected aggregate producer paths from creation
-  to `LirExtractValueOp.agg`, identify their exact existing IDs and the
-  smallest checked carrier/verifier seams. Do not implement or widen scope.
+- Step 2 only: publish the selected local-load and terminal-insertvalue native
+  result flags/operands; add malformed proof for missing/invalid, foreign or
+  unknown, stale display, wrong producer kind, and type-incoherent load/insert
+  authority. Do not add extractvalue row index/layout/result checks.
 
 ## Watchouts
 
 - Do not use display text or raw fallback, broaden to generic operand/
   expression provenance, add extractvalue index/layout/result rules, or touch
-  Raw-BIR. Preserve 754 Step 2 for the exact post-handoff return.
+  Raw-BIR. Existing `modeled_scalar_result_type` is insufficient for
+  `LirInsertValueOp`; Step 2 needs a narrowly named aggregate producer-type
+  selection rather than treating all instruction results as aggregates.
+  Preserve 754 Step 2 for the exact post-handoff return.
 
 ## Proof
 
@@ -31,3 +47,8 @@ Current Step Title: Trace and select aggregate producer authority seams
   '^(positive_sema_ok_call_builtin_runtime_c|llvm_gcc_c_torture_src_complex_2_c|frontend_hir_tests$|backend_)' --output-on-failure`.
 - Current named failures are the runtime and direct-complex aggregate paths;
   raw classification is explicitly rejected because it evades authority.
+- No new proof was run for this trace-only packet; retain the existing focused
+  reproduction evidence and do not overwrite canonical logs.
+- Before accepting Step 2, run a fresh build, focused positive/malformed
+  aggregate proof, and the supervisor-selected broader acceptance required
+  for the 754 handoff.
