@@ -31,6 +31,20 @@ parsing opaque assembly text.
   by focused positive/negative producer proof; every nonselected residual stays
   fail closed.
 
+## Active Baseline-Blocker Intake
+
+The isolated accepted 810/795 tree's fresh comparable full gate passed
+3013/3037 after `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure`. Twenty-two failures spanning positive/C++/c-testsuite and
+GCC-torture coverage report `LirCastOp.result: expected operand kind mismatch
+... got raw-text`. This selects only the native cast-result authority family
+for 796's next trace; it does not authorize a combined residual sweep.
+
+The same gate also has `frontend_lir_call_type_ref` (owned by 801) and
+`llvm_gcc_c_torture_src_20060910_1_c` PHI authority (owned by 806). Do not
+absorb either. Once this cast family is accepted or separately split, return
+to 810's preserved Step 3 for the exact comparable full-baseline retry.
+
 ## Reviewer Reject Signals
 
 - Reject a catch-all instruction/terminator conversion, text parsing, receiver

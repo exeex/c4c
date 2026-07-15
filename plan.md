@@ -1,63 +1,76 @@
-# LIR GEP Producer Result Authority Baseline Blocker Runbook
+# LIR Cast Result Authority Baseline Residual Runbook
 
 Status: Active
-Source Idea: ideas/open/810_lir_gep_producer_result_authority_baseline_blocker.md
-Resumed from: 795 accepted parameter-index authority handoff (`281737387`)
+Source Idea: ideas/open/796_lir_instruction_terminator_residual_authority_handoff.md
+Activated from: 810 Step 3 comparable-baseline residual ownership switch
 
 ## Purpose
 
-Complete the previously interrupted baseline gate for the bounded GEP
-producer-authority blocker. Steps 1--2 remain accepted; Step 3 must establish
-a fresh comparable full baseline before 810 can return control to 801.
+Trace the selected native `LirCastOp.result` raw-text authority failure family
+that prevents the 810 comparable full baseline from clearing. This is a
+bounded 796 instruction-authority route, not a GEP, structured-call, or PHI
+repair.
 
 ## Core Rule
 
-Keep the existing authoritative GEP contract intact. Do not derive authority
-from rendered text, testcase identity, or instruction order, and do not
-absorb anonymous layout, structured-call, or PHI work.
+Use only native current-function value/type facts. Do not parse rendered text,
+weaken verification, group cases by testcase identity, or convert unrelated
+instruction families.
 
 ## Read First
 
+- `ideas/open/796_lir_instruction_terminator_residual_authority_handoff.md`
 - `ideas/open/810_lir_gep_producer_result_authority_baseline_blocker.md`
-- its function-body parameter index resumption record
-- `ideas/open/795_lir_body_parameter_authority_handoff.md` completion record
-- canonical `test_before.log` and the fresh full-baseline procedure
+- the full-gate diagnostics for representative `LirCastOp.result` failures
 
 ## Non-Goals
 
-- Repeating accepted 810 Steps 1--2 or reopening 795.
-- Claiming 3037/3037 clearance from focused proof.
-- Anonymous aggregate/direct-complex compatibility changes, PHI work, verifier
-  weakening, text-derived identity, or generic provenance/pointer redesign.
+- 810's accepted GEP repair, 795's parameter handoff, or 810 baseline
+  clearance.
+- 801's `frontend_lir_call_type_ref` structured-call/argument-mirror route.
+- 806's `20060910-1.c` PHI route, a combined residual sweep, Raw-BIR, or
+  inline-assembly text parsing.
 
 ## Ordered Steps
 
-### Step 1 - Trace and classify failing GEP producer families (accepted)
+### Step 1 - Trace and select the native cast-result authority family
 
-Accepted in `f1cb9c510`: the bounded native pointer postfix and compound
-add/sub producer family was traced. Do not repeat this step.
-
-### Step 2 - Repair the selected GEP result-authority handoff (accepted)
-
-Accepted in `1f1a1fb38`: only the selected native pointer producer family was
-repaired. The later native parameter-index handoff is complete in `281737387`
-and is not a reopening of this step.
-
-### Step 3 - Prove the blocker and return control to 801
-
-Goal: obtain the fresh, comparable full-baseline evidence required after the
-accepted 810 and 795 handoffs.
+Goal: establish whether the 22 raw-text diagnostics share one native cast
+result publication/handoff and identify the smallest selected producer seam.
 
 Actions:
 
-- run a fresh build and the supervisor-selected comparable full baseline;
-- retain the established focused proof only as supporting evidence, not as
-  baseline clearance;
-- classify any residual failure by owned route without absorbing the unrelated
-  anonymous aggregate/direct-complex dirty hunks or the 806 PHI residual;
-- return control to 801 unchanged at Step 2 only after supervisor acceptance
-  of a 3037/3037 comparable baseline.
+- reproduce representative positive, c-testsuite, and GCC-torture cases;
+- trace `LirCastOp.result` from native production through verification;
+- record explicit ownership for every nonmatching residual before expanding.
 
-Completion check: a fresh comparable full baseline passes 3037/3037 and the
-supervisor accepts 810's bounded evidence. Any lesser or partial result does
-not clear 810 or 801.
+Completion check: a single evidenced native family is selected, or each
+nonmatching case is routed to an existing/new separately scoped successor.
+
+### Step 2 - Repair the selected cast-result handoff
+
+Goal: publish checked native authority to the existing cast contract.
+
+Actions:
+
+- implement only the selected producer/immediate handoff;
+- add nearby same-family positive and malformed-authority coverage;
+- retain rejection of missing, foreign, stale, and unknown authority.
+
+Completion check: fresh build and focused proof pass without verifier
+weakening, text recovery, or testcase-shaped behavior.
+
+### Step 3 - Prove the bounded route and return to 810
+
+Goal: provide 796 acceptance evidence sufficient to retry 810's gate.
+
+Actions:
+
+- obtain supervisor-selected focused proof for the selected family;
+- have the supervisor classify/accept the result;
+- reactivate 810 unchanged at its preserved Step 3 for
+  `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure`.
+
+Completion check: 796's bounded route is accepted or explicitly split; no
+claim of 810 or 801 full-baseline clearance is made here.

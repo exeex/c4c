@@ -122,3 +122,34 @@ Step 1 or credit its preserved repair through this blocker.
   `frontend_lir_call_type_ref` guard changed from 0/1 before to 1/1 after the
   fresh build; the matching non-decreasing guard was accepted. This is bounded
   producer proof, not a full-baseline clearance.
+
+## Resumption Record: comparable baseline residual ownership switch
+
+- Last accepted progress: Step 1 remains accepted in `f1cb9c510` and Step 2
+  remains accepted in `1f1a1fb38`; `f3c16c57f` preserved the resumed 810
+  baseline gate, and the bounded native function-body parameter index handoff
+  completed separately in `281737387`. No accepted 810 work is reopened by
+  this record.
+- Interrupted runbook step: Step 3, *Prove the blocker and return control to
+  801*.
+- Exact failed proof: after temporarily stashing and then restoring the
+  preserved dirty aggregate/direct-complex working-tree changes, the isolated
+  accepted 810/795 tree ran `cmake --build --preset default && ctest --test-dir
+  build -j --output-on-failure`. The build succeeded; CTest passed 3013/3037
+  and failed 24 tests. This is a fresh comparable failed gate, not a
+  regression-guard roll-forward and not 3037/3037 clearance.
+- Residual ownership and scope boundary: `frontend_lir_call_type_ref` remains
+  within 801's direct-complex structured-call/argument-mirror Step 2 route;
+  `llvm_gcc_c_torture_src_20060910_1_c` remains exclusively with 806's PHI
+  residual-producer route. The remaining 22 failures all report
+  `LirCastOp.result: expected operand kind mismatch ... got raw-text`, across
+  positive/C++/c-testsuite/GCC-torture coverage. That is the existing 796
+  bounded residual instruction authority family, not GEP producer work. The
+  isolated-tree result proves the preserved 801 dirty hunks did not cause this
+  failed gate.
+- Blocking owner and exact return point: switch to
+  `ideas/open/796_lir_instruction_terminator_residual_authority_handoff.md`
+  to select and trace only the native cast-result authority family. After 796
+  completes its bounded route and its result is classified or accepted, resume
+  810 unchanged at Step 3; rerun the exact full command above. Return control
+  to 801 unchanged at Step 2 only after the supervisor accepts 3037/3037.
