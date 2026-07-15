@@ -5,20 +5,19 @@ Source Idea Path: ideas/open/752_lir_local_object_pointer_authority_convergence.
 Source Plan Path: plan.md
 Current Step ID: 1
 Current Step Title: Establish the selected local-object authority contract
+你該做code review了
 
 ## Just Finished
 
-- Step 1 completed the current-function local object-pointer contract and
-  repaired direct-local lvalue/rvalue producer plumbing. Focused coverage
-  separately exercises alloca, direct local store, static-array indexed GEP,
-  direct local load, VLA stack save, and backward-goto stack restore; each
-  selected operation retains matching typed pointer/object/liveness authority
-  after its display spelling is made misleading and verifier success is checked.
+- Step 1 implementation was committed in `ca26a8242`; its focused coverage
+  passed. Supervisor review identified a remaining VLA pointer-slot-store
+  authority mismatch, so Step 1 is not accepted as complete.
 
 ## Suggested Next
 
-- Advance to Step 2's malformed-authority boundary checks, without widening
-  into Raw-BIR/importer or Step 3 handoff work.
+- Repair the VLA pointer-slot-store authority so it describes that store's
+  pointer operand, then rerun the bounded Step 1 proof. Do not start Step 2
+  malformed-authority checks or Step 3 handoff work.
 
 ## Watchouts
 
