@@ -82,6 +82,16 @@ handoff returns to its separate 810 baseline route and does not authorize a
   receiver-ready row. Do not receive Raw-BIR in 819. The remaining parent
   action is to select/trace only that new receiver-ready row, then continue
   Steps 2–3 only as applicable.
-- Accepted proof and implementation commit references: none. The trace made no
-  code change and selected no producer contract; no proof or commit was
-  accepted.
+- Accepted producer prerequisite: 819 is capability-complete and supplies the
+  exact scalar `LirBinOp.lhs` tuple for this re-evaluation only:
+  `LirNativeBodyParameterAbi::DirectScalar`; a unique native
+  `LirCurrentFunctionBodyParameterDefinition` carrying `LirValueId`, parameter
+  index, LLVM type, owner, and ABI for a plain fixed scalar parameter; and a
+  `LirScalarBinaryLhsParameterAuthority` binding with role `Lhs`. Its verifier
+  rejects absent/invalid/duplicate/foreign/wrong-role/out-of-range/type/ABI/
+  non-scalar/lhs-mismatch forms, and presentation-derived facts remain
+  forbidden. Accepted commit: `b16935c69` (`lir: publish scalar binary lhs
+  parameter authority`). Accepted proof: `cmake --build --preset default &&
+  ctest --test-dir build -j --output-on-failure -R '^backend_' 2>&1 | tee
+  test_after.log`, 6/6; matching `^backend_` before/after regression guard
+  passed with no new failures (allow-non-decreasing for internal cases).

@@ -1,6 +1,6 @@
 # LIR Scalar Binary-LHS Parameter Authority
 
-Status: Open
+Status: Closed — capability complete
 Type: bounded LIR producer/schema/verifier prerequisite
 Predecessor: `ideas/open/818_lir_next_body_parameter_authority_handoff.md`
 Consumer after parent selection: `ideas/open/818_lir_next_body_parameter_authority_handoff.md`
@@ -75,3 +75,35 @@ reactivate 818 at **Step 1 - Trace and select one body-parameter use authority
 row**. Re-evaluate only whether this published scalar `LirBinOp.lhs` tuple is
 receiver-ready, then select/trace that new row before continuing 818 Steps 2–3
 as applicable. Do not receive Raw-BIR inside this idea.
+
+## Completion Record
+
+- Disposition: capability complete. The bounded producer prerequisite is
+  accepted; this idea does not claim a Raw-BIR receipt or any receiver work.
+- Accepted producer tuple: `LirNativeBodyParameterAbi::DirectScalar` exists
+  alongside `DirectPointer`. `init_fn_ctx` publishes exactly one
+  `LirCurrentFunctionBodyParameterDefinition` for a plain fixed scalar
+  current-function parameter (integer/floating base, `ptr_level == 0`, with no
+  array, vector, reference, or function-pointer form). It carries the native
+  `LirValueId`, parameter index, LLVM type, current-function owner, and
+  `DirectScalar` ABI. `emit_binary_rval_operand` binds that matching native
+  definition only to `LirBinOp.lhs` through
+  `LirScalarBinaryLhsParameterAuthority` with role `Lhs`.
+- Reject boundary: reject absent, invalid, duplicate, foreign-owner,
+  wrong-role, out-of-range, type/ABI-incoherent, non-scalar, and lhs
+  value/type-mismatch forms. Verification requires a unique native
+  direct-scalar owner; exact current-function definition, parameter
+  index/type/owner/ABI agreement; matching lhs SSA/value/type; and a plain
+  fixed scalar form. Presentation data, `param_slots`, rendered text, and
+  `LirOperand::raw` are not authority.
+- Accepted implementation and proof: `b16935c69` (`lir: publish scalar binary
+  lhs parameter authority`); `cmake --build --preset default && ctest
+  --test-dir build -j --output-on-failure -R '^backend_' 2>&1 | tee
+  test_after.log` passed 6/6. Matching `^backend_` `test_before.log` and
+  `test_after.log` regression guard passed with no new failures; the
+  allow-non-decreasing policy applies because this target exercises internal
+  cases.
+- Parent return: resume 818 at Step 1 — `Trace and select one body-parameter
+  use authority row` — and re-evaluate only whether this exact scalar
+  `LirBinOp.lhs` tuple creates a receiver-ready row. 818 Steps 2–3 remain
+  untouched. No Raw-BIR receipt occurred here.
