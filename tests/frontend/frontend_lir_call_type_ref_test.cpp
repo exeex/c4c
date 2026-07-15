@@ -706,6 +706,18 @@ int lir_aarch64_gp_vaarg_gr_top_reg_addr(int count, ...) {
       });
   expect_true(contract != function.blocks.end(),
               "AArch64 GP gr_top load must carry a native ID into the indexed reg_addr GEP");
+  const bool stack_ptr_contract = std::any_of(
+      function.blocks.begin(), function.blocks.end(), [&](const lir::LirBlock& block) {
+        return std::any_of(block.insts.begin(), block.insts.end(),
+                           [&](const lir::LirInst& inst) {
+          const auto* load = std::get_if<lir::LirLoadOp>(&inst);
+          return load && load->requires_native_result_authority &&
+                 load->type_str.kind() == lir::LirTypeKind::Pointer &&
+                 load->result.value_id() && load->result.value_id()->valid();
+        });
+      });
+  expect_true(stack_ptr_contract,
+              "AArch64 GP overflow stack_ptr must publish its selected load result");
   lir::verify_module(lowered);
 }
 
@@ -757,6 +769,41 @@ long double lir_aarch64_fp_vaarg_ptrmask_identity(int count, ...) {
       });
   expect_true(consumer != geps.end(),
               "FP vaarg ptrmask result must preserve its exact ID into the immediate GEP consumer");
+  lir::verify_module(lowered);
+}
+
+void test_aarch64_fp_vaarg_inttoptr_result_identity_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+typedef __builtin_va_list va_list;
+double lir_aarch64_fp_vaarg_inttoptr_identity(int count, ...) {
+  va_list ap;
+  __builtin_va_start(ap, count);
+  return __builtin_va_arg(ap, double);
+}
+)c", "aarch64-linux-gnu");
+
+  const lir::LirFunction& function =
+      require_function(lowered, "lir_aarch64_fp_vaarg_inttoptr_identity");
+  const lir::LirGepOp* reg_addr = nullptr;
+  const lir::LirLoadOp* stack_ptr = nullptr;
+  const lir::LirCastOp* aligned_stack_ptr = nullptr;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* gep = std::get_if<lir::LirGepOp>(&inst);
+          gep && gep->requires_native_result_authority) reg_addr = gep;
+      if (const auto* load = std::get_if<lir::LirLoadOp>(&inst);
+          load && load->requires_native_result_authority) stack_ptr = load;
+      if (const auto* cast = std::get_if<lir::LirCastOp>(&inst);
+          cast && cast->requires_native_result_authority) aligned_stack_ptr = cast;
+    }
+  }
+  expect_true(reg_addr && stack_ptr && aligned_stack_ptr &&
+                  reg_addr->result.value_id() && stack_ptr->result.value_id() &&
+                  aligned_stack_ptr->result.value_id() &&
+                  aligned_stack_ptr->kind == lir::LirCastKind::IntToPtr,
+              "FP vaarg <=8-byte alignment must publish reg_addr, stack_ptr, and inttoptr results");
   lir::verify_module(lowered);
 }
 
@@ -813,6 +860,15 @@ int lir_amd64_vaarg_register_stack(int count, ...) {
                        load->type_str.kind() == lir::LirTypeKind::Pointer;
               }),
               "AMD64 stack helper must select its final value load, not its pointer load");
+  const auto selected_value_loads = std::count_if(
+      loads.begin(), loads.end(), [](const lir::LirLoadOp* load) {
+        return load->requires_native_result_authority &&
+               load->type_str.kind() == lir::LirTypeKind::Integer &&
+               load->type_str.integer_bit_width() == 32 && load->result.value_id() &&
+               load->result.value_id()->valid();
+      });
+  expect_true(selected_value_loads == 2,
+              "AMD64 reg_value and stack_value must each select their final i32 load result");
   lir::verify_module(amd64);
 }
 
@@ -7709,6 +7765,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_aarch64_scalar_stdarg_preserves_structured_va_list();
   test_aarch64_gp_vaarg_gr_top_reg_addr_native_operand_contract();
   test_aarch64_fp_vaarg_ptrmask_result_identity_boundary();
+  test_aarch64_fp_vaarg_inttoptr_result_identity_boundary();
   test_amd64_vaarg_register_stack_native_operand_contract();
   test_vaarg_native_producer_result_authority_contract();
   test_structured_operand_identity_foundation();
