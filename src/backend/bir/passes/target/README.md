@@ -1,115 +1,113 @@
-# Target Pseudo Legalization and Optional Pass Gate
+# D4 Target Pseudo Realizability and Expansion Pass Contract
 
-Status: converged deferred extension contract (unimplemented).
+Contract-Status: converged planned contract under idea 732
+Implementation-Status: absent
+Phase-ID: D4
+Upstream: exact D3 allocation-free `PseudoBir` plus current projection
+Downstream: fully reverified directly realizable D4 Pseudo revision for D5
 
-## D4 has one mandatory gate
+## Purpose
 
-`D4` consumes the exact immutable `PseudoBir` published by D3 together with
-the matching `PseudoStageKey`, verified target layout, preparation bundle, and
-exact current `ProjectedConstraintSet`. Its required purpose is to make every non-`InlineAsm` node
-directly realizable as exactly one machine instruction before out-of-SSA and
-allocation. The legalization/expansion chain may contain no mutation only when
-the target realizability checker proves that property for every input node.
-The final full `Pseudo` reverification gate is never optional.
+D4 is an always-on target realizability gate and legalization chain. It makes
+every required target-specific one-to-many expansion explicit before
+allocation and eliminates every prospective `D.ExpansionPlaceholder`.
 
-Required target legalization may replace one pseudo with an explicit pseudo
-subgraph. Every introduced temporary, definition, use, constraint, clobber,
-effect, stack-object reference, and CFG edit is ordinary BIR state visible to
-out-of-SSA, liveness, and shared regalloc. The chain may legalize call-sequence
-pseudos emitted by [D2 shared call lowering](../call_lowering/README.md), but
-cannot redo ABI classification, choose a different call plan or ABI rule, add
-hidden transport, reconstruct a `GenericCall`, or take over general call
-lowering.
+## Owns
 
-## Closed pass registry and optional entries
+Versioned target pseudo-rule selection, mandatory realizability check, explicit
+one-to-many expansion, total mappings, fresh C9 projection, and full Pseudo
+reverification/publication.
 
-No pass is active merely because this directory exists. D4 uses a reviewed,
-versioned ordered registry. Each entry declares:
+## Does Not Own
 
-- stable `PassId`, schema/options fingerprint, supported target fingerprints,
-  exact predecessor properties, and admitted pseudo families;
-- whether it is required legalization or an optional optimization, plus the
-  typed feature/profile switch controlling an optional occurrence;
-- deterministic rewrite and failure behavior, mutation budget, and exact
-  postconditions;
-- all analyses and derived products read, preserved with proof, invalidated,
-  or recomputed; and
-- the full-profile verifier re-entry point and direct-realizability checks.
+D4 does not redo ABI classification or D2 call lowering, assign homes, spill,
+lay out frames, construct machine records, remove SSA, or hide temporaries in a
+product. Optional target optimizations require separately reviewed registry rows.
 
-Environment matching, pass-name strings, backend defaults, and local target
-hooks cannot insert, omit, or reorder entries. An optional optimization may
-change performance only: disabling it must still allow required legalization
-and the final gate to establish the same schema, semantics, and realizability
-contract.
+## Inputs
 
-## Mutation, invalidation, and revision rules
+One exact D3 publication with full `PseudoStageKey`, D2 lineage, current
+`ProjectedConstraintSet`, unchanged C1/C2-C9 products, and dynamic SSA proof.
 
-Every mutating occurrence forks a private candidate. Unchanged entities retain
-stable IDs; a unique compatible replacement may retain its instruction ID;
-additional nodes/results receive fresh IDs and removals become tombstones.
-Every mutation advances the exact function/module revision and produces a new
-`PseudoStageKey` with the ordered D4 occurrence fingerprint.
+## Input NodeKind/Tag Vocabulary
 
-Before any mutating occurrence can be verified or its output consumed by the
-next occurrence, the D4 runner invokes the sole shared
-`ConstraintProjectionTransaction` with the predecessor projection, new stamp,
-exact occurrence fingerprint, and complete replacement/tombstone and mutation
-maps. The final empty-chain gate invokes it as well to prove and key exact
-current-revision preservation. Each result is one `ProjectedConstraintSet`
-keyed to that candidate; D4 cannot locally copy, relabel, or reconstruct it.
+Exactly the prospective D3 groups accepted by the allocation-free gate:
+generic value/memory/effect/control, explicit D2 call transport, pending phi,
+opaque inline asm, and bounded expansion obligations. Planning names are not
+production enum claims.
 
-CFG edits invalidate CFG, dominance, SSA, def-use, liveness, and downstream
-facts unless explicitly rebuilt. Value/instruction edits invalidate def-use,
-SSA/dominance dependents, liveness, interference, assignment, realizability,
-and the predecessor `ProjectedConstraintSet`; only the shared projection
-authority may establish preservation and emit the new exact-revision product.
-Constraint/effect edits additionally invalidate binding checks and clobber
-facts. Pre-D4 liveness, interference, assignment, spill, and publication
-products are never reusable after mutation.
+## Required Analyses and Products
 
-Incremental checking may reject a bad edit early, but it cannot publish or
-replace the final full gate. After the complete required-plus-enabled chain,
-the runner freezes one exact candidate, recomputes every invalidated
-prerequisite, and runs the entire cumulative `Pseudo` verifier plus target
-realizability registry on every function. A mutation followed only by a local
-check is not eligible for D5.
+Exact target realizability registry, C2 layout, preparation products, current
+CFG/value-flow/effects/SSA, D2 facts, and projection. Equal-looking targets or
+stale products reject.
 
-The same existing target realizability registry/checker is the sole owner of
-the exact product recomputed after E4 frame-action materialization; this is not
-another D4 occurrence or a new A-F stage. It runs last in the enclosing
-`AllocatedPublicationTransaction` and consumes the final materialized graph,
-final `PipelineStageStamp`, `CopyResolutionFingerprint`,
-`FrameActionFingerprint`, exact target/layout/schema and
-`ProjectedConstraintSet` keys, and the newly staged exact-current
-`LivenessInterferenceKey`, `AssignmentKey`, and `SpillStateKey`. The E4-owned
-non-mutating final frame-plan derivation runs immediately before this checker,
-so the checker also consumes its exact-current `FrameRealizationKey`.
-It rechecks every surviving node, including each
-resolved `EdgeCopy`, against the registered direct-mapping rule and installs
-one `TargetRealizabilityKey` product keyed to that exact revision and exact
-frame product. Every predecessor product is invalid after D5 and E4 rewrites;
-stable IDs, structural equality, and preservation records cannot rekey it.
-Checker failure aborts the whole publication transaction. E4 has already
-inserted each required action as an explicit one-record node and fixed every
-object base, offset, displacement, adjustment, and static/dynamic interaction.
-The checker proves each non-`InlineAsm` node directly maps under those facts;
-it cannot select placement, materialize an address, insert a frame action,
-expand a node, or return repair to D4.
+## Ordered Behavior
 
-## Forbidden authority and failure
+1. Validate D3 capability, exact products, and complete target rule registry.
+2. Assign every node an explicit retain/expand/reject row.
+3. Build each required expansion entirely in one private candidate with all
+   introduced defs/uses/clobbers visible and total old-result mapping.
+4. Recompute affected facts, request fresh C9 projection, and prove every
+   non-opaque node directly one-record realizable.
+5. Run the full allocation-free Pseudo gate and publish only the complete D4
+   revision; the mandatory no-change case still runs every check.
 
-D4 may attach or refine abstract class/group requirements already authorized
-by the verified layout, but it cannot assign ordinary values to homes, reserve
-an undeclared unit, respond to pressure, insert capacity `Spill`/`Reload`,
-encode a machine-register identity, select a stack displacement, or emit a
-machine opcode. It cannot make a value disappear from allocation by burying it
-in an opaque payload, implicit scratch convention, side table, or preassigned
-operation. Any temporary is an ordinary allocatable value unless the closed
-schema and target layout declare a fixed ABI requirement.
+## NodeKind/Tag Lowering Matrix
 
-Unsupported operations, impossible expansion, missing scratch capacity,
-invalid target facts, stale products, pass-budget exhaustion, nondeterminism,
-cancellation, or failed reverification abort the whole D4 publication
-transaction, including any private projected product. No partial function set, pass result, property, revision, or
-fallback revision is published. The D3 input remains immutable and is not
-eligible for D5 unless a fresh complete D4 gate succeeds.
+| D3 planning input | Outcome and closed D4 output | Tags retained | Tags added | Tags removed | Identity / provenance | Failure |
+|---|---|---|---|---|---|---|
+| directly realizable generic value/memory/effect/control | retain in corresponding `D4.Realizable*` group | semantic/type/effect/roles/pseudo admission | direct-realizability proof, not free tag | unresolved realizability state | preserve | missing mapping rule rejects |
+| `D.ExpansionPlaceholder` or expandable pseudo | expand into complete `D4.Realizable*` sequence | source semantic/effect/type obligations | explicit pseudo defs/uses/clobbers and realizable disposition | placeholder/expansion-required classification | source retires; every output fresh with role/ordinal provenance and total result map | incomplete expansion rejects |
+| explicit D2 call transport/call/clobber/preserve | retain only if directly realizable; target expansion by exact D4 rule otherwise | exact D2 requirements/roles/effects | realizable output facts | unresolved target expansion | identity gate; expanded outputs fresh | ABI/call reclassification forbidden |
+| pending phi | retain unchanged for D5 | phi/type/predecessor roles/dynamic SSA | none | none | preserve | any SSA removal forbidden in D4 |
+| opaque inline asm | retain one opaque node | exact bytes/ordinary bindings/effects | one-opaque-record realizability exception | none | preserve | parsing/expansion forbidden |
+| residual placeholder/unknown/illegal/omitted/premature kind | reject publication | none | none | none | no publication | `D4RealizabilityInvalid` |
+
+## Identity and Provenance
+
+Every one-to-many expansion retires the source and gives each output a fresh
+ID. The total result map selects exact replacement/projections before RAUW.
+Target rule/ordinal is provenance only, never identity.
+
+## Outputs
+
+One allocation-free D4 `PseudoBir` revision containing no expansion placeholder
+and one exact-current projection; every non-inline-asm node has a registered
+direct one-record realization and every introduced value is ordinary graph state.
+
+## Verification and Publication
+
+Full Pseudo revalidation checks schema/stage, products, CFG/def-use/SSA,
+effects, mappings, projection, and realizability. It rejects assignments,
+spill/frame/machine facts and any placeholder. Publication is atomic.
+
+## Analysis Preservation and Invalidation
+
+Expansion invalidates all observing graph/SSA/effect/realizability/liveness
+facts and prior projection. Recompute under the D4 key; never retag old handles.
+
+## Failure and Diagnostics
+
+Stale products, absent/ambiguous target rule, incomplete mapping, residual
+placeholder, projection/SSA/verifier failure, cancellation, or resource
+exhaustion publishes no partial expansion or capability.
+
+## Adjacent-Stage Contract
+
+D3 supplies the only input. D5 accepts only this fully reverified revision and
+owns all phi/SSA removal. D4-created defs/uses/clobbers must remain visible to D5
+and later E1/E2.
+
+## Implementation State
+
+Absent. Prospective target pseudo rules and legacy legalization are not this pass.
+
+## Proof Requirements
+
+Prove mandatory no-op and expansion cases, placeholder elimination, total maps,
+fresh projection/full gate, neighboring targets, and no ABI/allocation/frame/MIR.
+
+## Open Questions
+
+Every new target expansion requires a reviewed closed rule and proof family.
