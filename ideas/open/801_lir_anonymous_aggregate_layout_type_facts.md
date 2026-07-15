@@ -54,3 +54,40 @@ without forbidden compatibility-text parsing.
   aggregate path without checked native field facts.
 - Reject testcase-shaped shortcuts, expectation downgrades, or weaker verifier
   contracts claimed as native layout/type progress.
+
+## Resumption Record: Step 2 switch-selector verifier blocker
+
+Last accepted progress: Step 1, `Trace and select anonymous aggregate layout
+facts`, is accepted in `827dae5bd3`. It selected the bounded native layout
+contract and did not implement extractvalue-row validation.
+
+Interrupted step: Step 2, `Repair anonymous layout / structured-call
+compatibility`. The exact remaining objective is to repair only the anonymous
+layout construction/model/validation seam so a direct-complex `LirCallOp` has
+coherent `callee_signature`, `arg_type_refs`, and structured arguments while
+native ordered field facts stay authoritative and checked. The unaccepted
+implementation base is `201f229d3`; current working-tree changes are an
+in-progress Step 2 repair and are not accepted progress.
+
+Failure evidence: clean rebuilds in separate worktrees at `827dae5bd` and
+`fcdda3415` both deterministically fail `frontend_lir_call_type_ref` with
+`LirCallOp.callee_signature: structured callee signature does not match call
+arguments`. This shows the recorded pre-change passing baseline did not
+reproduce from source. The current uncommitted in-scope repair makes that call
+mismatch pass, then deterministically exposes
+`LirSwitch.selector_type_ref: must match the selector-selected integer value
+definition`. Historical commit `a6c013ed0` introduced the latter verifier
+defect; it is outside this anonymous aggregate layout/call contract scope.
+
+Classification: `separate-blocker`. New open
+`ideas/open/802_lir_switch_selector_type_reference_verifier.md` owns only the
+switch selector type-reference verifier defect. It must not accept, discard,
+or broaden the in-progress 801 Step 2 repair.
+
+Exact return point: after 802 has accepted its bounded verifier repair and
+proof, reactivate 801 at unchanged Step 2. Preserve the current working-tree
+repair for evaluation, repair the direct-complex structured-call mismatch
+without weakening that verifier, add nearby relevant coverage, then obtain the
+Step 2 required fresh build, focused call/frontend/backend checks, and the
+supervisor-accepted full baseline before advancing to Step 3. Do not repeat
+Step 1 and do not treat a clean narrow subset as acceptance.

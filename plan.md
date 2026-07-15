@@ -1,99 +1,71 @@
-# LIR Anonymous Aggregate Layout Type Facts Runbook
+# LIR Switch Selector Type-Reference Verifier Repair Runbook
 
 Status: Active
-Source Idea: ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md
-Activated from: blocked Step 3 of 754; return to 754 only after this bounded
-type-model handoff is accepted.
+Source Idea: ideas/open/802_lir_switch_selector_type_reference_verifier.md
+Activated from: 801 Step 2 switch-selector verifier blocker; resume 801 only
+after this blocker is accepted.
 
 ## Purpose
 
-Provide native anonymous aggregate field-layout/type facts needed by the
-selected extractvalue row without letting compatibility text become authority.
+Restore the intended structured type-reference verification for a `LirSwitch`
+selector, without absorbing the anonymous-layout/call repair that exposed it.
 
 ## Core Rule
 
-Native structured field facts are authority. `LirTypeRef` rendering may mirror
-an anonymous aggregate but must not be parsed to create or repair its layout.
+Verify `selector_type_ref` against the selector-selected integer value
+definition through native structured facts. Do not weaken the verifier or use
+rendered compatibility text as type authority.
 
 ## Read First
 
-- `ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md`
-- `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`
-- closed composite type-model history and current LIR type construction/verifier seams
-- direct-complex aggregate lowering plus nearby focused tests
+- `ideas/open/802_lir_switch_selector_type_reference_verifier.md`
+- `ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md` resumption
+  record
+- historical introduction `a6c013ed0` and the nearby `LirSwitch` verifier,
+  construction, and focused test seams
 
 ## Non-Goals
 
-- `LirExtractValueOp` result/use/index/result-type row validation.
-- Raw-BIR, other aggregate/vector rows, broad type rewrite, lowering, MIR,
-  emission, and all text-derived layout recovery.
+- 801 anonymous aggregate layout or direct-complex call-signature work.
+- Switch lowering, successors/cases, Raw-BIR, generic type-model changes, MIR,
+  emission, and unrelated verifier cleanup.
 
 ## Ordered Steps
 
-### Step 1 - Trace and select anonymous aggregate layout facts (accepted)
+### Step 1 - Diagnose and repair switch selector type-reference verification
 
-Goal: identify the exact anonymous aggregate construction and verification
-boundary and select the smallest checked native field-layout carrier.
-
-Actions:
-
-- trace the direct-complex aggregate type from construction to verifier use;
-- identify required field ordering, type ownership, and malformed proof seams;
-- state the exact downstream 754 handoff and keep row validation out of scope.
-
-Completion check: accepted in `827dae5bd3`; one bounded native layout contract
-is explicit and no compatibility-text parsing or extractvalue-row work is
-selected.
-
-### Step 2 - Repair anonymous layout / structured-call compatibility
-
-Goal: repair the rejected anonymous-layout implementation so native ordered
-field facts remain checked without making a direct-complex `LirCallOp`'s
-structured callee signature disagree with its call arguments.
+Goal: identify the exact selector value/type-reference ownership mismatch and
+make the smallest correction that preserves the intended valid and malformed
+switch contracts.
 
 Actions:
 
-- start from rejected implementation commit `201f229d3` and the failing
-  `frontend_lir_call_type_ref` verifier evidence; locate the ownership/type
-  construction mismatch rather than weakening the signature verifier;
-- repair only the anonymous-layout construction/model/validation seam needed
-  to keep the direct-complex call's `callee_signature`, `arg_type_refs`, and
-  structured arguments coherent;
-- retain checked native field-count/field-type access and malformed-layout
-  rejection; leave named structs, arrays, unrelated calls, and all
-  extractvalue-row validation unchanged;
-- add nearby direct-complex and call-signature coverage for the repaired
-  contract, including rejection of incoherent structured facts where relevant.
+- trace the selected integer value definition, its structured type fact, and
+  `LirSwitch.selector_type_ref` through construction and verification;
+- compare the `a6c013ed0` introduction with the current failure and repair the
+  specific ownership/type comparison defect without weakening rejection;
+- add nearby positive and malformed switch verifier coverage for matching,
+  missing, foreign, stale, and incoherent selector type references as the
+  actual contract supports;
+- leave all 801 work untouched and do not reclassify its working-tree repair
+  as accepted.
 
-Completion check: the native carrier remains authoritative, the direct-complex
-call verifies, and all of the following fresh proof is accepted by the
-supervisor:
+Completion check: a fresh `cmake --build --preset default` plus focused
+positive/malformed switch verifier proof passes; invalid structured forms still
+reject; supervisor selects and accepts any wider proof required by this shared
+verifier seam.
 
-- `cmake --build --preset default`
-- `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
-- `ctest --test-dir build -R '^frontend_hir_tests$' --output-on-failure`
-- `ctest --test-dir build -R '^backend_lir_to_bir_interface$' --output-on-failure`
-- supervisor-owned `ctest --test-dir build -j --output-on-failure` baseline,
-  recorded in canonical `test_after.log`, compared with `test_before.log`, and
-  explicitly accepted through `scripts/plan_review_state.py accept-baseline`.
+### Step 2 - Publish the 801 return handoff
 
-Return point: remain at Step 2 until this proof is accepted.  A clean narrow
-subset alone is insufficient; the rejected candidate added 48 full-suite
-failures and was rejected with `scripts/plan_review_state.py reject-baseline`.
-
-### Step 3 - Prove and publish the 754 handoff
-
-Goal: establish positive and malformed proof and record the exact field-layout
-contract that 754 Step 3 may consume.
+Goal: record the accepted bounded contract and return control to 801 without
+claiming its interrupted Step 2 is complete.
 
 Actions:
 
-- after Step 2 acceptance, publish the repaired native field-layout contract
-  and its focused positive/malformed evidence;
-- reuse the accepted Step 2 build, call-signature, direct-complex, backend,
-  and full-baseline proof; rerun any proof made stale by handoff documentation;
-- state permitted facts and rejected forms for 754's field/index/result check.
+- record the accepted repair/proof and the exact selector type-reference facts
+  801 may rely on only as an environmental prerequisite;
+- reactivate 801 at unchanged Step 2, preserving its current unaccepted
+  working-tree repair and its direct-complex call-signature/full-baseline gate.
 
-Completion check: accepted proof supports reactivation of 754 at unchanged
-Step 3 without treating this blocker as extractvalue-row validation.  Do not
-advance to this handoff while Step 2 remains rejected.
+Completion check: 801 can resume its exact Step 2 repair objective; no
+anonymous-layout/call implementation has been accepted through this blocker.
