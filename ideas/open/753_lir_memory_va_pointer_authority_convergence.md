@@ -50,28 +50,34 @@ semantic gaps unless the common memory/va pointer boundary is closed.
   below 100%, reject closure and trace `log/*` by time/commit to identify the
   first bad commit before continuing.
 
-## Blocked Resumption Record
+## Resumed Carrier Handoff Record
 
-- **Last accepted progress:** 753 Step 2 accepted `va_start`/`va_end` in
-  `8f6f4f9c9`, positive-size aggregate `memset` baseline repair in
+- **Previously accepted 753 progress:** 753 Step 2 accepted `va_start`/`va_end`
+  in `8f6f4f9c9`, positive-size aggregate `memset` baseline repair in
   `0912c93a9`, `va_copy` in `17ba5b129`, and AMD64 scalar/pointer `va_arg` in
-  `52f143765`. The latter's backend guard passed 5/5 and its accepted full
-  baseline passed 3037/3037.
-- **Interrupted step:** Step 2, *Publish and verify native
-  pointer/object/lifetime authority*.
-- **Blocker:** `ideas/open/799_lir_amd64_vaarg_overflow_aggregate_carrier_authority.md`.
-  The source-required aggregate `va_arg` memcpy-like route in
-  `emit_amd64_va_arg_from_overflow`
-  (`src/codegen/lir/hir_to_lir/call/vaarg_amd64.cpp`) emits
-  `LirMemcpyOp{tmp_addr, stack_ptr, size}`, where `stack_ptr` is an
-  overflow-area-derived pointer rather than a current-function local-object
-  pointer. Its structured derived carrier authority is aggregate/vector carrier
-  work expressly outside 753's scope.
-- **Exact return point:** after the blocker supplies a checked structured
-  derived overflow-area pointer/object/lifetime and typed-size carrier for the
-  AMD64 aggregate `va_arg` memcpy row, resume 753 Step 2 and select only that
-  matching producer packet. Step 3 remains the later proof/handoff step.
-- **Remaining work:** publish and verify only the matching 753 producer row
-  against the blocker contract, then complete 753 Step 3 proof and its one
-  receiver handoff. Do not bridge this gap with text recovery or expand 753 to
-  aggregate/vector carrier work.
+  `52f143765`. The scalar/pointer packet's backend guard passed 5/5 and its
+  accepted full baseline passed 3037/3037.
+- **Resolved blocker:** closed idea
+  `ideas/closed/799_lir_amd64_vaarg_overflow_aggregate_carrier_authority.md`
+  accepted its Step 2 implementation in `c4e820a48`. It supplies exactly one
+  selected AMD64 SysV aggregate `layout.needs_memory` overflow memcpy carrier:
+  the direct current-function `va_list` local, typed field-2 GEP address,
+  overflow-pointer load, `Amd64SysVOverflowArgArea` storage kind, live local
+  aggregate temporary, final load, struct payload type, and positive i64 byte
+  size. The verifier requires the direct field-2/load chain and canonical
+  owner/object/liveness facts; it rejects unselected/partial or mixed carrier
+  fields, arbitrary/non-derived sources, foreign or dead locals, destination
+  disagreement, and type/size disagreement.
+- **Accepted blocker proof:** `c4e820a48`; `cmake --build --preset default &&
+  ./build/tests/backend/bir/backend_lir_selected_pointer_authority_test`
+  passed. The matching backend baseline is recorded in `test_after.log` (5/5).
+- **Exact return point:** resume 753 Step 2, *Publish and verify native
+  pointer/object/lifetime authority*, and select only the matching producer
+  packet that consumes this checked carrier for the AMD64 aggregate `va_arg`
+  memcpy row. Do not republish, generalize, or reconstruct aggregate/vector
+  carrier authority; Step 3 remains the later source proof and one receiver
+  handoff.
+- **Remaining work:** publish and verify the one matching 753 consumer row
+  against this contract, then complete 753 Step 3 proof and its one receiver
+  handoff. Do not bridge the row with text recovery or absorb aggregate/vector
+  carrier work.

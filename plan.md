@@ -1,83 +1,81 @@
-# AMD64 `va_arg` Overflow Aggregate Carrier Authority Runbook
+# LIR Memory/VA Pointer Authority Convergence Runbook
 
 Status: Active
-Source Idea: ideas/open/799_lir_amd64_vaarg_overflow_aggregate_carrier_authority.md
-Supersedes: 753 Step 2 pending blocker resolution
+Source Idea: ideas/open/753_lir_memory_va_pointer_authority_convergence.md
+Resumed from: 753 Step 2 after closed 799 overflow aggregate carrier handoff
 
 ## Purpose
 
-Establish the one native authority boundary required for the AMD64 aggregate
-`va_arg` overflow memcpy-like carrier, then hand its checked contract back to
-753 without absorbing 753's broader memory/VA producer scope.
+Resume the bounded native memory/VA producer route at the one AMD64 aggregate
+`va_arg` overflow memcpy row now backed by 799's checked carrier, without
+republishing carrier semantics or widening the producer family.
 
 ## Core Rule
 
-Only structured overflow derivation, current-function ownership, source
-object/storage, lifetime, and typed byte-size facts may authorize the carrier.
-Never recover those facts from presentation text or accept an arbitrary derived
-pointer as an overflow-area source.
+Native structured current-function authority is the sole semantic input. For
+the resumed row, consume 799's checked carrier exactly as published; do not
+recover pointer, object, lifetime, size, or row-selection facts from text or
+redefine the aggregate/vector carrier boundary.
 
 ## Read First
 
-- `ideas/open/799_lir_amd64_vaarg_overflow_aggregate_carrier_authority.md`
-- `ideas/open/753_lir_memory_va_pointer_authority_convergence.md` (resumption
-  record)
+- `ideas/open/753_lir_memory_va_pointer_authority_convergence.md` (resumed
+  carrier handoff record)
+- `ideas/closed/799_lir_amd64_vaarg_overflow_aggregate_carrier_authority.md`
 - `src/codegen/lir/hir_to_lir/call/vaarg_amd64.cpp`
 - Existing `LirVaArgOp`, pointer/object/lifetime verifier, and focused backend
   authority coverage adjacent to the AMD64 vaarg lowering seam
 
 ## Non-Goals
 
-- Generic aggregate/vector authority, other targets, scalar `va_arg`, generic
-  memory intrinsics, Raw-BIR, MIR, emission, or changing 753's source scope.
+- Aggregate/vector carrier publication or generalization, other targets,
+  scalar `va_arg`, generic memory intrinsics, Raw-BIR, MIR, emission, or
+  changing 753's source scope.
 
 ## Ordered Steps
 
-### Step 1 - Define the checked overflow aggregate carrier contract
+### Step 1 - Establish the bounded native memory/VA authority boundary (complete)
 
-Goal: identify the exact native producer and verifier fields needed to prove
-the source pointer derivation/base, object/storage, ownership, lifetime, and
-typed size for the single AMD64 overflow aggregate memcpy row.
+Completed accepted 753 work includes direct-local `va_start`/`va_end`,
+positive-size aggregate `memset`, direct-local `va_copy`, and AMD64
+scalar/pointer `va_arg`. Their retained evidence is recorded in the source
+handoff record.
 
-Actions:
+Completion check: complete; do not redo these accepted packets.
 
-- inspect the AMD64 overflow aggregate `va_arg` construction and current
-  pointer/object/lifetime substrate;
-- specify the accepted carrier relation and malformed boundaries without
-  textual recovery;
-- constrain unsupported aggregate forms to fail-closed or compatibility-only
-  behavior.
+### Step 2 - Consume and verify the checked aggregate overflow carrier
 
-Completion check: one bounded implementation packet can publish only the
-identified structured facts and rejection rules.
-
-### Step 2 - Publish and verify the native carrier boundary
-
-Goal: construct the selected `LirMemcpyOp` carrier from checked structured
-authority and reject invalid carrier facts before downstream use.
+Goal: select only the matching 753 producer row using the closed 799 carrier,
+while retaining 799 as the sole publisher of derived aggregate carrier facts.
 
 Actions:
 
-- implement the minimum producer/verifier changes for the selected AMD64
-  aggregate overflow route;
-- add nearby accepted and malformed-carrier coverage;
-- keep every nonmatching aggregate/vector and target route unchanged,
-  fail-closed, or compatibility-only.
+- inspect the closed 799 carrier contract and the resumed AMD64 aggregate
+  overflow producer seam;
+- make only the matching 753 producer selection/consumption change needed by
+  the source idea; retain 799's native derivation, storage, ownership,
+  lifetime, payload type, and typed-size verification boundary;
+- add nearby consumer-level positive and negative coverage only if the
+  selected row needs it; all nonmatching aggregate/vector and target routes
+  remain fail-closed or compatibility-only.
 
-Completion check: a fresh build and focused AMD64 aggregate `va_arg` proof
-show the accepted memcpy-like row and its native rejection boundary.
+Completion check: a fresh build and focused authority proof demonstrate that
+the one AMD64 aggregate overflow producer row consumes the checked carrier
+without text recovery or carrier generalization.
 
-### Step 3 - Prove the carrier and hand it back to 753
+### Step 3 - Prove the bounded producer slice and hand off one receiver row
 
-Goal: record the exact checked facts and proof that permit 753 Step 2 to
-select its matching producer packet.
+Goal: meet 753's source proof gate and publish exactly one later receiver
+handoff without Raw-BIR receipt work.
 
 Actions:
 
-- run the fresh build and focused proof selected by the supervisor;
-- document the carrier's fields, guarantees, rejected forms, and evidence in
-  the blocker source at the smallest durable layer;
-- return the handoff to 753 without modifying its scope or receiver work.
+- run a fresh build and focused memory/VA producer/verifier proof;
+- run the source-required full baseline; closure requires 100% passing tests,
+  and a lower baseline must be diagnosed through `log/*` by time/commit before
+  continuing;
+- document exactly one selected receiver handoff with native fields,
+  guarantees, rejected forms, and accepted proof.
 
-Completion check: the supervisor can resume 753 at its recorded Step 2 return
-point using this one checked aggregate overflow carrier contract.
+Completion check: 753 has source-complete producer authority evidence and one
+receiver-ready handoff; receiver work remains outside this runbook.

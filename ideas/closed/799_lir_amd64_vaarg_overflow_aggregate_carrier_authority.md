@@ -1,6 +1,6 @@
 # AMD64 `va_arg` Overflow Aggregate Carrier Authority
 
-Status: Open
+Status: Closed
 Type: bounded derived-pointer/object/lifetime authority blocker
 Parent: `ideas/open/753_lir_memory_va_pointer_authority_convergence.md`
 
@@ -75,3 +75,27 @@ route must be established here before 753 can publish that one matching row.
   or a change to 753's scope claimed as progress for this blocker.
 - Reject coverage that proves only a named fixture while malformed or
   unsupported carrier authority remains accepted.
+
+## Closure Record
+
+Disposition: capability complete; closed after Step 3 handoff.
+
+- **Accepted implementation:** `c4e820a48` publishes one optional
+  `LirAmd64SysVOverflowAggregateCarrier` only for a checked direct-local AMD64
+  SysV aggregate `layout.needs_memory` overflow memcpy. Its native facts are
+  the `va_list` local authority, typed field-2 GEP, overflow pointer load,
+  overflow-area storage kind, destination local temporary, final load, struct
+  payload type, and positive typed i64 payload size.
+- **Guarantees and rejects:** the carrier is exclusive to a selected,
+  non-volatile memcpy and the verifier requires the canonical local facts and
+  direct field-2/load/destination/load chain. It rejects partial or unselected
+  carrier fields, arbitrary/non-derived sources, foreign/dead locals,
+  destination disagreement, and payload type/size mismatch. Nonmatching
+  aggregate/vector and target routes remain compatibility-only.
+- **Accepted proof:** `cmake --build --preset default &&
+  ./build/tests/backend/bir/backend_lir_selected_pointer_authority_test`
+  passed; `test_after.log` records the matching 5/5 backend baseline.
+- **Parent handoff:** 753 resumes at Step 2 and may consume only this matching
+  producer carrier; 799 does not authorize republishing or generalizing
+  aggregate/vector authority. The exact return point and remaining work are
+  recorded in 753's *Resumed Carrier Handoff Record*.
