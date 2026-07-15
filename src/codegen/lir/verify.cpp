@@ -1265,6 +1265,33 @@ void verify_native_gep_result_authority(const LirGepOp& op) {
   }
 }
 
+void verify_native_local_gep_authority(const LirGepOp& op) {
+  const auto* authority = op.local_object_authority
+                              ? &*op.local_object_authority
+                              : nullptr;
+  const bool selected_shape =
+      authority && op.result.value_id() && op.result.value_id()->valid() &&
+      op.ptr.kind() == LirOperandKind::SsaValue && op.ptr.value_id() &&
+      *op.ptr.value_id() == authority->pointer_definition &&
+      authority->indexed_element_type &&
+      op.element_type == *authority->indexed_element_type && op.indices.size() == 1 &&
+      op.indices.front().is_authoritative() &&
+      op.indices.front().type_ref() == LirTypeRef::integer(64) &&
+      op.indices.front().value().integer_immediate();
+  if (!op.requires_native_local_gep_authority) {
+    if (selected_shape) {
+      fail_verify("LirGepOp.requires_native_local_gep_authority",
+                  "selected local-array GEP shape requires native local admission");
+    }
+    return;
+  }
+  if (!op.requires_native_result_authority || !authority ||
+      !selected_shape) {
+    fail_verify("LirGepOp.local_object_authority",
+                "selected local-array GEP requires native result, base, type, and immediate index authority");
+  }
+}
+
 void verify_native_call_result_authority(const LirCallOp& op) {
   if (op.requires_native_result_authority && !op.result.value_id()) {
     fail_verify("LirCallOp.result",
@@ -1994,6 +2021,9 @@ void verify_local_object_authority_bindings(
       // canonical pointer facts below still bind its object and pointee type.
       verify(*op->local_object_authority, op->ptr, nullptr,
              "LirGepOp.local_object_authority");
+      verify_native_local_gep_authority(*op);
+    } else if (const auto* op = std::get_if<LirGepOp>(&inst)) {
+      verify_native_local_gep_authority(*op);
     } else if (const auto* op = std::get_if<LirStackSaveOp>(&inst);
                op && op->local_object_authority) {
       verify(*op->local_object_authority, op->result, nullptr,

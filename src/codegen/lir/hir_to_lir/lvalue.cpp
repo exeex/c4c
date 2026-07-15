@@ -368,7 +368,14 @@ LirOperand StmtEmitter::emit_indexed_lval_operand(FnCtx& ctx, const IndexExpr& i
   LirOperand ix = emit_rval_operand(ctx, idx.index, ix_ts);
   TypeSpec i64_ts{};
   i64_ts.base = TB_LONGLONG;
-  ix = coerce_operand(ctx, ix, ix_ts, i64_ts);
+  // The selected local-array GEP row carries a native i64 immediate index;
+  // preserve the literal value through this width conversion rather than
+  // replacing it with a rendered cast result.
+  if (const LirIntegerImmediate* immediate = ix.integer_immediate()) {
+    ix = LirOperand::integer(std::to_string(immediate->value), immediate->value);
+  } else {
+    ix = coerce_operand(ctx, ix, ix_ts, i64_ts);
+  }
   pts = base_ts;
   if (is_vector_value(pts)) {
     pts.is_vector = false;
@@ -983,10 +990,17 @@ LirOperand StmtEmitter::emit_indexed_gep(FnCtx& ctx, const LirOperand& base_ptr,
       break;
     }
   }
+  const bool selected_native_local_gep =
+      local_authority.has_value() && base_ts.array_rank > 0 &&
+      idx.integer_immediate() != nullptr &&
+      local_authority->indexed_element_type.has_value() &&
+      *local_authority->indexed_element_type ==
+          indexed_gep_elem_ty(base_ts, elem_structured_name_id);
   emit_lir_op(ctx, lir::LirGepOp{
                        result, indexed_gep_elem_ty(base_ts, elem_structured_name_id), base_ptr,
                        false, {lir::LirGepIndex::typed(lir::LirTypeRef::integer(64), idx)},
-                       false, local_authority});
+                       selected_native_local_gep, local_authority,
+                       selected_native_local_gep});
   return result;
 }
 

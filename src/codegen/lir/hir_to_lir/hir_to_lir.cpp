@@ -1327,6 +1327,20 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
           .pointer_type = LirTypeRef(LirBuiltinType::Pointer),
           .pointee_type = pointee_type,
           .live = true,
+          .indexed_element_type =
+              d->vla_size || d->type.spec.array_rank == 0
+                  ? std::nullopt
+                  : std::optional<LirTypeRef>(
+                        stmt_emitter_detail::llvm_value_ty(mod, [&] {
+                          TypeSpec element = d->type.spec;
+                          --element.array_rank;
+                          for (int i = 0; i < element.array_rank; ++i) {
+                            element.array_dims[i] = element.array_dims[i + 1];
+                          }
+                          element.array_size = element.array_rank > 0
+                              ? element.array_dims[0] : -1;
+                          return element;
+                        }())),
       };
       ctx.local_object_authorities.emplace(d->id.value, authority);
       const LirOperand slot_operand =

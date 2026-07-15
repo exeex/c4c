@@ -118,6 +118,9 @@ struct LirCurrentFunctionLocalObjectPointer {
   LirTypeRef pointer_type = LirTypeRef(LirBuiltinType::Pointer);
   LirTypeRef pointee_type;
   bool live = false;
+  // Present only for a selected static local-array authority; it records the
+  // native element type reached by one indexed GEP without reparsing text.
+  std::optional<LirTypeRef> indexed_element_type;
 };
 
 // ── Instructions (non-terminator) ────────────────────────────────────────────
@@ -405,6 +408,9 @@ struct LirGepOp {
   // Opt-in standalone native result ownership; compatibility GEPs remain false.
   bool requires_native_result_authority = false;
   std::optional<LirCurrentFunctionLocalObjectPointer> local_object_authority;
+  // Opt-in receipt for the selected direct static-local array GEP with a
+  // native integer-immediate index. Other local GEPs remain fail-closed.
+  bool requires_native_local_gep_authority = false;
 };
 
 struct LirCallSignature {

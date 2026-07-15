@@ -164,6 +164,7 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const LocalDecl& d) {
     lir::LirCurrentFunctionLocalObjectPointer dynamic_authority = local_authority->second;
     dynamic_authority.pointer_definition = module_->alloc_value();
     dynamic_authority.pointee_type = lir::LirTypeRef(elem_ty);
+    dynamic_authority.indexed_element_type.reset();
     ctx.local_object_authorities[d.id.value] = dynamic_authority;
     const lir::LirOperand dynamic_pointer =
         lir::LirOperand::ssa(dyn_ptr, dynamic_authority.pointer_definition);

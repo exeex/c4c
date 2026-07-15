@@ -1750,6 +1750,11 @@ int local_indexed_authority(int index) {
   values[index] = 7;
   return values[index];
 }
+int local_immediate_indexed_authority(void) {
+  int values[2];
+  values[0] = 7;
+  return values[0];
+}
 int vla_lifetime_authority(int n) {
   int total = 0;
 loop:
@@ -1892,6 +1897,16 @@ loop:
     }
     return nullptr;
   };
+  const auto selected_local_immediate_gep = [](lir::LirModule& candidate) -> lir::LirGepOp* {
+    lir::LirFunction& function = require_function(candidate, "local_immediate_indexed_authority");
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* op = std::get_if<lir::LirGepOp>(&inst);
+            op && op->requires_native_local_gep_authority) return op;
+      }
+    }
+    return nullptr;
+  };
 
   lir::LirLoadOp* scalar_load = selected_local_scalar_load(module);
   expect_true(scalar_load != nullptr && scalar_load->local_object_authority,
@@ -1948,6 +1963,65 @@ loop:
   reject_selected_store(module, [](auto&, auto& store) {
     store.local_object_authority->live = false;
   }, "verifier should reject dead selected local scalar store authority");
+
+  lir::LirGepOp* immediate_gep = selected_local_immediate_gep(module);
+  expect_true(immediate_gep != nullptr,
+              "selected direct local-array GEP fixture should publish one receipt");
+  expect_true(immediate_gep->local_object_authority &&
+                  immediate_gep->requires_native_result_authority &&
+                  immediate_gep->result.value_id() && immediate_gep->result.value_id()->valid() &&
+                  immediate_gep->ptr.value_id() &&
+                  *immediate_gep->ptr.value_id() ==
+                      immediate_gep->local_object_authority->pointer_definition &&
+                  immediate_gep->local_object_authority->indexed_element_type &&
+                  immediate_gep->element_type ==
+                      *immediate_gep->local_object_authority->indexed_element_type &&
+                  immediate_gep->indices.size() == 1 &&
+                  immediate_gep->indices[0].is_authoritative() &&
+                  immediate_gep->indices[0].type_ref() == lir::LirTypeRef::integer(64) &&
+                  immediate_gep->indices[0].value().integer_immediate(),
+              "selected direct local-array GEP should retain native receipt authority");
+  const auto reject_selected_local_gep = [&](const auto& base, auto mutate,
+                                             const std::string& message) {
+    lir::LirModule candidate = base;
+    lir::LirGepOp* gep = selected_local_immediate_gep(candidate);
+    expect_true(gep != nullptr, "selected local-array GEP should remain mutable");
+    mutate(candidate, *gep);
+    expect_identity_verification_rejected(candidate, message);
+  };
+  reject_selected_local_gep(module, [](auto&, auto& gep) {
+    gep.requires_native_local_gep_authority = false;
+  }, "verifier should reject selected local-array GEP without native local admission");
+  reject_selected_local_gep(module, [](auto&, auto& gep) {
+    gep.local_object_authority.reset();
+  }, "verifier should reject selected local-array GEP without local object authority");
+  reject_selected_local_gep(module, [](auto&, auto& gep) {
+    gep.ptr = lir::LirOperand::raw("%misleading-local-array-base");
+  }, "verifier should reject selected local-array GEP with raw base presentation");
+  reject_selected_local_gep(module, [](auto&, auto& gep) {
+    gep.element_type = lir::LirTypeRef::integer(64);
+  }, "verifier should reject selected local-array GEP with mismatched element type");
+  reject_selected_local_gep(module, [](auto&, auto& gep) {
+    gep.local_object_authority->indexed_element_type = lir::LirTypeRef::integer(64);
+  }, "verifier should reject selected local-array GEP with mismatched authority element type");
+  reject_selected_local_gep(module, [](auto&, auto& gep) {
+    gep.indices[0] = lir::LirGepIndex::typed(lir::LirTypeRef::integer(64),
+                                              lir::LirOperand::raw("0"));
+  }, "verifier should reject selected local-array GEP with raw index presentation");
+  reject_selected_local_gep(module, [](auto&, auto& gep) {
+    gep.indices[0] = lir::LirGepIndex::typed(lir::LirTypeRef::integer(64),
+                                              lir::LirOperand::ssa("%index", lir::LirValueId{0}));
+  }, "verifier should reject selected local-array GEP with SSA index authority");
+  reject_selected_local_gep(module, [](auto& candidate, auto& gep) {
+    gep.local_object_authority->owner = candidate.functions.front().link_name_id;
+  }, "verifier should reject selected local-array GEP with foreign owner");
+  reject_selected_local_gep(module, [](auto&, auto& gep) {
+    gep.local_object_authority->object = lir::LirObjectId{
+        gep.local_object_authority->object.value + 1};
+  }, "verifier should reject selected local-array GEP with incoherent object");
+  reject_selected_local_gep(module, [](auto&, auto& gep) {
+    gep.local_object_authority->live = false;
+  }, "verifier should reject dead selected local-array GEP authority");
 
   lir::LirModule missing_load_result = module;
   lir::LirLoadOp* result_load = selected_local_scalar_load(missing_load_result);
