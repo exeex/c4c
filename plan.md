@@ -77,7 +77,47 @@ Completion check:
   result field; no `LirPhiOp`, predecessor/edge, CFG, or downstream change
   occurs.
 
-### Step 2 - Prove the bounded handoff and return to 751
+### Step 2 - Diagnose and repair the variadic baseline regression
+
+Status: required acceptance repair; Step 1 has implementation commits
+`97d305332` and `4830e94a5`, but its capability claim is not accepted while
+the baseline remains rejected.
+
+Goal: reduce the post-`4830e94a5` full-suite failure family back to the
+baseline without weakening contracts or expanding this producer-only scope.
+
+Failure family to preserve exactly during diagnosis:
+
+- `positive_sema_ok_call_variadic_aggregate_runtime_c`
+- `positive_sema_ok_fn_returns_variadic_fn_ptr_c`
+- `abi_abi_variadic_forward_wrapper_c`
+- `abi_abi_variadic_va_copy_accumulate_c`
+- `llvm_gcc_c_torture_src_pr56205_c`, `980205_c`, `pr44942_c`, and `pr64979_c`
+- `llvm_gcc_c_torture_src_stdarg_{1,2,3,4}_c`
+- `llvm_gcc_c_torture_src_va_arg_{12,15,16,17,26,5,6,trap_1}_c`
+
+Actions:
+
+- inspect only the native vaarg helper-result publication/selection changes in
+  `97d305332` and `4830e94a5` and trace the common variadic failure mechanism;
+- make the smallest repair that keeps native helper-input authority adjacent to
+  its defining operation and does not recover it from spelling, labels,
+  ordering, or testcase text; and
+- keep `LirPhiOp`, its verifier, predecessor/edge authority, CFG, Raw-BIR,
+  importer, backend, target lowering, MIR, emission, and generic migration
+  untouched.
+
+Completion check:
+
+- after a fresh build, prove the exact 20-test failure set is eliminated with
+  a matching full-suite candidate against the 0/3037-failure baseline; a
+  credible narrowly targeted command covering this complete named family may
+  justify the code slice provisionally, but requires that later matching
+  full-suite baseline recheck before any 782 capability acceptance; and
+- no expectation downgrade, named-case workaround, or weaker malformed-
+  authority behavior is used to obtain the result.
+
+### Step 3 - Prove the bounded handoff and return to 751
 
 Goal: demonstrate structural authority for all three vaarg PHI constructors
 and publish the exact consumer handoff.
