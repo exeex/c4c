@@ -1,31 +1,33 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/782_lir_vaarg_phi_input_result_identity_publication.md
+Source Idea Path: ideas/open/783_lir_native_vaarg_operand_result_seam_decomposition.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Publish native vaarg PHI-helper input fields
+Current Step Title: Establish the focused frontend-LIR baseline
 
 ## Just Finished
 
-- Lifecycle switch: 751 Step 1 is parked pending this bounded vaarg helper-input
-  identity prerequisite; no 751 implementation packet or after-proof was
-  accepted.
+- Lifecycle switch: preserved 782 Step 1 at its first `LirGepOp.ptr` raw-base
+  blocker and activated the three-seam frontend-LIR decomposition route. No
+  implementation slice or code change was accepted.
 
 ## Suggested Next
 
-- Begin Plan Step 1 by tracing the native defining operations for all raw inputs
-  to the AArch64 GP, AArch64 FP, and AMD64 vaarg PHI constructors.
+- Inventory the existing frontend-LIR tests, select the narrow structural
+  baseline and three-chain probe locations, then record its fresh result.
 
 ## Watchouts
 
-- `LirVaArgOp.result` is a later result and does not identify helper PHI inputs.
-- Do not change `LirPhiOp`, PHI verification, predecessor/edge authority,
-  Raw-BIR/importer, backend, target lowering, MIR, or emission.
-- Do not recover IDs from names, labels, rendered text, instruction order, or
-  testcase text; do not introduce side tables or result-name maps.
+- `tests/backend/case/` is not the probe location for this frontend-LIR
+  authority work; do not substitute backend or rendered-output assertions.
+- Do not modify PHI carrier/verification or absorb Raw-BIR/importer, backend,
+  target lowering, MIR, emission, generic migration, or text recovery.
+- 782 resumes only after all AArch64 GP, AArch64 FP/alignment, and AMD64
+  reg/stack contracts are accepted; 751 remains parked until 782 completes.
 
 ## Proof
 
-- Plan Step 2 requires a fresh build and focused three-constructor vaarg
-  result-authority proof. The supervisor selects any broader acceptance proof.
+- Establish a fresh focused frontend-LIR baseline in Plan Step 1. The outgoing
+  782 baseline passed:
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`.

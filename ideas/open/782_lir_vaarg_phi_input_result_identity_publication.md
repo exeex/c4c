@@ -56,6 +56,42 @@ typed incoming carrier for the vaarg family without this producer-only handoff.
 - 751 can resume exactly at Step 1 with the vaarg input facts available beside
   its already accepted ternary and logical producer facts.
 
+## Resumption Record: native vaarg operand/result seam decomposition blocker
+
+Last accepted progress: no 782 implementation slice, after-proof, or
+implementation commit has been accepted. Completed runbook steps: none. The
+interrupted step is Step 1, `Publish native vaarg PHI-helper input fields`;
+Step 2 is unstarted.
+
+The first bad verifier fact is `LirGepOp.ptr`. Making the AArch64 `reg_addr`
+helper GEP authoritative requires an authoritative raw SSA base (`gr_top`),
+which recursively reaches the generic vaarg expression/operand chain. This is
+outside 782's producer-only helper-input scope. The prior 751 route likewise
+showed that its PHI carrier cannot invent these IDs without forbidden text
+recovery. Across those two PHI-facing routes, the first bad fact moved upstream
+without reducing the vaarg failure family; the required route is therefore a
+separate decomposition initiative, not a PHI-carrier or verifier repair.
+
+Classification: `separate-blocker`. Open
+`ideas/open/783_lir_native_vaarg_operand_result_seam_decomposition.md` must
+first establish a focused frontend-LIR baseline and enumerate/bind the native
+vaarg operand/result contracts for the AArch64 GP GEP-address, AArch64
+FP/alignment-helper, and AMD64 reg/stack-helper chains. It must not modify the
+PHI carrier or verification and must not absorb Raw-BIR/importer, backend,
+target lowering, MIR, or emission work.
+
+Exact return point: once 783 accepts the narrowest viable native vaarg
+operand/result contract for all three chains, reactivate 782 at Step 1 and
+publish its bounded helper-input fields. Only after 782 completes may 751
+resume at its recorded Step 1. The remaining work in 782 is otherwise
+unchanged.
+
+Accepted proof: the restored baseline command
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
+passed 1/1, with matching `test_before.log` and `test_after.log` guard pass
+under `--allow-non-decreasing-passed`. Accepted implementation commit
+references: none; no code changes were accepted.
+
 ## Reviewer Reject Signals
 
 - Reject parsing `%` names, labels, rendered LLVM/printer output, instruction
