@@ -8605,11 +8605,45 @@ float extract_real(int value) { return __real__ complex_source(value); }
   }
   expect_true(direct_complex_extract &&
                   direct_complex_extract->requires_native_result_authority &&
+                  direct_complex_extract->result.value_id() != nullptr &&
                   direct_complex_extract->agg_type.has_anonymous_struct_layout() &&
                   direct_complex_extract->result_element_type &&
                   *direct_complex_extract->result_element_type == lir::LirTypeRef("float"),
-              "selected direct-complex extract must publish its native result element type");
+              "selected direct-complex extract must publish native result and field authority");
   lir::verify_module(direct_complex);
+
+  const auto selected_direct_extract = [](lir::LirModule& module) -> lir::LirExtractValueOp& {
+    lir::LirFunction& function = require_function(module, "extract_real");
+    for (lir::LirInst& inst : function.blocks.front().insts) {
+      if (auto* extract = std::get_if<lir::LirExtractValueOp>(&inst)) return *extract;
+    }
+    throw std::runtime_error("direct-complex fixture lost its selected extractvalue");
+  };
+
+  lir::LirModule missing_result = direct_complex;
+  selected_direct_extract(missing_result).result = {};
+  expect_identity_verification_rejected(
+      missing_result, "selected direct-complex extract must reject missing native result authority");
+
+  lir::LirModule foreign_result = direct_complex;
+  selected_direct_extract(foreign_result).result =
+      lir::LirOperand::ssa("%foreign_result", lir::LirValueId{99});
+  lir::LirFunction foreign_owner;
+  foreign_owner.name = "foreign_extract_owner";
+  foreign_owner.signature_text = "define void @foreign_extract_owner() {";
+  foreign_owner.blocks.push_back(lir::LirBlock{});
+  foreign_owner.blocks.back().insts.push_back(lir::LirExtractValueOp{
+      lir::LirOperand::ssa("%foreign_result", lir::LirValueId{99}), pair,
+      lir::LirOperand("undef"), 0});
+  foreign_result.functions.push_back(std::move(foreign_owner));
+  expect_identity_verification_rejected(
+      foreign_result, "selected direct-complex extract must reject foreign native result authority");
+
+  lir::LirModule result_display_is_not_authority = direct_complex;
+  lir::LirExtractValueOp& display_extract = selected_direct_extract(result_display_is_not_authority);
+  display_extract.result = lir::LirOperand::ssa(
+      "%non_mirror_result", *display_extract.result.value_id());
+  lir::verify_module(result_display_is_not_authority);
 
   const auto make_module = [&](bool terminal_insert) {
     lir::LirModule module;

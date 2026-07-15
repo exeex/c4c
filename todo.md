@@ -8,15 +8,15 @@ Current Step Title: Repair structured result and aggregate operand authority
 
 ## Just Finished
 
-Lifecycle return: 804 is capability-complete. Its scalar unary-minus repair
-`308fff39c`, the closed 806 residual producer chain, and the supervisor-
-accepted fresh 3037/3037 full baseline cleared the PHI blocker.
+Step 2: added direct-composite `LirExtractValueOp` result-authority coverage:
+missing and cross-function result IDs reject, while result display spelling is
+not authority. Existing accepted 798 direct-composite and 803 local-load /
+terminal-insertvalue operand checks remain the only producer handoffs used.
 
 ## Suggested Next
 
-Execute unchanged Step 2 only: repair the selected `LirExtractValueOp`
-structured result and aggregate operand authority using the accepted 798/803
-handoffs. Do not repeat Step 1 or the accepted 804/806 proof route.
+Supervisor acceptance of this Step 2 slice and its required 100% full
+baseline, then Step 3's separately scoped index/layout/result-type work.
 
 ## Watchouts
 
@@ -25,7 +25,9 @@ aggregate/vector rows, reopen PHI work, or recover authority from display text.
 
 ## Proof
 
-Preserved return evidence: 804's supervisor-accepted fresh
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure`
-passed 3037/3037 in about 29.11s (build had no work). This clears the prior
-PHI gate; Step 2 still requires its own fresh proof and supervisor acceptance.
+Focused local proof passed: `cmake --build --preset default --target
+frontend_lir_call_type_ref_test && ./build/tests/frontend/frontend_lir_call_type_ref_test`.
+Delegated after proof passed 6/6: `cmake --build --preset default && ctest
+--test-dir build -j --output-on-failure -R '^(backend_|frontend_hir_tests$)' >
+test_after.log 2>&1`; log: `test_after.log`. The supervisor still owns the
+required full-baseline acceptance.
