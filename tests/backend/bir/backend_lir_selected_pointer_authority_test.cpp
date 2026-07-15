@@ -1251,11 +1251,29 @@ void test_native_scalar_binary_rhs_authority_verifier_boundary() {
     return module;
   };
   lir::verify_module(make_module());
+  const auto raw = bir::lower_lir_to_raw_bir(make_module());
+  const auto verification = raw.has_value() ? bir::FoundationVerifier::verify(raw.value())
+                                            : bir::VerificationResult{};
+  expect(raw.has_value() && verification.ok(),
+         "selected direct-scalar RHS authority must publish verified Raw-BIR");
+  const auto view = raw.value().view();
+  const auto function_view = view.function(view.functions()[0]).value();
+  const auto instruction = function_view.instruction(
+      function_view.instructions(function_view.blocks()[0]).value()[0]).value();
+  const auto* binary = instruction.binary();
+  expect(binary && binary->direct_scalar_rhs &&
+             binary->direct_scalar_rhs->source_value_id == 1 &&
+             binary->direct_scalar_rhs->parameter_index == 0 &&
+             binary->direct_scalar_rhs->scalar_type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+             binary->direct_scalar_rhs->owner.valid(),
+         "Raw-BIR scalar binary must retain distinct typed RHS parameter authority");
   const auto rejects = [&](auto mutate, const std::string& message) {
     auto module = make_module();
     auto& op = std::get<lir::LirBinOp>(module.functions[0].blocks[0].insts[0]);
     mutate(module, op);
     expect_rejected(module, message);
+    expect(!bir::lower_lir_to_raw_bir(std::move(module)).has_value(),
+           message + " must roll back Raw-BIR receipt");
   };
   rejects([](auto&, auto& op) { op.scalar_rhs_parameter_authority.reset(); },
           "scalar parameter rhs requires an authority binding");

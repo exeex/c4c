@@ -222,6 +222,7 @@ struct BinarySpec {
   ValueId rhs{};
   std::uint32_t source_result_id = 0;
   std::optional<DirectScalarBodyParameterBinaryLhs> direct_scalar_lhs;
+  std::optional<DirectScalarBodyParameterBinaryRhs> direct_scalar_rhs;
 };
 
 struct CompareSpec {
