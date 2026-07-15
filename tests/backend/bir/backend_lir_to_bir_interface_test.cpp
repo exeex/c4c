@@ -2400,9 +2400,24 @@ void test_module_name_and_struct_declaration_receipt() {
   inner_decl.fields = {{lir::LirTypeRef::integer(32)},
                        {lir::LirTypeRef::struct_type("%struct.Outer", outer)}};
   module.record_struct_decl(std::move(inner_decl));
-  module.type_decls = {"deliberately non-authoritative legacy shadow"};
+  // Keep the legacy declarations as checked output shadows.  Their spelling is
+  // derived from the structured declarations; neither the verifier nor the
+  // Raw-BIR importer may recover struct identity or layout from these strings.
+  module.type_decls = {
+      lir::render_struct_decl_llvm(module, module.struct_decls[0]),
+      lir::render_struct_decl_llvm(module, module.struct_decls[1]),
+  };
 
-  auto declaration = void_declaration("legacy-fallback-must-not-win");
+  lir::verify_module(module);
+  auto stale_shadow = module;
+  stale_shadow.type_decls[0] = "%struct.Outer = type { i64 }";
+  try {
+    lir::verify_module(stale_shadow);
+    fail("stale legacy struct declaration shadow must fail before BIR import");
+  } catch (const lir::LirVerifyError&) {
+  }
+
+  auto declaration = void_declaration("structured-declaration-authority");
   declaration.link_name_id = exported;
   module.functions.push_back(std::move(declaration));
 
