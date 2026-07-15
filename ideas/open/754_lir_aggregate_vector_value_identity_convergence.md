@@ -331,3 +331,27 @@ Exact return point: proceed to Step 4, *Prove and hand off the bounded row*.
 The supervisor must obtain and accept a 100% full baseline, then record the
 one-row handoff. If the baseline is not 100%, preserve an executable repair
 route without reopening Steps 1--3 or absorbing out-of-scope work.
+
+## Resumption Update: semantic closure rejected; continue remaining source rows
+
+The former four-step `LirExtractValueOp` runbook is exhausted, and its Step 4
+closure proof is accepted: fresh `cmake --build --preset default && ctest
+--test-dir build -j --output-on-failure` before and after each passed
+3037/3037 (29.30s/30.72s); root `test_before.log` and `test_after.log` are the
+canonical captures; the matching guard passed with
+`--allow-non-decreasing-passed`.
+
+Closure disposition: **close rejected**. The source acceptance criterion that
+representative aggregate and vector rows publish structured result/use identity
+and exact row-specific typed facts is unmet for `LirInsertValueOp`,
+`LirInsertElementOp`, `LirExtractElementOp`, and `LirShuffleVectorOp`. The
+associated malformed value/type/index/mask coverage is therefore also unmet.
+The full-baseline criterion is satisfied for the completed extractvalue route,
+but it cannot substitute for the unimplemented representative rows.
+
+Classification: `repair-current-route`. These rows are expressly in this
+source's scope, so no successor is required. The repaired runbook resumes at
+Step 5, *Audit and select the next remaining representative row*; it must
+select exactly one row and preserve the no-display-recovery and no-generic-
+provenance boundaries. A discovered prerequisite outside this source must be
+recorded as a separately scoped blocker with this parent return point.
