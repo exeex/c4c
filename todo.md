@@ -8,26 +8,29 @@ Current Step Title: Receive selected hoisted alloca authority
 
 ## Just Finished
 
-- Resumed after accepted 752 closure. Historical Steps 1 through 7.25,
-  including accepted parallel-edge PHI receipt, remain complete and must not
-  be repeated.
+- Step 7.26 completed: the new Raw-BIR importer receives exactly one selected
+  hoisted `LirAllocaOp` from its typed result and live local-object authority,
+  with a typed container, builder, view, and reachable verifier. Nearby
+  interface coverage proves transactional rejection for missing pointer
+  definition, invalid object, foreign owner, pointee mismatch, dead, and
+  repeated authority rows.
 
 ## Suggested Next
 
-- Execute only Step 7.26: receive the selected hoisted `LirAllocaOp` using its
-  `result` and `local_object_authority` fields `pointer_definition`, `object`,
-  `owner`, `pointer_type`, `pointee_type`, and `live`.
+- Send the exhausted Step 7.26 runbook to plan-owner for an explicit closure,
+  repair, replacement, or conclusion decision; do not infer source-idea
+  completion from runbook exhaustion.
 
 ## Watchouts
 
-- Reject missing, invalid, foreign, pointer/object/type-mismatched, dead, or
-  disagreeing authority transactionally. Do not derive identity from local
-  names or `%t`; do not absorb local load/store/GEP, VLA lifetime, memory/va,
-  aggregate/vector, body parameters, PHI/CFG, or later families.
+- The receiver remains deliberately limited to one static selected alloca row.
+  It does not receive local load/store/GEP, VLA lifetime, memory/va,
+  aggregate/vector, body parameters, PHI/CFG, or later families, and never
+  derives identity from local names or `%t` spelling.
 
 ## Proof
 
-- Step 7.26 requires a fresh build and narrow receiver proof; the supervisor
-  selects any broader acceptance validation. Producer handoff evidence is
-  `ca26a8242`, `b200ac033`, and `0e8093025`, with accepted focused and
-  `^backend_` 5/5 proof plus fresh full CTest 3037/3037.
+- Passed: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_lir_to_bir_interface$' > test_after.log`.
+  The focused receiver proof is preserved at `test_after.log`; broader
+  acceptance validation remains supervisor-owned.

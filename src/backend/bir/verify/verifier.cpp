@@ -88,6 +88,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
       return std::holds_alternative<CastNode>(instruction.payload);
     case Opcode::Phi:
       return std::holds_alternative<PhiNode>(instruction.payload);
+    case Opcode::AllocaAuthority:
+      return std::holds_alternative<AllocaAuthorityNode>(instruction.payload);
   }
   return false;
 }
@@ -695,6 +697,21 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         }
         if (!exact) report(result, VerificationRule::ValueDefinition, function_id, inst_id,
                            "phi must bind each typed incoming to one exact current CFG edge occurrence");
+      }
+      if (const auto* alloca = std::get_if<AllocaAuthorityNode>(&instruction.payload)) {
+        const auto result_value = instruction.results.size() == 1
+            ? function.values_.get(function_id, instruction.results[0])
+            : Result<std::reference_wrapper<const ValueDef>, ResolveError>::failure(ResolveError::OutOfRange);
+        const bool exact = alloca->result.valid() &&
+            alloca->pointer_definition == alloca->result && alloca->result.owner == function_id &&
+            alloca->object.valid() && alloca->object.owner == function_id && alloca->owner.valid() &&
+            alloca->owner.epoch == module.epoch_ && alloca->owner.slot < module.link_names_.size() &&
+            alloca->pointer_type == Type{TypeKind::Pointer} &&
+            is_well_formed(alloca->pointee_type) && alloca->pointee_type.kind != TypeKind::Void &&
+            alloca->live && result_value && result_value.value().get().type == alloca->pointer_type &&
+            result_value.value().get().source_id == alloca->result;
+        if (!exact) report(result, VerificationRule::ValueDefinition, function_id, inst_id,
+                           "alloca authority must retain one live current-function typed pointer/object binding");
       }
       if (const auto* store = std::get_if<StoreNode>(&instruction.payload)) {
         const bool destination_resolves =

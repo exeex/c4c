@@ -160,6 +160,7 @@ enum class Opcode : std::uint8_t {
   SelectedMemcpy,
   Cast,
   Phi,
+  AllocaAuthority,
 };
 
 struct InlineAsmNode {
@@ -282,10 +283,22 @@ struct PhiNode {
   std::vector<PhiIncoming> incoming;
 };
 
+// Receipt of one producer-selected hoisted local alloca.  These are source
+// identities and typed authority, never a recovered local spelling.
+struct AllocaAuthorityNode {
+  SourceValueId result{};
+  SourceValueId pointer_definition{};
+  SourceObjectId object{};
+  LinkNameId owner{};
+  Type pointer_type{TypeKind::Pointer};
+  Type pointee_type{};
+  bool live = false;
+};
+
 using InstPayload =
     std::variant<InlineAsmNode, StoreNode, LoadNode, GetElementPtrNode,
     AbsNode, CallNode, BinaryNode, CompareNode, SelectNode, SelectedMemcpyNode,
-    IntrinsicCallNode, CastNode, PhiNode>;
+    IntrinsicCallNode, CastNode, PhiNode, AllocaAuthorityNode>;
 
 class BlockView;
 class FunctionView;

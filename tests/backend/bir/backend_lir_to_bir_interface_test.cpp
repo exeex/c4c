@@ -11884,6 +11884,78 @@ void test_mixed_accepted_row_dispatcher_transactionality() {
          "a malformed final admitted compare must reject the whole mixed module without Raw-BIR publication");
 }
 
+void test_selected_hoisted_alloca_authority_receipt_and_rejections() {
+  lir::LirModule module;
+  auto texts = std::make_shared<c4c::TextTable>();
+  module.link_name_texts = texts;
+  module.link_names.attach_text_table(texts.get());
+  const auto owner = module.link_names.intern("typed_alloca_owner");
+  lir::LirFunction function = void_definition("typed_alloca_owner", {
+      return_block(0, "entry")});
+  function.link_name_id = owner;
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      lir::LirOperand::ssa("%misleading_alloca", lir::LirValueId{41}),
+      lir::LirTypeRef::integer(32), {}, 0,
+      lir::LirCurrentFunctionLocalObjectPointer{
+          lir::LirValueId{41}, lir::LirObjectId{7}, owner,
+          lir::LirTypeRef(lir::LirBuiltinType::Pointer), lir::LirTypeRef::integer(32), true}});
+  module.functions.push_back(function);
+  const auto& source_alloca = std::get<lir::LirAllocaOp>(module.functions[0].alloca_insts[0]);
+  expect(source_alloca.count.str().empty() && source_alloca.result.value_id() &&
+             source_alloca.local_object_authority &&
+             source_alloca.local_object_authority->pointer_type.str() == "ptr" &&
+             source_alloca.local_object_authority->pointee_type.str() == "i32" &&
+             source_alloca.local_object_authority->owner == module.functions[0].link_name_id,
+         "selected alloca test fixture must retain exact typed producer authority");
+
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         std::string("one selected live hoisted alloca authority must publish verified Raw BIR: ") +
+             (raw.has_value() ? "foundation verifier rejected it" : raw.error().detail));
+  const auto view = raw.value().view();
+  const auto function_view = view.function(view.functions()[0]).value();
+  const auto entry_insts = function_view.instructions(function_view.blocks()[0]).value();
+  const auto alloca = function_view.instruction(entry_insts[0]).value().alloca_authority();
+  expect(alloca && alloca->result == bir::SourceValueId{function_view.id(), 41} &&
+             alloca->pointer_definition == alloca->result &&
+             alloca->object.owner == function_view.id() && alloca->object.value == 7 &&
+             alloca->pointer_type == bir::Type{bir::TypeKind::Pointer} &&
+             alloca->pointee_type == bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+             alloca->live,
+         "Raw BIR alloca receipt must retain only typed result and local-object authority");
+
+  auto missing_definition = module;
+  std::get<lir::LirAllocaOp>(missing_definition.functions[0].alloca_insts[0])
+      .local_object_authority->pointer_definition = lir::LirValueId::invalid();
+  expect(!bir::lower_lir_to_raw_bir(missing_definition).has_value(),
+         "missing alloca pointer definition authority must reject transactionally");
+  auto invalid_object = module;
+  std::get<lir::LirAllocaOp>(invalid_object.functions[0].alloca_insts[0])
+      .local_object_authority->object = lir::LirObjectId::invalid();
+  expect(!bir::lower_lir_to_raw_bir(invalid_object).has_value(),
+         "invalid alloca object authority must reject transactionally");
+  auto foreign_owner = module;
+  const auto foreign = foreign_owner.link_names.intern("foreign_alloca_owner");
+  std::get<lir::LirAllocaOp>(foreign_owner.functions[0].alloca_insts[0])
+      .local_object_authority->owner = foreign;
+  expect(!bir::lower_lir_to_raw_bir(foreign_owner).has_value(),
+         "foreign alloca owner authority must reject transactionally");
+  auto mismatched_pointee = module;
+  std::get<lir::LirAllocaOp>(mismatched_pointee.functions[0].alloca_insts[0])
+      .local_object_authority->pointee_type = lir::LirTypeRef::integer(64);
+  expect(!bir::lower_lir_to_raw_bir(mismatched_pointee).has_value(),
+         "mismatched alloca pointee authority must reject transactionally");
+  auto dead = module;
+  std::get<lir::LirAllocaOp>(dead.functions[0].alloca_insts[0])
+      .local_object_authority->live = false;
+  expect(!bir::lower_lir_to_raw_bir(dead).has_value(),
+         "dead alloca authority must reject transactionally");
+  auto repeated = module;
+  repeated.functions[0].alloca_insts.push_back(repeated.functions[0].alloca_insts[0]);
+  expect(!bir::lower_lir_to_raw_bir(repeated).has_value(),
+         "repeated alloca authority record must reject transactionally");
+}
+
 void test_typed_phi_edge_authority_receipt_and_rejections() {
   lir::LirBlock left;
   left.id = lir::LirBlockId{1}; left.label = "left";
@@ -12142,6 +12214,7 @@ int main() {
   test_selected_global_i32_slt_compare_receipt_and_rejections();
   test_selected_global_i32_abs_receipt_and_rejections();
   test_mixed_accepted_row_dispatcher_transactionality();
+  test_selected_hoisted_alloca_authority_receipt_and_rejections();
   test_typed_phi_edge_authority_receipt_and_rejections();
   test_typed_phi_loop_and_parallel_edge_occurrences();
   return 0;

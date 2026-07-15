@@ -52,6 +52,9 @@ class InstView {
   const PhiNode* phi() const noexcept {
     return std::get_if<PhiNode>(&data_->payload);
   }
+  const AllocaAuthorityNode* alloca_authority() const noexcept {
+    return std::get_if<AllocaAuthorityNode>(&data_->payload);
+  }
   const std::vector<ValueId>& operands() const noexcept { return data_->operands; }
   const std::vector<ValueId>& results() const noexcept { return data_->results; }
 

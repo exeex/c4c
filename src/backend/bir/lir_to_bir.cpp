@@ -19,6 +19,7 @@ namespace {
 using codegen::lir::LirBlock;
 using codegen::lir::LirBinOp;
 using codegen::lir::LirAbsOp;
+using codegen::lir::LirAllocaOp;
 using codegen::lir::LirBr;
 using codegen::lir::LirCallOp;
 using codegen::lir::LirCastOp;
@@ -2259,9 +2260,26 @@ Result<void, ImportError> validate_function(const LirModule& module,
   if (!function.stack_objects.empty())
     return fail<void>(ImportErrorCode::UnsupportedStackObjects, name, {},
                       "stack objects require the memory family");
-  if (!function.alloca_insts.empty())
-    return fail<void>(ImportErrorCode::UnsupportedAllocaInstructions, name, {},
-                      "hoisted allocas require the memory family");
+  if (!function.alloca_insts.empty()) {
+    if (function.alloca_insts.size() != 1)
+      return fail<void>(ImportErrorCode::UnsupportedAllocaInstructions, name, {},
+                        "only one selected hoisted alloca authority row is receivable");
+    const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+    const auto* authority = alloca && alloca->local_object_authority
+        ? &*alloca->local_object_authority : nullptr;
+    const auto pointee = alloca ? lower_lir_type(module, alloca->type_str) : std::optional<Type>{};
+    const auto pointer = authority ? lower_lir_type(module, authority->pointer_type) : std::optional<Type>{};
+    const auto authority_pointee = authority ? lower_lir_type(module, authority->pointee_type) : std::optional<Type>{};
+    const auto* result = alloca ? alloca->result.value_id() : nullptr;
+    if (!alloca || !authority || !alloca->count.str().empty() ||
+        alloca->result.kind() != codegen::lir::LirOperandKind::SsaValue || !result || !result->valid() ||
+        authority->pointer_definition != *result || !authority->object.valid() ||
+        function.link_name_id == c4c::kInvalidLinkName || authority->owner != function.link_name_id ||
+        !pointer || pointer->kind != TypeKind::Pointer || !pointee || !authority_pointee ||
+        *pointee != *authority_pointee || !authority->live)
+      return fail<void>(ImportErrorCode::UnsupportedAllocaInstructions, name, {},
+                        "alloca requires one live typed current-function pointer/object authority binding");
+  }
 
   std::size_t selected_memcpy_count = 0;
   for (const auto& block : function.blocks) {
@@ -3601,6 +3619,38 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 return Result<void, BuildError>::failure(reserved.error());
               }
               source_values.emplace(source->first, reserved.value());
+            }
+          }
+
+          if (!function.alloca_insts.empty()) {
+            const auto& alloca = std::get<LirAllocaOp>(function.alloca_insts.front());
+            const auto& authority = *alloca.local_object_authority;
+            const auto result_id = alloca.result.value_id()->value;
+            auto reserved = function_builder.reserve_source_value(
+                result_id, Type{TypeKind::Pointer});
+            if (!reserved || !source_values.emplace(result_id, reserved.value()).second) {
+              edit_error = reserved
+                  ? ImportError{ImportErrorCode::UnsupportedAllocaInstructions, name, {},
+                                "alloca result collided in the current-function source registry"}
+                  : builder_failure(name, {}, "reserve alloca result", reserved.error());
+              return Result<void, BuildError>::failure(
+                  reserved ? BuildError::DuplicateSourceValue : reserved.error());
+            }
+            const auto owner = imported_link_names.find(authority.owner);
+            if (owner == imported_link_names.end()) {
+              edit_error = ImportError{ImportErrorCode::UnsupportedAllocaInstructions, name, {},
+                                       "alloca authority owner disappeared from imported name identities"};
+              return Result<void, BuildError>::failure(BuildError::InvalidNameId);
+            }
+            auto appended = function_builder.append(
+                blocks.at(function.entry.value), AllocaAuthoritySpec{
+                    SourceValueId{function_ids[function_index], result_id},
+                    SourceValueId{function_ids[function_index], authority.pointer_definition.value},
+                    SourceObjectId{function_ids[function_index], authority.object.value}, owner->second,
+                    Type{TypeKind::Pointer}, *lower_lir_type(module, authority.pointee_type), authority.live});
+            if (!appended) {
+              edit_error = builder_failure(name, {}, "append alloca authority", appended.error());
+              return Result<void, BuildError>::failure(appended.error());
             }
           }
 

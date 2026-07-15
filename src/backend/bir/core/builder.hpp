@@ -249,6 +249,16 @@ struct PhiSpec {
   std::vector<PhiIncomingSpec> incoming;
 };
 
+struct AllocaAuthoritySpec {
+  SourceValueId result{};
+  SourceValueId pointer_definition{};
+  SourceObjectId object{};
+  LinkNameId owner{};
+  Type pointer_type{TypeKind::Pointer};
+  Type pointee_type{};
+  bool live = false;
+};
+
 using TerminatorSpec = Terminator;
 
 class FunctionBuilder;
@@ -353,6 +363,7 @@ class FunctionBuilder {
   Result<BuildResult, BuildError> append(BlockId block, IntrinsicCallSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, CastSpec spec);
   Result<BuildResult, BuildError> append(BlockId block, PhiSpec spec);
+  Result<BuildResult, BuildError> append(BlockId block, AllocaAuthoritySpec spec);
   Result<void, BuildError> set_terminator(BlockId block,
                                           TerminatorSpec terminator);
 
