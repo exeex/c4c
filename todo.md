@@ -3,12 +3,12 @@
 Status: Active
 Source Idea Path: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 13
-Current Step Title: Audit and select the remaining InsertElement authority row
+Current Step ID: 14
+Current Step Title: Implement and prove the selected InsertElement row
 
 ## Just Finished
 
-Step 13 audit selected exactly one row: the scalar-to-vector splat
+Step 13 audit accepted in `21791ae14` and selected exactly one row: the scalar-to-vector splat
 `LirInsertElementOp` precursor emitted by the two `emit_splat[_vec]` helpers in
 `src/codegen/lir/hir_to_lir/expr/binary.cpp`. This is a fresh, complete seam,
 not a relabel of the rejected pre-811 poison seed: each producer now emits a
@@ -20,7 +20,7 @@ result/vector/element/index identity, defined value uses, immediate index
 authority, and shape mirrors; it does not yet make this row mandatory or compare
 `elem_type` with the structured vector element type.
 
-Step 14 contract: add a row-local opt-in requirement on those two producer
+Step 14 is current. Its contract is to add a row-local opt-in requirement on those two producer
 instances only, then require their carrier and require `elem_type` to equal the
 carrier result/first-vector element type, with the native index type exactly
 `i64`. Keep raw/other InsertElement forms unselected. Positive coverage: actual

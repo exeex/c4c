@@ -129,7 +129,7 @@ undefined result/vector/index facts, bad shapes, and non-`i32` indices.
 Fresh backend before/after 6/6 guard passed with
 `--allow-non-decreasing-passed`; the supervisor accepted full CTest 3038/3038.
 
-### Step 13 - Audit and select the remaining InsertElement authority row — current
+### Step 13 - Audit and select the remaining InsertElement authority row — complete
 
 Goal: inspect only `LirInsertElementOp` against the accepted 811 carrier and
 the accepted ShuffleVector precursor. Identify its concrete producer/verifier
@@ -142,7 +142,13 @@ Step 13 return point. Do not reuse the former rejected scalar-to-vector audit,
 claim the ShuffleVector precursor is InsertElement-row authority, or recover
 facts from display text.
 
-### Step 14 - Implement and prove the selected InsertElement row
+Accepted in `21791ae14`: selected only the scalar-to-vector splat
+`LirInsertElementOp` precursor emitted by `emit_splat[_vec]` in
+`src/codegen/lir/hir_to_lir/expr/binary.cpp`. The complete row-local contract
+and coverage matrix are preserved in `todo.md`; raw and other InsertElement
+forms remain unselected.
+
+### Step 14 - Implement and prove the selected InsertElement row — current
 
 Goal: publish and verify only the Step 13 selected InsertElement row's
 structured result/use authority and exact typed element/index/vector facts.
