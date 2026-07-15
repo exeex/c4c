@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/762_lir_module_declaration_type_shadow_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Prove global type consumers use the structured global type ref
+Current Step ID: 7
+Current Step Title: Prove general function-signature lowering is structured-first
 
 ## Just Finished
 
@@ -16,18 +16,20 @@ shadow against complete structured metadata transactionally.
 
 ## Suggested Next
 
-Select the next active-plan packet after reviewing Step 6's global-consumer
-result and any remaining structured type-reference consumers.
+Execute Step 7: audit general signature return/parameter lowering and its
+declaration/definition callers; correct only a present-metadata text bypass
+and add a nearby non-aggregate stale-signature-shadow case with matching
+before/after proof.
 
 ## Watchouts
 
-Keep `llvm_type` only as an explicit legacy/no-metadata compatibility or
-emission path. Do not absorb signature rendering, function-reference
-reachability scans, Raw-BIR, target lowering, or unrelated initializer
-semantics.
+Keep `signature_text` only as output or an explicit absent-metadata
+compatibility path. Do not absorb signature rendering changes,
+function-reference reachability scans, globals, Raw-BIR, target lowering, or
+unrelated call semantics.
 
 ## Proof
 
-Passed: `cmake --build --preset default && ctest --test-dir build -j
---output-on-failure -R '^(frontend_lir_global_type_ref|backend_lir_to_bir_interface)$'`
-(2/2). Proof log: `test_after.log`.
+Required: fresh build plus selected exact signature frontend/backend tests
+before and after the packet; retain matching evidence for supervisor regression
+comparison when the selected route merits it.

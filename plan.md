@@ -176,7 +176,7 @@ Accepted in `4211a9373`: complete paired `signature_params` and
 backend interface test uses a syntactically valid conflicting signature shadow
 and the targeted build/test proof passed 1/1.
 
-### Step 6 - Prove global type consumers use the structured global type ref — current
+### Step 6 - Prove global type consumers use the structured global type ref — complete
 
 Goal: close the remaining global acceptance row only if the existing
 `LirGlobal::llvm_type_ref` route is authoritative whenever exact identity is
@@ -203,3 +203,41 @@ Completion check: every selected exact-identity global route consumes
 compatibility path; misleading global type text cannot override structured
 identity; and the focused proof preserves valid output. Reassess the source
 acceptance criteria after this step before attempting closure.
+
+Accepted in `cc24bfa30`: `lower_minimal_global` now derives scalar, array,
+aggregate, and initializer handling from `llvm_type_ref::render_llvm()` when
+present and keeps `llvm_type` as the no-metadata compatibility path. Focused
+frontend/backend proof passed 2/2 before and after, the regression guard was
+non-decreasing, and the broader `^backend_` checkpoint passed 6/6.
+
+### Step 7 - Prove general function-signature lowering is structured-first — current
+
+Goal: discharge the remaining function-signature acceptance row by proving
+ordinary parameter and return lowering, including declaration and definition
+entry paths, cannot take semantic type facts from `signature_text` when
+complete structured signature metadata is present.
+
+Actions:
+
+- Audit `lower_signature_return_info`, `lower_function_params_with_layouts`,
+  and their declaration/definition callers alongside
+  `verify_function_signature_type_ref_shadows`. Record the exact complete and
+  absent/incomplete-metadata predicates; retain the legacy parsing path only
+  where the structured carrier is genuinely absent.
+- Correct any path that selects a rendered return or parameter spelling while
+  `signature_return_type_ref`, `signature_params`, and matching
+  `signature_param_type_refs` are complete. Preserve fail-closed behavior for
+  malformed mixed metadata.
+- Add focused stale-signature-shadow coverage that conflicts in a general
+  return or non-aggregate parameter spelling and exercises the selected
+  declaration/definition lowering route. Do not rely solely on the Step 5
+  aggregate ABI case.
+- Build and run the exact affected frontend/backend tests before and after;
+  select a broader checkpoint if shared call-ABI code changes.
+
+Completion check: verifier and selected backend declaration/definition paths
+use complete structured signature metadata before `signature_text`; the
+rendered signature remains only output or absent-metadata compatibility; a
+nearby stale-shadow case proves non-authority; and the final source acceptance
+reassessment has explicit evidence for externs, signatures, globals, and
+struct declarations.
