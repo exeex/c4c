@@ -1802,7 +1802,8 @@ loop:
           op->ptr.str() = "%misleading.load";
         }
         if (auto* op = std::get_if<lir::LirStackSaveOp>(&inst);
-            op && has_local_pointer_authority(*op, op->result)) {
+            op && op->requires_native_stack_save_authority &&
+                has_local_pointer_authority(*op, op->result)) {
           stack_save = true;
           op->result.str() = "%misleading.save";
         }
@@ -1903,6 +1904,16 @@ loop:
       for (auto& inst : block.insts) {
         if (auto* op = std::get_if<lir::LirGepOp>(&inst);
             op && op->requires_native_local_gep_authority) return op;
+      }
+    }
+    return nullptr;
+  };
+  const auto selected_vla_stack_save = [](lir::LirModule& candidate) -> lir::LirStackSaveOp* {
+    lir::LirFunction& function = require_function(candidate, "vla_lifetime_authority");
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* op = std::get_if<lir::LirStackSaveOp>(&inst);
+            op && op->requires_native_stack_save_authority) return op;
       }
     }
     return nullptr;
@@ -2022,6 +2033,64 @@ loop:
   reject_selected_local_gep(module, [](auto&, auto& gep) {
     gep.local_object_authority->live = false;
   }, "verifier should reject dead selected local-array GEP authority");
+
+  lir::LirStackSaveOp* stack_save_op = selected_vla_stack_save(module);
+  expect_true(stack_save_op != nullptr && stack_save_op->local_object_authority &&
+                  stack_save_op->result.value_id() && stack_save_op->result.value_id()->valid() &&
+                  *stack_save_op->result.value_id() ==
+                      stack_save_op->local_object_authority->pointer_definition &&
+                  stack_save_op->local_object_authority->pointer_type.kind() ==
+                      lir::LirTypeKind::Pointer &&
+                  stack_save_op->local_object_authority->pointee_type.kind() ==
+                      lir::LirTypeKind::Pointer &&
+                  stack_save_op->local_object_authority->live,
+              "selected VLA stack save should publish one native authority receipt");
+  const auto reject_selected_stack_save = [&](const auto& base, auto mutate,
+                                              const std::string& message) {
+    lir::LirModule candidate = base;
+    lir::LirStackSaveOp* save = selected_vla_stack_save(candidate);
+    expect_true(save != nullptr, "selected VLA stack save should remain mutable");
+    mutate(candidate, *save);
+    expect_identity_verification_rejected(candidate, message);
+  };
+  reject_selected_stack_save(module, [](auto&, auto& save) {
+    save.requires_native_stack_save_authority = false;
+  }, "verifier should reject selected VLA stack save without native admission");
+  reject_selected_stack_save(module, [](auto&, auto& save) {
+    save.local_object_authority.reset();
+  }, "verifier should reject selected VLA stack save without local authority");
+  reject_selected_stack_save(module, [](auto&, auto& save) {
+    save.result = lir::LirOperand::ssa("%invalid-vla-stack-save", lir::LirValueId::invalid());
+  }, "verifier should reject selected VLA stack save with an invalid result identity");
+  reject_selected_stack_save(module, [](auto& candidate, auto& save) {
+    candidate.functions.push_back(make_identity_test_function(
+        "vla_stack_save_foreign_result", *save.result.value_id()));
+  }, "verifier should reject selected VLA stack save with a foreign result identity");
+  reject_selected_stack_save(module, [](auto& candidate, auto& save) {
+    save.local_object_authority->owner = candidate.functions.front().link_name_id;
+  }, "verifier should reject selected VLA stack save with a foreign owner");
+  reject_selected_stack_save(module, [](auto&, auto& save) {
+    save.local_object_authority->object = lir::LirObjectId{
+        save.local_object_authority->object.value + 1};
+  }, "verifier should reject selected VLA stack save with an incoherent object");
+  reject_selected_stack_save(module, [](auto&, auto& save) {
+    save.local_object_authority->pointer_type = lir::LirTypeRef::integer(64);
+  }, "verifier should reject selected VLA stack save with a nonpointer authority type");
+  reject_selected_stack_save(module, [](auto&, auto& save) {
+    save.local_object_authority->pointee_type = lir::LirTypeRef::integer(64);
+  }, "verifier should reject selected VLA stack save with an incoherent pointee type");
+  reject_selected_stack_save(module, [](auto&, auto& save) {
+    save.local_object_authority->live = false;
+  }, "verifier should reject dead selected VLA stack save authority");
+  reject_selected_stack_save(module, [](auto& candidate, auto& save) {
+    lir::LirStackSaveOp duplicate = save;
+    const lir::LirValueId duplicate_id{900001};
+    duplicate.result = lir::LirOperand::ssa("%second-vla-stack-save", duplicate_id);
+    duplicate.local_object_authority->pointer_definition = duplicate_id;
+    duplicate.local_object_authority->object = lir::LirObjectId{900001};
+    require_function(candidate, "vla_lifetime_authority").blocks.front().insts.push_back(
+        std::move(duplicate));
+  }, "verifier should reject more than one selected VLA stack save authority row");
 
   lir::LirModule missing_load_result = module;
   lir::LirLoadOp* result_load = selected_local_scalar_load(missing_load_result);

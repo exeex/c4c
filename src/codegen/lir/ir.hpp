@@ -259,6 +259,9 @@ struct LirVaCopyOp {
 struct LirStackSaveOp {
   LirOperand result;      // SSA name for saved stack pointer
   std::optional<LirCurrentFunctionLocalObjectPointer> local_object_authority;
+  // Opt-in receipt for the one selected VLA saved-stack-pointer producer.
+  // Compatibility stack saves remain unselected and fail closed downstream.
+  bool requires_native_stack_save_authority = false;
 };
 
 struct LirStackRestoreOp {

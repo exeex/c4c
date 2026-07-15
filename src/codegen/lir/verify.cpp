@@ -1292,6 +1292,27 @@ void verify_native_local_gep_authority(const LirGepOp& op) {
   }
 }
 
+void verify_native_stack_save_authority(const LirStackSaveOp& op) {
+  const auto* authority = op.local_object_authority
+                              ? &*op.local_object_authority
+                              : nullptr;
+  if (!op.requires_native_stack_save_authority) {
+    if (authority) {
+      fail_verify("LirStackSaveOp.requires_native_stack_save_authority",
+                  "stack save local authority requires native stack-save admission");
+    }
+    return;
+  }
+  if (!authority || op.result.kind() != LirOperandKind::SsaValue ||
+      !op.result.value_id() || !op.result.value_id()->valid() ||
+      *op.result.value_id() != authority->pointer_definition ||
+      authority->pointer_type.kind() != LirTypeKind::Pointer ||
+      authority->pointee_type.kind() != LirTypeKind::Pointer || !authority->live) {
+    fail_verify("LirStackSaveOp.local_object_authority",
+                "selected VLA stack save requires native result and live pointer/object/type authority");
+  }
+}
+
 void verify_native_call_result_authority(const LirCallOp& op) {
   if (op.requires_native_result_authority && !op.result.value_id()) {
     fail_verify("LirCallOp.result",
@@ -1308,6 +1329,9 @@ bool requires_native_result_authority(const LirInst& inst) {
   }
   if (const auto* gep = std::get_if<LirGepOp>(&inst)) {
     return gep->requires_native_result_authority;
+  }
+  if (const auto* stack_save = std::get_if<LirStackSaveOp>(&inst)) {
+    return stack_save->requires_native_stack_save_authority;
   }
   if (const auto* call = std::get_if<LirCallOp>(&inst)) {
     return call->requires_native_result_authority;
@@ -1343,6 +1367,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
   }
   if (const auto* op = std::get_if<LirStackSaveOp>(&inst)) {
     verify_result_operand(op->result, "LirStackSaveOp.result");
+    verify_native_stack_save_authority(*op);
     return;
   }
   if (const auto* op = std::get_if<LirStackRestoreOp>(&inst)) {
@@ -2041,6 +2066,24 @@ void verify_local_object_authority_bindings(
   }
 }
 
+void verify_selected_stack_save_authority(const LirFunction& function) {
+  std::size_t selected_count = 0;
+  const auto count_selected = [&](const LirInst& inst) {
+    if (const auto* op = std::get_if<LirStackSaveOp>(&inst);
+        op && op->requires_native_stack_save_authority) {
+      ++selected_count;
+    }
+  };
+  for (const auto& inst : function.alloca_insts) count_selected(inst);
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) count_selected(inst);
+  }
+  if (selected_count > 1) {
+    fail_verify("LirStackSaveOp.requires_native_stack_save_authority",
+                "current function may publish exactly one selected VLA stack-save authority");
+  }
+}
+
 void verify_selected_memcpy_authority(const LirFunction& function) {
   const auto& pointer_authority = function.selected_memcpy_pointer_authority;
   std::size_t selected_count = 0;
@@ -2124,6 +2167,7 @@ void verify_function_value_ownership(const LirModule& mod,
   verify_selected_memcpy_pointer_authority(mod, function, definitions,
                                            definition_insts);
   verify_selected_memcpy_authority(function);
+  verify_selected_stack_save_authority(function);
   verify_local_object_authorities(mod, function);
 
   // Direct label addresses are function-owned pointer constants, not

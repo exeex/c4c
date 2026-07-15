@@ -1447,7 +1447,8 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
         .live = true,
     };
     ctx.cur_block().insts.push_back(
-        LirStackSaveOp{LirOperand::ssa(saved_sp, authority.pointer_definition), authority});
+        LirStackSaveOp{LirOperand::ssa(saved_sp, authority.pointer_definition), authority,
+                       true});
     ctx.vla_stack_save_ptr = saved_sp;
     ctx.vla_stack_lifetime_authority = authority;
   }
