@@ -1,7 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (active at the bounded post-Step 7.35 DirectScalar binary-RHS
-body-parameter receipt)
+Status: Open (paused after accepted Step 7.36 DirectScalar binary-RHS receipt;
+active successor: 824 body-parameter authority handoff)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -1341,3 +1341,42 @@ Closed idea 823 is capability-complete for one distinct producer/schema/verifier
 Accepted proof is the fresh `cmake --build --preset default --target backend_lir_selected_pointer_authority_test` build and focused `ctest --test-dir build --output-on-failure -R '^backend_lir_selected_pointer_authority$'` pass, with matching `test_before.log`/`test_after.log` 1/1 passing and an accepted non-decreasing guard using `--allow-non-decreasing-passed`.
 
 Exact return action: resume at **Step 7.36 - Receive the one 823-authorized DirectScalar binary-RHS body-parameter authority row**. Add only that tuple's typed Raw-BIR destination, importer dispatch, reachable verifier path, and transactional positive/malformed-authority coverage. Do not repeat accepted Steps 1 through 7.35 (including `18443fc0f`), receive direct-pointer or binary-LHS rows again, or absorb any other parameter, memory/VA, aggregate/vector, module/type/global/metadata, instruction/terminator, or inline-assembly family. Reapply this source's completion gate after the one receipt.
+
+## Runbook Exhaustion Decision: post-Step 7.36 DirectScalar binary-RHS receipt
+
+Close rejected. Commit `c87976453` receives exactly closed 823's structured
+`LirBinOp.rhs` DirectScalar body-parameter authority into a distinct typed
+Raw-BIR RHS destination, importer dispatch, and reachable verifier path.
+Nearby positive inspection and malformed-authority cases prove transactional
+rejection. The supervisor accepted the fresh focused
+`backend_lir_selected_pointer_authority_test` build and selected CTest 1/1,
+the matching non-decreasing before/after 1/1 regression guard, and the fresh
+broader `^backend_` checkpoint 6/6.
+
+This bounded receipt does not satisfy the source completion gate. Unmet source
+criteria are the checked no-omission coverage matrix and its per-row typed
+authority/destination/importer/verifier/proof disposition; lossless verified
+Raw-BIR receipt of every valid current-LIR semantic fact; complete explicit
+dispatcher and neighboring coverage; and final whole-module transactional,
+documentation-convergence, focused, and broader acceptance proof. Valid
+unreceived families include remaining function-body parameter uses, memory/VA,
+aggregate/vector, module/type/global/metadata, residual
+instruction/terminator, and inline-assembly forms. They remain fail closed;
+no receiver may recover authority from text, names, rendered operands,
+`monostate`, or unclassified values.
+
+Classification: `separate-blocker`. New open idea
+`ideas/open/824_lir_next_body_parameter_authority_handoff.md` is the next
+first owner. It must trace, publish, verify, and hand off exactly one next
+valid function-body parameter-use row; it must not edit Raw-BIR/importer code,
+reopen the accepted direct-pointer or DirectScalar LHS/RHS rows, select a row
+from presentation fields, or absorb another family.
+
+Resumption record: Steps 1 through 7.36 are accepted historical work, most
+recently `c87976453`; retain the focused 1/1, matching guard, and broader 6/6
+acceptance evidence above. After 824 closes with one exact structured handoff
+and accepted focused producer proof, reactivate 734 and repair its runbook for
+only that matching typed Raw-BIR receiver row. Do not repeat Step 7.36 or
+receive another parameter, memory/VA, aggregate/vector, module/type/global,
+instruction/terminator, or inline-assembly form without its separately scoped
+first-owner handoff.
