@@ -1,8 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (paused after accepted Step 7.27 selected direct local-scalar
-load receipt; awaiting the separately scoped next local-operation
-receiver-authority handoff)
+Status: Open (active; resumed at Step 7.28 selected direct local-scalar store
+receipt after closed 790's accepted native authority handoff)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -891,17 +890,22 @@ instruction/terminator, and inline-assembly rows remain unmet.
 Classification: `separate-blocker`. The earliest remaining local-operation
 family is store/GEP/VLA, but neither closed 752 nor closed 789 authorizes a
 second exact receiver row. New open idea
-`ideas/open/790_lir_next_local_operation_receiver_handoff.md` owns choosing,
+`ideas/closed/790_lir_next_local_operation_receiver_handoff.md` owns choosing,
 publishing, verifying, and handing off exactly one next valid local-operation
 row. It must not edit Raw-BIR/importer code or derive authority from local
 spellings.
 
 Resumption record: Steps 1 through 7.26 remain accepted historical work,
 including `006d79aaf`, `7dc03f23a`, and `2cce9da69`; Step 7.27 is accepted in
-`eabf7a3b8`. The interrupted/return point is `Step 7.28 - Receive the exact
-next post-local-scalar-load authority row`. After 790 closes with a documented
-native handoff and focused producer proof, reactivate 734 and repair its
-runbook at Step 7.28 to receive only that row with typed destination,
-importer dispatch, reachable verification, and transactional positive/negative
-coverage. Do not repeat accepted alloca/load receipt or absorb later local/VLA
-or other families.
+`eabf7a3b8`. Closed 790 accepted the exact next direct non-array/non-VLA
+integer local scalar declaration `LirStoreOp` authority in `727949c9c`, with
+focused fresh `^frontend_lir_call_type_ref$` proof passing 1/1 and a matching
+non-decreasing canonical guard. Resume now at `Step 7.28 - Receive the
+selected direct local-scalar LirStoreOp authority`, consuming only the native
+immediate, type, pointer definition, and checked local-object
+owner/type/liveness facts documented in
+`docs/lir_local_operation_authority/handoff_to_734.md`. Add only its typed
+Raw-BIR destination, importer dispatch, reachable verification, and
+transactional coverage. Do not repeat accepted alloca/load receipt or absorb
+assignment/SSA/pointer/aggregate/vector/array/VLA stores, GEP, or later
+families.

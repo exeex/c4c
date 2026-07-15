@@ -1,46 +1,62 @@
-# Next LIR Local-Operation Authority Handoff Runbook
+# LIR-To-New-BIR Local Store Receiver Runbook
 
 Status: Active
-Source Idea: ideas/open/790_lir_next_local_operation_receiver_handoff.md
-Activated from: exhausted Step 7.27 of idea 734.
+Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
+Resumed from: closed 790 local scalar store authority handoff.
 
 ## Purpose
 
-Produce one exact, native, receiver-ready local-operation authority handoff
-for 734's Step 7.28.
+Receive the one producer-authorized local scalar declaration store in typed
+Raw-BIR without repeating accepted alloca or load receipt.
 
 ## Core Rule
 
-Select one local store, GEP, or VLA-lifetime row only from structured producer
-facts. Local spellings, formatted operands, printer output, LLVM text, and
-testcase identity are never authority.
+Use only the native fields in
+`docs/lir_local_operation_authority/handoff_to_734.md`. Local spelling,
+formatted operands, printer output, LLVM text, and testcase identity are never
+semantic input.
 
-## Scope
+## Historical Progress
 
-- publish and verify one exact current-function local-operation row;
-- write its precise 734 handoff and focused same-feature proof;
-- preserve 734's accepted alloca/load receiver work.
+Steps 1 through 7.27 are accepted, including `006d79aaf`, `7dc03f23a`,
+`2cce9da69`, and `eabf7a3b8`. Closed 790 published the selected store authority
+in `727949c9c`; do not redo producer work.
+
+## Current Scope
+
+- receive exactly the direct non-array/non-VLA integer local scalar declaration
+  `LirStoreOp` from its native immediate value, type, pointer definition, and
+  checked local-object owner/type/liveness authority;
+- add the minimum target-independent Raw-BIR destination/importer/reachable
+  verifier and transactional positive/negative coverage;
+- require selected-store admission, representable native immediate,
+  pointer-definition equality, current-function valid/live authority, and
+  pointee/store-type equality.
 
 ## Non-Goals
 
-- Raw-BIR/importer/receiver work or more than one row;
-- all later local, memory/va, aggregate/vector, body-parameter, CFG/PHI, and
-  unrelated families.
+- assignment/SSA/pointer/aggregate/vector/array/VLA stores, every GEP and
+  later local load, VLA lifetime, and named/local-temporary variants;
+- memory/va, aggregate/vector, body parameters, module/type/global/metadata,
+  CFG/PHI, target lowering, MIR, emission, and every later family;
+- presentation-derived recovery or repeating accepted alloca/load receipt.
 
 ## Ordered Steps
 
-### Step 1 - Publish one next local-operation authority handoff
+### Step 7.28 - Receive the selected direct local-scalar LirStoreOp authority
 
-Goal: make exactly one native post-local-scalar-load row receiver-ready.
+Goal: transactionally import the one 790-authorized local store row into a
+typed Raw-BIR destination.
 
 Actions:
 
-- identify the earliest valid store, GEP, or VLA-lifetime row with native
-  result/use, pointer/object/type, owner, and liveness facts;
-- add only the required producer/verifier authority and same-feature positive
-  and malformed coverage;
-- document the row and exact 734 Step 7.28 return action.
+- map only native immediate, type, pointer definition, object/owner,
+  pointer/pointee type, and liveness facts;
+- validate the selected-store admission and all producer contract fields before
+  publication, rejecting malformed rows transactionally;
+- add nearby positive and negative receiver coverage, then run a fresh build
+  and narrow proof before supervisor-selected broader acceptance proof.
 
-Completion check: the handoff names one receiver row and rejects all malformed
-or unselected alternatives before downstream use; focused producer proof
-passes.
+Completion check: exactly this selected store imports and verifies without
+presentation recovery; all excluded local and later families remain fail
+closed.

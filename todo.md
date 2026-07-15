@@ -1,31 +1,28 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/790_lir_next_local_operation_receiver_handoff.md
+Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Publish one next local-operation authority handoff
+Current Step ID: 7.28
+Current Step Title: Receive the selected direct local-scalar LirStoreOp authority
 
 ## Just Finished
 
-- Step 1 selected and published the direct non-array/non-VLA integer local
-  scalar declaration `LirStoreOp` with native immediate value and checked
-  local-object authority for 734 Step 7.28.
+- Closed 790 after accepted `727949c9c` and resumed 734 at Step 7.28 to receive
+  the one documented direct local-scalar declaration store authority.
 
 ## Suggested Next
 
-- Supervisor selects the next lifecycle action after reviewing this completed
-  one-row producer handoff.
+- Execute Step 7.28 only from the published native store authority contract.
 
 ## Watchouts
 
-- The handoff authorizes only declaration-initializer integer-immediate stores;
-  assignment, SSA-valued, pointer/aggregate/vector, array/VLA stores, GEP,
-  and later families remain fail-closed and presentation is nonsemantic.
+- Do not derive semantics from presentation. Assignment/SSA/pointer/aggregate/
+  vector/array/VLA stores, GEP, later loads, and every later family remain out
+  of scope and fail-closed.
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1. Output is
-  preserved in `test_after.log`; supervisor owns broader acceptance and
-  canonical regression comparison.
+- Closed 790 producer proof: fresh build plus `^frontend_lir_call_type_ref$`
+  passed 1/1 with a matching non-decreasing canonical guard. First obtain a
+  fresh receiver build and narrow proof; supervisor owns broader acceptance.
