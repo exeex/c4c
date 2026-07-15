@@ -126,3 +126,20 @@ this idea does not assume that commit is the root cause.
   806's sole remaining Step 3 gate.
 - **Exact return point:** resume this source at unchanged Step 3 only. Do not
   repeat Steps 1--2 or reopen CFG/PHI semantics or the closed residual routes.
+
+## Closure — accepted bounded blocker resolution
+
+Disposition: capability complete. Step 3 is satisfied without further
+implementation: the supervisor accepted the fresh
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure`
+baseline at 3037/3037 (build had no work; about 29.11s).
+
+The accepted scalar unary-minus repair is `308fff39c`. The resolved successor
+chain is 806: postfix `961ce9fda`, `fneg` `8f31e2535`, `xor` `b86df3b9d`, and
+scalar dereference-load `4d29f7b3e`. This closes the bounded PHI
+producer-authority blocker; it does not claim aggregate/vector work.
+
+Return: resume `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`
+at its unchanged Step 2, *Repair structured result and aggregate operand
+authority*. Do not repeat 804 Steps 1--2, the closed 806 chain, or the
+accepted full-baseline proof.

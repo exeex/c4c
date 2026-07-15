@@ -277,3 +277,17 @@ supervisor accepts a 100% full baseline, reactivate 804 at its unchanged Step
 3 as its source directs. Then return through that recorded dependency chain to
 754 Step 4's full-baseline/closure gate. Do not repeat Steps 1--3, absorb PHI
 producer work, or claim source closure from the partial baseline.
+
+## Resumption Update: 804 blocker closure returns Step 2
+
+804 is capability-complete and archived. Its accepted scalar unary-minus
+repair is `308fff39c`; the closed residual chain is postfix `961ce9fda`,
+`fneg` `8f31e2535`, `xor` `b86df3b9d`, and scalar dereference-load
+`4d29f7b3e`. The supervisor accepted a fresh full baseline at 3037/3037 from
+`cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure` (build had no work; about 29.11s).
+
+Exact return point: resume unchanged at Step 2, *Repair structured result and
+aggregate operand authority*. Do not repeat Step 1, 804/806 work, or their
+accepted baseline proof. This resumption follows the explicit current parent
+return decision; it does not begin Step 3/4 work or absorb PHI scope.

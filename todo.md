@@ -1,32 +1,31 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/804_lir_phi_incoming_producer_authority_repair.md
+Source Idea Path: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove the blocker and return it to 754
+Current Step ID: 2
+Current Step Title: Repair structured result and aggregate operand authority
 
 ## Just Finished
 
-Lifecycle resume: 809 completed scalar dereference-load authority in
-`4d29f7b3e`; its accepted fresh full baseline passed 3037/3037, fulfilling
-806 Step 3 and returning this source at unchanged Step 3.
+Lifecycle return: 804 is capability-complete. Its scalar unary-minus repair
+`308fff39c`, the closed 806 residual producer chain, and the supervisor-
+accepted fresh 3037/3037 full baseline cleared the PHI blocker.
 
 ## Suggested Next
 
-Supervisor: record this accepted 804 return and reactivate 754 at unchanged
-Step 2. Do not repeat 804 Steps 1--2 or any closed 806 successor work.
+Execute unchanged Step 2 only: repair the selected `LirExtractValueOp`
+structured result and aggregate operand authority using the accepted 798/803
+handoffs. Do not repeat Step 1 or the accepted 804/806 proof route.
 
 ## Watchouts
 
-The 3037/3037 full baseline is accepted parent-gate evidence. Do not reopen
-scalar unary-minus, postfix, `fneg`, `xor`, scalar dereference-load, CFG, or
-PHI verification.
+Do not begin Step 3 index/layout/result-type validation, widen to other
+aggregate/vector rows, reopen PHI work, or recover authority from display text.
 
 ## Proof
 
-Accepted proof: commit `4d29f7b3e`; direct
-`frontend_lir_call_type_ref_test` passed; matching focused guard improved
-1/2 -> 2/2 with no new failures; fresh
+Preserved return evidence: 804's supervisor-accepted fresh
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure`
-passed 3037/3037 (about 29.11s; build had no work).
+passed 3037/3037 in about 29.11s (build had no work). This clears the prior
+PHI gate; Step 2 still requires its own fresh proof and supervisor acceptance.
