@@ -1,53 +1,77 @@
-# LIR Anonymous Aggregate Layout Type Facts Runbook
+# LIR GEP Producer Result Authority Baseline Blocker Runbook
 
 Status: Active
-Source Idea: ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md
-Resumed from: accepted 802 selector verifier blocker; return at unchanged Step 2.
+Source Idea: ideas/open/810_lir_gep_producer_result_authority_baseline_blocker.md
+Activated from: 801 Step 2 full-baseline authority blocker; return to 801 only after accepted bounded proof.
 
 ## Purpose
 
-Provide native anonymous aggregate field-layout/type facts needed by the selected extractvalue row without letting compatibility text become authority.
+Restore the native result-authority handoff for the evidenced LIR GEP producer
+family without weakening the authoritative GEP verifier or absorbing 801's
+anonymous-layout/structured-call work.
 
 ## Core Rule
 
-Native structured field facts are authority. `LirTypeRef` rendering may mirror an anonymous aggregate but must not be parsed to create or repair its layout.
+`LirGepOp.result` must carry native current-function `LirValueId` authority.
+Do not derive authority from rendered text, testcase identity, or instruction
+order, and do not weaken the existing verifier contract.
 
 ## Read First
 
-- `ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md`
-- `ideas/closed/802_lir_switch_selector_type_reference_verifier.md`
-- `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`
-- direct-complex aggregate lowering plus nearby focused tests
+- `ideas/open/810_lir_gep_producer_result_authority_baseline_blocker.md`
+- `ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md` resumption record
+- nearby authoritative GEP construction and `verify_authoritative_gep`
+- current full-baseline failure evidence, treating partial logs as diagnostic only
 
 ## Non-Goals
 
-- `LirExtractValueOp` result/use/index/result-type row validation.
-- Reopening 802's accepted switch selector verifier repair.
-- Raw-BIR, other aggregate/vector rows, broad type rewrite, lowering, MIR, emission, and all text-derived layout recovery.
+- 801 anonymous layout/structured-call repair and its acceptance.
+- Generic provenance, pointer/object/memory, Raw-BIR, MIR/emission, or PHI work.
+- Any weakening of GEP verifier result authority or text-derived recovery.
 
 ## Ordered Steps
 
-### Step 1 - Trace and select anonymous aggregate layout facts (accepted)
+### Step 1 - Trace and classify failing GEP producer families
 
-Goal: identify the exact anonymous aggregate construction and verification boundary and select the smallest checked native field-layout carrier.
-
-Completion check: accepted in `827dae5bd3`; one bounded native layout contract is explicit and no compatibility-text parsing or extractvalue-row work is selected.
-
-### Step 2 - Repair anonymous layout / structured-call compatibility
-
-Goal: repair the rejected anonymous-layout implementation so native ordered field facts remain checked without making a direct-complex `LirCallOp`'s structured callee signature or argument type mirror disagree with its call arguments.
+Goal: reproduce representative failures and identify the native producer or
+immediate handoff that leaves an authoritative GEP result without a valid
+current-function `LirValueId`.
 
 Actions:
 
-- start from rejected implementation commit `201f229d3` and the preserved in-progress Step 2 repair; locate the ownership/type construction mismatch rather than weakening verifier contracts;
-- retain the native `arg_type_refs` argument-mirror and callee-signature contracts without treating rendered diagnostic/call text as type authority;
-- retain checked native field-count/field-type access and malformed-layout rejection; leave named structs, arrays, unrelated calls, and all extractvalue-row validation unchanged;
-- keep 802's accepted `selector_type_ref` structured-reference check as an environmental prerequisite, not 801 progress or scope.
+- trace from failing GEP verification to result construction/publication;
+- group failures only when their producer route is evidenced identical;
+- split an unshared family into a separate open successor rather than growing
+  this runbook.
 
-Completion check: the native carrier remains authoritative; mirror and signature contracts remain fail-closed; the required fresh build, focused call/frontend/backend proof, and supervisor-accepted full baseline pass before Step 3. Do not advance on a narrow focused result alone.
+Completion check: one bounded producer family is selected with evidence, or
+each unshared family has an explicit successor; no verifier weakening or
+801/804/806 work is selected.
 
-### Step 3 - Prove and publish the 754 handoff
+### Step 2 - Repair the selected GEP result-authority handoff
 
-Goal: establish positive and malformed proof and record the exact field-layout contract that 754 Step 3 may consume.
+Goal: publish the smallest checked native `LirValueId` result authority needed
+by the existing authoritative GEP contract.
 
-Completion check: accepted proof supports reactivation of 754 at unchanged Step 3 without treating this blocker as extractvalue-row validation. Do not advance while Step 2 remains unaccepted.
+Actions:
+
+- repair only the evidenced producer-side/immediate handoff;
+- retain rejection of missing, foreign, stale, and unknown result authority;
+- add nearby same-family positive and malformed-authority coverage.
+
+Completion check: focused coverage demonstrates the selected producer supplies
+valid current-function authority and malformed forms still reject.
+
+### Step 3 - Prove the blocker and return control to 801
+
+Goal: provide accepted focused proof sufficient for 801 to retry its required
+comparable full baseline.
+
+Actions:
+
+- run a fresh build and selected focused same-feature proof;
+- have the supervisor assess the evidence and reactivate 801 unchanged at
+  Step 2; do not call a partial baseline a regression guard or parent clearance.
+
+Completion check: the supervisor accepts the bounded proof and 801 can resume
+its exact Step 2 full-baseline gate without rerunning Step 1.

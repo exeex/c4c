@@ -189,3 +189,37 @@ not be modified, credited, or broadened by this return. Complete Step 2's
 direct-complex call-signature/argument-mirror contract and required focused
 call/frontend/backend proof plus supervisor-accepted full baseline before
 Step 3; 802's proof does not satisfy that gate.
+
+## Resumption Update: GEP producer-authority baseline blocker
+
+Last accepted progress remains Step 1, `Trace and select anonymous aggregate
+layout facts`, in `827dae5bd3`. Step 2, `Repair anonymous layout /
+structured-call compatibility`, remains interrupted and unaccepted. The
+preserved working-tree `args.cpp`, `target.cpp`, `verify.cpp`, and
+`frontend_hir_tests.cpp` repair is reviewed as scope-consistent but is neither
+accepted nor committed.
+
+The required fresh build and focused ladder passed:
+`cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^(frontend_hir_tests|frontend_lir_call_type_ref|backend_)$'`
+(2/2). The required full-baseline attempt then exposed 115
+`LirGepOp.result: authoritative GEP requires LirValueId result authority`
+frontend failures, before 801 Step 2 could be accepted. The root
+`test_after.log` is partial due to execution-environment timing; because its
+clean-worktree baseline could not include external assets and had no summary,
+it is not a matching regression guard and cannot establish a regression or
+acceptance. One residual PHI failure remains owned by the existing 804/806
+chain, not this switch.
+
+Classification: `separate-blocker`. The LIR GEP producer-authority failure
+family is outside anonymous aggregate layout/structured-call compatibility and
+has no existing open owner. `ideas/open/810_lir_gep_producer_result_authority_baseline_blocker.md`
+owns the bounded trace and, only if evidence supports it, repair of that GEP
+producer handoff.
+
+Exact return point: after 810 has an accepted repair/proof sufficient to
+reattempt the full baseline, reactivate 801 unchanged at Step 2. Preserve the
+unaccepted Step 2 repair; then rerun the required fresh build, focused
+call/frontend/backend ladder, and supervisor-accepted comparable full baseline
+before Step 3. Do not repeat Step 1 or credit the preserved changes as
+accepted progress.
