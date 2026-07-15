@@ -8,24 +8,25 @@ Current Step Title: Receive the 827-authorized fixed-direct-call argument-0 Dire
 
 ## Just Finished
 
-- Closed 827 capability-complete: `96a6bb20f` publishes only the checked
-  `LirCallOp.structured_args[0]` DirectScalar fixed-direct-call argument-0
-  parameter authority; the producer-focused proof passed 1/1 and its fresh
-  `^backend_` checkpoint passed 6/6. No Raw-BIR receipt occurred in 827.
+- Step 7.40 complete: Raw BIR now receives only the closed-827
+  `structured_args[0]` DirectScalar fixed-direct-call argument-0 authority,
+  preserving the typed parameter/owner/index relation through the call node.
+  The receiver rejects missing, invalid, duplicate, foreign, owner/index/type,
+  ABI/role, and consumer-incoherent rows transactionally.
 
 ## Suggested Next
 
-- Execute Step 7.40 only: receive the exact 827-authorized tuple and its
-  structured-argument-0/fixed-callee-parameter-0 coherence into typed Raw BIR.
+- Return to the source completion gate; do not infer source-idea completion
+  from this packet alone.
 
 ## Watchouts
 
-- Do not admit another parameter row, recover authority from presentation
-  fields, or alter producer/schema code.
+- Receipt remains bounded to one structured argument-0 row for a direct,
+  non-variadic fixed call; do not admit another parameter row or recover
+  authority from presentation fields.
 - Preserve the unrelated 821/822 worktree material and do not restore,
   accept, overwrite, or co-commit it on this route.
 
 ## Proof
 
-- Step 7.40 requires a fresh build, focused same-feature receiver proof, and
-  matching regression guard. Canonical logs remain supervisor-owned.
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log` passed (6/6); output is in `test_after.log`.

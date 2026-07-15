@@ -213,6 +213,8 @@ struct CallSpec {
   FunctionId callee{};
   std::vector<ValueId> arguments;
   std::optional<std::uint32_t> source_result_id;
+  std::optional<DirectScalarBodyParameterFixedDirectCallArgument0>
+      direct_scalar_argument0;
 };
 
 struct BinarySpec {

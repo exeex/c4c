@@ -1487,13 +1487,24 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       return Result<BuildResult, BuildError>::failure(
           BuildError::DefinitionTypeMismatch);
   }
+  if (spec.direct_scalar_argument0) {
+    const auto& authority = *spec.direct_scalar_argument0;
+    if (spec.arguments.empty() || authority.source_value_id == 0 ||
+        !authority.owner.valid() || authority.owner.epoch != parent_->data_->epoch_ ||
+        authority.owner.slot >= parent_->data_->link_names_.size() ||
+        parent_->data_->link_names_[authority.owner.slot].spelling != function_data.link_name_ ||
+        authority.parameter_index >= function_data.parameters_.size() ||
+        function_data.parameters_[authority.parameter_index] != spec.arguments[0] ||
+        authority.scalar_type != signature.parameter_types[0])
+      return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  }
   if (spec.source_result_id &&
       function_data.values_by_source_id_.count(*spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::DuplicateSourceValue);
 
   detail::InstData instruction;
   instruction.opcode = Opcode::Call;
-  instruction.payload = CallNode{spec.callee};
+  instruction.payload = CallNode{spec.callee, spec.direct_scalar_argument0};
   instruction.operands = std::move(spec.arguments);
   auto inserted =
       function_data.insts_.emplace(function_, std::move(instruction));

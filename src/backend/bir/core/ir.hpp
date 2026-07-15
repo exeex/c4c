@@ -262,12 +262,6 @@ struct AbsNode {
   Type type{};
 };
 
-struct CallNode {
-  FunctionId callee{};
-};
-
-enum class BinaryOpcode : std::uint8_t { FAdd, FMul, Add, Mul };
-
 struct DirectScalarBodyParameterBinaryLhs {
   std::uint32_t source_value_id = 0;
   std::uint32_t parameter_index = 0;
@@ -291,6 +285,23 @@ struct DirectScalarBodyParameterTruthinessComparisonLhs {
   Type scalar_type{TypeKind::Void};
   LinkNameId owner{};
 };
+
+// Receipt of the one producer-authorized direct-scalar current-function
+// parameter passed as structured argument zero of a fixed direct call.
+struct DirectScalarBodyParameterFixedDirectCallArgument0 {
+  std::uint32_t source_value_id = 0;
+  std::uint32_t parameter_index = 0;
+  Type scalar_type{TypeKind::Void};
+  LinkNameId owner{};
+};
+
+struct CallNode {
+  FunctionId callee{};
+  std::optional<DirectScalarBodyParameterFixedDirectCallArgument0>
+      direct_scalar_argument0;
+};
+
+enum class BinaryOpcode : std::uint8_t { FAdd, FMul, Add, Mul };
 
 struct BinaryNode {
   BinaryOpcode opcode = BinaryOpcode::FAdd;

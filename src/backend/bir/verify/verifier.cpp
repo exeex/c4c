@@ -1103,10 +1103,21 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                     callee.value().get().signature_.return_type &&
                     value.value().get().source_id.has_value();
               }()));
-        if (!exact_arguments || !exact_result)
+        const auto* direct_scalar = call->direct_scalar_argument0
+            ? &*call->direct_scalar_argument0 : nullptr;
+        const bool exact_direct_scalar = !direct_scalar ||
+            (exact_signature && !instruction.operands.empty() &&
+             direct_scalar->source_value_id != 0 && direct_scalar->owner.valid() &&
+             direct_scalar->owner.epoch == module.epoch_ &&
+             direct_scalar->owner.slot < module.link_names_.size() &&
+             module.link_names_[direct_scalar->owner.slot].spelling == function.link_name_ &&
+             direct_scalar->parameter_index < function.parameters_.size() &&
+             instruction.operands[0] == function.parameters_[direct_scalar->parameter_index] &&
+             direct_scalar->scalar_type == callee.value().get().signature_.parameter_types[0]);
+        if (!exact_arguments || !exact_result || !exact_direct_scalar)
           report(result, VerificationRule::ValueDefinition, function_id,
                  inst_id,
-                 "call must target one module-owned nonvariadic function with exact ordered operands and result arity");
+                 "call must target one module-owned nonvariadic function with exact ordered operands, result arity, and retained direct-scalar argument authority");
       }
       if (const auto* binary = std::get_if<BinaryNode>(&instruction.payload)) {
         const Type f64{TypeKind::F64, 64, "double"};
