@@ -8,14 +8,17 @@ Current Step Title: Publish native vaarg PHI-helper input fields
 
 ## Just Finished
 
-- Closed 783 capability-complete and resumed 782 at its preserved Step 1; no
-  782 implementation packet or after-proof has been accepted.
+- Plan Step 1 native vaarg helper-input producer fields: AArch64 GP/FP marks
+  `reg_addr` GEP and `stack_ptr` load; FP also marks its `aligned_stack_ptr`
+  ptrmask call or IntToPtr cast; AMD64 marks register `reg_value` and overflow
+  `stack_value` loads. `LirGepOp`, `LirLoadOp`, and `LirCallOp` now have
+  opt-in native-result requirements with missing/invalid/duplicate/foreign
+  rejection coverage, without changing PHI carriers or PHI verification.
 
 ## Suggested Next
 
-- Execute Plan Step 1: trace the native defining operations for every raw input
-  to the AArch64 GP, AArch64 FP, and AMD64 vaarg PHI constructors, then publish
-  only the bounded helper-input fields.
+- Review the completed Step 1 slice for acceptance and select the next
+  bounded Plan Step 1 packet only if remaining helper-input authority is found.
 
 ## Watchouts
 
@@ -26,8 +29,11 @@ Current Step Title: Publish native vaarg PHI-helper input fields
   Raw-BIR/importer, backend, target lowering, MIR, or emission.
 - Do not recover IDs from names, labels, rendered text, instruction order, or
   testcase text; do not introduce side tables or result-name maps.
+- The FP alignment route uses the existing cast opt-in for the <=8-byte path;
+  the new producer opt-ins remain restricted to GEP/load/call.
 
 ## Proof
 
-- Plan Step 2 requires a fresh build and focused three-constructor vaarg
-  result-authority proof. The supervisor selects any broader acceptance proof.
+- Passed: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_call_type_ref$'`. Per packet scope, no
+  canonical root log was written.

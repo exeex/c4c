@@ -258,6 +258,8 @@ struct LirLoadOp {
   LirOperand result;      // SSA name for result (e.g. "%t5")
   LirTypeRef type_str;    // LLVM type string (e.g. "i32", "ptr")
   LirOperand ptr;         // SSA name of pointer operand
+  // Opt-in standalone native result ownership; compatibility loads remain false.
+  bool requires_native_result_authority = false;
 };
 
 struct LirStoreOp {
@@ -349,6 +351,8 @@ struct LirGepOp {
   LirOperand ptr;             // SSA name of pointer operand
   bool inbounds = false;      // getelementptr inbounds
   std::vector<LirGepIndex> indices;
+  // Opt-in standalone native result ownership; compatibility GEPs remain false.
+  bool requires_native_result_authority = false;
 };
 
 struct LirCallSignature {
@@ -397,6 +401,8 @@ struct LirCallOp {
   LirExtAttr return_ext_attr = LirExtAttr::None;
   std::optional<LirIntrinsicKind> intrinsic_kind;
   std::optional<LirZeroCountBehavior> zero_count_behavior;
+  // Opt-in standalone native result ownership; compatibility calls remain false.
+  bool requires_native_result_authority = false;
 };
 
 // Typed binary arithmetic/bitwise/unary operation.

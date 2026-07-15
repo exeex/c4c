@@ -687,6 +687,7 @@ int lir_aarch64_gp_vaarg_gr_top_reg_addr(int count, ...) {
           const auto* gep = std::get_if<lir::LirGepOp>(&inst);
           if (!gep || gep->element_type.kind() != lir::LirTypeKind::Integer ||
               gep->element_type.integer_bit_width() != 8 ||
+              !gep->requires_native_result_authority ||
               gep->result.kind() != lir::LirOperandKind::SsaValue ||
               !gep->result.value_id() || !gep->result.value_id()->valid() ||
               gep->ptr.kind() != lir::LirOperandKind::SsaValue || !gep->ptr.value_id() ||
@@ -736,7 +737,8 @@ long double lir_aarch64_fp_vaarg_ptrmask_identity(int count, ...) {
     }
   }
   expect_true(ptrmask_call && ptrmask_call->result.kind() == lir::LirOperandKind::SsaValue &&
-                  ptrmask_call->result.value_id() && ptrmask_call->result.value_id()->valid(),
+                  ptrmask_call->result.value_id() && ptrmask_call->result.value_id()->valid() &&
+                  ptrmask_call->requires_native_result_authority,
               "FP vaarg ptrmask must define a valid native result ID");
   expect_true(ptrmask_call->return_type.kind() == lir::LirTypeKind::Pointer,
               "FP vaarg ptrmask must retain its native pointer return type");
@@ -805,6 +807,7 @@ int lir_amd64_vaarg_register_stack(int count, ...) {
   const bool stack_contract = std::any_of(loads.begin(), loads.end(),
       [&](const lir::LirLoadOp* load) {
         return load->result.value_id() && load->result.value_id()->valid() &&
+               load->requires_native_result_authority &&
                load->type_str.kind() == lir::LirTypeKind::Pointer &&
                memcpy_consumes(load->result);
       });
@@ -818,7 +821,7 @@ int lir_amd64_vaarg_register_stack(int count, ...) {
         }) && std::all_of(phi->incoming.begin(), phi->incoming.end(),
                           [&](const lir::LirPhiIncoming& incoming) {
           return std::any_of(loads.begin(), loads.end(),
-                             [&](const lir::LirLoadOp* load) {
+                          [&](const lir::LirLoadOp* load) {
             return load->result.value_id() &&
                    *load->result.value_id() == *incoming.value.value_id();
           });
@@ -830,7 +833,113 @@ int lir_amd64_vaarg_register_stack(int count, ...) {
               "AMD64 stack helper must carry its native load result into memcpy");
   expect_true(native_join_values,
               "AMD64 register/stack helper results must retain native PHI value transport");
+  expect_true(std::count_if(loads.begin(), loads.end(), [](const lir::LirLoadOp* load) {
+                return load->requires_native_result_authority;
+              }) >= 2,
+              "AMD64 register and stack PHI helper producers must opt into native results");
   lir::verify_module(amd64);
+}
+
+c4c::codegen::lir::LirFunction make_identity_test_function(
+    std::string name, c4c::codegen::lir::LirValueId id);
+void expect_identity_verification_rejected(
+    const c4c::codegen::lir::LirModule& module,
+    const std::string& message);
+
+void test_vaarg_native_producer_result_authority_contract() {
+  namespace lir = c4c::codegen::lir;
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+typedef __builtin_va_list va_list;
+long double lir_aarch64_fp_vaarg_native_result_authority(int count, ...) {
+  va_list ap;
+  __builtin_va_start(ap, count);
+  return __builtin_va_arg(ap, long double);
+}
+)c", "aarch64-linux-gnu");
+  lir::LirFunction& function =
+      require_function(lowered, "lir_aarch64_fp_vaarg_native_result_authority");
+  lir::LirGepOp* reg_addr = nullptr;
+  lir::LirLoadOp* stack_ptr = nullptr;
+  lir::LirCallOp* aligned_stack_ptr = nullptr;
+  for (auto& block : function.blocks) {
+    for (auto& inst : block.insts) {
+      if (auto* gep = std::get_if<lir::LirGepOp>(&inst);
+          gep && gep->requires_native_result_authority) {
+        expect_true(reg_addr == nullptr,
+                    "FP vaarg fixture should publish one register-address producer");
+        reg_addr = gep;
+      }
+      if (auto* load = std::get_if<lir::LirLoadOp>(&inst);
+          load && load->requires_native_result_authority) {
+        expect_true(stack_ptr == nullptr,
+                    "FP vaarg fixture should publish one stack-pointer producer");
+        stack_ptr = load;
+      }
+      if (auto* call = std::get_if<lir::LirCallOp>(&inst);
+          call && call->requires_native_result_authority) {
+        expect_true(aligned_stack_ptr == nullptr,
+                    "FP vaarg fixture should publish one aligned-stack producer");
+        aligned_stack_ptr = call;
+      }
+    }
+  }
+  expect_true(reg_addr && stack_ptr && aligned_stack_ptr && reg_addr->result.value_id() &&
+                  stack_ptr->result.value_id() && aligned_stack_ptr->result.value_id(),
+              "FP vaarg PHI helper producers must publish native current-function results");
+  lir::verify_module(lowered);
+
+  lir::LirModule missing = lowered;
+  lir::LirGepOp* missing_result = nullptr;
+  for (auto& block : require_function(missing, "lir_aarch64_fp_vaarg_native_result_authority").blocks)
+    for (auto& inst : block.insts)
+      if (auto* gep = std::get_if<lir::LirGepOp>(&inst);
+          gep && gep->requires_native_result_authority) missing_result = gep;
+  expect_true(missing_result, "focused FP vaarg fixture should retain selected GEP producer");
+  missing_result->result = lir::LirOperand{};
+  expect_identity_verification_rejected(
+      missing, "verifier should reject FP vaarg producer without native result authority");
+
+  lir::LirModule invalid = lowered;
+  lir::LirLoadOp* invalid_result = nullptr;
+  for (auto& block : require_function(invalid, "lir_aarch64_fp_vaarg_native_result_authority").blocks)
+    for (auto& inst : block.insts)
+      if (auto* load = std::get_if<lir::LirLoadOp>(&inst);
+          load && load->requires_native_result_authority) invalid_result = load;
+  expect_true(invalid_result, "focused FP vaarg fixture should retain selected load producer");
+  invalid_result->result = lir::LirOperand::ssa("%invalid-vaarg-stack", lir::LirValueId::invalid());
+  expect_identity_verification_rejected(
+      invalid, "verifier should reject invalid FP vaarg producer result ID");
+
+  lir::LirModule duplicate = lowered;
+  lir::LirGepOp* duplicate_gep = nullptr;
+  lir::LirCallOp* duplicate_call = nullptr;
+  for (auto& block : require_function(duplicate, "lir_aarch64_fp_vaarg_native_result_authority").blocks)
+    for (auto& inst : block.insts) {
+      if (auto* gep = std::get_if<lir::LirGepOp>(&inst);
+          gep && gep->requires_native_result_authority) duplicate_gep = gep;
+      if (auto* call = std::get_if<lir::LirCallOp>(&inst);
+          call && call->requires_native_result_authority) duplicate_call = call;
+    }
+  expect_true(duplicate_gep && duplicate_call && duplicate_gep->result.value_id(),
+              "focused FP vaarg fixture should retain GEP and call producers");
+  duplicate_call->result = lir::LirOperand::ssa("%duplicate-vaarg-aligned",
+                                                 *duplicate_gep->result.value_id());
+  expect_identity_verification_rejected(
+      duplicate, "verifier should reject duplicate FP vaarg producer result ID");
+
+  lir::LirModule foreign = lowered;
+  foreign.functions.push_back(
+      make_identity_test_function("vaarg_native_result_foreign_owner", lir::LirValueId{99}));
+  lir::LirCallOp* foreign_call = nullptr;
+  for (auto& block : require_function(foreign, "lir_aarch64_fp_vaarg_native_result_authority").blocks)
+    for (auto& inst : block.insts)
+      if (auto* call = std::get_if<lir::LirCallOp>(&inst);
+          call && call->requires_native_result_authority) foreign_call = call;
+  expect_true(foreign_call, "focused FP vaarg fixture should retain selected call producer");
+  foreign_call->result =
+      lir::LirOperand::ssa("%foreign-vaarg-aligned", lir::LirValueId{99});
+  expect_identity_verification_rejected(
+      foreign, "verifier should reject foreign FP vaarg producer result ID");
 }
 
 c4c::codegen::lir::LirFunction make_identity_test_function(
@@ -7625,6 +7734,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_aarch64_gp_vaarg_gr_top_reg_addr_native_operand_contract();
   test_aarch64_fp_vaarg_ptrmask_result_identity_boundary();
   test_amd64_vaarg_register_stack_native_operand_contract();
+  test_vaarg_native_producer_result_authority_contract();
   test_structured_operand_identity_foundation();
   test_standalone_cast_result_authority_contract();
   test_direct_branch_successor_identity_contract();

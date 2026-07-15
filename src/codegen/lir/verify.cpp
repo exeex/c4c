@@ -1143,6 +1143,13 @@ void verify_global_load_authority(const LirModule& mod,
   }
 }
 
+void verify_native_load_result_authority(const LirLoadOp& op) {
+  if (op.requires_native_result_authority && !op.result.value_id()) {
+    fail_verify("LirLoadOp.result",
+                "standalone native load requires LirValueId result authority");
+  }
+}
+
 void verify_authoritative_gep(const LirModule& mod, const LirGepOp& op) {
   const bool authoritative =
       op.result.has_authority() || op.ptr.has_authority() ||
@@ -1202,6 +1209,36 @@ void verify_authoritative_gep(const LirModule& mod, const LirGepOp& op) {
                   "authoritative GEP index requires integer or SSA authority");
     }
   }
+}
+
+void verify_native_gep_result_authority(const LirGepOp& op) {
+  if (op.requires_native_result_authority && !op.result.value_id()) {
+    fail_verify("LirGepOp.result",
+                "standalone native GEP requires LirValueId result authority");
+  }
+}
+
+void verify_native_call_result_authority(const LirCallOp& op) {
+  if (op.requires_native_result_authority && !op.result.value_id()) {
+    fail_verify("LirCallOp.result",
+                "standalone native call requires LirValueId result authority");
+  }
+}
+
+bool requires_native_result_authority(const LirInst& inst) {
+  if (const auto* cast = std::get_if<LirCastOp>(&inst)) {
+    return cast->requires_native_result_authority;
+  }
+  if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+    return load->requires_native_result_authority;
+  }
+  if (const auto* gep = std::get_if<LirGepOp>(&inst)) {
+    return gep->requires_native_result_authority;
+  }
+  if (const auto* call = std::get_if<LirCallOp>(&inst)) {
+    return call->requires_native_result_authority;
+  }
+  return false;
 }
 
 void verify_inst(const LirModule& mod, const LirInst& inst) {
@@ -1274,6 +1311,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     require_module_type_ref(mod, op->type_str, "LirLoadOp.type_str", true);
     verify_pointer_operand(op->ptr, "LirLoadOp.ptr");
     verify_global_load_authority(mod, *op);
+    verify_native_load_result_authority(*op);
     return;
   }
   if (const auto* op = std::get_if<LirStoreOp>(&inst)) {
@@ -1298,6 +1336,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
       verify_pointer_operand(op->ptr, "LirGepOp.ptr");
     }
     verify_authoritative_gep(mod, *op);
+    verify_native_gep_result_authority(*op);
     return;
   }
   if (const auto* op = std::get_if<LirCallOp>(&inst)) {
@@ -1352,6 +1391,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     verify_direct_zero_arg_scalar_floating_result_call(mod, *op);
     verify_integer_boolean_flag_call_authority(mod, *op);
     verify_integer_count_call_authority(mod, *op);
+    verify_native_call_result_authority(*op);
     if (op->result.empty() && op->return_type != "void") {
       fail_verify("LirCallOp.result",
                   "must hold an SSA result for non-void calls");
@@ -1918,14 +1958,13 @@ void verify_function_value_ownership(const LirModule& mod,
                   "duplicate LirValueId result authority " +
                       std::to_string(id->value));
     }
-    if (const auto* cast = std::get_if<LirCastOp>(&inst);
-        cast && cast->requires_native_result_authority) {
+    if (requires_native_result_authority(inst)) {
       const auto owners = instruction_result_owners.find(id->value);
       if (owners != instruction_result_owners.end() &&
           std::any_of(owners->second.begin(), owners->second.end(),
                       [&](const LirFunction* owner) { return owner != &function; })) {
-        fail_verify("LirCastOp.result",
-                    "standalone native cast result LirValueId is owned by another LirFunction");
+        fail_verify("LirInst.result",
+                    "standalone native result LirValueId is owned by another LirFunction");
       }
     }
     definition_insts.emplace(id->value, &inst);

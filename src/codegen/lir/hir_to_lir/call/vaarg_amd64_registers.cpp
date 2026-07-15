@@ -116,7 +116,7 @@ LirOperand StmtEmitter::emit_amd64_va_arg_from_registers(
   }
 
   const LirOperand out = fresh_value(ctx);
-  emit_lir_op(ctx, lir::LirLoadOp{out, res_ty, tmp_addr});
+  emit_lir_op(ctx, lir::LirLoadOp{out, res_ty, tmp_addr, true});
   return out;
 }
 
