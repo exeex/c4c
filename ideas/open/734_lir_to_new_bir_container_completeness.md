@@ -909,3 +909,40 @@ Raw-BIR destination, importer dispatch, reachable verification, and
 transactional coverage. Do not repeat accepted alloca/load receipt or absorb
 assignment/SSA/pointer/aggregate/vector/array/VLA stores, GEP, or later
 families.
+
+## Runbook Exhaustion Decision: post-Step 7.28 local-scalar store receipt
+
+Close rejected. Commit `f5cda70ee` receives exactly closed 790's selected
+direct non-array/non-VLA integer local scalar declaration `LirStoreOp` into a
+typed Raw-BIR local-store destination. It preserves the native integer
+immediate and checked pointer-definition, object, owner, type, and liveness
+authority; malformed selected-store input rejects transactionally. The
+supervisor-provided fresh acceptance proof is
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`,
+passing 5/5 and recorded in `test_after.log`.
+
+This bounded receipt does not satisfy the source completion gate. The checked
+no-omission matrix, lossless verified receipt of every valid current-LIR fact,
+complete explicit dispatcher, whole-module transactional proof, and final
+documentation-to-code convergence remain unmet. In particular, no exact next
+receiver-ready local row is authorized for the remaining local GEP/VLA,
+named/local-temporary, or nonselected store families; all remain fail closed.
+The separately scoped memory/va-list, aggregate/vector, body-parameter,
+module/type/global/metadata, other instruction/terminator, and inline-assembly
+families also remain unreceived.
+
+Classification: `separate-blocker`. New open idea
+`ideas/open/791_lir_next_local_operation_receiver_handoff.md` owns selecting,
+publishing, verifying, and handing off exactly one next valid local-operation
+authority row after the accepted store. It must not edit Raw-BIR/importer code
+or derive authority from local spelling.
+
+Resumption record: Steps 1 through 7.28 are accepted, including receiver
+commits `006d79aaf`, `7dc03f23a`, `2cce9da69`, `eabf7a3b8`, and `f5cda70ee`,
+plus closed 790's prerequisite authority `727949c9c`. The exact return point
+is `Step 7.29 - Receive the one 791-authorized local-operation authority row`.
+After 791 closes with its typed handoff and focused producer proof, reactivate
+734, repair its runbook for that one receiver row, and preserve all accepted
+work. Do not repeat Step 7.28 or absorb other local/VLA, memory/va,
+aggregate/vector, body-parameter, module/type/global/metadata, instruction,
+terminator, or inline-assembly families.
