@@ -49,7 +49,7 @@ ordinary value ownership.
   below 100%, reject closure and trace `log/*` by time/commit to identify the
   first bad commit before continuing.
 
-## Resumption Record: Step 2 operand-provenance blocker
+## Resumption Record: Step 2 operand-provenance blocker satisfied
 
 Last accepted progress: Step 1, `Audit and select one aggregate/vector
 authority row`, selected only `LirExtractValueOp` and was committed as
@@ -65,19 +65,33 @@ the originating `LirValueId` before `LirExtractValueOp` construction. A row
 local field cannot reconstruct that use identity without forbidden display-text
 recovery.
 
-Classification: `separate-blocker`. No already-open idea owns this
-operand-provenance prerequisite; open
-`ideas/open/798_lir_operand_provenance_authority_publication.md` owns only the
-needed native `LirOperand`/expression-API provenance propagation and its
-producer/verifier handoff. It must not publish the `LirExtractValueOp` row,
-edit Raw BIR, or recover identity from text.
+Classification: `separate-blocker`. No already-open idea owned this
+operand-provenance prerequisite; now-closed
+`ideas/closed/798_lir_operand_provenance_authority_publication.md` owned only
+the needed native `LirOperand`/expression-API provenance propagation and its
+producer/verifier handoff. It did not publish the `LirExtractValueOp` row, edit
+Raw BIR, or recover identity from text.
 
-Exact return point: after 798 accepts the needed provenance handoff, reactivate
-754 at unchanged Step 2 and add the minimum opt-in `LirExtractValueOp`
-structured result and aggregate-use authority. Wire existing HIR producers
-through the newly preserved provenance and retain legacy rows as
-compatibility-only/fail-closed. Then continue Steps 3 and 4; do not repeat
-Step 1 or treat the reverted 5/5 prototype as accepted implementation proof.
+Satisfied handoff: 798 completed its trace, implementation, and proof at
+`4c6865e62`, `f9fa478fb`, and `2c231e342`. Its accepted contract is: a
+selected direct composite call creates `LirOperand::ssa(display, LirValueId)`;
+unary real/imag forwards that exact operand into `LirExtractValueOp.agg`; the
+verifier requires a valid current-function call-result ID, structured
+return/aggregate type equality, and a display mirror. Missing, unknown/foreign,
+stale-display, and type-incoherent forms reject. There is no text recovery and
+no extractvalue result/index schema work in 798.
+
+Accepted proof: fresh build plus `ctest --test-dir build -j
+--output-on-failure -R '^(backend_|frontend_hir_tests$)'` passed 6/6 before
+and after; the monotonic guard accepted the equal 6/6 result.
+
+Exact return point: reactivate 754 at unchanged Step 2, `Publish structured
+result and operand authority`, and consume only the published checked aggregate
+operand carrier to add the minimum opt-in `LirExtractValueOp` structured result
+and aggregate-use authority. Wire existing HIR producers through the preserved
+provenance and retain legacy rows as compatibility-only/fail-closed. Then
+continue Steps 3 and 4; do not repeat Step 1 or treat the reverted 5/5
+prototype as accepted implementation proof.
 
 ## Reviewer Reject Signals
 

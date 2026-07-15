@@ -1,6 +1,6 @@
 # LIR Operand Provenance Authority Publication
 
-Status: Open
+Status: Closed — capability complete
 Type: bounded LIR operand/expression provenance prerequisite
 Blocks: `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`
 
@@ -49,6 +49,26 @@ retain opt-in native provenance first.
 - Focused positive and malformed same-feature proof supports a precise 754
   producer handoff; unrelated operand/expression paths remain unchanged or
   fail closed.
+
+## Completion Disposition
+
+Capability complete and accepted for the bounded prerequisite only. Step 1
+trace is `4c6865e62`; Step 2 implementation is `f9fa478fb`; Step 3
+proof/handoff is `2c231e342`.
+
+Published contract for 754: a selected direct composite call creates
+`LirOperand::ssa(display, LirValueId)`; unary real/imag forwards that exact
+operand into `LirExtractValueOp.agg`. Verification requires a valid
+current-function call-result ID, structured return/aggregate type equality,
+and display-mirror equality. Missing, unknown/foreign, stale-display, and
+type-incoherent forms reject. Compatibility text neither recovers nor repairs
+authority. This idea did not publish extractvalue result/index schema work.
+
+Accepted proof: a fresh build plus `ctest --test-dir build -j
+--output-on-failure -R '^(backend_|frontend_hir_tests$)'` passed 6/6 before
+and after; the monotonic guard accepted the equal 6/6 result. The satisfied
+parent return point is Step 2 of
+`ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`.
 
 ## Reviewer Reject Signals
 

@@ -1,42 +1,30 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/798_lir_operand_provenance_authority_publication.md
+Source Idea Path: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove and publish the 754 handoff
+Current Step ID: 2
+Current Step Title: Publish structured result and operand authority
 
 ## Just Finished
 
-- Completed Plan Step 3. Focused HIR-to-LIR coverage lowers direct
-  `__complex__ float` calls consumed by both `__real__` and `__imag__`; each
-  observed `LirExtractValueOp.agg` carries the same native `LirValueId` and
-  display mirror as its aggregate `LirCallOp.result`.
-- Focused verifier coverage starts from that structured aggregate call/extract
-  shape and rejects an SSA spelling with no ID, unknown/foreign authority,
-  stale/misleading display, and return-type-incoherent `agg_type`. The accepted
-  754-consumable contract is: an opt-in direct composite call defines
-  `LirOperand::ssa(display, LirValueId)`; unary real/imag extraction forwards
-  that exact operand as `agg`; the ID must resolve to the same current-function
-  call result with equal structured return/aggregate `LirTypeRef`, and display
-  is only a checked mirror. Raw legacy operands remain compatibility paths;
-  no text recovery, schema/result/index, Raw-BIR, or receiver work was added.
+- Lifecycle resume: 754 Step 1 was accepted in `d8e5ed3a8`; blocker 798 is
+  capability-complete with the accepted handoff in `2c231e342`. No 754 Step 2
+  implementation is accepted yet.
 
 ## Suggested Next
 
-- Lifecycle handoff only: have the plan owner accept this completed blocker,
-  reactivate 754 at its unchanged Step 2, and consume the published aggregate
-  operand contract there.
+- Step 2 only: publish the minimum opt-in `LirExtractValueOp` structured
+  result and aggregate-use authority, consuming the exact checked operand
+  carried by 798. Leave index semantics for Step 3.
 
 ## Watchouts
 
-- 798 does not publish `LirExtractValueOp` row result/index semantics. 754
-  owns its unchanged Step 2; it may consume only this checked aggregate operand
-  carrier and must not recover authority from text.
+- Do not repeat Step 1, reopen 798, recover IDs from display text, widen to
+  other aggregate/vector rows, or edit Raw BIR.
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^(backend_|frontend_hir_tests$)' > test_after.log`
-  passed: build succeeded and the selected frontend/backend subset passed 6/6.
-  `test_after.log` is the proof log.
+- Before accepting Step 2, run a fresh build and the delegated same-feature
+  proof. 798's accepted 6/6 before/after subset is prerequisite evidence, not
+  754 Step 2 proof.
