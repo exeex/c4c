@@ -50,7 +50,7 @@ after an equivalent structured source is checked.
 
 ## Steps
 
-### Step 1 - Audit and select one module declaration authority surface — current
+### Step 1 - Audit and select one module declaration authority surface — complete
 
 Goal: inspect extern declarations, function signatures, globals, and struct
 declarations against the accepted 759/760/761/763 structured carriers; select
@@ -70,14 +70,24 @@ Completion check: one bounded authority contract is selected with an exact
 same-feature proof ladder, or a separately scoped blocker preserves this Step
 1 return point.
 
-### Step 2 - Implement and prove the selected module declaration surface
+Accepted in `18ef8e456`: selected only `LirModule::struct_decls` as authority,
+with `type_decls` retained as its checked compatibility shadow. Extern,
+function-signature, and global routes remain excluded because their current
+producer/printer/consumer seams still consume text.
 
-Goal: make only Step 1's selected structured fields authoritative and retain
-the legacy text solely as a checked compatibility/emission shadow where needed.
+### Step 2 - Implement and prove the selected struct-declaration authority surface — current
 
-Completion check: fresh build, nearby positive and malformed stale-shadow
-coverage, matching selected tests, and a supervisor-selected broader checkpoint
-prove the row without changing output compatibility or weakening contracts.
+Goal: make only `LirModule::struct_decls` authoritative and retain matching
+`type_decls` solely as a checked compatibility/emission shadow. Preserve the
+selected structured `name_id`, fields, packed, and opaque facts through
+verification, printing, and the BIR structured-layout consumer.
+
+Completion check: fresh build; nearby positive and malformed stale-shadow
+coverage; `^backend_lir_to_bir_interface$` (extended for this seam or replaced
+by a registered exact struct-declaration test); and a supervisor-selected
+broader checkpoint prove the row without output-compatibility change or weaker
+contracts. `frontend_lir_extern_decl_type_ref` is not selected proof because
+it exercises the excluded extern route.
 
 ### Step 3 - Reassess remaining module-level surfaces
 

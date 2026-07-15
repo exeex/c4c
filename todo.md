@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/762_lir_module_declaration_type_shadow_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit and select one module declaration authority surface
+Current Step ID: 2
+Current Step Title: Implement and prove the selected struct-declaration authority surface
 
 ## Just Finished
 
@@ -45,10 +45,13 @@ Step 2: make only the selected struct-declaration shadow contract explicit in
 the implementation/tests: render `type_decls` from `struct_decls` at its
 compatibility boundary (or retain it as a checked emission shadow), and add
 same-feature positive plus stale-shadow rejection coverage without touching
-extern/signature/global text routes. Suggested proof: `cmake --build --preset
-default && ctest --test-dir build --output-on-failure -R
-'^frontend_lir_extern_decl_type_ref$'`; include the existing structured-layout
-consumer case or a registered equivalent when selecting the broader checkpoint.
+extern/signature/global text routes. Extend the registered
+`backend_lir_to_bir_interface` seam (or register an exact replacement) to
+prove structured declaration/layout consumption and stale-shadow rejection;
+run `cmake --build --preset default && ctest --test-dir build
+--output-on-failure -R '^backend_lir_to_bir_interface$'`, then a supervisor
+selected broader checkpoint. `frontend_lir_extern_decl_type_ref` is excluded:
+it does not evidence the selected struct-declaration seam.
 
 ## Watchouts
 
