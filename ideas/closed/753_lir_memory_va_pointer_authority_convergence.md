@@ -1,6 +1,6 @@
 # LIR Memory And VA Pointer Authority Convergence
 
-Status: Open
+Status: Closed
 Type: bounded LIR memory/va pointer authority repair
 Predecessor: `ideas/open/752_lir_local_object_pointer_authority_convergence.md`
 
@@ -187,4 +187,37 @@ republishing work in 753.
   `./build/tests/frontend/frontend_lir_call_type_ref_test`; the matching full
   `ctest --test-dir build -j --output-on-failure` baseline passed 3037/3037,
   and the supervisor guard found 0 new failures with
+  `--allow-non-decreasing-passed`.
+
+## Closure Record
+
+Disposition: capability complete; the bounded native memory/VA producer
+authority convergence closes after the Step 3 receiver-ready handoff.
+
+- **Structured producer authority:** accepted 753 Step 1 commits
+  `8f6f4f9c9`, `0912c93a9`, `17ba5b129`, and `52f143765` establish the
+  representative direct-local `va_start`/`va_end`, positive-size aggregate
+  `memset`, `va_copy`, and AMD64 scalar/pointer `va_arg` routes with native
+  pointer/object/lifetime and typed size/value authority. The preserved
+  verifier boundary rejects malformed size, pointer, owner, lifetime, type,
+  and liveness facts rather than recovering them from text.
+- **Memcpy-like aggregate row:** closed-799 commit `c4e820a48` supplies the
+  one selected AMD64 SysV aggregate-overflow `va_arg` memcpy carrier, its
+  checked native fields, and focused verifier coverage. It preserves the
+  predecessor's selected memcpy as a special proven row while ensuring it is
+  not the only structured memory/VA authority route; unselected rows remain
+  compatibility-only rather than semantic authority sources.
+- **Receiver handoff:** the preceding Step 3 section contains exactly one
+  Raw-BIR receiver-ready handoff, including consumable native fields,
+  verifier-backed guarantees, rejected text-recovery forms, and its accepted
+  proof. Raw-BIR receipt/lowering remains explicitly out of scope and was not
+  implemented by this idea.
+- **Acceptance proof:** `c4e820a48` passed a fresh
+  `cmake --build --preset default` plus
+  `./build/tests/backend/bir/backend_lir_selected_pointer_authority_test`,
+  with matching 5/5 backend baseline and non-decreasing guard. Resolved
+  blocker 800 commit `18e67ea70` then passed a fresh build and
+  `./build/tests/frontend/frontend_lir_call_type_ref_test`; the supervisor's
+  matching full `ctest --test-dir build -j --output-on-failure` baseline
+  passed 3037/3037, and the regression guard found 0 new failures with
   `--allow-non-decreasing-passed`.
