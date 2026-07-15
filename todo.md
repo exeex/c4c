@@ -3,27 +3,32 @@
 Status: Active
 Source Idea Path: ideas/open/804_lir_phi_incoming_producer_authority_repair.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Trace the failing PHI incoming producer handoff
+Current Step ID: 2
+Current Step Title: Repair only the selected producer-side handoff
 
 ## Just Finished
 
-- Lifecycle switch from 754: clean-HEAD full baseline stopped at 1447/3037 on
-  `llvm_gcc_c_torture_src_vrp_2_c` with the PHI incoming authority diagnostic;
-  no 754 Step 2 implementation change was accepted.
+- Step 2 completed: scalar integer unary minus now publishes its `sub` result
+  with `fresh_value(ctx)`, so a ternary else incoming keeps the native
+  current-function `LirValueId`; vector and floating unary-minus paths retain
+  their prior display-only result behavior.  The clean typed-PHI interface
+  test now verifies a native unary-minus incoming and rejects the same incoming
+  when reduced to a display-only operand.
 
 ## Suggested Next
 
-- Trace only the failing PHI incoming producer-to-consumer authority handoff.
-  Preserve accepted CFG/PHI verifier semantics and do not begin 754 work.
+- Supervisor: decide the next active-plan packet after the selected producer
+  handoff and focused proof are complete.
 
 ## Watchouts
 
-- Do not use display text as identity, weaken PHI verification, reopen CFG/PHI
-  edge or predecessor semantics, or touch unrelated dirty implementation files.
+- Do not infer an ID from `%tN` display text.  The repair deliberately leaves
+  verifier, CFG, PHI schema, edge, and predecessor authority unchanged.
 
 ## Proof
 
-- Supplied prebaseline evidence: clean build passed; the full suite stopped at
-  1447/3037 on `llvm_gcc_c_torture_src_vrp_2_c` with
-  `LirPhiIncoming.value: must identify a known current-function LirValueId`.
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^llvm_gcc_c_torture_src_vrp_2_c$' > test_after.log`
+  completed successfully: 1/1 passed.  The clean
+  `build/tests/backend/bir/backend_lir_to_bir_interface_test` also passed
+  after exercising the positive and malformed incoming-authority cases.
+  Proof log: `test_after.log`.

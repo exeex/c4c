@@ -81,15 +81,19 @@ LirOperand StmtEmitter::emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u,
         promoted_val = ext;
         promoted_ty = ty;
       }
-      const std::string tmp = fresh_tmp(ctx);
       if (is_vector_value(op_ts)) {
+        const std::string tmp = fresh_tmp(ctx);
         emit_lir_op(ctx, lir::LirBinOp{tmp, "sub", ty, "zeroinitializer", val});
+        return tmp;
       } else if (is_float_base(op_ts.base)) {
+        const std::string tmp = fresh_tmp(ctx);
         emit_lir_op(ctx, lir::LirBinOp{tmp, "fneg", ty, val, ""});
+        return tmp;
       } else {
+        const LirOperand tmp = fresh_value(ctx);
         emit_lir_op(ctx, lir::LirBinOp{tmp, "sub", promoted_ty, "0", promoted_val});
+        return tmp;
       }
-      return tmp;
     }
     case UnaryOp::Not: {
       const std::string cmp = to_bool(ctx, val, op_ts);

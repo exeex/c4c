@@ -12513,9 +12513,22 @@ void test_typed_phi_edge_authority_receipt_and_rejections() {
       {lir::LirOperand::ssa("%not-authoritative", lir::LirValueId{11}), "not-left", lir::LirBlockId{1}, lir::LirSuccessorOccurrenceId::direct_branch()},
       {lir::LirOperand::ssa("%not-authoritative", lir::LirValueId{12}), "not-right", lir::LirBlockId{2}, lir::LirSuccessorOccurrenceId::direct_branch()}}});
   join.terminator = lir::LirRet{lir::LirOperand::ssa("%also-misleading", lir::LirValueId{13}), lir::LirTypeRef::integer(32)};
-  lir::LirFunction function; function.name = "typed_phi"; function.return_type = scalar_type(c4c::TB_INT);
+  lir::LirFunction function; function.name = "typed_phi"; function.signature_text = "define i32 @typed_phi()";
+  function.return_type = scalar_type(c4c::TB_INT);
   function.blocks = {left, right, join}; function.entry = lir::LirBlockId{1};
   lir::LirModule module; module.functions.push_back(function);
+  auto verifier_module = module;
+  verifier_module.functions[0].blocks[0].insts[0] = lir::LirBinOp{
+      lir::LirOperand::ssa("%then.value", lir::LirValueId{11}), "sub",
+      lir::LirTypeRef::integer(32), "0", "7"};
+  verifier_module.functions[0].blocks[1].insts[0] = lir::LirBinOp{
+      lir::LirOperand::ssa("%else.unary.minus", lir::LirValueId{12}), "sub",
+      lir::LirTypeRef::integer(32), "0", "9"};
+  auto& verifier_incoming = std::get<lir::LirPhiOp>(
+      verifier_module.functions[0].blocks[2].insts[0]).incoming;
+  verifier_incoming[0].label = "left";
+  verifier_incoming[1].label = "right";
+  lir::verify_module(verifier_module);
   const auto raw = bir::lower_lir_to_raw_bir(module);
   expect(raw.has_value(), "typed PHI rows must publish without trusting presentation mirrors");
   const auto view = raw.value().view(); const auto function_view = view.function(view.functions()[0]).value();
@@ -12530,6 +12543,15 @@ void test_typed_phi_edge_authority_receipt_and_rejections() {
   incoming.predecessor = lir::LirBlockId{1};
   const auto rejected = bir::lower_lir_to_raw_bir(malformed);
   expect(!rejected.has_value(), "duplicate PHI edge authority must reject transactionally");
+
+  auto missing_value_authority = verifier_module;
+  std::get<lir::LirPhiOp>(missing_value_authority.functions[0].blocks[2].insts[0])
+      .incoming[1].value = lir::LirOperand("%display-only");
+  try {
+    lir::verify_module(missing_value_authority);
+    fail("PHI value without native current-function authority must reject");
+  } catch (const lir::LirVerifyError&) {
+  }
 
   auto missing_occurrence = module;
   std::get<lir::LirPhiOp>(missing_occurrence.functions[0].blocks[2].insts[0])
