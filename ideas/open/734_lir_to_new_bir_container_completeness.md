@@ -1602,3 +1602,32 @@ typed Raw-BIR receiver row. Do not repeat Step 7.39 or receive another
 parameter, memory/VA, aggregate/vector, module/type/global, instruction/
 terminator, or inline-assembly form without its separately scoped first-owner
 handoff.
+
+## Resumption Record: closed 827 fixed-direct-call argument-0 body-parameter authority
+
+Closed idea 827 is capability-complete for exactly one producer/schema/
+verifier handoff in `96a6bb20f`. It authorizes only
+`LirCallOp.structured_args[0]` carrying
+`LirFixedDirectCallArgumentParameterAuthority`: the matching current-function
+parameter definition/value, current-function `LinkNameId` owner,
+`parameter_index`, `LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`,
+and `LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument0`.
+The selected consumer is an unchanged native DirectScalar current-function
+parameter used as structured argument 0 of a direct, non-variadic, specified
+call; its SSA value/type must agree with the authority and with fixed callee
+parameter 0. Missing, invalid, duplicate matching native definition, foreign,
+owner/index/type/ABI/role-mismatched, and consumer-incoherent forms reject.
+
+Accepted producer proof is fresh `cmake --build --preset default` plus
+`ctest --test-dir build --output-on-failure -R
+'^frontend_lir_call_type_ref$'`, passing 1/1 before and after, with fresh
+`ctest --test-dir build --output-on-failure -R '^backend_'` passing 6/6.
+
+Exact return action: resume only at **Step 7.40 - Receive the one
+827-authorized fixed-direct-call argument-0 DirectScalar body-parameter
+authority row**. Add only its typed Raw-BIR call-argument destination,
+importer dispatch, reachable verifier path, and transactional positive/
+malformed-authority coverage. Do not repeat Steps 1 through 7.39, receive any
+other parameter form, or reconstruct authority from text, names, signatures,
+rendered operands, diagnostics, or `monostate`. This handoff makes no Raw-BIR
+receipt claim and does not complete this source.

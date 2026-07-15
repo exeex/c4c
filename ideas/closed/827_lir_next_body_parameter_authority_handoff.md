@@ -1,6 +1,6 @@
 # LIR Next Body-Parameter Authority Handoff
 
-Status: Open
+Status: Closed
 Type: bounded LIR producer/schema/verifier authority publication
 Predecessor: `ideas/open/734_lir_to_new_bir_container_completeness.md`
 Consumer: `ideas/open/734_lir_to_new_bir_container_completeness.md`
@@ -97,3 +97,34 @@ checkpoint.
   `ctest --test-dir build --output-on-failure -R '^frontend_lir_call_type_ref$'`.
   The isolation baseline is the conflict-free stash/pop clean pre-change run
   captured in `test_before.log`; it is not Step 2 acceptance proof.
+
+## Completion Record
+
+Close accepted: capability complete for this bounded LIR producer/schema/
+verifier handoff only.
+
+- Selected authority: `LirCallOp.structured_args[0]` carries
+  `LirFixedDirectCallArgumentParameterAuthority` with the matching
+  current-function parameter definition/value, `owner`, `parameter_index`,
+  `LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`, and
+  `LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument0`.
+- Selected consumer relation: only an unchanged native current-function
+  DirectScalar parameter passed as structured direct-call argument 0, where
+  that structured argument's SSA value/type agree with the authority and with
+  fixed callee parameter 0 of a direct, non-variadic, specified call.
+- Accepted implementation and proof: `96a6bb20f` (`Publish fixed direct-call
+  parameter authority`); fresh `cmake --build --preset default` and
+  `ctest --test-dir build --output-on-failure -R
+  '^frontend_lir_call_type_ref$'` passed 1/1 before and after. Positive plus
+  missing, invalid, duplicate matching native definition, foreign,
+  owner/index/type/ABI/role, and consumer-incoherent rejection coverage is
+  included. A fresh `ctest --test-dir build --output-on-failure -R
+  '^backend_'` checkpoint also passed 6/6.
+
+734's sole corresponding next action is **Step 7.40 — Receive the one
+827-authorized fixed-direct-call argument-0 DirectScalar body-parameter
+authority row**. It may add only that tuple's typed Raw-BIR call-argument
+destination, importer dispatch, reachable verifier path, and transactional
+positive/malformed-authority coverage. This producer handoff neither performs
+nor claims Raw-BIR receipt, and it does not complete 734's broader source
+intent.

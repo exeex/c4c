@@ -1,35 +1,31 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/827_lir_next_body_parameter_authority_handoff.md
+Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish and verify the selected authority
+Current Step ID: 7.40
+Current Step Title: Receive the 827-authorized fixed-direct-call argument-0 DirectScalar body-parameter authority row
 
 ## Just Finished
 
-- Step 2 published `LirCallOp.structured_args[0]` authority only for an
-  unchanged native DirectScalar current-function parameter passed as fixed
-  direct-call argument 0, with fail-closed verifier and focused malformed
-  tuple coverage, including duplicate matching native-definition rejection.
+- Closed 827 capability-complete: `96a6bb20f` publishes only the checked
+  `LirCallOp.structured_args[0]` DirectScalar fixed-direct-call argument-0
+  parameter authority; the producer-focused proof passed 1/1 and its fresh
+  `^backend_` checkpoint passed 6/6. No Raw-BIR receipt occurred in 827.
 
 ## Suggested Next
 
-- Record the selected producer authority and bounded Raw-BIR receiver boundary
-  for the Step 3 handoff back to 734.
+- Execute Step 7.40 only: receive the exact 827-authorized tuple and its
+  structured-argument-0/fixed-callee-parameter-0 coherence into typed Raw BIR.
 
 ## Watchouts
 
-- Do not restore, accept, overwrite, or co-commit the preserved 821/822
-  material. Restore it only with `git apply
-  review/828_preserved_821_822_frontend_slice.patch` when its owning route is
-  authorized.
-- The authority remains limited to structured argument 0 of a direct,
-  non-variadic, specified call and rejects pointer, spilled/load-derived,
-  aggregate/vector, later-argument, indirect, and other parameter forms.
+- Do not admit another parameter row, recover authority from presentation
+  fields, or alter producer/schema code.
+- Preserve the unrelated 821/822 worktree material and do not restore,
+  accept, overwrite, or co-commit it on this route.
 
 ## Proof
 
-- Passed: `cmake --build --preset default && ctest --test-dir build
-  --output-on-failure -R '^frontend_lir_call_type_ref$'` (1/1). Per the
-  delegated packet, no root test log was written or changed.
+- Step 7.40 requires a fresh build, focused same-feature receiver proof, and
+  matching regression guard. Canonical logs remain supervisor-owned.

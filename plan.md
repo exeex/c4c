@@ -1,65 +1,49 @@
-# Next Function-Body Parameter Authority Handoff Runbook
+# LIR-to-New-BIR Fixed Direct-Call Parameter Receipt Runbook
 
 Status: Active
-Source Idea: ideas/open/827_lir_next_body_parameter_authority_handoff.md
-Resumed from: closed 828's accepted shared-worktree isolation checkpoint
+Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
+Resumed from: closed 827's accepted fixed-direct-call argument-0 handoff
 
 ## Purpose
 
-Publish and prove one next structured function-body parameter-use authority
-row so 734 can later receive exactly that row into Raw BIR.
+Receive exactly closed 827's native DirectScalar fixed-direct-call
+argument-0 parameter authority into verified Raw BIR.
 
 ## Core Rule
 
-Select one existing native semantic consumer relation and carry only its
-structured current-function facts. Never recover authority from display text,
-names, signatures, rendered operands, or diagnostics.
+Consume only the 827-authorized structured argument-0 authority and its exact
+current-function and fixed-callee-parameter-0 coherence. Do not recover any
+fact from text, names, signatures, rendered operands, diagnostics, or
+compatibility fields.
 
 ## Non-Goals
 
-- Raw-BIR/importer/receiver changes or any 734 receiver implementation.
-- Generic parameter admission, ABI conversion, or a multi-row sweep.
-- Reopening accepted 817--826 authority rows or absorbing other LIR families.
-- Restoring, accepting, or changing the preserved 821/822 slice.
+- Any second parameter-use row, generic parameter admission, ABI conversion,
+  or producer/schema/verifier change.
+- Repeating accepted Steps 1 through 7.39 or receiving memory/VA,
+  aggregate/vector, module/type/global, residual instruction/terminator, or
+  inline-assembly work.
 
 ## Ordered Steps
 
-### Step 1 - Trace and select one next native parameter-use row
+### Step 7.40 - Receive the 827-authorized fixed-direct-call argument-0 DirectScalar body-parameter authority row
 
-Status: complete before the 828 isolation switch.
-
-Selected contract: an unchanged native DirectScalar current-function parameter
-used as fixed direct-call argument 0. Its required authority is the exact
-`LirCallOp.structured_args[0]` tuple with matching current-function
-definition/value/owner/index/type/`DirectScalar` ABI, role
-`FixedDirectCallArgument0`, and coherence with structured argument 0 and fixed
-callee parameter 0.
-
-### Step 2 - Publish and verify the selected authority
-
-Goal: add only the selected native carrier and fail-closed validation.
+Goal: map only the closed-827 authority tuple into one typed Raw-BIR
+call-argument destination and retain all native relations before publication.
 
 Actions:
 
-- implement structured current-function authority only for the selected fixed
-  direct-call argument-0 row;
-- reject missing, invalid, duplicate, foreign, owner/index/type/ABI/role, and
-  consumer-incoherent authority; and
-- add nearby positive and malformed-authority coverage without receiver edits.
+- map only the parameter value, owner, index, type, DirectScalar ABI, and
+  `FixedDirectCallArgument0` role from `LirCallOp.structured_args[0]`;
+- require the structured argument-0 SSA value/type to equal the authority and
+  to agree with fixed callee parameter 0 of a direct, non-variadic, specified
+  call; and
+- extend only the reachable importer/verifier path and nearby positive plus
+  malformed-authority coverage so missing, invalid, duplicate, foreign,
+  owner/index/type/ABI/role-mismatched, or consumer-incoherent input rolls
+  back transactionally.
 
-Completion check: fresh `cmake --build --preset default`, then `ctest
---test-dir build --output-on-failure -R '^frontend_lir_call_type_ref$'` pass;
-nonselected forms remain rejected.
-
-### Step 3 - Record the receiver handoff and return to 734
-
-Goal: conclude this bounded producer route with an executable receiver return.
-
-Actions:
-
-- record the exact authority tuple, consumer relation, proof, and commit;
-- state the one corresponding Raw-BIR receiver boundary for 734; and
-- return control to 734 without claiming Raw-BIR receipt or source completion.
-
-Completion check: supervisor accepts the selected proof and plan-owner can
-close this handoff and reactivate 734 at the stated bounded receiver step.
+Completion check: fresh build, focused same-feature receiver proof, and a
+matching regression guard show only this one 827-authorized row is received;
+then return to the source completion gate without claiming whole-source
+completion.
