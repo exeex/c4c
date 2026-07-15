@@ -66,10 +66,22 @@ Actions:
   facts required by the selected forms;
 - verify invalid, foreign, type-mismatched, size-mismatched, and dead
   authority before downstream use; add nearby positive and negative coverage.
+- Treat an expanded full-baseline failure set after a Step 2 packet as a
+  blocking in-scope regression: reproduce and repair it through the native
+  authority boundary before another implementation commit. Do not hide it with
+  named-test exceptions, expectation downgrades, text recovery, or a weaker
+  verifier contract. The current rejected delta is
+  `clang_c_external_C_C23_n2900_n3011_2_c`,
+  `cpp_positive_sema_constrained_template_method_call_frontend_cpp`,
+  `llvm_gcc_c_torture_src_strcpy_2_c`,
+  `llvm_gcc_c_torture_src_zero_struct_1_c`, and
+  `llvm_gcc_c_torture_src_zero_struct_2_c` after `8f6f4f9c9`.
 
 Completion check: selected representative producer forms use checked native
 authority, while unconverted rows remain fail closed or explicitly
-compatibility-only.
+compatibility-only; after a fresh build and the focused authority proof, the
+full baseline has no new failures relative to `test_baseline.log` (3037/3037)
+before any further implementation commit.
 
 ### Step 3 - Prove the bounded producer slice and hand off one receiver row
 
@@ -81,7 +93,8 @@ Actions:
 - run a fresh build and focused memory/va producer/verifier proof;
 - run the source-required full baseline; closure requires 100% passing tests,
   and a lower baseline must be diagnosed through `log/*` by time/commit before
-  continuing;
+  continuing. This does not replace Step 2's pre-commit no-new-failures gate;
+  the accepted comparison point remains `test_baseline.log` (3037/3037);
 - document exactly one selected 734 handoff with native fields, guarantees,
   rejected forms, and accepted proof.
 
