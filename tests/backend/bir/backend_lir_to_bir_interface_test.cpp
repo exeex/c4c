@@ -12906,6 +12906,109 @@ void test_return_value_parameter_authority_receipt_and_rejections() {
   }, "duplicate return-value authority rows must reject transactionally");
 }
 
+void test_switch_selector_parameter_authority_receipt_and_rejections() {
+  auto make_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    const auto owner = module.link_names.intern("switch_selector_parameter_owner");
+    lir::LirFunction function;
+    function.name = "switch_selector_parameter_owner";
+    function.link_name_id = owner;
+    function.return_type = scalar_type(c4c::TB_VOID);
+    function.signature_return_type_ref = lir::LirTypeRef("void");
+    function.params.emplace_back("%presentation-only", scalar_type(c4c::TB_INT));
+    function.signature_params.push_back({"%presentation-only-signature",
+                                         scalar_type(c4c::TB_INT), false});
+    function.signature_param_type_refs.push_back(lir::LirTypeRef::integer(32));
+    function.native_body_parameter_definitions.push_back(
+        {lir::LirValueId{61}, 0, lir::LirTypeRef::integer(32), owner,
+         lir::LirNativeBodyParameterAbi::DirectScalar});
+    lir::LirBlock entry;
+    entry.id = lir::LirBlockId{0};
+    entry.label = "entry";
+    entry.terminator = lir::LirSwitch{
+        .selector_name = "%presentation-only",
+        .selector_type = "i32",
+        .default_label = "default",
+        .cases = {{7, "case"}},
+        .default_successor = lir::LirBlockId{1},
+        .case_successors = {lir::LirBlockId{2}},
+        .selector = lir::LirValueId{61},
+        .selector_type_ref = lir::LirTypeRef::integer(32),
+        .selector_parameter_authority = lir::LirSwitchSelectorParameterAuthority{
+            lir::LirValueId{61}, 0, lir::LirTypeRef::integer(32), owner,
+            lir::LirNativeBodyParameterAbi::DirectScalar,
+            lir::LirSwitchSelectorParameterRole::SwitchSelector}};
+    function.blocks.push_back(std::move(entry));
+    function.blocks.push_back(return_block(1, "default"));
+    function.blocks.push_back(return_block(2, "case"));
+    function.entry = lir::LirBlockId{0};
+    module.functions.push_back(std::move(function));
+    return module;
+  };
+
+  const auto module = make_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "selected switch-selector parameter authority must publish verified Raw BIR");
+  const auto view = raw.value().view();
+  const auto function = view.function(view.functions()[0]).value();
+  const auto terminator = function.terminator(function.blocks()[0]).value();
+  const auto* sw = std::get_if<bir::SwitchTerm>(&terminator);
+  expect(sw && function.parameters().size() == 1 && sw->selector == function.parameters()[0],
+         "Raw BIR switch must use the selected parameter ValueId directly");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = make_module();
+    mutate(candidate);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value(), message + " (Raw rollback)");
+    expect(!bir::lower_lir_to_canonical_bir(candidate).has_value(),
+           message + " (Canonical rollback)");
+  };
+  rejected([](auto& candidate) {
+    std::get<lir::LirSwitch>(candidate.functions[0].blocks[0].terminator)
+        .selector_parameter_authority.reset();
+  }, "missing switch-selector parameter authority must reject transactionally");
+  rejected([](auto& candidate) {
+    std::get<lir::LirSwitch>(candidate.functions[0].blocks[0].terminator)
+        .selector_parameter_authority->value = lir::LirValueId::invalid();
+  }, "invalid switch-selector parameter authority must reject transactionally");
+  rejected([](auto& candidate) {
+    candidate.functions[0].native_body_parameter_definitions.push_back(
+        candidate.functions[0].native_body_parameter_definitions[0]);
+  }, "duplicate switch-selector parameter authority must reject transactionally");
+  rejected([](auto& candidate) {
+    std::get<lir::LirSwitch>(candidate.functions[0].blocks[0].terminator)
+        .selector_parameter_authority->owner = candidate.link_names.intern("foreign_switch_owner");
+  }, "foreign switch-selector parameter owner must reject transactionally");
+  rejected([](auto& candidate) {
+    std::get<lir::LirSwitch>(candidate.functions[0].blocks[0].terminator)
+        .selector_parameter_authority->parameter_index = 1;
+  }, "out-of-range switch-selector parameter index must reject transactionally");
+  rejected([](auto& candidate) {
+    std::get<lir::LirSwitch>(candidate.functions[0].blocks[0].terminator)
+        .selector_parameter_authority->type = lir::LirTypeRef::integer(64);
+  }, "switch-selector parameter type mismatch must reject transactionally");
+  rejected([](auto& candidate) {
+    std::get<lir::LirSwitch>(candidate.functions[0].blocks[0].terminator)
+        .selector_parameter_authority->abi = lir::LirNativeBodyParameterAbi::DirectPointer;
+  }, "switch-selector parameter ABI mismatch must reject transactionally");
+  rejected([](auto& candidate) {
+    std::get<lir::LirSwitch>(candidate.functions[0].blocks[0].terminator)
+        .selector_parameter_authority->role = lir::LirSwitchSelectorParameterRole::Invalid;
+  }, "switch-selector parameter role mismatch must reject transactionally");
+  rejected([](auto& candidate) {
+    std::get<lir::LirSwitch>(candidate.functions[0].blocks[0].terminator).selector =
+        lir::LirValueId{62};
+  }, "switch-selector parameter value relation mismatch must reject transactionally");
+  rejected([](auto& candidate) {
+    std::get<lir::LirSwitch>(candidate.functions[0].blocks[0].terminator)
+        .selector_type_ref = lir::LirTypeRef::integer(64);
+  }, "switch-selector parameter type relation mismatch must reject transactionally");
+}
+
 }  // namespace
 
 int main() {
@@ -13016,5 +13119,6 @@ int main() {
   test_typed_phi_loop_and_parallel_edge_occurrences();
   test_direct_pointer_body_parameter_gep_receipt_and_rejections();
   test_return_value_parameter_authority_receipt_and_rejections();
+  test_switch_selector_parameter_authority_receipt_and_rejections();
   return 0;
 }

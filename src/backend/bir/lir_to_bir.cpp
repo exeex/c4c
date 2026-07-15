@@ -2313,6 +2313,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
                       "only one selected direct-pointer body parameter is receivable");
   const codegen::lir::LirReturnValueParameterAuthority*
       selected_return_value_parameter_authority = nullptr;
+  const codegen::lir::LirSwitchSelectorParameterAuthority*
+      selected_switch_selector_parameter_authority = nullptr;
   for (const auto& block : function.blocks) {
     const auto* ret = std::get_if<LirRet>(&block.terminator);
     if (!ret) continue;
@@ -2361,6 +2363,44 @@ Result<void, ImportError> validate_function(const LirModule& module,
       return fail<void>(ImportErrorCode::UnsupportedTerminator, name, block.label,
                         "direct scalar return parameter requires one exact typed current-function authority row");
     selected_return_value_parameter_authority = &authority;
+  }
+  for (const auto& block : function.blocks) {
+    const auto* sw = std::get_if<LirSwitch>(&block.terminator);
+    if (!sw) continue;
+    const auto selected_definition = std::find_if(
+        function.native_body_parameter_definitions.begin(),
+        function.native_body_parameter_definitions.end(), [&](const auto& definition) {
+          return definition.value == sw->selector &&
+                 definition.abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar;
+        });
+    if (!sw->selector_parameter_authority) {
+      if (selected_definition != function.native_body_parameter_definitions.end())
+        return fail<void>(ImportErrorCode::UnsupportedTerminator, name, block.label,
+                          "direct scalar switch selector parameter requires its one typed authority row");
+      continue;
+    }
+    const auto& authority = *sw->selector_parameter_authority;
+    const auto matches = std::count_if(
+        function.native_body_parameter_definitions.begin(),
+        function.native_body_parameter_definitions.end(), [&](const auto& definition) {
+          return definition.value == authority.value &&
+                 definition.parameter_index == authority.parameter_index &&
+                 definition.type == authority.type && definition.owner == authority.owner &&
+                 definition.abi == authority.abi;
+        });
+    if (selected_switch_selector_parameter_authority || !authority.value.valid() ||
+        authority.owner != function.link_name_id ||
+        authority.parameter_index >= function.params.size() ||
+        authority.parameter_index >= function.signature_param_type_refs.size() ||
+        authority.abi != codegen::lir::LirNativeBodyParameterAbi::DirectScalar ||
+        authority.role != codegen::lir::LirSwitchSelectorParameterRole::SwitchSelector ||
+        sw->selector != authority.value || sw->selector_type_ref != authority.type ||
+        authority.type.kind() != codegen::lir::LirTypeKind::Integer ||
+        function.signature_param_type_refs[authority.parameter_index] != authority.type ||
+        matches != 1)
+      return fail<void>(ImportErrorCode::UnsupportedTerminator, name, block.label,
+                        "direct scalar switch selector parameter requires one exact typed current-function authority row");
+    selected_switch_selector_parameter_authority = &authority;
   }
   const LirMemcpyOp* overflow_memcpy = nullptr;
   const codegen::lir::LirAmd64SysVOverflowAggregateCarrier* overflow_carrier = nullptr;
@@ -2542,6 +2582,15 @@ Result<void, ImportError> validate_function(const LirModule& module,
                       *type).second)
       return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
                         "direct scalar return parameter identity collided in the current-function source registry");
+  }
+  if (selected_switch_selector_parameter_authority) {
+    const auto type = lower_lir_type(module,
+                                     selected_switch_selector_parameter_authority->type);
+    if (!type || !source_values.emplace(
+                      selected_switch_selector_parameter_authority->value.value,
+                      *type).second)
+      return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
+                        "direct scalar switch selector parameter identity collided in the current-function source registry");
   }
   for (const auto& instruction : function.alloca_insts) {
     const auto& alloca = std::get<LirAllocaOp>(instruction);
@@ -4144,6 +4193,13 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 return &*ret->return_value_parameter_authority;
             return static_cast<const codegen::lir::LirReturnValueParameterAuthority*>(nullptr);
           }();
+          const auto selected_switch_selector_authority = [&]() {
+            for (const auto& block : function.blocks)
+              if (const auto* sw = std::get_if<LirSwitch>(&block.terminator);
+                  sw && sw->selector_parameter_authority)
+                return &*sw->selector_parameter_authority;
+            return static_cast<const codegen::lir::LirSwitchSelectorParameterAuthority*>(nullptr);
+          }();
           const auto selected_scalar_body_parameter = selected_scalar_authority
               ? std::find_if(function.native_body_parameter_definitions.begin(),
                              function.native_body_parameter_definitions.end(),
@@ -4177,6 +4233,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                    parameter.abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar;
                              })
               : function.native_body_parameter_definitions.end();
+          const auto selected_switch_selector_body_parameter = selected_switch_selector_authority
+              ? std::find_if(function.native_body_parameter_definitions.begin(),
+                             function.native_body_parameter_definitions.end(),
+                             [&](const auto& parameter) {
+                               return parameter.value == selected_switch_selector_authority->value &&
+                                   parameter.parameter_index == selected_switch_selector_authority->parameter_index &&
+                                   parameter.type == selected_switch_selector_authority->type &&
+                                   parameter.owner == selected_switch_selector_authority->owner &&
+                                   parameter.abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar;
+                             })
+              : function.native_body_parameter_definitions.end();
           if (selected_scalar_body_parameter != function.native_body_parameter_definitions.end()) {
             auto parameter = function_builder.parameter(selected_scalar_body_parameter->parameter_index);
             if (!parameter || !source_values.emplace(selected_scalar_body_parameter->value.value,
@@ -4203,6 +4270,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                   parameter.value()).second) {
               edit_error = ImportError{ImportErrorCode::UnsupportedFunctionParameters, name, {},
                                        "direct scalar return parameter failed authoritative Raw-BIR receipt"};
+              return Result<void, BuildError>::failure(BuildError::InvalidParameter);
+            }
+          }
+          if (selected_switch_selector_body_parameter != function.native_body_parameter_definitions.end()) {
+            auto parameter = function_builder.parameter(
+                selected_switch_selector_body_parameter->parameter_index);
+            if (!parameter || !source_values.emplace(
+                                  selected_switch_selector_body_parameter->value.value,
+                                  parameter.value()).second) {
+              edit_error = ImportError{ImportErrorCode::UnsupportedFunctionParameters, name, {},
+                                       "direct scalar switch selector parameter failed authoritative Raw-BIR receipt"};
               return Result<void, BuildError>::failure(BuildError::InvalidParameter);
             }
           }
