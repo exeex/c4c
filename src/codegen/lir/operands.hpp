@@ -40,9 +40,33 @@ struct LirIntegerImmediate {
   return !(lhs == rhs);
 }
 
+// Native identity for the existing classified LLVM special-token vocabulary.
+// The spelling is retained only as a printer compatibility mirror.
+enum class LirSpecialToken : unsigned char {
+  Null,
+  Undef,
+  Poison,
+  ZeroInitializer,
+  True,
+  False,
+};
+
+[[nodiscard]] constexpr std::string_view lir_special_token_spelling(
+    LirSpecialToken token) {
+  switch (token) {
+    case LirSpecialToken::Null: return "null";
+    case LirSpecialToken::Undef: return "undef";
+    case LirSpecialToken::Poison: return "poison";
+    case LirSpecialToken::ZeroInitializer: return "zeroinitializer";
+    case LirSpecialToken::True: return "true";
+    case LirSpecialToken::False: return "false";
+  }
+  return {};
+}
+
 using LirOperandAuthority =
     std::variant<std::monostate, LirValueId, LinkNameId,
-                 LirIntegerImmediate>;
+                 LirIntegerImmediate, LirSpecialToken>;
 
 class LirOperand {
  public:
@@ -78,6 +102,20 @@ class LirOperand {
                       LirIntegerImmediate{value});
   }
 
+  [[nodiscard]] static LirOperand special_token(LirSpecialToken token) {
+    return special_token(std::string(lir_special_token_spelling(token)), token);
+  }
+
+  // `display` is deliberately accepted as a compatibility mirror so the
+  // verifier can reject stale or misleading renderings without making text a
+  // source of semantic identity.
+  [[nodiscard]] static LirOperand special_token(std::string display,
+                                                LirSpecialToken token,
+                                                LirOperandKind kind =
+                                                    LirOperandKind::SpecialToken) {
+    return LirOperand(std::move(display), kind, token);
+  }
+
   [[nodiscard]] const std::string& str() const { return text_; }
   [[nodiscard]] std::string& str() { return text_; }
   [[nodiscard]] LirOperandKind kind() const { return kind_; }
@@ -96,6 +134,9 @@ class LirOperand {
   }
   [[nodiscard]] const LirIntegerImmediate* integer_immediate() const {
     return std::get_if<LirIntegerImmediate>(&authority_);
+  }
+  [[nodiscard]] const LirSpecialToken* special_token() const {
+    return std::get_if<LirSpecialToken>(&authority_);
   }
   [[nodiscard]] std::optional<bool> same_authority_as(
       const LirOperand& other) const {

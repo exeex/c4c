@@ -4539,6 +4539,72 @@ int lir_logical_short_circuit_result_authority_loss(int lhs, int rhs) {
       foreign_result, "verifier should reject foreign logical RHS conversion result ID");
 }
 
+void test_phi_special_token_authority_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int lir_logical_phi_authority(int lhs, int rhs) { return lhs && rhs; }
+)c", "x86_64-linux-gnu");
+
+  const auto require_phi = [](lir::LirModule& module) -> lir::LirPhiOp& {
+    lir::LirFunction& function = require_function(module, "lir_logical_phi_authority");
+    lir::LirPhiOp* phi = nullptr;
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate = std::get_if<lir::LirPhiOp>(&inst)) {
+          expect_true(phi == nullptr, "special-token fixture should contain one PHI");
+          phi = candidate;
+        }
+      }
+    }
+    expect_true(phi != nullptr, "special-token fixture should retain a PHI");
+    expect_true(phi->incoming.size() == 2 && phi->incoming.back().predecessor.valid(),
+                "special-token fixture should retain an authoritative PHI predecessor");
+    return *phi;
+  };
+
+  lir::verify_module(lowered);
+
+  const std::array special_tokens{
+      lir::LirSpecialToken::Null, lir::LirSpecialToken::Undef,
+      lir::LirSpecialToken::Poison, lir::LirSpecialToken::ZeroInitializer,
+      lir::LirSpecialToken::True, lir::LirSpecialToken::False};
+  for (const lir::LirSpecialToken token : special_tokens) {
+    lir::LirModule token_module = lowered;
+    lir::LirOperand& published = require_phi(token_module).incoming.back().value;
+    published = lir::LirOperand::special_token(token);
+    expect_true(published.str() == lir::lir_special_token_spelling(token),
+                "each classified PHI special token should retain its authority/display mirror");
+    expect_true(published.special_token() && *published.special_token() == token,
+                "each classified PHI special token should retain native identity");
+    lir::verify_module(token_module);
+  }
+
+  lir::LirModule missing = lowered;
+  require_phi(missing).incoming.back().value = lir::LirOperand("false");
+  expect_identity_verification_rejected(
+      missing, "verifier should reject PHI special tokens without native authority");
+
+  lir::LirModule kind_mismatch = lowered;
+  require_phi(kind_mismatch).incoming.back().value =
+      lir::LirOperand::special_token("false", lir::LirSpecialToken::False,
+                                     lir::LirOperandKind::Immediate);
+  expect_identity_verification_rejected(
+      kind_mismatch, "verifier should reject PHI special-token kind mismatches");
+
+  lir::LirModule invalid = lowered;
+  require_phi(invalid).incoming.back().value =
+      lir::LirOperand::special_token("false", static_cast<lir::LirSpecialToken>(255));
+  expect_identity_verification_rejected(
+      invalid, "verifier should reject invalid PHI special-token authority");
+
+  lir::LirModule misleading_display = lowered;
+  require_phi(misleading_display).incoming.back().value =
+      lir::LirOperand::special_token("true", lir::LirSpecialToken::False);
+  expect_identity_verification_rejected(
+      misleading_display, "verifier should reject misleading PHI special-token displays");
+}
+
 void test_vaarg_helper_result_authority_boundary() {
   namespace lir = c4c::codegen::lir;
 
@@ -7866,6 +7932,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_cast_result_use_identity_boundary();
   test_ternary_coerce_result_authority_boundary();
   test_logical_short_circuit_result_authority_loss_boundary();
+  test_phi_special_token_authority_boundary();
   test_vaarg_helper_result_authority_boundary();
   test_scalar_fptrunc_result_use_identity_boundary();
   test_scalar_fpext_result_use_identity_boundary();

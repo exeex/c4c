@@ -233,7 +233,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, con
   if (res_ty == "void") return "";
   auto void_to_zero = [&](const LirOperand& value) -> LirOperand {
     if (!value.empty()) return value;
-    if (res_ty == "ptr") return LirOperand("null");
+    if (res_ty == "ptr") return LirOperand::special_token(LirSpecialToken::Null);
     if (res_ty == "float" || res_ty == "double") return LirOperand("0.0");
     return LirOperand::integer("0", 0);
   };

@@ -8,13 +8,16 @@ Current Step Title: Publish and verify PHI SpecialToken authority
 
 ## Just Finished
 
-- Switched from paused 734 Step 7.25 after preserving its accepted Steps 1
-  through 7.24 and recording the upstream SpecialToken authority blocker.
+- Plan Step 1 complete: PHI inputs now carry native `LirSpecialToken`
+  authority for the existing `null`, `undef`, `poison`, `zeroinitializer`,
+  `true`, and `false` vocabulary. Relevant ternary/logical producers publish
+  it, and PHI verification rejects absent, kind-mismatched, invalid, and
+  misleading-display authority.
 
 ## Suggested Next
 
-- Execute Step 1 only: publish native SpecialToken semantic authority for
-  relevant PHI inputs and verify it at the LIR producer boundary.
+- Supervisor: assess Step 1 acceptance and record the precise 734 handoff;
+  no Raw-BIR receiver work belongs in this packet.
 
 ## Watchouts
 
@@ -23,9 +26,13 @@ Current Step Title: Publish and verify PHI SpecialToken authority
   names.
 - Keep the work limited to the existing classified SpecialToken vocabulary and
   relevant PHI producers; all other operand families remain out of scope.
+- The verifier uses native token identity for semantics and checks spelling
+  only as its compatibility mirror; it does not derive token identity from text.
 
 ## Proof
 
-- Executor: run a fresh build and focused positive/malformed LIR
-  producer/verifier proof for Step 1.
-- Supervisor: select and record broader/full acceptance separately.
+- Passed: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_call_type_ref$'`.
+- Focused coverage includes valid PHI authority for every classified token and
+  malformed absent, kind-mismatched, invalid, and misleading-display cases.
+- Proof log: `test_after.log`.

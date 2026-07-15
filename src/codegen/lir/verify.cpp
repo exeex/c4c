@@ -44,6 +44,8 @@ void verify_operand_authority_kind(const LirOperand& operand,
     expected = LirOperandKind::Global;
   } else if (operand.integer_immediate()) {
     expected = LirOperandKind::Immediate;
+  } else if (operand.special_token()) {
+    expected = LirOperandKind::SpecialToken;
   } else {
     fail_verify(field, "unknown operand authority alternative");
   }
@@ -51,6 +53,24 @@ void verify_operand_authority_kind(const LirOperand& operand,
   if (operand.kind() != expected) {
     fail_verify(field,
                 "authority alternative disagrees with stored operand kind");
+  }
+}
+
+void verify_phi_special_token_authority(const LirOperand& operand,
+                                        std::string_view field) {
+  if (operand.kind() != LirOperandKind::SpecialToken) return;
+
+  const LirSpecialToken* token = operand.special_token();
+  if (!token) {
+    fail_verify(field, "special-token PHI input must carry native authority");
+  }
+  const std::string_view expected_display = lir_special_token_spelling(*token);
+  if (expected_display.empty()) {
+    fail_verify(field, "special-token PHI input has invalid native authority");
+  }
+  if (operand.str() != expected_display) {
+    fail_verify(field,
+                "special-token display mirror disagrees with native authority");
   }
 }
 
@@ -2020,6 +2040,7 @@ void verify_function_value_ownership(const LirModule& mod,
                           LirOperandKind::DirectConstant,
                           LirOperandKind::Immediate,
                           LirOperandKind::SpecialToken});
+    verify_phi_special_token_authority(incoming.value, "LirPhiIncoming.value");
     if (incoming.value.kind() == LirOperandKind::SsaValue) {
       const LirValueId* id = incoming.value.value_id();
       if (!id || !id->valid() || definitions.find(id->value) == definitions.end()) {

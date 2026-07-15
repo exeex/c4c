@@ -634,7 +634,8 @@ std::string StmtEmitter::emit_logical(FnCtx& ctx, const BinaryExpr& b, const Exp
   emit_br_and_open_lbl(ctx, end_target, skip_target);
   LirOperand skip_val;
   if (res_ty == "i1") {
-    skip_val = LirOperand((b.op == BinaryOp::LAnd) ? "false" : "true");
+    skip_val = LirOperand::special_token(
+        b.op == BinaryOp::LAnd ? LirSpecialToken::False : LirSpecialToken::True);
   } else if (is_float_base(res_spec.base)) {
     skip_val = LirOperand((b.op == BinaryOp::LAnd) ? "0.0" : "1.0");
   } else {
