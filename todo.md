@@ -8,22 +8,24 @@ Current Step Title: Receive the one 824-authorized DirectScalar return-value par
 
 ## Just Finished
 
-- Lifecycle switch: closed 824 after its accepted producer/schema/verifier
-  handoff (`fac485148`); 734 resumes for exactly its matching receiver row.
+- Step 7.37: received only the typed
+  `LirRet.return_value_parameter_authority` DirectScalar ReturnValue row into
+  the existing Raw-BIR parameter `ValueId` and `ReturnTerm`; importer
+  validation now rejects missing, foreign, duplicate, owner/index/type/ABI/
+  role/operand/signature-incoherent authority before publication, and nearby
+  backend coverage verifies the retained exact parameter identity.
 
 ## Suggested Next
 
-- Step 7.37: receive only the structured `LirRet.return_value_parameter_authority`
-  tuple described in `ideas/open/734_lir_to_new_bir_container_completeness.md`.
+- Supervisor: reassess the source-idea completion gate after the completed
+  Step 7.37 receiver slice.
 
 ## Watchouts
 
-- Do not infer parameter authority from return text, signatures, names,
-  rendered operands, diagnostics, or `monostate`; do not receive another
-  parameter form or reopen Steps 7.35--7.36.
+- The receiver derives admission only from the structured return tuple and its
+  exact native definition; no other parameter form is admitted.
 
 ## Proof
 
-- Handoff acceptance: `fac485148`; fresh
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-  passed 6/6, with matching before/after 6/6 non-regression guard.
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+  passed 6/6; post-proof output: `test_after.log`.

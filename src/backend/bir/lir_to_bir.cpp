@@ -2311,6 +2311,57 @@ Result<void, ImportError> validate_function(const LirModule& module,
   if (direct_pointer_parameter_count > 1)
     return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
                       "only one selected direct-pointer body parameter is receivable");
+  const codegen::lir::LirReturnValueParameterAuthority*
+      selected_return_value_parameter_authority = nullptr;
+  for (const auto& block : function.blocks) {
+    const auto* ret = std::get_if<LirRet>(&block.terminator);
+    if (!ret) continue;
+    const auto returned_definition =
+        ret->type_str.kind() == codegen::lir::LirTypeKind::Integer &&
+                ret->value_str &&
+                ret->value_str->kind() == codegen::lir::LirOperandKind::SsaValue &&
+                ret->value_str->value_id() && function.signature_return_type_ref &&
+                *function.signature_return_type_ref == ret->type_str
+            ? std::find_if(function.native_body_parameter_definitions.begin(),
+                           function.native_body_parameter_definitions.end(),
+                           [&](const auto& definition) {
+                             return definition.value == *ret->value_str->value_id() &&
+                                    definition.type == ret->type_str &&
+                                    definition.abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar;
+                           })
+            : function.native_body_parameter_definitions.end();
+    if (!ret->return_value_parameter_authority) {
+      if (returned_definition != function.native_body_parameter_definitions.end())
+        return fail<void>(ImportErrorCode::UnsupportedTerminator, name, block.label,
+                          "direct scalar return parameter requires its one typed authority row");
+      continue;
+    }
+    const auto& authority = *ret->return_value_parameter_authority;
+    const auto matches = std::count_if(
+        function.native_body_parameter_definitions.begin(),
+        function.native_body_parameter_definitions.end(), [&](const auto& definition) {
+          return definition.value == authority.value &&
+                 definition.parameter_index == authority.parameter_index &&
+                 definition.type == authority.type && definition.owner == authority.owner &&
+                 definition.abi == authority.abi;
+        });
+    if (selected_return_value_parameter_authority || !authority.value.valid() ||
+        authority.owner != function.link_name_id ||
+        authority.parameter_index >= function.params.size() ||
+        authority.parameter_index >= function.signature_param_type_refs.size() ||
+        authority.abi != codegen::lir::LirNativeBodyParameterAbi::DirectScalar ||
+        authority.role != codegen::lir::LirReturnValueParameterRole::ReturnValue ||
+        ret->type_str.kind() != codegen::lir::LirTypeKind::Integer || !ret->value_str ||
+        ret->value_str->kind() != codegen::lir::LirOperandKind::SsaValue ||
+        !ret->value_str->value_id() || *ret->value_str->value_id() != authority.value ||
+        ret->type_str != authority.type || !function.signature_return_type_ref ||
+        *function.signature_return_type_ref != ret->type_str ||
+        function.signature_param_type_refs[authority.parameter_index] != authority.type ||
+        matches != 1)
+      return fail<void>(ImportErrorCode::UnsupportedTerminator, name, block.label,
+                        "direct scalar return parameter requires one exact typed current-function authority row");
+    selected_return_value_parameter_authority = &authority;
+  }
   const LirMemcpyOp* overflow_memcpy = nullptr;
   const codegen::lir::LirAmd64SysVOverflowAggregateCarrier* overflow_carrier = nullptr;
   for (const auto& block : function.blocks) for (const auto& instruction : block.insts) {
@@ -2482,6 +2533,15 @@ Result<void, ImportError> validate_function(const LirModule& module,
     if (!type || !source_values.emplace(parameter.value.value, *type).second)
       return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
                         "body parameter identity collided in the current-function source registry");
+  }
+  if (selected_return_value_parameter_authority) {
+    const auto type = lower_lir_type(module,
+                                     selected_return_value_parameter_authority->type);
+    if (!type || !source_values.emplace(
+                      selected_return_value_parameter_authority->value.value,
+                      *type).second)
+      return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
+                        "direct scalar return parameter identity collided in the current-function source registry");
   }
   for (const auto& instruction : function.alloca_insts) {
     const auto& alloca = std::get<LirAllocaOp>(instruction);
@@ -4077,6 +4137,13 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   return &*bin->scalar_rhs_parameter_authority;
             return static_cast<const codegen::lir::LirScalarBinaryRhsParameterAuthority*>(nullptr);
           }();
+          const auto selected_return_value_authority = [&]() {
+            for (const auto& block : function.blocks)
+              if (const auto* ret = std::get_if<LirRet>(&block.terminator);
+                  ret && ret->return_value_parameter_authority)
+                return &*ret->return_value_parameter_authority;
+            return static_cast<const codegen::lir::LirReturnValueParameterAuthority*>(nullptr);
+          }();
           const auto selected_scalar_body_parameter = selected_scalar_authority
               ? std::find_if(function.native_body_parameter_definitions.begin(),
                              function.native_body_parameter_definitions.end(),
@@ -4099,6 +4166,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                    parameter.abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar;
                              })
               : function.native_body_parameter_definitions.end();
+          const auto selected_return_value_body_parameter = selected_return_value_authority
+              ? std::find_if(function.native_body_parameter_definitions.begin(),
+                             function.native_body_parameter_definitions.end(),
+                             [&](const auto& parameter) {
+                               return parameter.value == selected_return_value_authority->value &&
+                                   parameter.parameter_index == selected_return_value_authority->parameter_index &&
+                                   parameter.type == selected_return_value_authority->type &&
+                                   parameter.owner == selected_return_value_authority->owner &&
+                                   parameter.abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar;
+                             })
+              : function.native_body_parameter_definitions.end();
           if (selected_scalar_body_parameter != function.native_body_parameter_definitions.end()) {
             auto parameter = function_builder.parameter(selected_scalar_body_parameter->parameter_index);
             if (!parameter || !source_values.emplace(selected_scalar_body_parameter->value.value,
@@ -4114,6 +4192,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                                      parameter.value()).second) {
               edit_error = ImportError{ImportErrorCode::UnsupportedFunctionParameters, name, {},
                                        "direct scalar RHS body parameter failed authoritative Raw-BIR receipt"};
+              return Result<void, BuildError>::failure(BuildError::InvalidParameter);
+            }
+          }
+          if (selected_return_value_body_parameter != function.native_body_parameter_definitions.end()) {
+            auto parameter = function_builder.parameter(
+                selected_return_value_body_parameter->parameter_index);
+            if (!parameter || !source_values.emplace(
+                                  selected_return_value_body_parameter->value.value,
+                                  parameter.value()).second) {
+              edit_error = ImportError{ImportErrorCode::UnsupportedFunctionParameters, name, {},
+                                       "direct scalar return parameter failed authoritative Raw-BIR receipt"};
               return Result<void, BuildError>::failure(BuildError::InvalidParameter);
             }
           }

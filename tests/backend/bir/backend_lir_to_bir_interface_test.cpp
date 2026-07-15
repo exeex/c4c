@@ -12815,6 +12815,97 @@ void test_direct_pointer_body_parameter_gep_receipt_and_rejections() {
            "variadic body parameter must remain rejected transactionally");
 }
 
+void test_return_value_parameter_authority_receipt_and_rejections() {
+  lir::LirModule module;
+  auto texts = std::make_shared<c4c::TextTable>();
+  module.link_name_texts = texts;
+  module.link_names.attach_text_table(texts.get());
+  const auto owner = module.link_names.intern("return_value_parameter_owner");
+  lir::LirBlock entry = return_block(0, "entry");
+  entry.terminator = lir::LirRet{
+      lir::LirOperand::ssa("%presentation-only", lir::LirValueId{61}),
+      lir::LirTypeRef::integer(32),
+      lir::LirReturnValueParameterAuthority{
+          lir::LirValueId{61}, 0, lir::LirTypeRef::integer(32), owner,
+          lir::LirNativeBodyParameterAbi::DirectScalar,
+          lir::LirReturnValueParameterRole::ReturnValue}};
+  lir::LirFunction function;
+  function.name = "return_value_parameter_owner";
+  function.link_name_id = owner;
+  function.return_type = scalar_type(c4c::TB_INT);
+  function.signature_return_type_ref = lir::LirTypeRef::integer(32);
+  function.params.emplace_back("%presentation-only", scalar_type(c4c::TB_INT));
+  function.signature_params.push_back({"%presentation-only-signature",
+                                       scalar_type(c4c::TB_INT), false});
+  function.signature_param_type_refs.push_back(lir::LirTypeRef::integer(32));
+  function.native_body_parameter_definitions.push_back(
+      {lir::LirValueId{61}, 0, lir::LirTypeRef::integer(32), owner,
+       lir::LirNativeBodyParameterAbi::DirectScalar});
+  function.blocks.push_back(std::move(entry));
+  function.entry = lir::LirBlockId{0};
+  module.functions.push_back(std::move(function));
+
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "selected return-value parameter authority must publish verified Raw BIR: " +
+             (raw.has_value() ? "foundation verifier rejected it" : raw.error().detail));
+  const auto view = raw.value().view();
+  const auto function_view = view.function(view.functions()[0]).value();
+  const auto terminator = function_view.terminator(function_view.blocks()[0]).value();
+  const auto* returned = std::get_if<bir::ReturnTerm>(&terminator);
+  const auto parameters = function_view.parameters();
+  expect(returned && returned->value && parameters.size() == 1 &&
+             *returned->value == parameters[0],
+         "Raw BIR return must preserve the selected parameter ValueId exactly");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = module;
+    mutate(candidate);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value(), message);
+  };
+  rejected([](auto& candidate) {
+    std::get<lir::LirRet>(candidate.functions[0].blocks[0].terminator)
+        .return_value_parameter_authority.reset();
+  }, "missing selected return-value parameter authority must reject transactionally");
+  rejected([](auto& candidate) {
+    std::get<lir::LirRet>(candidate.functions[0].blocks[0].terminator)
+        .return_value_parameter_authority->owner = candidate.link_names.intern("foreign_return_owner");
+  }, "foreign return-value parameter owner must reject transactionally");
+  rejected([](auto& candidate) {
+    std::get<lir::LirRet>(candidate.functions[0].blocks[0].terminator)
+        .return_value_parameter_authority->parameter_index = 1;
+  }, "out-of-range return-value parameter index must reject transactionally");
+  rejected([](auto& candidate) {
+    std::get<lir::LirRet>(candidate.functions[0].blocks[0].terminator)
+        .return_value_parameter_authority->type = lir::LirTypeRef::integer(64);
+  }, "return-value parameter type mismatch must reject transactionally");
+  rejected([](auto& candidate) {
+    std::get<lir::LirRet>(candidate.functions[0].blocks[0].terminator)
+        .return_value_parameter_authority->abi = lir::LirNativeBodyParameterAbi::Invalid;
+  }, "return-value parameter ABI mismatch must reject transactionally");
+  rejected([](auto& candidate) {
+    std::get<lir::LirRet>(candidate.functions[0].blocks[0].terminator)
+        .return_value_parameter_authority->role = lir::LirReturnValueParameterRole::Invalid;
+  }, "return-value parameter role mismatch must reject transactionally");
+  rejected([](auto& candidate) {
+    std::get<lir::LirRet>(candidate.functions[0].blocks[0].terminator).value_str =
+        lir::LirOperand::ssa("%different", lir::LirValueId{62});
+  }, "return-value parameter operand mismatch must reject transactionally");
+  rejected([](auto& candidate) {
+    candidate.functions[0].signature_return_type_ref = lir::LirTypeRef::integer(64);
+  }, "return-value parameter signature mismatch must reject transactionally");
+  rejected([](auto& candidate) {
+    candidate.functions[0].native_body_parameter_definitions.push_back(
+        candidate.functions[0].native_body_parameter_definitions[0]);
+  }, "duplicate native return-value parameter definition must reject transactionally");
+  rejected([](auto& candidate) {
+    auto duplicate = candidate.functions[0].blocks[0];
+    duplicate.id = lir::LirBlockId{1};
+    duplicate.label = "duplicate_return_authority";
+    candidate.functions[0].blocks.push_back(std::move(duplicate));
+  }, "duplicate return-value authority rows must reject transactionally");
+}
+
 }  // namespace
 
 int main() {
@@ -12924,5 +13015,6 @@ int main() {
   test_typed_phi_edge_authority_receipt_and_rejections();
   test_typed_phi_loop_and_parallel_edge_occurrences();
   test_direct_pointer_body_parameter_gep_receipt_and_rejections();
+  test_return_value_parameter_authority_receipt_and_rejections();
   return 0;
 }
