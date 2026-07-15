@@ -575,11 +575,244 @@ combinations, unknown runtime kind/tag/stage, illegal stage admission, and
 compile-time/runtime agreement. Production logic must not recognize testcase
 names or special-case these representatives.
 
-## 12. Pending Step 4: B-through-F vocabularies and transitions
+## 12. B-through-F vocabularies and transitions
 
-Pending. Step 4 will define exact admitted B/C/D/E/F vocabularies and every
-B-to-C, C-to-D, D-to-E, and E-to-F transition. This section intentionally does
-not invent transition rows, retained/added/removed tag sets, or pass behavior.
+### 12.1 Group notation and product separation
+
+The names in this section are closed schema groups, not proposed production
+enum spellings. A group is a reviewed predicate over the six axes; every known
+kind admitted by a phase belongs to exactly one row for that phase. Adding a
+kind to a group still requires its schema entry, explicit stage admission, and
+the row's exact outcome. A group cannot mean "all other kinds."
+
+Node vocabulary and exact-revision products are different authorities:
+
+- node groups classify operations stored with the shared `Node`/graph model;
+- analysis products are immutable recomputable semantic facts keyed by exact
+  function/module revision;
+- preparation/allocation/frame products are immutable target-keyed facts tied
+  to the exact Canonical graph revision and prior product identities;
+- products may constrain or select a later lowering, but do not silently add
+  tags to, or mutate, their source nodes.
+
+Every boundary is transactional. It accepts only the input groups listed below,
+uses only the named prerequisite products, and publishes only after its named
+verifier succeeds. "Retain" means an explicit row proved all six-axis semantics
+unchanged; shared storage or a stable arena slot never implies retention.
+
+### 12.2 Phase B — target-independent canonicalization
+
+Phase B consumes a verified Raw publication and produces verified Canonical
+BIR. Its closed input groups are:
+
+- `B.RawValueSemantic`: target-independent arithmetic, compare, conversion,
+  aggregate, memory, call, intrinsic, or authority operations with an ordinary
+  result, including documented raw forms;
+- `B.RawEffectSemantic`: target-independent zero-result memory/call/intrinsic/
+  authority operations;
+- `B.RawControl`: terminators and branch/return forms whose successor roles are
+  explicit or are documented Raw forms to normalize;
+- `B.RawPhiMerge`: phi/merge candidates and their predecessor-qualified inputs;
+- `B.RawImportOnly`: documented import/legalization scaffolding that must
+  lower, project, merge, or disappear before Canonical publication.
+
+Its closed output groups are:
+
+- `B.CanonicalSsaValue`: target-independent ordinary value definitions governed
+  by B4 SSA rules;
+- `B.CanonicalEffect`: target-independent non-value semantic effects;
+- `B.CanonicalControl`: exact terminators with canonical successor roles;
+- `B.CanonicalPhiMerge`: canonical predecessor-qualified SSA merges;
+- `B.CanonicalOpaqueTargetToken`: only a target-independent opaque semantic
+  intrinsic/inline-assembly token; target constraints and realization are not
+  present.
+
+B requires verified Raw shape/type/ownership, contracted editors, exact
+def-use/CFG analyses keyed to the current revision, and family-specific
+legalization facts. It cannot use target ABI, allocation, frame, or instruction
+selection products. The Canonical publication verifier checks legal kinds,
+payloads, roles, types, exact def-use, terminator-derived CFG, and B4
+single-definition/dominance/phi-edge SSA validity.
+
+### 12.3 Phase C — immutable target preparation
+
+Phase C reads a verified Canonical publication without mutating its semantic
+nodes. Its admitted input groups are the five `B.Canonical*` output groups.
+They are explicitly admitted as immutable `C.CanonicalReference` groups with
+the same value, family, effect/control, shape, and MIR-disposition facts. This
+is later-stage admission by reference, not retagging or a cloned node graph.
+
+Phase C publishes a `PreparedBir` envelope containing that exact Canonical
+revision plus external products:
+
+- `TargetContext`/data-layout identity;
+- `AbiPlan` and `CallPlan` for parameter/result classification, register/stack
+  assignments, varargs/byval/sret and call moves;
+- `AddressPlan` for target address materialization choices;
+- preparation constraint/selection facts that are not yet allocation, frame,
+  or final machine instructions.
+
+There is no mandatory new C-owned production node group. If a future design
+needs a preparation operation, it must enter the closed `C.PreparedAction`
+group with `Preparation` family, Prepared ownership/admission, exact roles and
+effects, and an explicit C-to-D row; it cannot mutate or override a Canonical
+semantic node. This group is contract-only until separately implemented.
+
+The Prepared publication verifier requires a valid Canonical token, exact
+canonical/module revisions, target identity, internally complete and mutually
+consistent typed plans, and absence of writes back into Canonical storage. It
+rejects allocation/frame results or machine kinds published prematurely.
+
+### 12.4 Phase D — pseudo formation and out-of-SSA
+
+Phase D consumes immutable `C.CanonicalReference` groups, optional reviewed
+`C.PreparedAction`, and exact Prepared products. Its output node groups are:
+
+- `D.PseudoValue`: target/preallocation pseudo operations with explicit virtual
+  register-like def/use roles and `NeverSsa` ordinary-BIR participation;
+- `D.PseudoEffect`: memory, call, intrinsic, or target preparation pseudos with
+  exact effects and constraints;
+- `D.PseudoControl`: target/preallocation control pseudos with exact successor
+  and call/return roles;
+- `D.ParallelCopy`: out-of-SSA copies scheduled on exact predecessor edges;
+- `D.ExpansionPlaceholder`: reviewed pseudos that must expand before F and name
+  their exact expansion contract.
+
+Phase D requires the Canonical B4 proof, CFG/dominance and phi-edge analyses at
+the exact Canonical revision, Prepared target/ABI/call/address plans, and a
+parallel-copy/critical-edge plan. Its publication verifier proves that no
+`PhiMerge` remains, no ordinary SSA-only contract survives, copy cycles and
+critical edges are represented exactly, pseudo roles/effects/constraints are
+valid, and every retained source reference is diagnostic/provenance only.
+
+### 12.5 Phase E — allocation, spill, and frame realization
+
+Phase E consumes exactly the five `D.*` output groups plus their exact Prepared
+products. It publishes:
+
+- `E.AllocatedOperation`: pseudo value/effect operations whose virtual def/use
+  roles have exact allocated homes;
+- `E.AllocatedControlCall`: allocated control/call operations with resolved
+  ABI endpoints and preserved control/effect semantics;
+- `E.SpillReloadAction`: explicit spill, reload, and required copy actions;
+- `E.FrameAction`: frame-object placement, stack adjustment,
+  prologue/epilogue, and related exact actions;
+- `E.FinalExpansion`: a closed allocated/pre-machine group whose remaining
+  expansion is specified for F.
+
+Phase E requires liveness/interference results tied to the D publication,
+target register constraints, the exact ABI/call/address plans, and
+`AllocationPlan` plus `FramePlan` products whose revisions and target identity
+match. Products remain external authority; nodes reference exact product keys
+or resolved operands but do not absorb mutable allocation side tables.
+
+The Allocated publication verifier checks complete virtual-value homes,
+register-class and tied-operand constraints, spill/reload coverage, stack/frame
+alignment and object placement, call clobbers, and exact product lineage. It
+rejects unresolved SSA/phi state, unallocated required operands, stale plans,
+or machine encoding claims.
+
+### 12.6 Phase F — MIR-ready machine boundary
+
+Phase F consumes exactly the five `E.*` groups and matching immutable products.
+It publishes only:
+
+- `F.MachineOperation`: one-record target machine operations with exact opcode,
+  physical/virtual endpoint policy, operand roles, types/widths, and effects;
+- `F.MachineMemory`: exact target memory operations and address realization;
+- `F.MachineControlCall`: exact machine branch, call, return, and terminator
+  operations;
+- `F.MachineFrame`: fully realized frame/prologue/epilogue instructions where
+  those are represented as machine records;
+- `F.MachineDataReference`: machine-level symbol/constant/relocation references
+  that obey the object-data ownership contract.
+
+All F output groups carry Machine family or its reviewed machine-level
+subfamily, `TargetSpecific`, `MachineOnly`, `MirReadyMachine` ownership and
+admission, and `NeverSsa` for ordinary BIR SSA. Phase F requires exact E
+publication, target instruction-selection rules, allocation/frame plans,
+address realization, and ABI/call plans. The MIR verifier checks legal target
+opcodes, exact operands/constraints, realized expansions, control-flow and
+terminators, memory/address legality, frame/call agreement, product lineage,
+and absence of Prepared/Pseudo/Allocation-only kinds.
+
+### 12.7 B-to-C transition matrix
+
+| Accepted B output | C outcome | Tags retained | Tags added | Tags removed | Prerequisites and publication proof |
+| --- | --- | --- | --- | --- | --- |
+| `B.CanonicalSsaValue` | retain immutable Canonical node by exact-revision reference | value/SSA, semantic family, effects/control, shape/type, Canonical ownership | explicit Prepared admission-by-reference only | none | Canonical token and B4 proof; Prepared verifier proves revision/target/product agreement and no mutation. |
+| `B.CanonicalEffect` | retain immutable reference | non-value, family, effects, roles/type | Prepared admission-by-reference | none | Canonical effect/shape proof plus exact target preparation products. |
+| `B.CanonicalControl` | retain immutable reference | control family, terminator/successor roles, effects | Prepared admission-by-reference | none | Canonical CFG proof; plans may classify but not rewrite successors. |
+| `B.CanonicalPhiMerge` | retain immutable reference pending D out-of-SSA | SSA eligibility, phi family, predecessor roles/type | Prepared admission-by-reference | none | B4 phi-edge proof remains authoritative; C cannot eliminate phi. |
+| `B.CanonicalOpaqueTargetToken` | retain semantic token; derive target constraints externally | opaque intrinsic semantics, roles and conservative effects | Prepared admission-by-reference; external preparation facts | no node tags | TargetContext and closed constraint product; no machine opcode/encoding yet. |
+
+No B output expands, splits, merges, projects, or disappears in C unless a
+future reviewed `C.PreparedAction` row is added. Preparation facts are products,
+not node tag mutations.
+
+### 12.8 C-to-D transition matrix
+
+| Accepted C input | D outcome | Tags retained | Tags added | Tags removed | Prerequisites and publication proof |
+| --- | --- | --- | --- | --- | --- |
+| Canonical arithmetic/compare/conversion/aggregate value reference | lower, or expand/project when its reviewed result contract requires | semantic operation, type/effect intent, provenance | Pseudo family/admission, explicit virtual def/use roles, exact MIR disposition | Canonical owner/admission; ordinary `SsaEligible` after uses are rewritten | Prepared constraints plus exact use-def; D verifier proves complete pseudo mapping and no SSA-only residue. |
+| Canonical memory/effect reference | lower or expand | memory/call/intrinsic effect bounds, semantic operand intent | Pseudo family/admission, target constraint/address-plan keys | Canonical owner/admission; Canonical-only roles | exact Address/ABI/Call plans; D verifier proves roles/effects were not weakened. |
+| Canonical control reference | lower or split critical edges | branch/call/return semantics and successor intent | Pseudo control roles; any explicit split-edge nodes | Canonical owner/admission | exact CFG and edge plan; D verifier proves successor equivalence. |
+| Canonical phi/merge reference | disappear after edge-local lower/expand into `D.ParallelCopy`; cycles may split through temporaries and critical edges may split | value type and source/destination equivalence | parallel-copy/pseudo tags, explicit edge and temporary roles | `PhiMerge`, predecessor-qualified phi form, `SsaEligible` | B4 phi proof, liveness/use-def and copy schedule; D verifier rejects every residual phi. |
+| Canonical opaque target token | lower or expand to pseudo effect/value/control forms | conservative semantics, effects, provenance | target-specific pseudo constraints and expansion disposition | opaque Canonical ownership | closed target constraint plan; D verifier rejects unsupported/unhandled realizations. |
+| reviewed `C.PreparedAction` | lower, expand, merge, or disappear exactly as its schema row declares | only semantics proved identical by that row | applicable pseudo tags | Preparation family/admission | exact product key and explicit row; no default handling. |
+
+Projection is permitted only for an aggregate/multi-result contract and must
+create explicit projection value nodes; merge is permitted only when the row
+proves one resulting operation preserves every consumed semantic effect and
+result. No other C input is accepted.
+
+### 12.9 D-to-E transition matrix
+
+| Accepted D output | E outcome | Tags retained | Tags added | Tags removed | Prerequisites and publication proof |
+| --- | --- | --- | --- | --- | --- |
+| `D.PseudoValue` | retain operation identity only where roles/results/effects stay exact, then bind allocated homes; otherwise replace | pseudo semantic intent, types, constraints, NeverSsa | Allocated admission and exact home/product references | unresolved virtual-home state | liveness/interference and AllocationPlan; E verifier proves every required def/use home. |
+| `D.PseudoEffect` | allocate operands; lower or expand when constraints require | effect/control bounds, type and operand intent | allocated roles, spill/reload dependencies | unresolved pseudo constraints | allocation/call/address products; E verifier proves clobber and memory agreement. |
+| `D.PseudoControl` | allocate endpoints; split only for exact control/call realization | successor/call/return semantics | allocated control/call roles | unresolved virtual endpoints | CFG, ABI/CallPlan, AllocationPlan; E verifier proves edge and clobber consistency. |
+| `D.ParallelCopy` | lower/expand into allocated copies plus spill/reload actions; merge redundant exact copies; disappear only when proven identity copy | value type and transfer equivalence | allocated endpoints, `SpillReloadAction` where required | parallel-copy scheduling state | allocation homes and cycle schedule; E verifier proves all transfers realized. |
+| `D.ExpansionPlaceholder` | expand into allocated operations/actions or fail | source semantic/effect obligations | exact allocated/expansion tags | placeholder/pseudo-only tag | named expansion rule and products; no placeholder survives Allocated publication. |
+
+E may insert spill/reload and frame actions only from exact allocation/frame
+products. It may not turn those products into mutable annotations on D nodes.
+
+### 12.10 E-to-F transition matrix
+
+| Accepted E output | F outcome | Tags retained | Tags added | Tags removed | Prerequisites and publication proof |
+| --- | --- | --- | --- | --- | --- |
+| `E.AllocatedOperation` | select one machine record, or expand/project into an explicit machine sequence | operation/effect/type/allocated endpoint intent | Machine, TargetSpecific, MachineOnly, MirReadyMachine, exact opcode/roles | Pseudo/Allocated owner tags and selection placeholders | instruction-selection rule plus allocation/address products; MIR verifier checks exact realization. |
+| `E.AllocatedControlCall` | lower or expand into machine control/call sequence | successors, call/return effects, allocated ABI endpoints | machine control/call opcode and terminator roles | allocated/pseudo tags | ABI/CallPlan and target selection; MIR verifier proves CFG, clobber, and return agreement. |
+| `E.SpillReloadAction` | lower/expand into exact machine memory/copy records; merge only where effects and endpoints remain exact | transfer type, memory effect, frame object identity | machine memory/copy tags and addressing | spill/reload action tag | Frame/Allocation/Address plans; MIR verifier proves no unresolved action. |
+| `E.FrameAction` | lower/expand into machine frame records, merge into a machine instruction when exact, or disappear only for a proven zero-action frame | frame/stack effect and unwind obligations | machine frame/opcode/operand tags | frame-action/allocated owner tags | exact FramePlan and target ABI; MIR verifier proves layout/alignment/unwind agreement. |
+| `E.FinalExpansion` | expand, split, project, or merge according to its one explicit selection rule | all source semantic/effect/result obligations | final machine tags | every preparation/pseudo/allocation placeholder | target selection rule and all exact products; no final-expansion node survives F. |
+
+F may place optional BIR IDs only in provenance/debug links. MIR records own
+their machine identity; retained arena slots do not make BIR IDs MIR identity.
+
+### 12.11 Uniform boundary rejection
+
+At every phase and boundary, the admission check rejects:
+
+- unknown enum/tag/stage values and schema-invalid combinations;
+- a known kind absent from the phase's closed input groups;
+- a premature later-stage kind or a stale earlier-stage kind required to have
+  disappeared;
+- stale analysis/preparation/allocation/frame products whose graph revision,
+  target identity, or prerequisite product identity differs;
+- payload, arity, role, result/type, effect/control, or MIR disposition that
+  disagrees with the schema entry;
+- an accepted group omitted from the boundary matrix;
+- an accepted kind for which no explicit group row applies, or a row whose
+  prerequisite cannot be proved;
+- any default/catch-all pass-through, including retention justified only by
+  shared `Node` storage or stable arena identity.
+
+Failure is atomic: no later-stage token or product is published, and the last
+verified input remains the rollback anchor. Detailed identity consequences and
+per-publication verifier obligations are fixed in Step 5.
 
 ## 13. Pending later steps
 
