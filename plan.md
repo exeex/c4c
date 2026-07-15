@@ -1,77 +1,79 @@
-# LIR PHI Residual Producer-Family Authority Trace Runbook
+# LIR PHI Floating Unary-Minus `fneg` Authority Runbook
 
 Status: Active
-Source Idea: ideas/open/806_lir_phi_residual_producer_family_authority_trace.md
-Supersedes: 804 Step 3 full-baseline gate until this separately scoped blocker resolves.
+Source Idea: ideas/open/807_lir_phi_floating_unary_minus_fneg_authority.md
+Activated from: 806 Step 3 full-baseline gate; 806 is parked for resumption
+after 807 and 808 resolve their separately scoped producer families.
 
 ## Purpose
 
-Classify the four remaining PHI incoming authority failures without assuming
-they share 804's accepted scalar unary-minus seam.
+Repair the one traced floating unary-minus `fneg` result-authority handoff
+that reaches a PHI incoming in `ieee/pr50310.c`.
 
 ## Core Rule
 
-Native checked current-function IDs are authority. A shared diagnostic or test
-name is not producer-path evidence; do not weaken the existing PHI contract.
+The producer result must carry a native checked current-function `LirValueId`.
+Keep the existing PHI verifier contract; do not recover authority from display
+text or move the repair to a PHI or ternary consumer.
 
 ## Read First
 
+- `ideas/open/807_lir_phi_floating_unary_minus_fneg_authority.md`
 - `ideas/open/806_lir_phi_residual_producer_family_authority_trace.md`
-- `ideas/open/804_lir_phi_incoming_producer_authority_repair.md`
-- `test_after.log` failure contexts for `pr50310.c`, `20000715-1.c`,
-  `20060910-1.c`, and `pr68376-2.c`
-- accepted 804 handoff commit `308fff39c`
+- `src/codegen/lir/hir_to_lir/expr/misc.cpp` floating `UnaryOp::Minus` branch
+- `review/806_step1_phi_producer_trace.md`
 
 ## Non-Goals
 
-- Repeating 804's unary-minus route or reopening CFG/PHI verifier semantics.
-- Broad residual producer conversion, generic provenance, text recovery, or
-  testcase-specific behavior.
+- Postfix old-value authority, scalar-integer-minus `sub`, scalar bit-not
+  `xor`, other unary operators, generic provenance, and PHI/CFG semantics.
+- Rendered `%t` recovery, testcase-name paths, or expectation downgrades.
 
 ## Ordered Steps
 
-### Step 1 - Trace and classify the four residual PHI incoming paths
+### Step 1 - Reconfirm the bounded floating-minus handoff and choose coverage
 
-Goal: establish the native producer/immediate-lowering handoff for every
-observed failure and determine whether any cases genuinely share one family.
-
-Actions:
-
-- Reproduce each named test narrowly and trace PHI incoming construction back
-  to its producer result authority.
-- Compare the path with 804's accepted unary-minus seam using native IDs and
-  lowering ownership, not diagnostic text.
-- If a case requires a different family outside this source's selected route,
-  record a separate blocker instead of broadening this plan.
-
-Completion check: an evidence-backed family map exists for all four cases and
-one bounded repair target is selected, or separately scoped successors own the
-unshared cases.
-
-### Step 2 - Repair one evidenced producer handoff
-
-Goal: publish the checked native ID for the selected family while preserving
-the existing PHI verifier contract.
+Goal: verify the `fneg` producer-to-PHI authority route and select nearby
+positive and malformed-authority coverage before changing code.
 
 Actions:
 
-- Implement only the selected producer or immediate-lowering repair.
-- Add same-family positive and malformed-authority coverage.
-- Do not touch CFG/PHI schema, predecessor/edge semantics, or use display text
-  as authority.
+- Reproduce `ieee/pr50310.c` narrowly and trace the returned `fneg` operand
+  from floating `UnaryOp::Minus` lowering to the PHI incoming construction.
+- Confirm the `fresh_tmp(ctx)` result lacks the native ID required by the
+  existing current-function verifier and that this is distinct from 804/806.
+- Identify a nearby same-family positive check and a malformed-authority check
+  that exercise the existing verifier contract.
 
-Completion check: selected valid inputs carry a current-function ID and
-missing, unknown, foreign, and stale forms reject under focused proof.
+Completion check: the exact producer handoff and focused coverage targets are
+recorded without expanding to another unary or residual producer family.
 
-### Step 3 - Prove the blocker and return to 804
+### Step 2 - Publish native authority for the `fneg` result
 
-Goal: establish full-baseline acceptance before releasing the parent gate.
+Goal: make the floating-minus producer return a checked current-function
+`LirValueId` while preserving existing verifier behavior.
+
+Actions:
+
+- Apply the smallest change at the traced floating `UnaryOp::Minus` lowering
+  handoff.
+- Add nearby same-family positive and malformed-authority coverage.
+- Keep missing, unknown, foreign, and stale authority rejected; do not change
+  PHI schema, verifier, ternary lowering, or text identity behavior.
+
+Completion check: valid floating-minus PHI input carries native authority and
+the focused positive plus malformed cases pass.
+
+### Step 3 - Prove the focused successor and hand off the parent gate
+
+Goal: provide accepted focused proof for 807 and preserve the remaining
+full-baseline sequence.
 
 Actions:
 
 - Obtain a fresh build and focused same-feature proof.
-- Have the supervisor run and accept the required 100% full baseline.
-- Record accepted proof and reactivate 804 at unchanged Step 3.
+- Have the supervisor accept the focused evidence and record any remaining
+  808/full-baseline dependency without claiming 806 or 804 clearance.
 
-Completion check: 100% full baseline acceptance is recorded; otherwise retain
-an executable repair or separately scoped successor route.
+Completion check: 807 has accepted focused proof; 806 remains parked at Step
+3 until 808 and the required follow-on full baseline are resolved.

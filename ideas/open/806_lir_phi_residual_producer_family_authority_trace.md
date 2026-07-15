@@ -76,3 +76,24 @@ absorbed into its Step 2 repair:
 the four residual tests; it must not repeat or alter the scalar unary-minus
 route. Once accepted proof includes a supervisor-accepted 100% full baseline,
 reactivate 804 at Step 3, *Prove the blocker and return it to 754*.
+
+## Resumption Record
+
+- Last accepted progress: Steps 1–2 are accepted. Step 1 separated the
+  residual families; Step 2 repaired only the postfix-increment old-value
+  producer handoff.
+- Interrupted runbook step: Step 3, *Prove the blocker and return to 804*.
+- Blocker and scope boundary: `ideas/open/807_lir_phi_floating_unary_minus_fneg_authority.md`
+  must resolve floating unary-minus `fneg`, followed by
+  `ideas/open/808_lir_phi_scalar_bit_not_xor_authority.md` for bit-not `xor`;
+  both producer families are outside 806's selected postfix scope.
+- Exact return point: resume at Step 3 full-baseline proof only after 807 and
+  808 have accepted their focused routes and the follow-on full baseline can
+  be evaluated.
+- Remaining next action: obtain and have the supervisor accept the required
+  100% full baseline, then reactivate 804 at its unchanged Step 3.
+- Accepted implementation and proof: commit `961ce9fda` accepted the Step 2
+  postfix authority repair. Focused proof passed via
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$' > test_after.log 2>&1`,
+  with the matching non-decreasing frontend-HIR before/after guard and
+  `build/tests/frontend/frontend_lir_call_type_ref_test` also passing.
