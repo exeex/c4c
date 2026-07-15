@@ -2723,7 +2723,12 @@ void verify_function_value_ownership(const LirModule& mod,
       if (op->native_vector_authority &&
           (op->native_vector_authority->mask_lanes.size() != op->native_vector_authority->result_shape.lane_count ||
            op->mask_type.str() != "<" + std::to_string(op->native_vector_authority->result_shape.lane_count) + " x i32>" ||
-           !op->mask.special_token() || *op->mask.special_token() != LirSpecialToken::ZeroInitializer))
+           !op->mask.special_token() || *op->mask.special_token() != LirSpecialToken::ZeroInitializer ||
+           std::any_of(op->native_vector_authority->mask_lanes.begin(),
+                       op->native_vector_authority->mask_lanes.end(),
+                       [](const LirShuffleMaskLane& lane) {
+                         return lane.kind != LirShuffleMaskLane::Kind::Inactive || lane.selected_lane != 0;
+                       })))
         fail_verify("LirShuffleVectorOp.native_vector_authority.mask_lanes", "must mirror the structured shuffle mask");
     }
   };

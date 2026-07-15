@@ -205,6 +205,28 @@ void test_native_vector_authority_verifier_boundary() {
   std::get<lir::LirShuffleVectorOp>(incoherent_mask_mirror.functions[0].blocks[0].insts[2])
       .mask_type = lir::LirTypeRef("<5 x i32>");
   expect_rejected(std::move(incoherent_mask_mirror), "shuffle carrier must reject an incoherent mask mirror");
+
+  auto selected_mask_lane = vector_authority_module();
+  std::get<lir::LirShuffleVectorOp>(selected_mask_lane.functions[0].blocks[0].insts[2])
+      .native_vector_authority->mask_lanes[0] = {
+          .kind = lir::LirShuffleMaskLane::Kind::Selected,
+          .selected_lane = 0,
+      };
+  expect_rejected(std::move(selected_mask_lane),
+                  "zero-initializer shuffle mask must reject selected native lanes");
+
+  auto inactive_mask_lane_payload = vector_authority_module();
+  std::get<lir::LirShuffleVectorOp>(inactive_mask_lane_payload.functions[0].blocks[0].insts[2])
+      .native_vector_authority->mask_lanes[0].selected_lane = 1;
+  expect_rejected(std::move(inactive_mask_lane_payload),
+                  "zero-initializer shuffle mask must reject inactive native lane payloads");
+
+  auto invalid_mask_lane_kind = vector_authority_module();
+  std::get<lir::LirShuffleVectorOp>(invalid_mask_lane_kind.functions[0].blocks[0].insts[2])
+      .native_vector_authority->mask_lanes[0].kind =
+          static_cast<lir::LirShuffleMaskLane::Kind>(255);
+  expect_rejected(std::move(invalid_mask_lane_kind),
+                  "zero-initializer shuffle mask must reject invalid native lane kinds");
 }
 
 }  // namespace
