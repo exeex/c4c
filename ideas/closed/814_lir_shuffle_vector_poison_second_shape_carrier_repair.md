@@ -1,6 +1,6 @@
 # LIR Shuffle-Vector Poison Second-Shape Carrier Repair
 
-Status: Open
+Status: Closed
 Type: bounded native-vector carrier/lowering blocker for 754 Step 9
 Predecessor: `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`
 
@@ -85,6 +85,29 @@ Exact resumed point: Step 3, `Prove the blocker handoff and return decision`.
 Steps 1--2 remain accepted in `c1cde8430` and must not be repeated. This step
 now makes only 814's parent return decision using the preserved 754 Step 9
 return contract.
+
+## Disposition
+
+Status: Closed — capability complete within this bounded prerequisite scope.
+
+Accepted repair: `c1cde8430` (*lir: supply shuffle poison second shape*)
+publishes the coherent native `second_vector_shape` for both existing
+scalar-to-vector splats and preserves the structured poison-second-operand
+validation boundary. Nearby valid, missing, incoherent, and extraneous-use
+coverage supplies the bounded fail-closed evidence.
+
+Accepted handoff proof: closed blocker 815's `510388751` repair, recorded by
+`e97445276`, adds the required mask-lane coherence handoff. The combined
+accepted proof is a fresh build, matching `^backend_` guard at 6/6 with no new
+failures, representative `scal-to-vec1.c` LLVM emission, and the
+supervisor-owned fresh full baseline at 3038/3038.
+
+Handoff: 814 makes no vector-row capability claim. Resume
+`ideas/open/754_lir_aggregate_vector_value_identity_convergence.md` at its
+unchanged Step 9, *Implement and prove the Step 8 selection*. Steps 1--8
+remain accepted. Before changing code, make a fresh one-row selection/proof
+decision; do not reuse the former rejected InsertElement selection or silently
+select ExtractElement or ShuffleVector.
 
 ## Reviewer Reject Signals
 

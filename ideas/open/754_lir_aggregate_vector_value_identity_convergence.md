@@ -431,3 +431,22 @@ Blocker evidence: the rejected candidate packet's fresh build and selected `^bac
 Classification: `separate-blocker`. New open `ideas/open/814_lir_shuffle_vector_poison_second_shape_carrier_repair.md` owns only the native carrier/lowering repair, structured poison-second-operand treatment, and nearby valid/malformed coverage. It must not claim a 754 row capability, select shuffle semantics, or widen into aggregate, ExtractElement, InsertElement, generic provenance, CFG/PHI, target/MIR/emission, or parse display text.
 
 Exact return point: after 814 has an accepted narrow repair and the supervisor accepts a 100% fresh full baseline, reactivate 754 at unchanged Step 9. Reuse the completed audit but make a fresh row selection/proof decision. Do not repeat accepted Steps 1--8 or silently implement ExtractElement/ShuffleVector as a 754 row.
+
+## Resumption Update: 814 poison-second-shape and mask-lane handoff accepted
+
+814 is capability-complete and archived as
+`ideas/closed/814_lir_shuffle_vector_poison_second_shape_carrier_repair.md`.
+Its accepted second-shape repair is `c1cde8430`; its returned mask-lane
+prerequisite is closed 815's `510388751`, recorded by `e97445276`. The
+supervisor accepted the fresh build, matching `^backend_` guard at 6/6 with no
+new failures, representative `scal-to-vec1.c` LLVM emission, and a fresh full
+baseline at 3038/3038. This proves only prerequisite coherence, not any 754
+row capability.
+
+Exact return point: resume unchanged at Step 9, *Implement and prove the Step
+8 selection*. Steps 1--8 remain accepted. Before implementation, make a fresh
+one-row vector audit and selection/proof decision using the accepted carrier;
+record the selected seam, positive/malformed matrix, and two excluded rows in
+`todo.md`. Do not reuse the rejected scalar-to-vector `LirInsertElementOp`
+selection, silently choose `LirExtractElementOp` or `LirShuffleVectorOp`, or
+repeat the completed Steps 1--8.
