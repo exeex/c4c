@@ -50,16 +50,20 @@ Actions:
 
 - consume 798's checked direct-composite operand handoff and 803's checked
   local-load/terminal-insertvalue producer handoff only at the selected row;
-- make the minimum schema/lowering/verifier repair for structured result/use
-  identity and aggregate type coherence;
-- add nearby same-feature positive and malformed coverage; reject missing,
-  unknown, foreign, stale, unselected, or type-incoherent authority;
+- retain the unary lowering's fresh `LirExtractValueOp` result ID and verify
+  that result structurally for missing, unknown, and foreign authority;
+- verify aggregate-operand producer authority, aggregate type coherence, and
+  the existing producer display mirror; reject stale display only for that
+  operand mirror, not for the result definition itself;
+- add nearby same-feature positive and malformed coverage without a generic
+  use-to-definition display mechanism or rendered-text authority;
 - obtain a fresh build, focused aggregate/frontend/backend proof, and the
   supervisor-owned 100% full baseline. Do not advance on a partial baseline.
 
-Completion check: selected aggregate SSA uses have current-function authority
-independent of display spelling; focused proof passes and the full baseline is
-100% accepted by the supervisor.
+Completion check: the selected result has a valid current-function ID, its
+aggregate operand has checked producer authority independent of display
+spelling, focused proof passes, and the full baseline is 100% accepted by the
+supervisor.
 
 ### Step 3 - Verify row-specific index facts — blocked on 801 handoff
 
