@@ -1,88 +1,64 @@
-# Next LIR Local-Operation Authority Handoff Runbook
+# LIR-To-New-BIR VLA Stack-Save Receiver Runbook
 
 Status: Active
-Source Idea: ideas/open/792_lir_next_local_operation_receiver_handoff.md
-Activated from: exhausted 734 Step 7.29 receiver runbook.
+Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
+Resumed from: closed 792 VLA `LirStackSaveOp` authority handoff.
 
 ## Purpose
 
-Publish one exact next local-operation producer authority row so 734 can later
-receive it without presentation-derived identity recovery.
-
-## Goal
-
-Select, verify, and hand off exactly one receiver-ready post-GEP local row.
+Receive exactly closed 792's selected VLA stack-save saved-stack-pointer row
+in typed Raw-BIR without repeating accepted alloca, load, store, or local-array
+GEP receipts.
 
 ## Core Rule
 
-Native structured authority is the sole semantic input. Local spelling,
+Use only the native fields in
+`docs/lir_local_operation_authority/handoff_to_734.md`. Local spelling,
 formatted operands, printer output, LLVM text, and testcase identity are never
-authority.
+semantic input.
 
-## Read First
+## Historical Progress
 
-- `ideas/open/792_lir_next_local_operation_receiver_handoff.md`
-- `ideas/open/734_lir_to_new_bir_container_completeness.md` (post-Step 7.29
-  resumption record)
-- `docs/lir_local_operation_authority/handoff_to_734.md`
-- current LIR local-object producer and verifier routes
+Steps 1 through 7.29 are accepted, including receiver commits `006d79aaf`,
+`7dc03f23a`, `2cce9da69`, `eabf7a3b8`, `f5cda70ee`, and `4ab2deb7e`.
+Closed 792 published this exact stack-save authority in `900a42bfd` and
+`89f4d7f85`; do not redo producer work.
 
-## Scope
+## Current Scope
 
-- inspect candidate post-GEP local rows and choose one only when its native
-  authority is sufficient;
-- add minimum producer/schema/verifier support and focused coverage for that
-  one row;
-- publish the exact 734 handoff for Step 7.30.
+- receive exactly one selected VLA `LirStackSaveOp` saved-stack-pointer result
+  with native valid current-function result, pointer definition, object/owner,
+  pointer-type/pointee-type, and liveness authority;
+- add the minimum target-independent Raw-BIR saved-stack-pointer destination,
+  importer dispatch, reachable verifier, and transactional positive/negative
+  coverage;
+- require selected row admission and complete native authority coherence before
+  publication, rejecting malformed rows transactionally.
 
 ## Non-Goals
 
-- Raw-BIR/importer work, target lowering, MIR, emission, and any broad local
-  conversion;
-- more than one local row or any memory/va, aggregate/vector, body-parameter,
-  CFG/PHI, or later family;
-- presentation-derived recovery.
+- `LirStackRestoreOp`, dynamic VLA allocation, any second stack save, local
+  load/store/GEP, named/local-temporary, or any other local row;
+- memory/va, aggregate/vector, body parameters, module/type/global/metadata,
+  CFG/PHI, target lowering, MIR, emission, and every later family;
+- presentation-derived recovery or repeating accepted producer work.
 
 ## Ordered Steps
 
-### Step 1 - Select one native-authority local-operation row
+### Step 7.30 - Receive the selected VLA LirStackSaveOp authority
 
-Goal: identify the earliest candidate that has complete native current-function
-result/use, pointer/object, type, and lifetime authority.
-
-Actions:
-
-- inspect only relevant local producer and verifier routes;
-- reject candidates that require text-derived identity or unsupported facts;
-- document the selected row and exact rejected forms in the handoff.
-
-Completion check: one exact receiver row is selected from native authority, or
-an evidence-backed no-row conclusion names the next lifecycle route.
-
-### Step 2 - Publish and verify the selected authority
-
-Goal: make the one selected row structurally consumable and fail closed.
+Goal: transactionally import closed 792's one saved-stack-pointer result into
+a typed Raw-BIR destination.
 
 Actions:
 
-- add the minimum producer/schema and verifier admission required;
-- validate current-function ownership, pointer/object/type coherence, and
-  liveness before downstream use;
-- add nearby positive and malformed-authority coverage.
+- map only the native result, pointer definition, object/owner,
+  pointer-type/pointee-type, and liveness facts;
+- validate selected-save admission and every producer contract field before
+  publication, rejecting malformed or nonselected rows transactionally;
+- add nearby positive and negative receiver coverage, then run a fresh build
+  and narrow proof before supervisor-selected broader acceptance proof.
 
-Completion check: the selected row has native typed authority and malformed or
-nonselected forms reject without presentation recovery.
-
-### Step 3 - Record the 734 handoff and prove the bounded producer slice
-
-Goal: close this authority handoff with a precise one-row return action.
-
-Actions:
-
-- update `docs/lir_local_operation_authority/handoff_to_734.md` with fields,
-  guarantees, rejected forms, proof, and Step 7.30 action;
-- run a fresh build and focused same-feature proof;
-- provide the result to the supervisor for selected broader acceptance.
-
-Completion check: the handoff authorizes exactly one 734 receiver packet and
-all later families remain fail closed.
+Completion check: exactly the selected VLA stack-save result imports and
+verifies without presentation recovery; stack restore, dynamic VLA allocation,
+and all excluded local and later families remain fail closed.

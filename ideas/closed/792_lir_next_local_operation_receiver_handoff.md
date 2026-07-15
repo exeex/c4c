@@ -1,6 +1,6 @@
 # Next LIR Local-Operation Receiver Handoff
 
-Status: Open (active)
+Status: Closed (capability complete)
 Type: bounded LIR local-operation authority handoff
 Predecessor: `ideas/open/734_lir_to_new_bir_container_completeness.md`
 Consumer: `ideas/open/734_lir_to_new_bir_container_completeness.md`
@@ -67,3 +67,25 @@ typed contract first.
   a substitute for current-function object/pointer/type/lifetime facts.
 - Reject a handoff that does not name exactly one 734 receiver row, its typed
   fields, rejected forms, focused proof, and Step 7.30 return action.
+
+## Closure Record
+
+Disposition: capability complete. The one permitted post-GEP local-operation
+authority row is the VLA `LirStackSaveOp` saved-stack-pointer result. Its
+native current-function result, object/owner, pointer-type/pointee-type, and
+liveness authority is published in
+`docs/lir_local_operation_authority/handoff_to_734.md`; malformed and
+nonselected forms fail closed.
+
+Accepted implementation and handoff commits are `900a42bfd` and `89f4d7f85`;
+`ededdb865` records the completed Step 3 lifecycle state. Supervisor acceptance
+includes a fresh build, focused `^frontend_lir_call_type_ref$` proof passing
+1/1, the documented non-decreasing fixed-target regression guard, and broader
+`^backend_` proof passing 5/5.
+
+The consumer remains open under
+`ideas/open/734_lir_to_new_bir_container_completeness.md` and resumes at
+`Step 7.30 - Receive the selected VLA LirStackSaveOp authority`. It owns only
+the typed Raw-BIR receiver, importer dispatch, reachable verification, and
+transactional positive/negative coverage for this one handoff; it must not
+receive stack restore, dynamic VLA allocation, or another local-operation row.
