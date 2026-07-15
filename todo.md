@@ -8,14 +8,17 @@ Current Step Title: Establish the focused frontend-LIR baseline
 
 ## Just Finished
 
-- Lifecycle switch: preserved 782 Step 1 at its first `LirGepOp.ptr` raw-base
-  blocker and activated the three-seam frontend-LIR decomposition route. No
-  implementation slice or code change was accepted.
+- Plan Step 1 baseline: identified
+  `tests/frontend/frontend_lir_call_type_ref_test.cpp:4144`
+  (`test_vaarg_helper_result_authority_boundary`) as the structural
+  frontend-LIR probe. It verifies the semantic `LirVaArgOp`, its typed i32
+  result, and the exact native SSA result ID consumed by the immediate `Add`.
+  No implementation or PHI change occurred.
 
 ## Suggested Next
 
-- Inventory the existing frontend-LIR tests, select the narrow structural
-  baseline and three-chain probe locations, then record its fresh result.
+- Plan Step 2: extend this frontend-LIR structural fixture with the three
+  native vaarg operand/result-chain probes specified by the active runbook.
 
 ## Watchouts
 
@@ -23,11 +26,13 @@ Current Step Title: Establish the focused frontend-LIR baseline
   authority work; do not substitute backend or rendered-output assertions.
 - Do not modify PHI carrier/verification or absorb Raw-BIR/importer, backend,
   target lowering, MIR, emission, generic migration, or text recovery.
-- 782 resumes only after all AArch64 GP, AArch64 FP/alignment, and AMD64
-  reg/stack contracts are accepted; 751 remains parked until 782 completes.
+- The selected fixture currently establishes only the existing vaarg result
+  identity boundary; the Step 2 probes must remain structural and native-ID
+  based rather than rendered-text or testcase-shaped checks.
 
 ## Proof
 
-- Establish a fresh focused frontend-LIR baseline in Plan Step 1. The outgoing
-  782 baseline passed:
-  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`.
+- Passed fresh: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^frontend_lir_call_type_ref$'` (1/1 tests passed).
+  The supervisor-selected focused structural proof is sufficient for this
+  baseline packet. Full command output: `test_after.log`.
