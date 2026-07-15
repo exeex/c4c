@@ -1,10 +1,32 @@
 # BIR NodeKind Tag Algebra and Phase Vocabulary Lowering Contract
 
-Status: Open (active)
+Status: Closed (capability complete)
 Type: Architecture contract prerequisite with bounded schema proof
 Extends: `ideas/closed/746_bir_node_kind_centric_storage_pass_contract.md`
 Required Consumer: `ideas/open/732_bir_stage_document_convergence_umbrella.md`
 Sequence: complete this idea before revising or reactivating idea 732
+
+## Completion Evidence
+
+Idea 801 is capability-complete. The normative contract is published at
+`docs/backend/bir_node_kind_tag_algebra_and_phase_vocabulary.md`; its six-axis
+taxonomy, SSA/B4 boundary, single query authority, B-through-F vocabularies and
+transitions, identity rules, verifier gates, and fail-closed policy satisfy the
+acceptance contract below.
+
+Commit `2f569b624` lands the bounded C++17 convergence proof: one validated
+16-kind registry derives compile-time and runtime queries, explicit stage
+admission, payload checks, and negative behavior without adding phase passes,
+storage changes, speculative production kinds, or adjacent importer/allocation/
+MIR work. Matching supervisor-owned backend logs pass 6/6 before and after with
+zero new failures. Commit `1373c07ff` completes the final normative status and
+evidence handoff.
+
+Idea 732 was not edited, revised, or activated by this lifecycle. Its overview
+and phase children must adopt this normative artifact only through a later
+user-authorized lifecycle operation; they may refine phase-local sequencing but
+must not redefine the accepted taxonomy, query meanings, transition semantics,
+identity rules, or catch-all rejection policy.
 
 ## Goal
 
