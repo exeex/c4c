@@ -1,76 +1,92 @@
-# LIR Anonymous Aggregate Layout Type Facts Runbook
+# LIR Cast Result Authority Recurrence Runbook
 
 Status: Active
-Source Idea: ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md
-Resumed from: accepted 810 GEP producer-authority baseline blocker; return at
-unchanged Step 2.
+Source Idea: ideas/open/796_lir_instruction_terminator_residual_authority_handoff.md
+Resumed from: 801 Step 2 comparable-full-gate blocker switch.
 
 ## Purpose
 
-Provide native anonymous aggregate field-layout/type facts needed by the
-selected extractvalue row without letting compatibility text become authority.
+Determine whether the newly re-exposed `LirCastOp.result` raw-text failures
+belong to 796's previously selected cast producer family, then make only the
+bounded native-authority repair that evidence supports.
 
 ## Core Rule
 
-Native structured field facts are authority. `LirTypeRef` rendering may mirror
-an anonymous aggregate but must not be parsed to create or repair its layout.
+Use native value and type authority only. Do not parse rendered text, weaken
+the verifier, classify behavior by testcase name, or absorb 801's anonymous
+layout/direct-complex structured-call work.
 
-## Read First
+## Accepted History
 
-- `ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md`
-- `ideas/closed/810_lir_gep_producer_result_authority_baseline_blocker.md`
-- `ideas/closed/802_lir_switch_selector_type_reference_verifier.md`
-- `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`
-- direct-complex aggregate lowering plus nearby focused tests
+Steps 1--3 of the original cast route are accepted: trace in `e92437aca`,
+scalar `StmtEmitter::coerce` handoff repair in `387af7745`, and its focused
+proof/regression guard recorded in the source idea. This recurrence does not
+reopen or re-credit that accepted scalar route.
 
 ## Non-Goals
 
-- `LirExtractValueOp` result/use/index/result-type row validation.
-- Reopening accepted 810 GEP or 802 selector verifier work.
-- Raw-BIR, other aggregate/vector rows, broad type rewrite, lowering, MIR,
-  emission, and all text-derived layout recovery.
+- 801 structured-call/anonymous-layout repair or acceptance.
+- 810/795 GEP/parameter work, 806 PHI work, Raw-BIR, combined residual
+  sweeps, or inline-assembly template/constraint parsing.
+- Treating the capped `test_after.log`, non-clean 24-failure before attempt,
+  or stale `test_baseline.new.log` as a baseline.
 
 ## Ordered Steps
 
-### Step 1 - Trace and select anonymous aggregate layout facts (accepted)
+### Step 4 - Re-trace the recurrent cast-result raw-text family (accepted)
 
-Goal: identify the exact anonymous aggregate construction and verification
-boundary and select the smallest checked native field-layout carrier.
-
-Completion check: accepted in `827dae5bd3`; one bounded native layout contract
-is explicit and no compatibility-text parsing or extractvalue-row work is
-selected.
-
-### Step 2 - Repair anonymous layout / structured-call compatibility
-
-Goal: evaluate and repair the preserved anonymous-layout implementation so
-native ordered field facts remain checked without making a direct-complex
-`LirCallOp`'s structured callee signature or argument type mirror disagree
-with its call arguments.
+Goal: establish whether representative current `LirCastOp.result` raw-text
+failures are an unhandled native cast producer/handoff within 796, a regression
+of the accepted scalar seam, or a separately owned family.
 
 Actions:
 
-- start from rejected implementation commit `201f229d3` and the preserved
-  unaccepted in-progress Step 2 repair; locate the ownership/type construction
-  mismatch rather than weakening verifier contracts;
-- retain the native `arg_type_refs` argument-mirror and callee-signature
-  contracts without treating rendered diagnostic/call text as type authority;
-- retain checked native field-count/field-type access and malformed-layout
-  rejection; leave named structs, arrays, unrelated calls, and all
-  extractvalue-row validation unchanged;
-- keep accepted 802 selector and accepted 810 GEP contracts as environmental
-  prerequisites, not 801 progress or scope.
+- reproduce representative positive, LLVM, and c-testsuite failures without
+  modifying 801's preserved hunks;
+- trace each result from producer through `verify_cast_op_authority` using
+  native current-function facts;
+- compare the producer shape with accepted scalar `StmtEmitter::coerce` work
+  and explicitly route every nonmatching family.
 
-Completion check: the native carrier remains authoritative; mirror and
-signature contracts remain fail-closed; the required fresh build, focused
-call/frontend/backend proof, and supervisor-accepted full baseline pass before
-Step 3. Do not advance on a narrow focused result alone.
+Completion check: accepted as a trace/selection checkpoint. A fresh build and
+the positive, LLVM, and c-testsuite representatives all selected only the
+non-parameter pointer-subtraction producer/immediate-handoff in
+`expr/binary.cpp`: raw `fresh_tmp` `PtrToInt` results and the dependent
+subtraction/scaling results reach `verify_result_operand` before cast-specific
+authority checks. The scalar `StmtEmitter::coerce` route is distinct and stays
+accepted. No repair is accepted and no full baseline is used at this step.
 
-### Step 3 - Prove and publish the 754 handoff
+### Step 5 - Repair the selected recurrent cast-result handoff (accepted)
 
-Goal: establish positive and malformed proof and record the exact field-layout
-contract that 754 Step 3 may consume.
+Goal: publish native value authority for only the selected non-parameter
+pointer-subtraction producer/immediate-handoff seam.
 
-Completion check: accepted proof supports reactivation of 754 at unchanged
-Step 3 without treating this blocker as extractvalue-row validation. Do not
-advance while Step 2 remains unaccepted.
+Actions:
+
+- give the selected `PtrToInt` results and their dependent
+  subtraction/scaling result values native `fresh_value` authority;
+- add nearby same-family positive and malformed-authority coverage;
+- retain the verifier and accepted scalar `StmtEmitter::coerce` route
+  unchanged.
+
+Completion check: accepted by the supervisor. Both `PtrToInt` results, the
+immediate byte subtraction, and optional element-size scaling now use
+`fresh_value` authority in `expr/binary.cpp`. The fresh focused proof passed
+4/4 without text recovery, verifier weakening, or testcase-shaped behavior;
+no canonical regression guard was made.
+
+### Step 6 - Accept the bounded 796 repair and return to 801
+
+Goal: supply supervisor-accepted 796 evidence and make a fresh comparable
+baseline route available to 801 Step 2.
+
+Actions:
+
+- record the supervisor-accepted Step 5 proof against its bounded contract;
+- obtain or explicitly route the fresh comparable clean baseline needed for
+  the interrupted 801 gate; do not use the rejected/capped historical logs;
+- reactivate 801 unchanged at Step 2 only after the bounded 796 repair is
+  accepted and a comparable baseline permits the retry.
+
+Completion check: accepted 796 proof and an explicit return record exist; no
+claim that 801 Step 2 or its full gate has passed.

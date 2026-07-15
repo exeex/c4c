@@ -69,6 +69,47 @@ to 810's preserved Step 3 for the exact comparable full-baseline retry.
   and requires separately evidenced scope before work resumes under 796; 801
   structured-call and 806 PHI residual authority remain separate owners.
 
+## Resumption Record: recurring cast-result authority return from 801
+
+The original 796 Steps 1--3 remain accepted: native scalar cast tracing in
+`e92437aca`, the scalar `StmtEmitter::coerce` handoff in `387af7745`, and its
+focused proof/regression guard. This record does not reopen or downgrade that
+accepted route.
+
+801 Step 2's new full-tree comparison attempt observed `LirCastOp.result:
+expected operand kind mismatch ... got raw-text` across positive, LLVM, and
+c-testsuite coverage. Its fresh focused build/subset passed 7/7, but the
+before attempt was not clean-first and has 24 failures; the foreground-capped
+after log ended before a summary. Neither is a usable comparable guard, and
+the stale rejected `test_baseline.new.log` candidate is not evidence.
+
+796 Step 4, `Re-trace the recurrent cast-result raw-text family`, is accepted
+as trace/selection only. A fresh build and the positive, LLVM, and c-testsuite
+representatives selected the non-parameter pointer-subtraction producer/
+immediate-handoff in `expr/binary.cpp`: raw `fresh_tmp` `PtrToInt` results and
+their dependent subtraction/scaling results reach result verification before
+cast-specific authority checks. This is distinct from the accepted scalar
+`StmtEmitter::coerce` route. Step 5 may change only those selected result
+values to native `fresh_value` authority and must provide nearby positive and
+malformed-authority proof. Preserve 801's
+unaccepted anonymous-layout/direct-complex structured-call hunks without
+modification or credit.
+
+796 Step 5 is supervisor-accepted as that bounded repair: both pointer-pointer
+subtraction `PtrToInt` results, the immediate byte subtraction, and optional
+element-size scaling in `expr/binary.cpp` now use native `fresh_value`
+authority. Fresh focused proof passed 4/4 with `cmake --build --preset default
+&& ctest --test-dir build -j --output-on-failure -R
+'^(positive_sema_ok_expr_unary_binary_runtime_c|llvm_gcc_c_torture_src_20010904_1_c|c_testsuite_src_00037_c|frontend_lir_call_type_ref)$'`.
+No verifier, scalar `StmtEmitter::coerce`, text, vector, aggregate, or GEP
+route changed, and no canonical regression guard was made.
+
+Exact return point: obtain or explicitly route a fresh comparable clean
+baseline for the interrupted 801 Step 2 gate. Only after that baseline permits
+the retry, reactivate 801 unchanged at Step 2 for its fresh build, focused
+call/frontend/backend ladder, and supervisor-accepted full gate. This record
+does not claim 801 Step 2 acceptance.
+
 ## Reviewer Reject Signals
 
 - Reject a catch-all instruction/terminator conversion, text parsing, receiver

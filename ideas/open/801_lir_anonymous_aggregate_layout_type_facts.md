@@ -240,3 +240,35 @@ The preserved dirty `args.cpp`, `target.cpp`, `verify.cpp`, and
 action is to evaluate that repair strictly within the existing Step 2 scope,
 then obtain its required fresh build, focused call/frontend/backend ladder,
 and supervisor-accepted comparable full baseline before Step 3.
+
+## Resumption Update: recurring cast-result authority blocker
+
+Last accepted progress remains only Step 1, `Trace and select anonymous
+aggregate layout facts`, in `827dae5bd3`. Step 2, `Repair anonymous layout /
+structured-call compatibility`, remains unaccepted. Its preserved dirty
+`args.cpp`, `target.cpp`, `verify.cpp`, and `frontend_hir_tests.cpp` repair is
+native anonymous-layout/direct-complex structured-call work; it remains in the
+working tree, uncommitted, and uncredited.
+
+The fresh 801 focused build/subset passed 7/7, but the required comparable
+full-tree attempt exposed `LirCastOp.result: expected operand kind mismatch
+... got raw-text` across positive, LLVM, and c-testsuite coverage. The
+attempted `test_before.log` was not a usable clean-first baseline (its tree
+and artifacts were not clean-first and it recorded 24 failures), while the
+foreground-capped `test_after.log` ended before its summary. Neither log is a
+matching regression guard, and the rejected stale `test_baseline.new.log`
+candidate must not be used. Therefore no full-gate result accepts Step 2.
+
+Classification: `separate-blocker`. This raw-text cast-result authority family
+is owned by the existing open
+`ideas/open/796_lir_instruction_terminator_residual_authority_handoff.md`; it
+is outside anonymous layout facts and direct-complex structured-call
+compatibility. 801 must not repair, weaken, or reclassify cast verification.
+
+Exact return point: after 796 accepts a bounded repair or separately routes
+the re-exposed cast-result family, and after a fresh comparable clean baseline
+permits it, reactivate 801 at unchanged Step 2. Preserve the current
+unaccepted structured-call repair; rerun the required fresh build, focused
+call/frontend/backend ladder, and supervisor-accepted comparable full gate
+before Step 3. Do not repeat Step 1 or claim the 7/7 subset as Step 2
+acceptance.
