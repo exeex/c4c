@@ -580,6 +580,36 @@ struct LirSelectOp {
   LirOperand false_val;   // SSA name or literal for false branch
 };
 
+// Opt-in native authority for the three existing vector seams.  The printed
+// operands/types remain mirrors; this carrier never derives facts from them.
+struct LirNativeVectorShape {
+  uint32_t lane_count = 0;
+  LirTypeRef element_type;
+};
+
+struct LirNativeVectorIndex {
+  LirOperand value;
+  LirTypeRef type;
+};
+
+struct LirShuffleMaskLane {
+  enum class Kind : uint8_t { Inactive, Selected } kind = Kind::Inactive;
+  uint32_t selected_lane = 0;
+};
+
+struct LirNativeVectorAuthority {
+  LinkNameId owner = kInvalidLinkName;
+  LirValueId result = LirValueId::invalid();
+  std::optional<LirValueId> first_vector_use;
+  std::optional<LirValueId> second_vector_use;
+  std::optional<LirValueId> element_use;
+  LirNativeVectorShape result_shape;
+  std::optional<LirNativeVectorShape> first_vector_shape;
+  std::optional<LirNativeVectorShape> second_vector_shape;
+  std::optional<LirNativeVectorIndex> index;
+  std::vector<LirShuffleMaskLane> mask_lanes;
+};
+
 // Typed vector insert/extract/shuffle ops.
 struct LirInsertElementOp {
   LirOperand result;      // SSA name for result
@@ -588,6 +618,7 @@ struct LirInsertElementOp {
   LirTypeRef elem_type;   // element type string
   LirOperand elem;        // SSA name of element value
   LirOperand index;       // index value (e.g. "0", "%idx")
+  std::optional<LirNativeVectorAuthority> native_vector_authority;
 };
 
 struct LirExtractElementOp {
@@ -596,6 +627,7 @@ struct LirExtractElementOp {
   LirOperand vec;
   LirTypeRef index_type;
   LirOperand index;
+  std::optional<LirNativeVectorAuthority> native_vector_authority;
 };
 
 struct LirShuffleVectorOp {
@@ -605,6 +637,7 @@ struct LirShuffleVectorOp {
   LirOperand vec2;
   LirTypeRef mask_type;
   LirOperand mask;
+  std::optional<LirNativeVectorAuthority> native_vector_authority;
 };
 
 // Typed va_arg instruction.

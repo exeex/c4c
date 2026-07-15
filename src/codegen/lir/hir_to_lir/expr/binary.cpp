@@ -276,30 +276,40 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
   }
 
   if (is_vector_value(res_spec)) {
-    auto emit_splat_vec = [&](const std::string& scalar, const TypeSpec& scalar_ts,
+    auto emit_splat_vec = [&](const LirOperand& scalar, const TypeSpec& scalar_ts,
                               const TypeSpec& vec_ts) -> std::string {
       TypeSpec elem_ts = vec_ts;
       elem_ts.is_vector = false;
       elem_ts.vector_lanes = 0;
       elem_ts.vector_bytes = 0;
-      std::string coerced = coerce(ctx, scalar, scalar_ts, elem_ts);
+      const LirOperand coerced = coerce_operand(ctx, scalar, scalar_ts, elem_ts);
       const std::string elem_ty = llvm_ty(elem_ts);
       const std::string vec_ty_s = llvm_vector_ty(vec_ts);
       const int lanes = vec_ts.vector_lanes;
-      const std::string ins = fresh_tmp(ctx);
+      const LirOperand ins = fresh_value(ctx);
+      const LirOperand zero_index = LirOperand::integer("i64 0", 0);
+      const lir::LirNativeVectorShape shape{static_cast<uint32_t>(lanes), elem_ty};
       emit_lir_op(ctx, lir::LirInsertElementOp{ins, vec_ty_s, "poison", elem_ty, coerced,
-                                               "i64 0"});
-      const std::string shuf = fresh_tmp(ctx);
+                                               zero_index, lir::LirNativeVectorAuthority{
+                                                   ctx.lir_function->link_name_id, *ins.value_id(),
+                                                   std::nullopt, std::nullopt,
+                                                   coerced.value_id() ? std::optional<lir::LirValueId>(*coerced.value_id()) : std::nullopt,
+                                                   shape, shape, std::nullopt,
+                                                   lir::LirNativeVectorIndex{zero_index, lir::LirTypeRef::integer(64)}, {}}});
+      const LirOperand shuf = fresh_value(ctx);
       emit_lir_op(ctx, lir::LirShuffleVectorOp{
                            shuf, vec_ty_s, ins, "poison",
-                           "<" + std::to_string(lanes) + " x i32>", "zeroinitializer"});
-      return shuf;
+                           "<" + std::to_string(lanes) + " x i32>", "zeroinitializer",
+                           lir::LirNativeVectorAuthority{ctx.lir_function->link_name_id, *shuf.value_id(),
+                               *ins.value_id(), std::nullopt, std::nullopt, shape, shape, std::nullopt,
+                               std::nullopt, std::vector<lir::LirShuffleMaskLane>(static_cast<size_t>(lanes))}});
+      return shuf.str();
     };
     if (is_vector_value(lts) && !is_vector_value(rts) && rts.ptr_level == 0) {
-      rv = emit_splat_vec(rv, rts, lts);
+      rv = emit_splat_vec(source_rv, rts, lts);
       rts = lts;
     } else if (is_vector_value(rts) && !is_vector_value(lts) && lts.ptr_level == 0) {
-      lv = emit_splat_vec(lv, lts, rts);
+      lv = emit_splat_vec(source_lv, lts, rts);
       lts = rts;
     }
     const std::string tmp = fresh_tmp(ctx);
@@ -383,30 +393,38 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
     res_spec = lts;
   }
 
-  auto emit_splat = [&](const std::string& scalar, const TypeSpec& scalar_ts,
+  auto emit_splat = [&](const LirOperand& scalar, const TypeSpec& scalar_ts,
                         const TypeSpec& vec_ts) -> std::string {
     TypeSpec elem_ts = vec_ts;
     elem_ts.is_vector = false;
     elem_ts.vector_lanes = 0;
     elem_ts.vector_bytes = 0;
-    std::string coerced = coerce(ctx, scalar, scalar_ts, elem_ts);
+    const LirOperand coerced = coerce_operand(ctx, scalar, scalar_ts, elem_ts);
     const std::string elem_ty = llvm_ty(elem_ts);
     const std::string vec_ty = llvm_vector_ty(vec_ts);
     const int lanes = vec_ts.vector_lanes;
-    const std::string ins = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirInsertElementOp{ins, vec_ty, "poison", elem_ty, coerced, "i64 0"});
-    const std::string shuf = fresh_tmp(ctx);
+    const LirOperand ins = fresh_value(ctx);
+    const LirOperand zero_index = LirOperand::integer("i64 0", 0);
+    const lir::LirNativeVectorShape shape{static_cast<uint32_t>(lanes), elem_ty};
+    emit_lir_op(ctx, lir::LirInsertElementOp{ins, vec_ty, "poison", elem_ty, coerced, zero_index,
+        lir::LirNativeVectorAuthority{ctx.lir_function->link_name_id, *ins.value_id(), std::nullopt,
+            std::nullopt, coerced.value_id() ? std::optional<lir::LirValueId>(*coerced.value_id()) : std::nullopt,
+            shape, shape, std::nullopt, lir::LirNativeVectorIndex{zero_index, lir::LirTypeRef::integer(64)}, {}}});
+    const LirOperand shuf = fresh_value(ctx);
     emit_lir_op(ctx, lir::LirShuffleVectorOp{shuf, vec_ty, ins, "poison",
                                              "<" + std::to_string(lanes) + " x i32>",
-                                             "zeroinitializer"});
-    return shuf;
+                                             "zeroinitializer", lir::LirNativeVectorAuthority{
+                                              ctx.lir_function->link_name_id, *shuf.value_id(), *ins.value_id(), std::nullopt,
+                                              std::nullopt, shape, shape, std::nullopt, std::nullopt,
+                                              std::vector<lir::LirShuffleMaskLane>(static_cast<size_t>(lanes))}});
+    return shuf.str();
   };
   if (is_vector_value(lts) && !is_vector_value(rts) && rts.ptr_level == 0) {
-    rv = emit_splat(rv, rts, lts);
+    rv = emit_splat(source_rv, rts, lts);
     rts = lts;
     res_spec = lts;
   } else if (is_vector_value(rts) && !is_vector_value(lts) && lts.ptr_level == 0) {
-    lv = emit_splat(lv, lts, rts);
+    lv = emit_splat(source_lv, lts, rts);
     lts = rts;
     res_spec = rts;
   }

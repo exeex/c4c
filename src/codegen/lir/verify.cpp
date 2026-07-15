@@ -2655,6 +2655,76 @@ void verify_function_value_ownership(const LirModule& mod,
     for (const auto& inst : block.insts) collect_definition(inst);
   }
 
+  const auto verify_vector_authority = [&](const auto& op, std::string_view name,
+                                           const LirOperand& first, const LirOperand* second,
+                                           const LirOperand* element, const LirOperand* index,
+                                           const LirTypeRef* index_type,
+                                           const LirTypeRef& vector_type) {
+    if (!op.native_vector_authority) return;
+    const LirNativeVectorAuthority& authority = *op.native_vector_authority;
+    if (authority.owner != function.link_name_id || authority.owner == kInvalidLinkName ||
+        std::count_if(mod.functions.begin(), mod.functions.end(), [&](const LirFunction& candidate) {
+          return candidate.link_name_id == authority.owner;
+        }) != 1) fail_verify(std::string(name) + ".native_vector_authority.owner", "must name one current function");
+    if (!authority.result.valid() || !op.result.value_id() || *op.result.value_id() != authority.result ||
+        !definitions.count(authority.result.value)) fail_verify(std::string(name) + ".native_vector_authority.result", "must mirror a defined current-function result");
+    const auto check_use = [&](const std::optional<LirValueId>& id, const LirOperand& mirror, std::string_view field) {
+      if (mirror.value_id()) {
+        if (!id || *id != *mirror.value_id() || !definitions.count(id->value))
+          fail_verify(std::string(name) + ".native_vector_authority." + std::string(field), "must mirror a defined current-function value use");
+      } else if (id) {
+        fail_verify(std::string(name) + ".native_vector_authority." + std::string(field), "must not invent a value ID for a non-value mirror");
+      } else if (!mirror.special_token() &&
+                 (mirror.kind() == LirOperandKind::SsaValue ||
+                  mirror.kind() == LirOperandKind::DirectConstant)) {
+        fail_verify(std::string(name) + ".native_vector_authority." + std::string(field),
+                    "non-special value uses require a current-function LirValueId");
+      }
+    };
+    check_use(authority.first_vector_use, first, "first_vector_use");
+    if (second) check_use(authority.second_vector_use, *second, "second_vector_use");
+    if (element) check_use(authority.element_use, *element, "element_use");
+    const auto check_shape = [&](const LirNativeVectorShape& shape, const LirTypeRef& mirror, std::string_view field) {
+      if (!shape.lane_count || shape.element_type.str().empty() ||
+          mirror.str() != "<" + std::to_string(shape.lane_count) + " x " + shape.element_type.str() + ">")
+        fail_verify(std::string(name) + ".native_vector_authority." + std::string(field), "must have a coherent vector display mirror");
+    };
+    check_shape(authority.result_shape, vector_type, "result_shape");
+    if (!authority.first_vector_shape) fail_verify(std::string(name) + ".native_vector_authority.first_vector_shape", "must be present");
+    check_shape(*authority.first_vector_shape, vector_type, "first_vector_shape");
+    if (index) {
+      if (!authority.index || !index_type || authority.index->value.str() != index->str() ||
+          authority.index->value.authority() != index->authority() || authority.index->type.str().empty())
+        fail_verify(std::string(name) + ".native_vector_authority.index", "must mirror the structured index operand");
+      if (authority.index->type != *index_type) {
+        fail_verify(std::string(name) + ".native_vector_authority.index.type",
+                    "must match the operation's native index type mirror");
+      }
+      if (const LirValueId* value = authority.index->value.value_id();
+          value && (!value->valid() || !definitions.count(value->value))) {
+        fail_verify(std::string(name) + ".native_vector_authority.index.value",
+                    "must name a defined current-function index value");
+      }
+    }
+  };
+  const auto verify_vector_inst = [&](const LirInst& inst) {
+    if (const auto* op = std::get_if<LirInsertElementOp>(&inst)) {
+      const LirTypeRef index_type = LirTypeRef::integer(64);
+      verify_vector_authority(*op, "LirInsertElementOp", op->vec, nullptr, &op->elem, &op->index, &index_type, op->vec_type);
+    } else if (const auto* op = std::get_if<LirExtractElementOp>(&inst))
+      verify_vector_authority(*op, "LirExtractElementOp", op->vec, nullptr, nullptr, &op->index, &op->index_type, op->vec_type);
+    else if (const auto* op = std::get_if<LirShuffleVectorOp>(&inst)) {
+      verify_vector_authority(*op, "LirShuffleVectorOp", op->vec1, &op->vec2, nullptr, nullptr, nullptr, op->vec_type);
+      if (op->native_vector_authority &&
+          (op->native_vector_authority->mask_lanes.size() != op->native_vector_authority->result_shape.lane_count ||
+           op->mask_type.str() != "<" + std::to_string(op->native_vector_authority->result_shape.lane_count) + " x i32>" ||
+           !op->mask.special_token() || *op->mask.special_token() != LirSpecialToken::ZeroInitializer))
+        fail_verify("LirShuffleVectorOp.native_vector_authority.mask_lanes", "must mirror the structured shuffle mask");
+    }
+  };
+  for (const auto& inst : function.alloca_insts) verify_vector_inst(inst);
+  for (const auto& block : function.blocks) for (const auto& inst : block.insts) verify_vector_inst(inst);
+
   verify_local_object_authority_bindings(function, definition_insts);
   verify_native_memory_va_authority(mod, function, definition_insts);
 

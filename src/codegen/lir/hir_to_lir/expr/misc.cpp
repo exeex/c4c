@@ -368,19 +368,24 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const IndexExpr&, const E
     const TypeSpec base_ts = resolve_expr_type(ctx, idx->base);
     if (is_vector_value(base_ts)) {
       TypeSpec vec_ts{};
-      const std::string vec = emit_rval_id(ctx, idx->base, vec_ts);
+      const LirOperand vec = emit_rval_operand(ctx, idx->base, vec_ts);
       TypeSpec ix_ts{};
-      std::string ix = emit_rval_id(ctx, idx->index, ix_ts);
+      LirOperand ix = emit_rval_operand(ctx, idx->index, ix_ts);
       TypeSpec i32_ts{};
       i32_ts.base = TB_INT;
-      ix = coerce(ctx, ix, ix_ts, i32_ts);
+      ix = coerce_operand(ctx, ix, ix_ts, i32_ts);
       TypeSpec elem_ts = base_ts;
       elem_ts.is_vector = false;
       elem_ts.vector_lanes = 0;
       elem_ts.vector_bytes = 0;
-      const std::string tmp = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirExtractElementOp{tmp, llvm_ty(base_ts), vec, "i32", ix});
-      return tmp;
+      const LirOperand tmp = fresh_value(ctx);
+      const lir::LirNativeVectorShape shape{static_cast<uint32_t>(base_ts.vector_lanes), llvm_ty(elem_ts)};
+      emit_lir_op(ctx, lir::LirExtractElementOp{tmp, llvm_ty(base_ts), vec, "i32", ix,
+          lir::LirNativeVectorAuthority{ctx.lir_function->link_name_id, *tmp.value_id(),
+              vec.value_id() ? std::optional<lir::LirValueId>(*vec.value_id()) : std::nullopt,
+              std::nullopt, std::nullopt, shape, shape, std::nullopt,
+              lir::LirNativeVectorIndex{ix, lir::LirTypeRef::integer(32)}, {}}});
+      return tmp.str();
     }
   }
   if (const auto* idx = std::get_if<IndexExpr>(&e.payload)) {
