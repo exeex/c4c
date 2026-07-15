@@ -1,89 +1,73 @@
-# LIR Aggregate and Vector Value Identity Convergence Runbook
+# LIR Anonymous Aggregate Layout Type Facts Runbook
 
 Status: Active
-Source Idea: ideas/open/754_lir_aggregate_vector_value_identity_convergence.md
-Resumed from: satisfied bounded prerequisite 798 at unchanged Step 2; Step 1
-was accepted in `d8e5ed3a8` and is not to be repeated.
+Source Idea: ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md
+Activated from: blocked Step 3 of 754; return to 754 only after this bounded
+type-model handoff is accepted.
 
 ## Purpose
 
-Publish native structured value, type, index, and mask authority for bounded
-aggregate and vector LIR operations. Rendered `%t` spellings remain output only
-and cannot recover semantic identity.
+Provide native anonymous aggregate field-layout/type facts needed by the
+selected extractvalue row without letting compatibility text become authority.
 
 ## Core Rule
 
-Use checked current-function structured IDs and row-specific typed facts as
-authority. Do not infer result, operand, index, or mask identity from rendered
-LLVM text, instruction order, or testcase naming. Keep all unselected rows
-fail-closed.
+Native structured field facts are authority. `LirTypeRef` rendering may mirror
+an anonymous aggregate but must not be parsed to create or repair its layout.
 
 ## Read First
 
+- `ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md`
 - `ideas/open/754_lir_aggregate_vector_value_identity_convergence.md`
-- `ideas/closed/798_lir_operand_provenance_authority_publication.md`
-- `ideas/closed/763_lir_composite_type_ref_model.md`
-- `src/codegen/lir/ir.hpp`, `src/codegen/lir/verify.cpp`, and `src/codegen/lir/print.cpp`
-- aggregate/vector lowering and existing focused LIR/frontend/backend tests
+- closed composite type-model history and current LIR type construction/verifier seams
+- direct-complex aggregate lowering plus nearby focused tests
 
 ## Non-Goals
 
-- CFG/PHI predecessor identity, pointer/object or memory/VA authority.
-- Raw-BIR receiver work, target lowering, MIR, or emission redesign.
-- Any text-derived identity, broad aggregate/vector sweep, or expectation downgrade.
-- Reopening 798 scope: expression/operand provenance is consumed only through
-  its accepted handoff contract.
+- `LirExtractValueOp` result/use/index/result-type row validation.
+- Raw-BIR, other aggregate/vector rows, broad type rewrite, lowering, MIR,
+  emission, and all text-derived layout recovery.
 
 ## Ordered Steps
 
-### Step 1 - Audit and select one aggregate/vector authority row — complete
+### Step 1 - Trace and select anonymous aggregate layout facts
 
-Accepted in `d8e5ed3a8`: select only `LirExtractValueOp`; retain all other
-aggregate/vector rows fail-closed. Do not repeat this audit.
-
-### Step 2 - Publish structured result and operand authority
-
-Goal: make the selected producer publish current-function structured result and
-use identities with exact typed facts.
+Goal: identify the exact anonymous aggregate construction and verification
+boundary and select the smallest checked native field-layout carrier.
 
 Actions:
 
-- add the minimum `LirExtractValueOp` producer/schema representation needed;
-- consume only 798's checked aggregate `LirOperand::ssa(display, LirValueId)`
-  handoff for the aggregate use; do not recover authority from text;
-- preserve compatibility rendering without using it as semantic input;
-- reject unknown, foreign, or type-incoherent result and operand IDs.
+- trace the direct-complex aggregate type from construction to verifier use;
+- identify required field ordering, type ownership, and malformed proof seams;
+- state the exact downstream 754 handoff and keep row validation out of scope.
 
-Completion check: selected result/use identity is independent of `%t` spelling
-or rendered instruction text, without adding index semantics reserved for Step 3.
+Completion check: one bounded native layout contract is explicit and no
+compatibility-text parsing or extractvalue-row work is selected.
 
-### Step 3 - Verify row-specific index or mask facts
+### Step 2 - Publish checked native anonymous field layout
 
-Goal: enforce the selected aggregate/vector row's exact index, element, or mask
-contract at the LIR verifier boundary.
+Goal: preserve ordered anonymous aggregate field types as native structured
+facts with compatible rendering.
 
 Actions:
 
-- validate row-specific type and index/mask coherence using structured facts;
-- add focused positive and negative coverage for malformed values, types,
-  indices, or masks;
-- retain all unrelated aggregate/vector forms unchanged and fail-closed.
+- implement only the selected construction/model and validation seams;
+- reject malformed or type-incoherent field layouts at the correct boundary;
+- leave named structs, arrays, and unrelated paths unchanged or fail closed.
 
-Completion check: malformed structured authority rejects and stale display text
-cannot repair it.
+Completion check: a consumer can obtain native anonymous field count and type
+without interpreting display text.
 
-### Step 4 - Prove and hand off the bounded row
+### Step 3 - Prove and publish the 754 handoff
 
-Goal: obtain the producer-side proof required for a future one-row receiver
-handoff without editing Raw BIR.
+Goal: establish positive and malformed proof and record the exact field-layout
+contract that 754 Step 3 may consume.
 
 Actions:
 
-- run a fresh build, the selected same-feature test subset, and the
-  supervisor-selected broader checkpoint;
-- confirm the baseline is 100% passing before source closure is considered;
-- record an exact one-row handoff only if authority fields, rejected forms, and
-  focused proof are accepted; otherwise retain the source as an in-scope repair route.
+- add nearby same-feature acceptance and rejection coverage;
+- run a fresh build, focused subset, and supervisor-selected broader proof;
+- state permitted facts and rejected forms for 754's field/index/result check.
 
-Completion check: the selected row has accepted producer/verifier evidence and
-no broader Raw-BIR receipt is implied.
+Completion check: accepted proof supports reactivation of 754 at unchanged
+Step 3 without treating this blocker as extractvalue-row validation.

@@ -51,11 +51,12 @@ ordinary value ownership.
 
 ## Resumption Record: Step 2 operand-provenance blocker satisfied
 
-Last accepted progress: Step 1, `Audit and select one aggregate/vector
+Prior accepted progress: Step 1, `Audit and select one aggregate/vector
 authority row`, selected only `LirExtractValueOp` and was committed as
 `d8e5ed3a8`. Its accepted audit/proof references are the root
 `test_before.log` and `test_after.log` backend baseline/prototype results
-(5/5). No Step 2 implementation is accepted.
+(5/5). The earlier prototype was rejected; the later accepted Step 2 is
+recorded below.
 
 Interrupted step: Step 2, `Publish structured result and operand authority`.
 The proposed minimal `LirExtractValueOp` schema/lowering route was explicitly
@@ -85,13 +86,35 @@ Accepted proof: fresh build plus `ctest --test-dir build -j
 --output-on-failure -R '^(backend_|frontend_hir_tests$)'` passed 6/6 before
 and after; the monotonic guard accepted the equal 6/6 result.
 
-Exact return point: reactivate 754 at unchanged Step 2, `Publish structured
-result and operand authority`, and consume only the published checked aggregate
-operand carrier to add the minimum opt-in `LirExtractValueOp` structured result
-and aggregate-use authority. Wire existing HIR producers through the preserved
-provenance and retain legacy rows as compatibility-only/fail-closed. Then
-continue Steps 3 and 4; do not repeat Step 1 or treat the reverted 5/5
-prototype as accepted implementation proof.
+Former return point: Step 2 is now accepted and must not be repeated; its
+accepted implementation/proof is recorded in the current resumption record.
+
+## Resumption Record: Step 3 anonymous aggregate layout blocker
+
+Last accepted progress: Step 1 is accepted in `d8e5ed3a8`. Step 2, `Publish
+structured result and operand authority`, is accepted in `da07100d0`: the
+selected direct-complex path publishes the opt-in native extractvalue result
+and consumes the closed-798 checked aggregate operand. A fresh build plus
+`ctest --test-dir build -j --output-on-failure -R
+'^(backend_|frontend_hir_tests$)'` passed 6/6 and the monotonic guard passed.
+No Step 3 code or tests changed.
+
+Interrupted step: Step 3, `Verify row-specific index or mask facts`.
+The selected direct-complex extract has `agg_type = LirTypeRef("{ float,
+float }")`, whose compatibility text/kind carries no native anonymous
+composite field list. Exact index bounds and result element type cannot be
+validated without forbidden text parsing or a structured anonymous aggregate
+layout/fact model.
+
+Classification: `separate-blocker`. New open
+`ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md` owns only the
+native anonymous aggregate field-layout/type model prerequisite. It must not
+publish extractvalue-row validation, Raw-BIR work, or text parsing.
+
+Exact return point: after 801 publishes checked native anonymous aggregate
+field-layout/type facts, reactivate 754 at unchanged Step 3 and validate only
+`LirExtractValueOp` field/index/result coherence. Do not repeat Steps 1 or 2;
+then continue Step 4.
 
 ## Reviewer Reject Signals
 
