@@ -60,7 +60,13 @@ earliest changed owner.
 
 ## D1 adjacency
 
-C9 will publish the final exact constraint binding and cumulative preparation
-identity. D1 must consume that exact tuple with the unchanged Canonical owner;
-it cannot infer readiness from `NodeKind` admission alone, a green report, or a
-compatible target. C1-C9 publish no semantic graph revision.
+C9 publishes the final Canonical-keyed `BoundConstraintSet`; C8 publishes the
+complete verified C2-C8 cumulative bundle. D1 admission requires both products,
+the unchanged B8 Canonical owner/token, the exact C1 fingerprint, and the
+normative `Prepared` admission envelope. Missing, stale, foreign, mixed-target,
+cross-revision, unknown-vocabulary, or coverage-incomplete input fails closed.
+D1 cannot infer readiness from `NodeKind` admission alone, a green report, or a
+compatible target. C1-C9 publish no semantic graph revision. After D1 builds a
+complete private candidate and total derivation/result map, C9 may publish the
+first exact-revision `ProjectedConstraintSet`; that product neither mutates nor
+publishes the candidate.

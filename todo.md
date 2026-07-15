@@ -3,39 +3,42 @@
 Status: Active
 Source Idea Path: ideas/open/732_bir_stage_document_convergence_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Plan phase C immutable preparation
+Current Step ID: 5
+Current Step Title: Plan phase D pseudo lowering and out-of-SSA
 
 ## Just Finished
 
-- Partially completed plan Step 4: converged the common Phase-C product/key
-  contract and C1-C5 adjacency; C2-C5 now use the exact 17-section product spine,
-  immutable Canonical references, complete predecessor keys, closed product
-  matrices, failure-atomic publication, and truthful absent status.
+- Completed plan Step 4: converged C1-C9 immutable preparation/product
+  contracts; C2-C9 use the exact 17-section product spine, one cumulative
+  Canonical/target/predecessor key chain, closed reference-product matrices,
+  and failure-atomic publication without graph mutation.
 
 ## Suggested Next
 
-- Complete plan Step 4 with C6 address, C7 inline-assembly context, C8 runtime
-  helpers/cumulative bundle, and C9 constraint binding/projection, then close
-  the exact Prepared-to-D1 admission seam.
+- Execute plan Step 5 in D1-D5 order: consume the exact Prepared envelope,
+  lower into explicit PseudoPreallocation vocabulary, publish/reverify at D3/
+  D4, remove dynamic SSA at D5, and hand every introduced value/copy/scratch
+  fact into E1/E2 normally.
 
 ## Watchouts
 
-- Preserve C1 as the external target-profile authority; BIR owns only exact
-  binding/consumption and cannot reconstruct compatible targets.
-- C6-C9 must extend the same common key and predecessor fingerprint chain;
-  products never add NodeKind tags or create a graph revision.
-- C9 alone interprets/binds constraints; C7 supplies vocabulary/context only
-  and C8 selects helpers without lowering them.
+- D1 admission is the unchanged Canonical owner/token + exact C1 fingerprint +
+  complete verified C2-C8 bundle + C9 `BoundConstraintSet`; no subset or
+  compatible-looking tuple is accepted.
+- D1-D5 graph mutations request fresh exact-revision projections from C9 after
+  complete candidate mappings; C9 never edits or publishes their graphs.
+- D5 is the sole required dynamic-SSA removal point and must make copy/scratch
+  identities visible to allocation rather than hiding them in products.
 - Markdown-only output; proposed code belongs only in fenced Markdown blocks.
 
 ## Proof
 
 - Changed-path suffix audit: every changed path ends in `.md`.
-- Structural checks confirm C2-C5 each contain the exact 17-section product
+- Structural checks confirm C2-C9 each contain the exact 17-section product
   spine in order and a closed reference/product matrix with explicit unknown/
   illegal/omitted rejection.
-- C1-C5 headers/keys form one exact adjacency chain; searches confirm no graph
-  mutation/republication, compatible-looking fallback, or `PreparedBir` term.
+- C1-C9 headers/keys form one exact adjacency chain; C7 has no parser/binder,
+  C8 has no call lowering, C9 projections have no graph mutation, and the D1
+  seam rejects stale/mixed/coverage-incomplete tuples.
 - `git diff --check` passes. No build/test run is applicable to this
   documentation-only packet; no `test_after.log` is created or modified.

@@ -1,58 +1,99 @@
-# Inline Assembly Target Tables
+# C7 Immutable Inline-Assembly Target Context Product Contract
 
-Status: converged design contract (unimplemented).
+Contract-Status: converged planned contract under idea 732
+Implementation-Status: absent
+Phase-ID: C7
+Upstream: exact Canonical/C1/C2/C3/C4/C5/C6 tuple
+Downstream: immutable `InlineAsmTargetContext` for C8-C9
 
-## Contract and ownership boundary
+## Purpose
 
-Inline-assembly preparation is `C7`. It consumes the exact
-`VerifiedPreparationInput` borrow, matching `VerifiedTargetLayout`, and the
-published ABI, call, variadic, and address products. It reads no
-assembly-template bytes. Its sole output is immutable target data used by the
-next planner and by the later register-constraint stage.
+C7 publishes only target constraint vocabulary, class/group eligibility,
+clobber vocabulary, and contextual rule versions. Assembly and constraint bytes
+remain opaque; C7 neither parses nor binds them.
 
-`InlineAsmTargetTables` owns the target-admitted source vocabulary and maps
-each admitted spelling to declarative category/class/group, role, width,
-clobber-vocabulary, and eligibility rules. For the initial RV64 profile the
-closed vocabulary is `r`, `=r`, `VR`, `VRM2`, `VRM4`, and `VRM8`, with table
-entries sufficient to describe reviewed read/write, numeric-tie,
-early-clobber, and clobber forms. `VRM1`, alternatives, named/fixed-register
-operands, and unreviewed AArch64 or x86 spellings are absent and therefore
-fail closed downstream.
+## Owns
 
-This stage does not consume a particular instruction's constraint strings or
-operand/result ordinals. It emits no typed use/result requirement, assignment
-tie, early-clobber exclusion, or resolved clobber unit. The register-constraint
-stage alone interprets descriptions and attaches meaning to ordinary values.
-Opaque template and original constraint text remain unchanged.
+Versioned target constraint/clobber vocabulary and eligibility tables, context
+validation, fingerprint, and immutable publication.
 
-Consequently C7 is tables-only: it cannot parse even an admitted spelling in a
-particular instruction, inspect that instruction's description order, or bind
-a table rule to an operand/result identity. C9 `bind_constraints` is the sole
-interpreter and binder.
+## Does Not Own
 
-## Binding and consumers
+C7 does not parse constraint strings or templates, bind operands, infer ties,
+choose registers, mutate inline-asm nodes, lower calls, allocate, or assemble.
 
-The product key contains the complete Canonical `PipelineStageStamp`, exact
-`TargetFingerprint`, layout and inline-asm-table schema fingerprints, and exact
-ordered ABI/call/variadic/address fingerprints. Runtime-helper planning is the
-immediate dependency consumer. The register-constraint stage consumes the
-published table after the full preparation bundle is verified.
+## Inputs
 
-## Publication
+The unchanged Canonical owner and exact C1-C6 tuple, including C2 class/group
+domain and complete predecessor fingerprints.
 
-One transaction constructs the complete vocabulary table. Duplicate spellings,
-ambiguous declarative rules, references to absent layout classes/groups,
-inconsistent widths or roles, unresolved abstract clobber vocabulary,
-predecessor/key mismatch, or diagnostics publish no table. Canonical storage,
-opaque texts, and all inputs remain unchanged.
+## Input NodeKind/Tag Vocabulary
 
-Any change to the Canonical stage stamp, target fingerprint, layout/table
-schema, or ABI/call/variadic/address predecessor fingerprint invalidates the
-complete table and its C8/C9 successors. Changes to a particular original
-constraint description do not change this target-only table, but they do
-invalidate C9's `BoundConstraintSet`.
+All five Canonical groups are retained by reference. Only
+`B.CanonicalOpaqueTargetToken` and declared ordinary operand types/sites are
+context consumers; opaque bytes are never semantic input to C7 derivation.
 
-Legacy coverage: `prealloc/inline_asm.*`, stack-layout inline asm, regalloc
-interaction, and every target emitter's inline-asm path. Legacy routines that
-attach target meaning to instruction operands migrate to the sole later
-interpreter, not into these tables.
+## Required Analyses and Products
+
+C2 and C3-C6 products only. No parser result or bound constraint product may
+exist yet; those belong to C9.
+
+## Ordered Behavior
+
+1. Validate the exact tuple and target vocabulary registry version.
+2. Derive finite constraint/class/group/clobber/context tables in registry order.
+3. Validate all references against C2 and target capabilities.
+4. Publish one immutable context atomically without inspecting asm bytes.
+
+## NodeKind/Tag Lowering Matrix
+
+| Canonical input subset | Reference outcome | C7 product outcome | Node tags added/removed | Identity | Failure |
+|---|---|---|---|---|---|
+| opaque inline-asm token | retain exact node/bytes | target vocabulary/context eligibility only | none | unchanged | bytes are not parsed/bound |
+| ordinary inline-asm operand/result type/site | retain reference | eligible class/group vocabulary references | none | unchanged | unsupported type is explicit failure/absence |
+| non-asm value/effect/control/phi | retain reference | explicit no-context row | none | unchanged | inferred constraint forbidden |
+| unknown/illegal/omitted/later-stage kind | reject product | none | none | none | `InlineAsmContextVocabularyInvalid` |
+
+## Identity and Provenance
+
+Context rows cite exact Canonical site IDs only for coverage. Original bytes
+remain payload; vocabulary spelling is registry identity, not node identity.
+
+## Outputs
+
+One complete immutable `InlineAsmTargetContext` keyed to the common tuple, with
+finite vocabularies/tables, registry versions, coverage, and fingerprint.
+
+## Verification and Publication
+
+Validate exact keys, unique vocabulary IDs, C2 references, target capabilities,
+and total declared site coverage. Reject any parsed/bound operand, selected
+register, graph edit, or modified opaque byte. Publish all-or-nothing.
+
+## Analysis Preservation and Invalidation
+
+Any Canonical/target/C2-C6/vocabulary-registry/site change invalidates C7 and
+C8-C9. Equal spellings under another registry/version cannot be relabelled.
+
+## Failure and Diagnostics
+
+Stale/mixed keys, invalid vocabulary reference, unsupported context,
+cancellation, or resource failure publishes no partial table or parser result.
+
+## Adjacent-Stage Contract
+
+C6 supplies the exact tuple. C8 carries this context unchanged; C9 alone parses,
+types, and binds original constraint bytes against ordinary operands/results.
+
+## Implementation State
+
+Absent. Existing target asm tables/parsers do not implement this keyed context.
+
+## Proof Requirements
+
+Prove supported/unsupported vocabulary, exact C2 references, opaque-byte
+preservation, no parsing/binding/register choice, key rejection, and atomicity.
+
+## Open Questions
+
+New constraint/clobber vocabulary requires a versioned C7 registry update.
