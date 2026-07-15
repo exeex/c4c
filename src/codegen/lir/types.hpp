@@ -6,8 +6,10 @@
 // includes limited to model-level helpers that do not otherwise need the full
 // LIR instruction model.
 
-#include <ostream>
 #include <cstdint>
+#include <cstddef>
+#include <memory>
+#include <ostream>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -47,6 +49,13 @@ enum class LirBuiltinType : unsigned char {
   Double,
   Fp128,
   X86Fp80,
+};
+
+// LLVM renders both forms as struct-like type declarations. Keep their source
+// nominal distinction in the model instead of inferring it from type text.
+enum class LirNamedCompositeKind : unsigned char {
+  Struct,
+  Union,
 };
 
 class LirTypeRef {
@@ -140,12 +149,29 @@ class LirTypeRef {
                                               StructNameId struct_name_id) {
     LirTypeRef type(std::move(rendered_text), LirTypeKind::Struct);
     type.set_struct_name_id(struct_name_id);
+    type.named_composite_kind_ = LirNamedCompositeKind::Struct;
     return type;
   }
 
   [[nodiscard]] static LirTypeRef union_type(std::string rendered_text,
                                              StructNameId struct_name_id) {
-    return struct_type(std::move(rendered_text), struct_name_id);
+    LirTypeRef type(std::move(rendered_text), LirTypeKind::Struct);
+    type.set_struct_name_id(struct_name_id);
+    type.named_composite_kind_ = LirNamedCompositeKind::Union;
+    return type;
+  }
+
+  // Existing output paths still consume a compatibility text mirror. Derive it
+  // here from the structural facts so callers cannot make rendered text the
+  // source of array semantics.
+  [[nodiscard]] static LirTypeRef array(LirTypeRef element_type,
+                                        std::size_t length) {
+    LirTypeRef type(array_compatibility_text(element_type, length),
+                    LirTypeKind::Array);
+    type.array_element_type_ =
+        std::make_shared<LirTypeRef>(std::move(element_type));
+    type.array_length_ = length;
+    return type;
   }
 
   [[nodiscard]] const std::string& str() const { return text_; }
@@ -158,6 +184,15 @@ class LirTypeRef {
     return integer_bit_width_;
   }
   [[nodiscard]] std::optional<unsigned> vrm_width() const { return vrm_width_; }
+  [[nodiscard]] std::optional<LirNamedCompositeKind> named_composite_kind() const {
+    return named_composite_kind_;
+  }
+  [[nodiscard]] bool is_named_struct() const {
+    return named_composite_kind_ == LirNamedCompositeKind::Struct;
+  }
+  [[nodiscard]] bool is_named_union() const {
+    return named_composite_kind_ == LirNamedCompositeKind::Union;
+  }
   [[nodiscard]] StructNameId struct_name_id() const { return struct_name_id_; }
   [[nodiscard]] bool has_struct_name_id() const {
     return struct_name_id_ != kInvalidStructName;
@@ -170,6 +205,15 @@ class LirTypeRef {
     copy.set_struct_name_id(struct_name_id);
     return copy;
   }
+  [[nodiscard]] const LirTypeRef* array_element_type() const {
+    return array_element_type_.get();
+  }
+  [[nodiscard]] std::optional<std::size_t> array_length() const {
+    return array_length_;
+  }
+  [[nodiscard]] bool has_array_shape() const {
+    return array_element_type_ != nullptr && array_length_.has_value();
+  }
   [[nodiscard]] bool empty() const { return text_.empty(); }
 
   operator std::string&() { return text_; }
@@ -178,8 +222,13 @@ class LirTypeRef {
 
   [[nodiscard]] friend bool operator==(const LirTypeRef& lhs,
                                        const LirTypeRef& rhs) {
+    if (lhs.has_array_shape() && rhs.has_array_shape()) {
+      return lhs.array_length_ == rhs.array_length_ &&
+             *lhs.array_element_type_ == *rhs.array_element_type_;
+    }
     if (lhs.has_struct_name_id() && rhs.has_struct_name_id()) {
-      return lhs.struct_name_id_ == rhs.struct_name_id_;
+      return lhs.struct_name_id_ == rhs.struct_name_id_ &&
+             lhs.named_composite_kind_ == rhs.named_composite_kind_;
     }
     return lhs.text_ == rhs.text_;
   }
@@ -406,12 +455,21 @@ class LirTypeRef {
     return LirTypeKind::RawText;
   }
 
+  [[nodiscard]] static std::string array_compatibility_text(
+      const LirTypeRef& element_type,
+      std::size_t length) {
+    return "[" + std::to_string(length) + " x " + element_type.str() + "]";
+  }
+
   std::string text_;
   LirTypeKind kind_ = LirTypeKind::RawText;
   std::optional<unsigned> integer_bit_width_;
   std::optional<unsigned> vrm_width_;
   std::optional<LirBuiltinType> builtin_type_;
+  std::optional<LirNamedCompositeKind> named_composite_kind_;
   StructNameId struct_name_id_ = kInvalidStructName;
+  std::shared_ptr<LirTypeRef> array_element_type_;
+  std::optional<std::size_t> array_length_;
 };
 
 enum class LirBinaryOpcode : unsigned char {

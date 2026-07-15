@@ -8,20 +8,23 @@ Current Step Title: Establish structured composite representation
 
 ## Just Finished
 
-- None; lifecycle switched from 734 after its accepted Step 7.32 receiver
-  packet exhausted the active runbook.
+- Step 1: added structured `LirTypeRef` array element/length facts and named
+  struct/union kind facts, including structural equality and focused coverage;
+  existing text mirrors remain compatible.
 
 ## Suggested Next
 
-- Execute Step 1 only: establish the bounded structured composite `LirTypeRef`
-  representation without migrating adjacent type-shadow families.
+- Execute Step 2 only: add the rendering-boundary helper and migrate the
+  selected struct-layout padding/storage array construction.
 
 ## Watchouts
 
-- Preserve `runtime_text` for deferred forms and do not parse rendered type
-  text to recover semantic structure.
+- `runtime_text` keeps legacy scalar-kind classification for verifier
+  compatibility, but does not populate the new array composite facts. Do not
+  parse rendered type text to recover semantic structure.
 
 ## Proof
 
-- Before acceptance: fresh build, focused LIR/frontend/backend type-ref and
-  struct-layout tests, then supervisor-selected broader proof.
+- Passed: `cmake --build --preset default && ctest --test-dir build -j
+  --output-on-failure -R '^backend_'` (5/5); log: `test_after.log`.
+- Passed focused direct coverage: `build/tests/frontend/frontend_lir_extern_decl_type_ref_test`.

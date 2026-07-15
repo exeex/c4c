@@ -75,6 +75,12 @@ void expect_link_name_id_preempts_legacy_raw_map() {
 
 void expect_type_ref_structured_equality_uses_name_id(
     c4c::codegen::lir::LirModule& module) {
+  const c4c::codegen::lir::LirTypeRef builtin_i32(
+      c4c::codegen::lir::LirBuiltinType::I32);
+  expect_true(builtin_i32.builtin_type() == c4c::codegen::lir::LirBuiltinType::I32 &&
+                  builtin_i32.integer_bit_width() == 32,
+              "builtin integer refs should retain their existing semantic fields");
+
   const c4c::StructNameId pair_id = module.struct_names.find("%struct.Pair");
   const c4c::StructNameId slot_id = module.struct_names.intern("%struct.Slot");
   expect_true(pair_id != c4c::kInvalidStructName,
@@ -92,6 +98,38 @@ void expect_type_ref_structured_equality_uses_name_id(
   expect_true(c4c::codegen::lir::LirTypeRef("%struct.Pair") ==
                   c4c::codegen::lir::LirTypeRef("%struct.Pair"),
               "extern legacy no-id type refs should still compare by rendered text");
+
+  const c4c::codegen::lir::LirTypeRef pair_union =
+      c4c::codegen::lir::LirTypeRef::union_type("%struct.Pair", pair_id);
+  expect_true(pair_ref.is_named_struct() && !pair_ref.is_named_union(),
+              "named struct refs should retain their nominal composite kind");
+  expect_true(pair_union.is_named_union() && !pair_union.is_named_struct(),
+              "named union refs should retain their nominal composite kind");
+  expect_true(pair_ref != pair_union,
+              "named struct and union refs with one name id must remain distinct");
+
+  const c4c::codegen::lir::LirTypeRef bytes =
+      c4c::codegen::lir::LirTypeRef::array(
+          c4c::codegen::lir::LirTypeRef::integer(8), 4);
+  c4c::codegen::lir::LirTypeRef other_bytes =
+      c4c::codegen::lir::LirTypeRef::array(
+          c4c::codegen::lir::LirTypeRef::integer(8), 4);
+  other_bytes.str() = "stale caller text";
+  expect_true(bytes.kind() == c4c::codegen::lir::LirTypeKind::Array &&
+                  bytes.has_array_shape(),
+              "array factory should publish structured array semantics");
+  expect_true(bytes.array_length() == 4 && bytes.array_element_type() != nullptr &&
+                  bytes.array_element_type()->integer_bit_width() == 8,
+              "array factory should retain element and length without text parsing");
+  expect_eq(bytes.str(), "[4 x i8]",
+            "array compatibility text should be derived from structural facts");
+  expect_true(bytes == other_bytes,
+              "structured array equality should use element and length, not stale text mirrors");
+
+  const c4c::codegen::lir::LirTypeRef runtime_array =
+      c4c::codegen::lir::LirTypeRef::runtime_text("[4 x i8]");
+  expect_true(!runtime_array.has_array_shape(),
+              "runtime text should remain an explicit unstructured compatibility boundary");
 }
 
 }  // namespace
