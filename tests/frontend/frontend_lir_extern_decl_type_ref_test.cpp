@@ -78,8 +78,15 @@ void expect_type_ref_structured_equality_uses_name_id(
   const c4c::codegen::lir::LirTypeRef builtin_i32(
       c4c::codegen::lir::LirBuiltinType::I32);
   expect_true(builtin_i32.builtin_type() == c4c::codegen::lir::LirBuiltinType::I32 &&
+                  builtin_i32.kind() == c4c::codegen::lir::LirTypeKind::Integer &&
                   builtin_i32.integer_bit_width() == 32,
               "builtin integer refs should retain their existing semantic fields");
+  const c4c::codegen::lir::LirTypeRef integer_i32 =
+      c4c::codegen::lir::LirTypeRef::integer(32);
+  const c4c::codegen::lir::LirTypeRef integer_i64 =
+      c4c::codegen::lir::LirTypeRef::integer(64);
+  expect_true(integer_i32 == builtin_i32 && integer_i32 != integer_i64,
+              "integer factories should preserve width-sensitive equality");
 
   const c4c::StructNameId pair_id = module.struct_names.find("%struct.Pair");
   const c4c::StructNameId slot_id = module.struct_names.intern("%struct.Slot");

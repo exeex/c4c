@@ -197,6 +197,39 @@ struct ScalarThenBits g_scalar_then_bits;
               "LIR should emit scalar followed by packed bitfield storage");
 }
 
+void test_hir_to_lir_padded_struct_layout_keeps_structured_byte_storage() {
+  const c4c::hir::Module module = lower_hir_module(R"c(
+struct PaddedByteStorage {
+  char byte;
+  int word;
+};
+
+struct PaddedByteStorage g_padded_byte_storage;
+)c", c4c::SourceProfile::C);
+
+  const c4c::codegen::lir::LirModule lir_module =
+      c4c::codegen::lir::lower(module);
+  const c4c::StructNameId padded_id =
+      lir_module.struct_names.find("%struct.PaddedByteStorage");
+  expect_true(padded_id != c4c::kInvalidStructName,
+              "padded HIR struct should have a structured LIR declaration name");
+  const c4c::codegen::lir::LirStructDecl* padded_decl =
+      lir_module.find_struct_decl(padded_id);
+  expect_true(padded_decl != nullptr && padded_decl->fields.size() == 3,
+              "padded HIR struct should retain scalar, padding, and scalar LIR fields");
+  const c4c::codegen::lir::LirTypeRef& padding = padded_decl->fields[1].type;
+  expect_true(padding.kind() == c4c::codegen::lir::LirTypeKind::Array &&
+                  padding.has_array_shape() && padding.array_length() == 3 &&
+                  padding.array_element_type() != nullptr &&
+                  padding.array_element_type()->integer_bit_width() == 8,
+              "HIR-to-LIR padding should retain structured i8 array facts");
+
+  const std::string llvm_ir = c4c::codegen::lir::print_llvm(lir_module);
+  expect_true(llvm_ir.find("%struct.PaddedByteStorage = type { i8, [3 x i8], i32 }") !=
+                  std::string::npos,
+              "HIR-to-LIR padded struct emission should keep its LLVM byte-storage text");
+}
+
 void expect_hir_rejects(std::string_view source,
                         std::string_view expected_diagnostic,
                         const std::string& msg) {
@@ -8036,6 +8069,7 @@ int main() {
   test_hir_stmt_decl_refs_preserve_text_ids_for_this_param_and_ctor_callees();
   test_hir_struct_defs_preserve_text_ids_for_tags_and_bases();
   test_hir_packed_mixed_bitfield_record_layout_keeps_scalar_members();
+  test_hir_to_lir_padded_struct_layout_keeps_structured_byte_storage();
   test_hir_template_calls_preserve_text_ids_for_source_template_names();
   test_hir_template_call_replay_rejects_rendered_fallback_after_primary_miss();
   test_hir_template_seed_and_retry_reject_rendered_fallback_after_decl_miss();
