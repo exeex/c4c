@@ -1,5 +1,6 @@
 #include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/bir/lir_to_bir/lowering.hpp"
+#include "src/codegen/lir/call_args_ops.hpp"
 
 #include <array>
 #include <cstdint>
@@ -7145,6 +7146,36 @@ int expect_no_signature_structured_fabs_intrinsic_infers_arg_type() {
     }
   }
   return fail("no-signature structured fabs intrinsic should materialize F64 BIR call facts");
+}
+
+int expect_complete_structured_call_args_override_stale_args_text() {
+  LirCallOp call{
+      .result = LirOperand("%result"),
+      .return_type = "i32",
+      .callee = LirOperand("@callee"),
+      .callee_type_suffix = "(i64)",
+      .args_str = "i64 99",
+      .arg_type_refs = {lir::LirTypeRef::integer(32)},
+      .callee_signature = lir::LirCallSignature{
+          .fixed_param_types = {"i64"},
+          .fixed_param_type_refs = {lir::LirTypeRef::integer(32)},
+      },
+      .structured_args = {
+          lir::LirCallArg{
+              .type = "i64",
+              .operand = LirOperand("%actual"),
+              .type_ref = lir::LirTypeRef::integer(32),
+          },
+      },
+  };
+
+  const auto parsed = lir::parse_lir_typed_call_or_infer_params(call);
+  if (!parsed.has_value() || parsed->param_types.size() != 1 ||
+      parsed->args.size() != 1 || parsed->param_types.front() != "i32" ||
+      parsed->args.front().type != "i32" || parsed->args.front().operand != "%actual") {
+    return fail("complete structured call type refs must override stale text mirrors");
+  }
+  return 0;
 }
 
 LirModule make_aarch64_crc32w_intrinsic_module(std::string return_type = "i32",
@@ -14800,6 +14831,11 @@ int main() {
           expect_no_signature_structured_fabs_intrinsic_infers_arg_type();
       no_signature_structured_fabs_status != 0) {
     return no_signature_structured_fabs_status;
+  }
+  if (const int structured_args_authority_status =
+          expect_complete_structured_call_args_override_stale_args_text();
+      structured_args_authority_status != 0) {
+    return structured_args_authority_status;
   }
   if (const int aarch64_crc32w_status =
           expect_aarch64_crc32w_intrinsic_carries_bir_semantics();

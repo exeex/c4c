@@ -132,13 +132,91 @@ inline LirCallOp make_lir_call_op(std::string result,
       std::move(callee_signature));
 }
 
+// A generated call carries both the per-argument facts and their type mirrors.
+// Use that pair only when it is complete; partially populated calls remain on
+// the legacy text-parsing path so raw compatibility operations keep working.
+inline bool lir_call_has_complete_structured_arg_authority(const LirCallOp& call) {
+  if (call.structured_args.empty() ||
+      call.structured_args.size() != call.arg_type_refs.size()) {
+    return false;
+  }
+  for (std::size_t index = 0; index < call.structured_args.size(); ++index) {
+    const LirCallArg& arg = call.structured_args[index];
+    if (arg.type_ref.empty() || call.arg_type_refs[index].empty() ||
+        arg.type_ref != call.arg_type_refs[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+inline ParsedLirTypedCallView lir_call_structured_typed_call_view(
+    const LirCallOp& call) {
+  ParsedLirTypedCallView parsed;
+  parsed.param_types.reserve(call.structured_args.size());
+  parsed.args.reserve(call.structured_args.size());
+  for (const LirCallArg& arg : call.structured_args) {
+    const std::string_view type = arg.type_ref.str();
+    parsed.param_types.push_back(type);
+    parsed.args.push_back({.type = type, .operand = arg.operand.str()});
+  }
+  return parsed;
+}
+
+inline bool lir_call_has_complete_fixed_param_type_authority(
+    const LirCallSignature& signature) {
+  if (signature.fixed_param_types.size() != signature.fixed_param_type_refs.size()) {
+    return false;
+  }
+  return std::all_of(signature.fixed_param_type_refs.begin(),
+                     signature.fixed_param_type_refs.end(),
+                     [](const LirTypeRef& type) { return !type.empty(); });
+}
+
 inline std::optional<ParsedLirTypedCallView> parse_lir_typed_call(
     const LirCallOp& call) {
+  if (lir_call_has_complete_structured_arg_authority(call)) {
+    return lir_call_structured_typed_call_view(call);
+  }
   return parse_lir_typed_call(call.callee_type_suffix, call.args_str);
 }
 
 inline std::optional<ParsedLirTypedCallView> parse_lir_typed_call_or_infer_params(
     const LirCallOp& call) {
+  if (lir_call_has_complete_structured_arg_authority(call) &&
+      (!call.callee_signature.has_value() ||
+       call.callee_signature->has_unspecified_params ||
+       lir_call_has_complete_fixed_param_type_authority(*call.callee_signature))) {
+    ParsedLirTypedCallView parsed = lir_call_structured_typed_call_view(call);
+    if (!call.callee_signature.has_value() ||
+        call.callee_signature->has_unspecified_params) {
+      return parsed;
+    }
+
+    const LirCallSignature& sig = *call.callee_signature;
+    if (sig.has_void_param_list) {
+      if (!sig.fixed_param_type_refs.empty() || sig.is_variadic || !parsed.args.empty()) {
+        return std::nullopt;
+      }
+      return parsed;
+    }
+
+    const std::size_t fixed_count = sig.fixed_param_type_refs.size();
+    if ((!sig.is_variadic && parsed.args.size() != fixed_count) ||
+        (sig.is_variadic && parsed.args.size() < fixed_count)) {
+      return std::nullopt;
+    }
+    for (std::size_t index = 0; index < fixed_count; ++index) {
+      const std::string_view fixed_type = sig.fixed_param_type_refs[index].str();
+      if (!lir_call_param_type_accepts_arg_type(fixed_type,
+                                                parsed.args[index].type)) {
+        return std::nullopt;
+      }
+      parsed.param_types[index] = fixed_type;
+    }
+    return parsed;
+  }
+
   if (call.callee_signature.has_value() &&
       !call.callee_signature->has_unspecified_params) {
     const auto args = parse_lir_typed_call_args(call.args_str);
