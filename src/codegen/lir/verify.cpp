@@ -2017,21 +2017,57 @@ void verify_function_value_ownership(const LirModule& mod,
     for (const auto& inst : block.insts) collect_definition(inst);
   }
 
-  const auto terminator_has_successor = [](const LirTerminator& terminator,
-                                           LirBlockId successor) {
+  const auto successor_at_occurrence = [](const LirTerminator& terminator,
+                                          LirSuccessorOccurrenceId occurrence)
+      -> std::optional<LirBlockId> {
+    if (!occurrence.valid()) return std::nullopt;
     if (const auto* branch = std::get_if<LirBr>(&terminator)) {
-      return branch->successor == successor;
+      if (occurrence == LirSuccessorOccurrenceId::direct_branch()) {
+        return branch->successor;
+      }
+      return std::nullopt;
     }
     if (const auto* branch = std::get_if<LirCondBr>(&terminator)) {
-      return branch->true_successor == successor ||
-             branch->false_successor == successor;
+      if (occurrence == LirSuccessorOccurrenceId::conditional_true()) {
+        return branch->true_successor;
+      }
+      if (occurrence == LirSuccessorOccurrenceId::conditional_false()) {
+        return branch->false_successor;
+      }
+      return std::nullopt;
     }
     if (const auto* sw = std::get_if<LirSwitch>(&terminator)) {
-      return sw->default_successor == successor ||
-             std::find(sw->case_successors.begin(), sw->case_successors.end(),
-                       successor) != sw->case_successors.end();
+      if (occurrence == LirSuccessorOccurrenceId::switch_default()) {
+        return sw->default_successor;
+      }
+      if (occurrence.value == 0) return std::nullopt;
+      const std::size_t case_index = occurrence.value - 1;
+      if (case_index < sw->case_successors.size()) {
+        return sw->case_successors[case_index];
+      }
     }
-    return false;
+    return std::nullopt;
+  };
+  const auto successor_occurrences_to = [&](const LirBlock& predecessor,
+                                             LirBlockId destination) {
+    std::vector<LirSuccessorOccurrenceId> occurrences;
+    const auto add_if_destination = [&](LirSuccessorOccurrenceId occurrence) {
+      const std::optional<LirBlockId> successor =
+          successor_at_occurrence(predecessor.terminator, occurrence);
+      if (successor && *successor == destination) occurrences.push_back(occurrence);
+    };
+    if (std::holds_alternative<LirBr>(predecessor.terminator)) {
+      add_if_destination(LirSuccessorOccurrenceId::direct_branch());
+    } else if (std::holds_alternative<LirCondBr>(predecessor.terminator)) {
+      add_if_destination(LirSuccessorOccurrenceId::conditional_true());
+      add_if_destination(LirSuccessorOccurrenceId::conditional_false());
+    } else if (const auto* sw = std::get_if<LirSwitch>(&predecessor.terminator)) {
+      add_if_destination(LirSuccessorOccurrenceId::switch_default());
+      for (std::size_t i = 0; i < sw->case_successors.size(); ++i) {
+        add_if_destination(LirSuccessorOccurrenceId::switch_case(i));
+      }
+    }
+    return occurrences;
   };
   const auto verify_phi_incoming = [&](const LirPhiIncoming& incoming,
                                        const LirBlock& destination) {
@@ -2074,16 +2110,42 @@ void verify_function_value_ownership(const LirModule& mod,
       fail_verify("LirPhiIncoming.label",
                   "display label must match the predecessor-selected block");
     }
-    if (!terminator_has_successor(predecessor->terminator, destination.id)) {
-      fail_verify("LirPhiIncoming.predecessor",
-                  "must have an edge to the PHI's containing block");
+    if (!incoming.successor_occurrence || !incoming.successor_occurrence->valid()) {
+      fail_verify("LirPhiIncoming.successor_occurrence",
+                  "must carry a valid typed predecessor successor occurrence");
+    }
+    const std::optional<LirBlockId> selected_successor =
+        successor_at_occurrence(predecessor->terminator, *incoming.successor_occurrence);
+    if (!selected_successor || !(*selected_successor == destination.id)) {
+      fail_verify("LirPhiIncoming.successor_occurrence",
+                  "must select an exact predecessor terminator occurrence to the PHI block");
     }
   };
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
       if (const auto* phi = std::get_if<LirPhiOp>(&inst)) {
+        std::unordered_set<uint64_t> selected_occurrences;
         for (const LirPhiIncoming& incoming : phi->incoming) {
           verify_phi_incoming(incoming, block);
+          const uint64_t key = (static_cast<uint64_t>(incoming.predecessor.value) << 32) |
+                               incoming.successor_occurrence->value;
+          if (!selected_occurrences.insert(key).second) {
+            fail_verify("LirPhiIncoming.successor_occurrence",
+                        "must not select the same predecessor successor occurrence twice");
+          }
+        }
+        std::unordered_set<uint64_t> required_occurrences;
+        for (const LirBlock& predecessor : function.blocks) {
+          for (const LirSuccessorOccurrenceId occurrence :
+               successor_occurrences_to(predecessor, block.id)) {
+            const uint64_t key = (static_cast<uint64_t>(predecessor.id.value) << 32) |
+                                 occurrence.value;
+            required_occurrences.insert(key);
+          }
+        }
+        if (selected_occurrences != required_occurrences) {
+          fail_verify("LirPhiIncoming.successor_occurrence",
+                      "must uniquely cover every predecessor successor occurrence to the PHI block");
         }
       }
     }

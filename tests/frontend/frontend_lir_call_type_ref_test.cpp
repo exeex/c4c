@@ -1222,6 +1222,63 @@ void test_conditional_and_switch_successor_identity_contract() {
                     *conditional_false.successor_occurrence),
               "parallel conditional successors should retain distinct typed PHI occurrence IDs");
 
+  auto add_parallel_conditional_phi = [](lir::LirModule& module) -> lir::LirPhiOp& {
+    lir::LirBlock& destination = module.functions[0].blocks[1];
+    destination.insts.push_back(lir::LirPhiOp{
+        .result = lir::LirOperand("%parallel.conditional.phi"),
+        .type_str = "i32",
+        .incoming = {
+            {lir::LirOperand::integer("0", 0), "entry", lir::LirBlockId{0},
+             lir::LirSuccessorOccurrenceId::conditional_true()},
+            {lir::LirOperand::integer("1", 1), "entry", lir::LirBlockId{0},
+             lir::LirSuccessorOccurrenceId::conditional_false()},
+        },
+    });
+    return std::get<lir::LirPhiOp>(destination.insts.back());
+  };
+  add_parallel_conditional_phi(parallel_conditional);
+  lir::verify_module(parallel_conditional);
+  const auto require_parallel_conditional_phi = [](lir::LirModule& module) -> lir::LirPhiOp& {
+    for (auto& inst : module.functions[0].blocks[1].insts)
+      if (auto* phi = std::get_if<lir::LirPhiOp>(&inst)) return *phi;
+    fail("parallel conditional fixture should retain one PHI");
+  };
+
+  lir::LirModule missing_phi_occurrence = parallel_conditional;
+  require_parallel_conditional_phi(missing_phi_occurrence).incoming.front().successor_occurrence.reset();
+  expect_identity_verification_rejected(
+      missing_phi_occurrence, "verifier should reject PHI inputs without successor occurrence authority");
+  lir::LirModule invalid_phi_occurrence = parallel_conditional;
+  require_parallel_conditional_phi(invalid_phi_occurrence).incoming.front().successor_occurrence =
+      lir::LirSuccessorOccurrenceId::invalid();
+  expect_identity_verification_rejected(
+      invalid_phi_occurrence, "verifier should reject invalid PHI successor occurrence authority");
+  lir::LirModule foreign_phi_predecessor = parallel_conditional;
+  require_parallel_conditional_phi(foreign_phi_predecessor).incoming.front().predecessor =
+      lir::LirBlockId{99};
+  expect_identity_verification_rejected(
+      foreign_phi_predecessor, "verifier should reject PHI occurrence predecessors outside the function");
+  lir::LirModule mismatched_phi_predecessor = parallel_conditional;
+  require_parallel_conditional_phi(mismatched_phi_predecessor).incoming.front().predecessor =
+      lir::LirBlockId{1};
+  require_parallel_conditional_phi(mismatched_phi_predecessor).incoming.front().label = "true_target";
+  expect_identity_verification_rejected(
+      mismatched_phi_predecessor, "verifier should reject PHI occurrence predecessor mismatches");
+  lir::LirModule mismatched_phi_destination = parallel_conditional;
+  require_parallel_conditional_phi(mismatched_phi_destination).incoming.front().successor_occurrence =
+      lir::LirSuccessorOccurrenceId::conditional_false();
+  expect_identity_verification_rejected(
+      mismatched_phi_destination, "verifier should reject PHI occurrences selecting another destination");
+  lir::LirModule duplicate_phi_occurrence = parallel_conditional;
+  require_parallel_conditional_phi(duplicate_phi_occurrence).incoming[1].successor_occurrence =
+      lir::LirSuccessorOccurrenceId::conditional_true();
+  expect_identity_verification_rejected(
+      duplicate_phi_occurrence, "verifier should reject duplicate PHI successor occurrence selections");
+  lir::LirModule incomplete_phi_occurrences = parallel_conditional;
+  require_parallel_conditional_phi(incomplete_phi_occurrences).incoming.pop_back();
+  expect_identity_verification_rejected(
+      incomplete_phi_occurrences, "verifier should reject PHIs that lose a parallel conditional occurrence");
+
   lir::LirModule switch_module;
   switch_module.functions.push_back(make_switch());
   lir::verify_module(switch_module);
@@ -1255,6 +1312,32 @@ void test_conditional_and_switch_successor_identity_contract() {
                   !(*first_switch_case.successor_occurrence ==
                     *second_switch_case.successor_occurrence),
               "parallel switch successors should retain distinct typed PHI occurrence IDs");
+
+  auto add_parallel_switch_phi = [](lir::LirModule& module) -> lir::LirPhiOp& {
+    lir::LirBlock& destination = module.functions[0].blocks[1];
+    destination.insts.push_back(lir::LirPhiOp{
+        .result = lir::LirOperand("%parallel.switch.phi"),
+        .type_str = "i32",
+        .incoming = {
+            {lir::LirOperand::integer("0", 0), "entry", lir::LirBlockId{0},
+             lir::LirSuccessorOccurrenceId::switch_case(0)},
+            {lir::LirOperand::integer("1", 1), "entry", lir::LirBlockId{0},
+             lir::LirSuccessorOccurrenceId::switch_case(1)},
+        },
+    });
+    return std::get<lir::LirPhiOp>(destination.insts.back());
+  };
+  add_parallel_switch_phi(parallel_switch);
+  lir::verify_module(parallel_switch);
+  const auto require_parallel_switch_phi = [](lir::LirModule& module) -> lir::LirPhiOp& {
+    for (auto& inst : module.functions[0].blocks[1].insts)
+      if (auto* phi = std::get_if<lir::LirPhiOp>(&inst)) return *phi;
+    fail("parallel switch fixture should retain one PHI");
+  };
+  lir::LirModule incomplete_switch_phi_occurrences = parallel_switch;
+  require_parallel_switch_phi(incomplete_switch_phi_occurrences).incoming.pop_back();
+  expect_identity_verification_rejected(
+      incomplete_switch_phi_occurrences, "verifier should reject PHIs that lose a parallel switch occurrence");
 
   lir::LirModule missing_conditional;
   missing_conditional.functions.push_back(make_conditional());
