@@ -62,45 +62,7 @@ bool known(SymbolVisibility visibility) noexcept {
 }
 
 bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
-  switch (instruction.opcode) {
-    case Opcode::InlineAsm:
-      return std::holds_alternative<InlineAsmNode>(instruction.payload);
-    case Opcode::Store:
-      return std::holds_alternative<StoreNode>(instruction.payload) ||
-             std::holds_alternative<LocalStoreAuthorityNode>(instruction.payload);
-    case Opcode::Load:
-      return std::holds_alternative<LoadNode>(instruction.payload) ||
-             std::holds_alternative<LocalLoadAuthorityNode>(instruction.payload);
-    case Opcode::GetElementPtr:
-      return std::holds_alternative<GetElementPtrNode>(instruction.payload) ||
-             std::holds_alternative<LocalArrayGepAuthorityNode>(instruction.payload);
-    case Opcode::StackSaveAuthority:
-      return std::holds_alternative<StackSaveAuthorityNode>(instruction.payload);
-    case Opcode::StackRestoreAuthority:
-      return std::holds_alternative<StackRestoreAuthorityNode>(instruction.payload);
-    case Opcode::Abs:
-      return std::holds_alternative<AbsNode>(instruction.payload);
-    case Opcode::Call:
-      return std::holds_alternative<CallNode>(instruction.payload) ||
-             std::holds_alternative<IntrinsicCallNode>(instruction.payload);
-    case Opcode::Binary:
-      return std::holds_alternative<BinaryNode>(instruction.payload);
-    case Opcode::Compare:
-      return std::holds_alternative<CompareNode>(instruction.payload);
-    case Opcode::Select:
-      return std::holds_alternative<SelectNode>(instruction.payload);
-    case Opcode::SelectedMemcpy:
-      return std::holds_alternative<SelectedMemcpyNode>(instruction.payload);
-    case Opcode::Amd64SysVOverflowAggregateMemcpy:
-      return std::holds_alternative<Amd64SysVOverflowAggregateMemcpyNode>(instruction.payload);
-    case Opcode::Cast:
-      return std::holds_alternative<CastNode>(instruction.payload);
-    case Opcode::Phi:
-      return std::holds_alternative<PhiNode>(instruction.payload);
-    case Opcode::AllocaAuthority:
-      return std::holds_alternative<AllocaAuthorityNode>(instruction.payload);
-  }
-  return false;
+  return node_kind_accepts_payload(instruction.opcode, instruction.payload);
 }
 
 template <class Id>

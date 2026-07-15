@@ -102,3 +102,24 @@ add_test(
 set_tests_properties(backend_bir_checkpoint PROPERTIES
   LABELS "backend;bir;pipeline;checkpoint;cpp"
 )
+
+add_executable(backend_bir_node_kind_schema_test
+    "${BACKEND_TEST_ROOT}/bir/backend_bir_node_kind_schema_test.cpp"
+)
+target_include_directories(backend_bir_node_kind_schema_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_bir_node_kind_schema_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_bir_node_kind_schema_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+add_test(
+  NAME backend_bir_node_kind_schema
+  COMMAND $<TARGET_FILE:backend_bir_node_kind_schema_test>
+)
+set_tests_properties(backend_bir_node_kind_schema PROPERTIES
+  LABELS "backend;bir;node-kind;schema;cpp"
+)

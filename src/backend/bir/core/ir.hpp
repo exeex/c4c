@@ -147,7 +147,7 @@ struct ValueDef {
       definition = UnresolvedDef{};
 };
 
-enum class Opcode : std::uint8_t {
+enum class NodeKind : std::uint8_t {
   InlineAsm,
   Store,
   Load,
@@ -165,6 +165,10 @@ enum class Opcode : std::uint8_t {
   StackSaveAuthority,
   StackRestoreAuthority,
 };
+
+// Compatibility spelling for clients that still describe the closed node
+// vocabulary as opcodes. New pass code should use NodeKind.
+using Opcode = NodeKind;
 
 struct InlineAsmNode {
   std::string asm_text;
@@ -385,6 +389,255 @@ using InstPayload =
     IntrinsicCallNode, CastNode, PhiNode, AllocaAuthorityNode,
     LocalLoadAuthorityNode, LocalStoreAuthorityNode, LocalArrayGepAuthorityNode,
     StackSaveAuthorityNode, StackRestoreAuthorityNode>;
+
+enum class NodeFamily : std::uint8_t { Semantic, Memory, Call, Authority };
+enum class OperandArityPolicy : std::uint8_t { Fixed, Variable };
+enum class ResultArityPolicy : std::uint8_t { Zero, One, Many };
+enum class NodeEffect : std::uint8_t {
+  None,
+  ReadsMemory,
+  WritesMemory,
+  ReadsAndWritesMemory,
+  Unknown,
+};
+enum class NodeStage : std::uint8_t {
+  Raw = 1,
+  Canonical = 2,
+  Prepared = 4,
+};
+
+struct NodeKindDescriptor {
+  NodeFamily family;
+  bool is_binary;
+  OperandArityPolicy operand_arity;
+  std::uint16_t minimum_operands;
+  std::uint16_t maximum_operands;
+  ResultArityPolicy result_arity;
+  NodeEffect effects;
+  std::uint8_t legal_stages;
+};
+
+namespace detail {
+
+constexpr std::uint16_t variable_arity = UINT16_MAX;
+constexpr std::uint8_t all_node_stages =
+    static_cast<std::uint8_t>(NodeStage::Raw) |
+    static_cast<std::uint8_t>(NodeStage::Canonical) |
+    static_cast<std::uint8_t>(NodeStage::Prepared);
+
+template <class... Payloads>
+bool accepts_one_of(const InstPayload& payload) noexcept {
+  return (std::holds_alternative<Payloads>(payload) || ...);
+}
+
+template <NodeKind Kind, NodeFamily Family, bool Binary,
+          OperandArityPolicy OperandPolicy, std::uint16_t MinimumOperands,
+          std::uint16_t MaximumOperands, ResultArityPolicy ResultPolicy,
+          NodeEffect Effects, std::uint8_t LegalStages, class... Payloads>
+struct node_kind_schema {
+  static constexpr NodeKindDescriptor descriptor{
+      Family, Binary, OperandPolicy, MinimumOperands, MaximumOperands,
+      ResultPolicy, Effects, LegalStages};
+
+  static bool accepts(const InstPayload& payload) noexcept {
+    return accepts_one_of<Payloads...>(payload);
+  }
+};
+
+template <NodeKind>
+struct node_kind_traits;
+
+template <>
+struct node_kind_traits<NodeKind::InlineAsm>
+    : node_kind_schema<NodeKind::InlineAsm, NodeFamily::Semantic, false,
+                       OperandArityPolicy::Variable, 0, variable_arity,
+                       ResultArityPolicy::Many, NodeEffect::Unknown,
+                       all_node_stages, InlineAsmNode> {};
+template <>
+struct node_kind_traits<NodeKind::Store>
+    : node_kind_schema<NodeKind::Store, NodeFamily::Memory, false,
+                       OperandArityPolicy::Fixed, 1, 1,
+                       ResultArityPolicy::Zero, NodeEffect::WritesMemory,
+                       all_node_stages, StoreNode, LocalStoreAuthorityNode> {};
+template <>
+struct node_kind_traits<NodeKind::Load>
+    : node_kind_schema<NodeKind::Load, NodeFamily::Memory, false,
+                       OperandArityPolicy::Variable, 0, 1,
+                       ResultArityPolicy::One, NodeEffect::ReadsMemory,
+                       all_node_stages, LoadNode, LocalLoadAuthorityNode> {};
+template <>
+struct node_kind_traits<NodeKind::GetElementPtr>
+    : node_kind_schema<NodeKind::GetElementPtr, NodeFamily::Semantic, false,
+                       OperandArityPolicy::Variable, 1, variable_arity,
+                       ResultArityPolicy::One, NodeEffect::None,
+                       all_node_stages, GetElementPtrNode,
+                       LocalArrayGepAuthorityNode> {};
+template <>
+struct node_kind_traits<NodeKind::Abs>
+    : node_kind_schema<NodeKind::Abs, NodeFamily::Semantic, false,
+                       OperandArityPolicy::Fixed, 1, 1,
+                       ResultArityPolicy::One, NodeEffect::None,
+                       all_node_stages, AbsNode> {};
+template <>
+struct node_kind_traits<NodeKind::Call>
+    : node_kind_schema<NodeKind::Call, NodeFamily::Call, false,
+                       OperandArityPolicy::Variable, 0, variable_arity,
+                       ResultArityPolicy::Many, NodeEffect::Unknown,
+                       all_node_stages, CallNode, IntrinsicCallNode> {};
+template <>
+struct node_kind_traits<NodeKind::Binary>
+    : node_kind_schema<NodeKind::Binary, NodeFamily::Semantic, true,
+                       OperandArityPolicy::Fixed, 2, 2,
+                       ResultArityPolicy::One, NodeEffect::None,
+                       all_node_stages, BinaryNode> {};
+template <>
+struct node_kind_traits<NodeKind::Compare>
+    : node_kind_schema<NodeKind::Compare, NodeFamily::Semantic, true,
+                       OperandArityPolicy::Fixed, 2, 2,
+                       ResultArityPolicy::One, NodeEffect::None,
+                       all_node_stages, CompareNode> {};
+template <>
+struct node_kind_traits<NodeKind::Select>
+    : node_kind_schema<NodeKind::Select, NodeFamily::Semantic, false,
+                       OperandArityPolicy::Variable, 0, variable_arity,
+                       ResultArityPolicy::One, NodeEffect::None,
+                       all_node_stages, SelectNode> {};
+template <>
+struct node_kind_traits<NodeKind::SelectedMemcpy>
+    : node_kind_schema<NodeKind::SelectedMemcpy, NodeFamily::Memory, false,
+                       OperandArityPolicy::Fixed, 0, 0,
+                       ResultArityPolicy::Zero,
+                       NodeEffect::ReadsAndWritesMemory, all_node_stages,
+                       SelectedMemcpyNode> {};
+template <>
+struct node_kind_traits<NodeKind::Amd64SysVOverflowAggregateMemcpy>
+    : node_kind_schema<NodeKind::Amd64SysVOverflowAggregateMemcpy,
+                       NodeFamily::Memory, false, OperandArityPolicy::Fixed, 0,
+                       0, ResultArityPolicy::Zero,
+                       NodeEffect::ReadsAndWritesMemory, all_node_stages,
+                       Amd64SysVOverflowAggregateMemcpyNode> {};
+template <>
+struct node_kind_traits<NodeKind::Cast>
+    : node_kind_schema<NodeKind::Cast, NodeFamily::Semantic, false,
+                       OperandArityPolicy::Fixed, 1, 1,
+                       ResultArityPolicy::One, NodeEffect::None,
+                       all_node_stages, CastNode> {};
+template <>
+struct node_kind_traits<NodeKind::Phi>
+    : node_kind_schema<NodeKind::Phi, NodeFamily::Semantic, false,
+                       OperandArityPolicy::Variable, 1, variable_arity,
+                       ResultArityPolicy::One, NodeEffect::None,
+                       all_node_stages, PhiNode> {};
+template <>
+struct node_kind_traits<NodeKind::AllocaAuthority>
+    : node_kind_schema<NodeKind::AllocaAuthority, NodeFamily::Authority, false,
+                       OperandArityPolicy::Fixed, 0, 0,
+                       ResultArityPolicy::One, NodeEffect::None,
+                       all_node_stages, AllocaAuthorityNode> {};
+template <>
+struct node_kind_traits<NodeKind::StackSaveAuthority>
+    : node_kind_schema<NodeKind::StackSaveAuthority, NodeFamily::Authority,
+                       false, OperandArityPolicy::Fixed, 0, 0,
+                       ResultArityPolicy::One, NodeEffect::Unknown,
+                       all_node_stages, StackSaveAuthorityNode> {};
+template <>
+struct node_kind_traits<NodeKind::StackRestoreAuthority>
+    : node_kind_schema<NodeKind::StackRestoreAuthority, NodeFamily::Authority,
+                       false, OperandArityPolicy::Fixed, 1, 1,
+                       ResultArityPolicy::Zero, NodeEffect::Unknown,
+                       all_node_stages, StackRestoreAuthorityNode> {};
+
+template <NodeKind Kind>
+constexpr NodeKindDescriptor node_kind_descriptor_v =
+    node_kind_traits<Kind>::descriptor;
+
+template <NodeKind Kind>
+bool payload_accepted_by(const InstPayload& payload) noexcept {
+  return node_kind_traits<Kind>::accepts(payload);
+}
+
+}  // namespace detail
+
+template <NodeKind Kind>
+constexpr NodeKindDescriptor node_kind_descriptor() noexcept {
+  return detail::node_kind_descriptor_v<Kind>;
+}
+
+template <NodeKind Kind>
+constexpr bool is_semantic_node_kind_v =
+    node_kind_descriptor<Kind>().family == NodeFamily::Semantic;
+
+template <NodeKind Kind>
+constexpr bool is_binary_node_kind_v = node_kind_descriptor<Kind>().is_binary;
+
+inline std::optional<NodeKindDescriptor> node_kind_descriptor(
+    NodeKind kind) noexcept {
+#define C4C_BIR_KIND_CASE(name)                                               \
+  case NodeKind::name: return node_kind_descriptor<NodeKind::name>()
+  switch (kind) {
+    C4C_BIR_KIND_CASE(InlineAsm);
+    C4C_BIR_KIND_CASE(Store);
+    C4C_BIR_KIND_CASE(Load);
+    C4C_BIR_KIND_CASE(GetElementPtr);
+    C4C_BIR_KIND_CASE(Abs);
+    C4C_BIR_KIND_CASE(Call);
+    C4C_BIR_KIND_CASE(Binary);
+    C4C_BIR_KIND_CASE(Compare);
+    C4C_BIR_KIND_CASE(Select);
+    C4C_BIR_KIND_CASE(SelectedMemcpy);
+    C4C_BIR_KIND_CASE(Amd64SysVOverflowAggregateMemcpy);
+    C4C_BIR_KIND_CASE(Cast);
+    C4C_BIR_KIND_CASE(Phi);
+    C4C_BIR_KIND_CASE(AllocaAuthority);
+    C4C_BIR_KIND_CASE(StackSaveAuthority);
+    C4C_BIR_KIND_CASE(StackRestoreAuthority);
+  }
+#undef C4C_BIR_KIND_CASE
+  return std::nullopt;
+}
+
+inline bool is_semantic_node_kind(NodeKind kind) noexcept {
+  const auto descriptor = node_kind_descriptor(kind);
+  return descriptor && descriptor->family == NodeFamily::Semantic;
+}
+
+inline bool is_binary_node_kind(NodeKind kind) noexcept {
+  const auto descriptor = node_kind_descriptor(kind);
+  return descriptor && descriptor->is_binary;
+}
+
+inline bool node_kind_legal_in(NodeKind kind, NodeStage stage) noexcept {
+  const auto descriptor = node_kind_descriptor(kind);
+  return descriptor &&
+         (descriptor->legal_stages & static_cast<std::uint8_t>(stage)) != 0;
+}
+
+inline bool node_kind_accepts_payload(NodeKind kind,
+                                      const InstPayload& payload) noexcept {
+#define C4C_BIR_PAYLOAD_CASE(name)                                            \
+  case NodeKind::name:                                                       \
+    return detail::payload_accepted_by<NodeKind::name>(payload)
+  switch (kind) {
+    C4C_BIR_PAYLOAD_CASE(InlineAsm);
+    C4C_BIR_PAYLOAD_CASE(Store);
+    C4C_BIR_PAYLOAD_CASE(Load);
+    C4C_BIR_PAYLOAD_CASE(GetElementPtr);
+    C4C_BIR_PAYLOAD_CASE(Abs);
+    C4C_BIR_PAYLOAD_CASE(Call);
+    C4C_BIR_PAYLOAD_CASE(Binary);
+    C4C_BIR_PAYLOAD_CASE(Compare);
+    C4C_BIR_PAYLOAD_CASE(Select);
+    C4C_BIR_PAYLOAD_CASE(SelectedMemcpy);
+    C4C_BIR_PAYLOAD_CASE(Amd64SysVOverflowAggregateMemcpy);
+    C4C_BIR_PAYLOAD_CASE(Cast);
+    C4C_BIR_PAYLOAD_CASE(Phi);
+    C4C_BIR_PAYLOAD_CASE(AllocaAuthority);
+    C4C_BIR_PAYLOAD_CASE(StackSaveAuthority);
+    C4C_BIR_PAYLOAD_CASE(StackRestoreAuthority);
+  }
+#undef C4C_BIR_PAYLOAD_CASE
+  return false;
+}
 
 class BlockView;
 class FunctionView;
