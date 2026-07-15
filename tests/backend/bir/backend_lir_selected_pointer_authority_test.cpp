@@ -560,6 +560,88 @@ void test_direct_local_va_lifecycle_populates_authority() {
   lir::verify_module(module);
 }
 
+hir::Module direct_local_overflow_aggregate_vaarg_module() {
+  hir::Module module = direct_local_va_lifecycle_module();
+  const c4c::TextId tag = module.link_name_texts->intern("OverflowAggregate");
+  hir::HirStructDef aggregate;
+  aggregate.tag = "OverflowAggregate";
+  aggregate.tag_text_id = tag;
+  aggregate.size_bytes = 24;
+  aggregate.align_bytes = 8;
+  aggregate.fields = {
+      {.name = "a", .elem_type = long_long_type(), .llvm_idx = 0,
+       .offset_bytes = 0, .size_bytes = 8, .align_bytes = 8},
+      {.name = "b", .elem_type = long_long_type(), .llvm_idx = 1,
+       .offset_bytes = 8, .size_bytes = 8, .align_bytes = 8},
+      {.name = "c", .elem_type = long_long_type(), .llvm_idx = 2,
+       .offset_bytes = 16, .size_bytes = 8, .align_bytes = 8},
+  };
+  module.struct_defs.emplace(aggregate.tag, aggregate);
+  module.struct_def_order.push_back(aggregate.tag);
+  module.index_struct_def_owner(aggregate, true);
+  for (hir::Expr& expression : module.expr_pool) {
+    if (std::holds_alternative<hir::VaArgExpr>(expression.payload)) {
+      expression.type.spec = large_aggregate_type(tag);
+      expression.type.category = hir::ValueCategory::RValue;
+    }
+  }
+  return module;
+}
+
+void test_amd64_overflow_aggregate_carrier() {
+  const auto valid = lir::lower(direct_local_overflow_aggregate_vaarg_module());
+  const auto& function = valid.functions.front();
+  const lir::LirMemcpyOp* selected = nullptr;
+  for (const auto& block : function.blocks) for (const auto& inst : block.insts) {
+    if (const auto* op = std::get_if<lir::LirMemcpyOp>(&inst);
+        op && op->amd64_sysv_overflow_aggregate_carrier) selected = op;
+  }
+  expect(selected && selected->requires_native_memory_va_authority &&
+             selected->amd64_sysv_overflow_aggregate_carrier && !selected->is_volatile,
+         "direct-local AMD64 aggregate overflow must publish one selected carrier");
+  const auto& carrier = *selected->amd64_sysv_overflow_aggregate_carrier;
+  expect(carrier.va_list_object.owner == function.link_name_id &&
+             carrier.va_list_object.live && carrier.destination.live &&
+             carrier.payload_type.kind() == lir::LirTypeKind::Struct &&
+             carrier.payload_size_type == lir::LirTypeRef::integer(64) &&
+             carrier.payload_size.value == 24 && selected->src.value_id() &&
+             *selected->src.value_id() == carrier.overflow_pointer_load,
+         "carrier must preserve direct-local field-2 overflow source and typed payload facts");
+  lir::verify_module(valid);
+
+  auto partial = valid;
+  for (auto& block : partial.functions[0].blocks) for (auto& inst : block.insts)
+    if (auto* op = std::get_if<lir::LirMemcpyOp>(&inst); op && op->amd64_sysv_overflow_aggregate_carrier)
+      op->requires_native_memory_va_authority = false;
+  expect_rejected(std::move(partial), "unselected memcpy must reject overflow carrier fields");
+  auto nonderived = valid;
+  for (auto& block : nonderived.functions[0].blocks) for (auto& inst : block.insts)
+    if (auto* op = std::get_if<lir::LirMemcpyOp>(&inst); op && op->amd64_sysv_overflow_aggregate_carrier)
+      op->amd64_sysv_overflow_aggregate_carrier->overflow_pointer_load = lir::LirValueId{999};
+  expect_rejected(std::move(nonderived), "carrier must reject non-overflow-derived source");
+  auto foreign = valid;
+  const auto foreign_owner = foreign.link_names.intern("foreign_overflow_owner");
+  for (auto& block : foreign.functions[0].blocks) for (auto& inst : block.insts)
+    if (auto* op = std::get_if<lir::LirMemcpyOp>(&inst); op && op->amd64_sysv_overflow_aggregate_carrier)
+      op->amd64_sysv_overflow_aggregate_carrier->va_list_object.owner = foreign_owner;
+  expect_rejected(std::move(foreign), "carrier must reject foreign va_list owner");
+  auto dead = valid;
+  for (auto& block : dead.functions[0].blocks) for (auto& inst : block.insts)
+    if (auto* op = std::get_if<lir::LirMemcpyOp>(&inst); op && op->amd64_sysv_overflow_aggregate_carrier)
+      op->amd64_sysv_overflow_aggregate_carrier->destination.live = false;
+  expect_rejected(std::move(dead), "carrier must reject dead destination");
+  auto wrong_type = valid;
+  for (auto& block : wrong_type.functions[0].blocks) for (auto& inst : block.insts)
+    if (auto* op = std::get_if<lir::LirMemcpyOp>(&inst); op && op->amd64_sysv_overflow_aggregate_carrier)
+      op->amd64_sysv_overflow_aggregate_carrier->payload_type = lir::LirTypeRef::integer(64);
+  expect_rejected(std::move(wrong_type), "carrier must reject payload type disagreement");
+  auto wrong_size = valid;
+  for (auto& block : wrong_size.functions[0].blocks) for (auto& inst : block.insts)
+    if (auto* op = std::get_if<lir::LirMemcpyOp>(&inst); op && op->amd64_sysv_overflow_aggregate_carrier)
+      op->amd64_sysv_overflow_aggregate_carrier->payload_size = lir::LirIntegerImmediate{8};
+  expect_rejected(std::move(wrong_size), "carrier must reject size disagreement");
+}
+
 hir::Module selected_byval_materialization_module() {
   hir::Module module;
   module.target_profile = c4c::default_target_profile(c4c::TargetArch::X86_64);
@@ -959,6 +1041,7 @@ int main() {
   test_local_aggregate_zero_memset_populates_authority();
   test_zero_sized_local_aggregate_memset_remains_compatibility_only();
   test_direct_local_va_lifecycle_populates_authority();
+  test_amd64_overflow_aggregate_carrier();
   test_native_memory_va_authority_verifier_boundary();
   test_selected_current_function_pointer_authority();
   test_selected_byval_materialization_populates_authority();

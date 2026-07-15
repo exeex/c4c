@@ -127,11 +127,14 @@ LirOperand emit_rval_call_operand(FnCtx& ctx, const CallExpr& call,
 struct Amd64VaListPtrs {
   std::string gp_offset_ptr;
   std::string fp_offset_ptr;
-  std::string overflow_ptr_ptr;
+  LirOperand overflow_ptr_ptr;
+  std::optional<LirMemoryVaPointerAuthority> va_list_authority;
   LirOperand reg_save_area_ptr;
 };
 
-Amd64VaListPtrs load_amd64_va_list_ptrs(FnCtx& ctx, const std::string& ap_ptr);
+Amd64VaListPtrs load_amd64_va_list_ptrs(
+    FnCtx& ctx, const LirOperand& ap_ptr,
+    std::optional<LirMemoryVaPointerAuthority> va_list_authority = std::nullopt);
 std::string emit_aarch64_vaarg_gp_src_ptr(FnCtx& ctx, const std::string& ap_ptr,
                                           int slot_bytes);
 std::string emit_aarch64_vaarg_fp_src_ptr(FnCtx& ctx, const std::string& ap_ptr,
@@ -142,7 +145,9 @@ std::string emit_aarch64_vaarg_hfa(FnCtx& ctx, const std::string& ap_ptr,
                                    const stmt_emitter_detail::
                                        Aarch64HomogeneousFpAggregateInfo& hfa);
 std::string emit_amd64_va_arg(FnCtx& ctx, const TypeSpec& res_ts,
-                              const std::string& res_ty, const std::string& ap_ptr);
+                              const std::string& res_ty, const LirOperand& ap_ptr,
+                              std::optional<LirMemoryVaPointerAuthority> va_list_authority =
+                                  std::nullopt);
 LirOperand emit_amd64_va_arg_from_registers(
     FnCtx& ctx, const TypeSpec& res_ts, const std::string& res_ty,
     const c4c::codegen::llvm_backend::Amd64VarargInfo& layout,

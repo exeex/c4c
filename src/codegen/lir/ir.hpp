@@ -247,6 +247,25 @@ struct LirMemoryVaIntegerAuthority {
   LirIntegerImmediate value;
 };
 
+// Semantic receipt for the one AMD64 SysV aggregate va_arg overflow memcpy.
+// The overflow area is derived storage, not a fabricated local object.
+enum class LirAmd64SysVOverflowStorage : std::uint8_t {
+  Amd64SysVOverflowArgArea,
+};
+
+struct LirAmd64SysVOverflowAggregateCarrier {
+  LirCurrentFunctionLocalObjectPointer va_list_object;
+  LirValueId overflow_field_address = LirValueId::invalid();
+  LirValueId overflow_pointer_load = LirValueId::invalid();
+  LirAmd64SysVOverflowStorage storage =
+      LirAmd64SysVOverflowStorage::Amd64SysVOverflowArgArea;
+  LirCurrentFunctionLocalObjectPointer destination;
+  LirValueId final_load = LirValueId::invalid();
+  LirTypeRef payload_type;
+  LirTypeRef payload_size_type = LirTypeRef::integer(64);
+  LirIntegerImmediate payload_size;
+};
+
 struct LirMemcpyOp {
   LirOperand dst;         // ptr operand
   LirOperand src;         // ptr operand
@@ -257,6 +276,8 @@ struct LirMemcpyOp {
   std::optional<LirMemoryVaPointerAuthority> dst_authority;
   std::optional<LirMemoryVaPointerAuthority> src_authority;
   std::optional<LirMemoryVaIntegerAuthority> size_authority;
+  std::optional<LirAmd64SysVOverflowAggregateCarrier>
+      amd64_sysv_overflow_aggregate_carrier;
 };
 
 struct LirVaStartOp {

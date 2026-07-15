@@ -2161,10 +2161,81 @@ void verify_native_memory_va_authority(
     }
   };
   const auto verify_memcpy = [&](const LirMemcpyOp& op) {
-    const bool fields = op.dst_authority || op.src_authority || op.size_authority;
+    const bool fields = op.dst_authority || op.src_authority || op.size_authority ||
+                        op.amd64_sysv_overflow_aggregate_carrier;
     if (!op.requires_native_memory_va_authority) {
       if (fields) fail_verify("LirMemcpyOp.requires_native_memory_va_authority",
                               "unselected memcpy must not carry native memory/VA authority");
+      return;
+    }
+    if (op.amd64_sysv_overflow_aggregate_carrier) {
+      if (op.dst_authority || op.src_authority || op.size_authority || op.is_volatile) {
+        fail_verify("LirMemcpyOp.amd64_sysv_overflow_aggregate_carrier",
+                    "overflow aggregate carrier is exclusive and requires non-volatile memcpy");
+      }
+      const auto& carrier = *op.amd64_sysv_overflow_aggregate_carrier;
+      verify_local_object_authority(mod, function, carrier.va_list_object,
+                                    "LirMemcpyOp.amd64_sysv_overflow_aggregate_carrier.va_list_object");
+      verify_local_object_authority(mod, function, carrier.destination,
+                                    "LirMemcpyOp.amd64_sysv_overflow_aggregate_carrier.destination");
+      const auto canonical_va = canonical_pointers.find(carrier.va_list_object.pointer_definition.value);
+      const auto canonical_dst = canonical_pointers.find(carrier.destination.pointer_definition.value);
+      if (canonical_va == canonical_pointers.end() || canonical_dst == canonical_pointers.end() ||
+          !canonical_va->second || !canonical_dst->second ||
+          canonical_va->second->object != carrier.va_list_object.object ||
+          canonical_va->second->owner != carrier.va_list_object.owner ||
+          canonical_va->second->pointee_type != carrier.va_list_object.pointee_type ||
+          canonical_va->second->live != carrier.va_list_object.live ||
+          canonical_dst->second->object != carrier.destination.object ||
+          canonical_dst->second->owner != carrier.destination.owner ||
+          canonical_dst->second->pointee_type != carrier.destination.pointee_type ||
+          canonical_dst->second->live != carrier.destination.live) {
+        fail_verify("LirMemcpyOp.amd64_sysv_overflow_aggregate_carrier",
+                    "carrier local objects disagree with canonical current-function facts");
+      }
+      const auto field = definition_insts.find(carrier.overflow_field_address.value);
+      const auto source = definition_insts.find(carrier.overflow_pointer_load.value);
+      const auto destination = definition_insts.find(carrier.destination.pointer_definition.value);
+      const auto final_load = definition_insts.find(carrier.final_load.value);
+      const auto* gep = field == definition_insts.end() ? nullptr :
+          std::get_if<LirGepOp>(field->second);
+      const auto* load = source == definition_insts.end() ? nullptr :
+          std::get_if<LirLoadOp>(source->second);
+      const auto* alloca = destination == definition_insts.end() ? nullptr :
+          std::get_if<LirAllocaOp>(destination->second);
+      const auto* result_load = final_load == definition_insts.end() ? nullptr :
+          std::get_if<LirLoadOp>(final_load->second);
+      const auto typed_index = [](const LirGepIndex& index, long long expected) {
+        return index.is_authoritative() && index.type_ref() == LirTypeRef::integer(32) &&
+               index.value().integer_immediate() &&
+               index.value().integer_immediate()->value == expected;
+      };
+      if (!gep || !load || !alloca || !result_load ||
+          !carrier.overflow_field_address.valid() || !carrier.overflow_pointer_load.valid() ||
+          !carrier.final_load.valid() ||
+          gep->element_type.kind() != LirTypeKind::Struct ||
+          !gep->ptr.value_id() || *gep->ptr.value_id() != carrier.va_list_object.pointer_definition ||
+          gep->indices.size() != 2 || !typed_index(gep->indices[0], 0) ||
+          !typed_index(gep->indices[1], 2) || load->type_str.kind() != LirTypeKind::Pointer ||
+          !load->ptr.value_id() || *load->ptr.value_id() != carrier.overflow_field_address ||
+          !op.src.value_id() || *op.src.value_id() != carrier.overflow_pointer_load ||
+          !op.dst.value_id() || *op.dst.value_id() != carrier.destination.pointer_definition ||
+          !alloca->local_object_authority ||
+          alloca->local_object_authority->object != carrier.destination.object ||
+          !result_load->ptr.value_id() ||
+          *result_load->ptr.value_id() != carrier.destination.pointer_definition ||
+          carrier.storage != LirAmd64SysVOverflowStorage::Amd64SysVOverflowArgArea) {
+        fail_verify("LirMemcpyOp.amd64_sysv_overflow_aggregate_carrier",
+                    "carrier must be the direct va_list field-2 overflow load into its live temporary");
+      }
+      if (carrier.payload_type.empty() || carrier.payload_type.kind() != LirTypeKind::Struct ||
+          carrier.payload_type != alloca->type_str || carrier.payload_type != result_load->type_str ||
+          carrier.payload_size_type != LirTypeRef::integer(64) || carrier.payload_size.value <= 0 ||
+          !op.size.integer_immediate() ||
+          op.size.integer_immediate()->value != carrier.payload_size.value) {
+        fail_verify("LirMemcpyOp.amd64_sysv_overflow_aggregate_carrier",
+                    "carrier payload type and positive typed i64 byte size must match memcpy, alloca, and load");
+      }
       return;
     }
     if (!op.dst_authority || !op.src_authority || !op.size_authority || op.is_volatile)

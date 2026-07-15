@@ -24,21 +24,27 @@ LirTypeRef lir_va_list_tag_type_ref(lir::LirModule* module) {
 }  // namespace
 
 StmtEmitter::Amd64VaListPtrs StmtEmitter::load_amd64_va_list_ptrs(
-    FnCtx& ctx, const std::string& ap_ptr) {
+    FnCtx& ctx, const LirOperand& ap_ptr,
+    std::optional<LirMemoryVaPointerAuthority> va_list_authority) {
   Amd64VaListPtrs access;
+  access.va_list_authority = std::move(va_list_authority);
   const LirTypeRef va_list_tag_ty = lir_va_list_tag_type_ref(module_);
   access.gp_offset_ptr = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirGepOp{access.gp_offset_ptr, va_list_tag_ty,
-                                 ap_ptr, false, {"i32 0", "i32 0"}});
+                                 ap_ptr.str(), false, {"i32 0", "i32 0"}});
   access.fp_offset_ptr = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirGepOp{access.fp_offset_ptr, va_list_tag_ty,
-                                 ap_ptr, false, {"i32 0", "i32 1"}});
-  access.overflow_ptr_ptr = fresh_tmp(ctx);
+                                 ap_ptr.str(), false, {"i32 0", "i32 1"}});
+  access.overflow_ptr_ptr = fresh_value(ctx);
   emit_lir_op(ctx, lir::LirGepOp{access.overflow_ptr_ptr, va_list_tag_ty,
-                                 ap_ptr, false, {"i32 0", "i32 2"}});
+                                 ap_ptr, false,
+                                 {LirGepIndex::typed(LirTypeRef::integer(32),
+                                                     LirOperand::integer("0", 0)),
+                                  LirGepIndex::typed(LirTypeRef::integer(32),
+                                                     LirOperand::integer("2", 2))}});
   const std::string reg_save_ptr_ptr = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirGepOp{reg_save_ptr_ptr, va_list_tag_ty,
-                                 ap_ptr, false, {"i32 0", "i32 3"}});
+                                 ap_ptr.str(), false, {"i32 0", "i32 3"}});
   access.reg_save_area_ptr = fresh_value(ctx);
   emit_lir_op(ctx, lir::LirLoadOp{access.reg_save_area_ptr, "ptr", reg_save_ptr_ptr});
   return access;
@@ -57,22 +63,59 @@ LirOperand StmtEmitter::emit_amd64_va_arg_from_overflow(
                                            LirOperand::integer(std::to_string(stride), stride))}});
   emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), next_ptr, access.overflow_ptr_ptr});
 
-  const std::string tmp_addr = fresh_tmp(ctx);
+  const bool selected = access.va_list_authority && ctx.lir_function &&
+                        res_ts.ptr_level == 0 && res_ts.array_rank == 0 &&
+                        (res_ts.base == TB_STRUCT || res_ts.base == TB_UNION) && size_bytes > 0;
+  const std::string selected_payload_text =
+      selected ? llvm_value_ty(mod_, res_ts) : res_ty;
+  const LirTypeRef payload_type = selected
+      ? LirTypeRef::struct_type(selected_payload_text,
+                                module_->struct_names.find(selected_payload_text))
+      : LirTypeRef(res_ty);
+  const LirOperand tmp_addr = selected ? fresh_value(ctx) : LirOperand::raw(fresh_tmp(ctx));
   const int align = object_align_bytes(mod_, module_, res_ts);
-  ctx.alloca_insts.push_back(lir::LirAllocaOp{tmp_addr, res_ty, "", align});
+  std::optional<lir::LirCurrentFunctionLocalObjectPointer> destination;
+  if (selected) {
+    destination = lir::LirCurrentFunctionLocalObjectPointer{
+        .pointer_definition = *tmp_addr.value_id(),
+        .object = ctx.lir_function->alloc_object(),
+        .owner = ctx.lir_function->link_name_id,
+        .pointer_type = LirTypeRef(LirBuiltinType::Pointer),
+        .pointee_type = payload_type,
+        .live = true,
+    };
+  }
+  lir::LirAllocaOp temporary{tmp_addr, payload_type, "", align, destination};
+  ctx.alloca_insts.push_back(std::move(temporary));
   module_->need_memcpy = true;
-  emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, stack_ptr, std::to_string(size_bytes), false});
+  lir::LirMemcpyOp memcpy{tmp_addr, stack_ptr, LirOperand::integer(std::to_string(size_bytes), size_bytes), false};
   const LirOperand out = fresh_value(ctx);
-  emit_lir_op(ctx, lir::LirLoadOp{out, res_ty, tmp_addr, true});
+  if (selected) {
+    memcpy.requires_native_memory_va_authority = true;
+    memcpy.amd64_sysv_overflow_aggregate_carrier =
+        lir::LirAmd64SysVOverflowAggregateCarrier{
+            .va_list_object = access.va_list_authority->local_pointer,
+            .overflow_field_address = *access.overflow_ptr_ptr.value_id(),
+            .overflow_pointer_load = *stack_ptr.value_id(),
+            .destination = *destination,
+            .final_load = *out.value_id(),
+            .payload_type = payload_type,
+            .payload_size_type = LirTypeRef::integer(64),
+            .payload_size = lir::LirIntegerImmediate{size_bytes},
+        };
+  }
+  emit_lir_op(ctx, std::move(memcpy));
+  emit_lir_op(ctx, lir::LirLoadOp{out, payload_type, tmp_addr, true});
   return out;
 }
 
 std::string StmtEmitter::emit_amd64_va_arg(FnCtx& ctx, const TypeSpec& res_ts,
                                            const std::string& res_ty,
-                                           const std::string& ap_ptr) {
+                                           const LirOperand& ap_ptr,
+                                           std::optional<LirMemoryVaPointerAuthority> va_list_authority) {
   const auto layout = llvm_cc::classify_amd64_vararg(res_ts, mod_);
   if (layout.size_bytes <= 0) return "zeroinitializer";
-  const auto access = load_amd64_va_list_ptrs(ctx, ap_ptr);
+  const auto access = load_amd64_va_list_ptrs(ctx, ap_ptr, std::move(va_list_authority));
   if (layout.needs_memory) {
     return emit_amd64_va_arg_from_overflow(ctx, res_ts, res_ty, access, layout.size_bytes).str();
   }

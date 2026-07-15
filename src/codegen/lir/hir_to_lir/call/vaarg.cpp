@@ -389,7 +389,10 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const
     return out;
   }
   if (llvm_target_is_amd64_sysv(mod_.target_profile)) {
-    return emit_amd64_va_arg(ctx, res_ts, res_ty, ap_ptr);
+    if (const auto authority = native_direct_local_va_pointer(ctx, v.ap)) {
+      return emit_amd64_va_arg(ctx, res_ts, res_ty, authority->first, authority->second);
+    }
+    return emit_amd64_va_arg(ctx, res_ts, res_ty, LirOperand::raw(ap_ptr));
   }
   if (const auto hfa = classify_aarch64_hfa(mod_, res_ts)) {
     return emit_aarch64_vaarg_hfa(ctx, ap_ptr, res_ts, res_ty, *hfa);
