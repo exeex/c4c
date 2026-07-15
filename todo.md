@@ -1,39 +1,31 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/817_lir_body_parameter_receiver_authority_handoff.md
+Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove and record the 734 handoff
+Current Step ID: 7.34
+Current Step Title: Receive selected direct-pointer body-parameter authority
 
 ## Just Finished
 
-- 817 Step 2 completed: `LirCurrentFunctionBodyParameterDefinition` now
-  carries an explicit `LirNativeBodyParameterAbi::DirectPointer` class, which
-  the producer publishes only for the existing native non-expanded pointer
-  predicate. The verifier requires that class alongside the current function,
-  identity, parameter index, pointer type, and structured signature type; a
-  `LirGepOp.ptr` can use the carrier only with that class.
-- Focused coverage verifies the selected typed-GEP-base positive path and
-  rejects missing, invalid, foreign, duplicate, type-incoherent, and
-  malformed-ABI authority. Other parameter forms remain unrepresented and
-  fail closed.
+- Closed 817 accepted the native direct non-expanded pointer authority handoff
+  in `613f947b5`; 734's resumption record preserves the exact permitted row
+  and its focused 1/1 proof.
 
 ## Suggested Next
 
-- Execute 817 Step 3 only: record the selected direct-pointer authority
-  contract, rejected forms, focused proof, and the one-row 734 return point;
-  do not add Raw-BIR receipt work.
+- Execute Step 7.34 only: receive the selected typed-GEP-base direct-pointer
+  parameter row into Raw-BIR with transactional positive/malformed coverage.
 
 ## Watchouts
 
-- The selected row remains only native direct non-expanded pointer
-  `p[0]`/typed-GEP-base use. Scalar, byval/aggregate, HFA/vector, array,
-  variadic, and all other parameter forms remain fail-closed; no Raw-BIR or
-  receiver code was changed.
+- Use only `LirValueId`, parameter index, pointer `LirTypeRef`, current
+  `LinkNameId` owner, and `LirNativeBodyParameterAbi::DirectPointer`. Do not
+  use spelling, signature text, raw operands, or diagnostics; all nonselected
+  parameter forms remain fail closed.
 
 ## Proof
 
-- `cmake --build --preset default` passed. `ctest --test-dir build -j
-  --output-on-failure -R '^backend_lir_selected_pointer_authority$'` passed;
-  proof output is preserved in `test_after.log`.
+- Fresh `cmake --build --preset default`, focused
+  `ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$'`,
+  then supervisor-selected matching regression guard and broader proof.

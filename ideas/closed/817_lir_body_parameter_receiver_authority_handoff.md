@@ -33,3 +33,23 @@ Select and publish exactly one function-body parameter-use row with native, curr
 - More than one parameter family, Raw-BIR/receiver work, broad ABI work, or unrelated residual work is absorbed.
 - Tests weaken contracts, special-case a testcase, or accept missing, foreign, duplicate, or type-incoherent authority.
 - The handoff omits ownership, exact fields, rejected forms, focused proof, or the 734 return point.
+
+## Closure Record
+
+Disposition: capability complete.
+
+Commit `613f947b5` publishes and verifies exactly one native current-function
+body-parameter authority row: the direct non-expanded pointer parameter used
+as `LirGepOp.ptr`, the typed-GEP base for `p[0]`. Its handoff fields are exactly
+`LirValueId`, parameter index, pointer `LirTypeRef`, current `LinkNameId`
+owner, and explicit `LirNativeBodyParameterAbi::DirectPointer`.
+
+Scalar, byval/aggregate, HFA/vector, array, variadic, and all other parameter
+forms are rejected and fail closed. Parameter spelling, signature text, raw
+operands, and diagnostics are not authority.
+
+Supervisor acceptance proof: fresh `cmake --build --preset default`; focused
+`ctest --test-dir build -j --output-on-failure -R '^backend_lir_selected_pointer_authority$'`;
+and a matching before/after regression guard with a non-decreasing 1/1 pass
+count. The only 734 return point is a later single Raw-BIR receipt for that
+one structured row; this idea performed no receiver work.

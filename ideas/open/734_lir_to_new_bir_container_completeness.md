@@ -1163,3 +1163,24 @@ Close rejected. Commit `3b8870e2b` receives exactly closed 816's selected scalar
 This one receiver row does not satisfy the source completion gate: the no-omission coverage matrix, per-row typed authority/destination/importer/verifier/proof disposition, complete explicit dispatcher, whole-module transactional proof, and documentation convergence remain unproven. Valid unreceived families include function-body parameter use identity, remaining memory/VA, aggregate/vector, module/type/global/metadata, residual instruction/terminator, and other inline-assembly forms. No receiver may infer authority from compatibility fields, text, names, rendered operands, `monostate`, or unclassified values.
 
 Classification: `separate-blocker`. The queue's listed body-parameter owner `ideas/open/795_lir_body_parameter_authority_handoff.md` is already complete for an unrelated baseline return and supplies no 734 handoff. New open idea `ideas/open/817_lir_body_parameter_receiver_authority_handoff.md` owns one fresh producer/schema/verifier selection and handoff for exactly one function-body parameter use row. This source is paused after accepted Steps 1 through 7.33, including `3b8870e2b`. After 817 closes with an exact selected one-row structured handoff and accepted focused proof, reactivate 734 and repair its runbook only for that matching Raw-BIR receiver row. Do not repeat Step 7.33 or absorb other parameter forms, memory/VA, aggregate/vector, module/type/global, instruction/terminator, or inline-assembly work.
+
+## Resumption Record: closed 817 direct-pointer body-parameter authority
+
+Closed idea 817 is capability-complete for its bounded producer/schema/verifier
+handoff in commit `613f947b5`. It authorizes exactly one direct, non-expanded
+pointer parameter: the current-function `LirGepOp.ptr` typed-GEP base for
+`p[0]`. The complete permitted receiver row is exactly `LirValueId`, parameter
+index, pointer `LirTypeRef`, current `LinkNameId` owner, and explicit
+`LirNativeBodyParameterAbi::DirectPointer`. Scalar, byval/aggregate,
+HFA/vector, array, variadic, and every other parameter form remain rejected
+and fail closed. Spelling, signature text, raw operands, and diagnostics are
+not authority.
+
+The supervisor accepted a fresh `cmake --build --preset default`, focused
+`ctest --test-dir build -j --output-on-failure -R '^backend_lir_selected_pointer_authority$'`,
+and matching before/after regression guard with non-decreasing 1/1 pass count.
+
+Exact return action: reactivate 734 only for one later single Raw-BIR receipt
+of this structured row. Repair the runbook for that one receiver packet; do
+not repeat Step 7.33 and do not receive any other parameter form or perform
+producer/receiver work beyond this row.
