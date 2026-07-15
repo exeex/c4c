@@ -1,31 +1,27 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
+Source Idea Path: ideas/open/825_lir_next_body_parameter_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 7.37
-Current Step Title: Receive the one 824-authorized DirectScalar return-value parameter authority row
+Current Step ID: 1
+Current Step Title: Trace and select one native body-parameter use row
 
 ## Just Finished
 
-- Step 7.37: received only the typed
-  `LirRet.return_value_parameter_authority` DirectScalar ReturnValue row into
-  the existing Raw-BIR parameter `ValueId` and `ReturnTerm`; importer
-  validation now rejects missing, foreign, duplicate, owner/index/type/ABI/
-  role/operand/signature-incoherent authority before publication, and nearby
-  backend coverage verifies the retained exact parameter identity.
+- 734 Step 7.37 is accepted in `88e930ee1`; its source completion gate was
+  reassessed and rejected because no next body-parameter receiver row is yet
+  authorized.
 
 ## Suggested Next
 
-- Supervisor: reassess the source-idea completion gate after the completed
-  Step 7.37 receiver slice.
+- Execute Step 1: trace and select exactly one native body-parameter use row.
 
 ## Watchouts
 
-- The receiver derives admission only from the structured return tuple and its
-  exact native definition; no other parameter form is admitted.
+- Do not modify Raw-BIR/importer code or select semantic authority from text,
+  names, signatures, rendered operands, printer output, or testcase shape.
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-  passed 6/6; post-proof output: `test_after.log`.
+- Step 1 is selection-only; define its focused producer proof only after a
+  native structured row is selected.

@@ -1,71 +1,65 @@
-# LIR-To-New-BIR DirectScalar Return-Value Body-Parameter Receiver Runbook
+# Next LIR Body-Parameter Authority Handoff Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Resumed from: closed 824 return-value parameter authority handoff
+Source Idea: ideas/open/825_lir_next_body_parameter_authority_handoff.md
+Supersedes: 734 Step 7.37 receiver runbook after source-gate rejection
 
 ## Purpose
 
-Receive exactly one already-authorized unchanged current-function DirectScalar
-parameter return into typed Raw-BIR. This bounded receipt does not complete
-734's coverage matrix.
-
-## Historical Progress
-
-Steps 1 through 7.36 are accepted historical 734 work, most recently the
-DirectScalar binary-RHS receipt in `c87976453`. Closed 824's accepted
-producer/schema/verifier handoff is `fac485148`, with a fresh build plus
-`^backend_` 6/6 proof and matching before/after 6/6 non-regression guard. Do
-not repeat accepted receiver rows or producer authority publication.
+Establish one and only one next native function-body parameter authority row
+before 734 resumes its Raw-BIR receiver route.
 
 ## Core Rule
 
-Receive only `LirRet.return_value_parameter_authority`, when present for an
-unchanged current-function DirectScalar parameter returned through the exact
-SSA return operand. Its authority is the value identity, parameter index,
-`LirTypeRef`, owning `LinkNameId`, `LirNativeBodyParameterAbi::DirectScalar`,
-and `ReturnValue` role. It must agree with exactly one native definition and
-the return operand and signature return. No presentation field is authority.
+Choose a row only from native structured LIR facts. Do not derive semantic
+authority from names, signatures, rendered operands, printer output, or tests.
+No Raw-BIR/importer work belongs in this plan.
 
 ## Read First
 
-- `ideas/open/734_lir_to_new_bir_container_completeness.md` (the closed-824
+- `ideas/open/825_lir_next_body_parameter_authority_handoff.md`
+- `ideas/open/734_lir_to_new_bir_container_completeness.md` (post-Step 7.37
   resumption record)
-- `ideas/closed/824_lir_next_body_parameter_authority_handoff.md`
-- accepted Step 7.36 history only as completed context
+- closed 824's return-value handoff only as accepted non-repeat context
 
 ## Non-Goals
 
-- Producer/schema/verifier changes, generic scalar/parameter admission, or
-  receipt of another body-parameter form.
-- Repeating accepted direct-pointer or DirectScalar binary-LHS/RHS receipts.
-- Memory/VA, aggregate/vector, module/type/global/metadata,
-  instruction/terminator, inline assembly, or presentation-derived recovery.
-- Accepting, modifying, or relying on pending Ideas 821/822 selector work.
+- Generic parameter admission, ABI conversion, a second parameter row, or
+  receipt into Raw-BIR.
+- Repeating 734's accepted pointer, DirectScalar LHS/RHS, or ReturnValue rows.
+- Any non-parameter family or presentation-based recovery.
 
 ## Ordered Steps
 
-### Step 7.37 - Receive the one 824-authorized DirectScalar return-value parameter authority row
+### Step 1 - Trace and select one native body-parameter use row
 
-Goal: transactionally import only closed 824's structured return-value
-authority into the minimum typed Raw-BIR return destination.
+Goal: identify one next receiver-eligible parameter-use semantic relation and
+its first owning producer/schema/verifier seam.
 
 Actions:
 
-- add only the required typed Raw-BIR destination, importer dispatch,
-  reachable verifier work, and nearby positive/malformed-authority coverage;
-- preserve value identity, parameter index, type, owner, DirectScalar ABI,
-  ReturnValue role, exact SSA return operand relation, and signature-return
-  agreement;
-- require exactly one matching native definition and reject missing carrier
-  for the selected form, malformed/foreign/duplicate authority, owner/index/
-  type/ABI/role mismatch, return-operand mismatch, and signature-return
-  mismatch transactionally;
-- leave nonselected return forms carrier-free and outside this row;
-- run a fresh build and focused receiver proof selected by the supervisor,
-  then the appropriate broader acceptance checkpoint.
+- inspect existing native body-use production and verifier paths;
+- select exactly one row only if the full authority tuple and consuming
+  relation can be represented natively;
+- otherwise record the exact missing first-owner fact and repair this plan
+  before any implementation.
 
-Completion check: exactly the selected ReturnValue tuple imports and verifies
-from native structured authority, malformed input produces no partial Raw-BIR
-publication, and no generic parameter admission occurs. Reassess 734's source
-completion gate after this bounded receipt.
+Completion check: one explicitly bounded native row is selected, with all
+other forms fail closed and no Raw-BIR changes.
+
+### Step 2 - Publish and verify the selected authority tuple
+
+Goal: add only the selected producer/schema/verifier carrier and malformed
+authority rejection.
+
+Completion check: the selected tuple and consuming relation verify natively;
+missing, foreign, duplicate, incoherent, and display-derived paths fail
+closed.
+
+### Step 3 - Prove and hand off the selected row to 734
+
+Goal: establish focused nearby producer proof and a precise one-row receiver
+handoff.
+
+Completion check: focused positive/negative proof is accepted and the source
+idea records the exact 734 return action without crediting Raw-BIR receipt.

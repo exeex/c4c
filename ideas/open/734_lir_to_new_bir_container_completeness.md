@@ -1,7 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (paused after accepted Step 7.36 DirectScalar binary-RHS receipt;
-active successor: 824 body-parameter authority handoff)
+Status: Open (paused after accepted Step 7.37 DirectScalar return-value receipt;
+active successor: 825 next body-parameter authority handoff)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -1409,3 +1409,46 @@ repeat accepted Steps 1 through 7.36 (including `c87976453`), receive another
 parameter form, or recover authority from text, signatures, names, rendered
 operands, diagnostics, or `monostate`. Reapply this source's completion gate
 after the one receipt.
+
+## Runbook Exhaustion Decision: post-Step 7.37 DirectScalar return-value receipt
+
+Close rejected. Commit `88e930ee1` receives exactly closed 824's structured
+`LirRet.return_value_parameter_authority` DirectScalar ReturnValue tuple into
+the typed Raw-BIR parameter `ValueId` and `ReturnTerm`. Its importer and
+reachable verifier reject missing, foreign, duplicate, owner/index/type/ABI/
+role/operand/signature-incoherent authority before publication; nearby
+positive and malformed-authority coverage retains the exact parameter
+identity. Supervisor acceptance is a fresh
+`cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^backend_'` pass (6/6), with a matching 6/6 before/
+after non-regression guard.
+
+This bounded receiver row does not satisfy the source completion gate. The
+checked no-omission coverage matrix and its per-row typed
+authority/destination/importer/verifier/proof dispositions remain incomplete;
+lossless verified Raw-BIR receipt of every valid current-LIR semantic fact,
+complete explicit dispatcher and neighboring coverage, whole-module
+transactional proof, and documentation convergence are still unmet. Valid
+unreceived families include remaining function-body parameter uses, memory/VA,
+aggregate/vector, module/type/global/metadata, residual
+instruction/terminator, and inline-assembly forms. They remain fail closed;
+no receiver may recover authority from text, names, rendered operands,
+signatures, `monostate`, or unclassified values.
+
+Classification: `separate-blocker`. New open idea
+`ideas/open/825_lir_next_body_parameter_authority_handoff.md` owns only
+tracing, publishing, verifying, and handing off one next valid function-body
+parameter-use row. It must not edit Raw-BIR/importer code, reopen accepted
+direct-pointer or DirectScalar LHS/RHS/ReturnValue rows, select a row from
+presentation fields, or absorb another family.
+
+Resumption record: Steps 1 through 7.37 are accepted historical work, most
+recently receiver commit `88e930ee1` with the fresh 6/6 focused broader proof
+and matching 6/6 guard above. Interrupted point: source completion
+reassessment after Step 7.37; no further 734 receiver row is authorized.
+After 825 closes with one exact structured handoff and accepted focused
+producer proof, reactivate 734 and repair its runbook for only that matching
+typed Raw-BIR receiver row. Do not repeat Step 7.37 or receive another
+parameter, memory/VA, aggregate/vector, module/type/global, instruction/
+terminator, or inline-assembly form without its separately scoped first-owner
+handoff.
