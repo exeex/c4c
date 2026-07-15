@@ -677,7 +677,14 @@ LirOperand StmtEmitter::emit_decl_ref_rval_operand(FnCtx& ctx, const DeclRef& r,
     const std::string ty = llvm_value_ty(mod_, ts);
     if (ty == "void") return LirOperand::raw("0");
     const LirOperand result = fresh_value(ctx);
-    emit_lir_op(ctx, lir::LirLoadOp{result, ty, it->second});
+    const auto authority = ctx.local_object_authorities.find(r.local->value);
+    if (authority == ctx.local_object_authorities.end()) {
+      throw std::logic_error("local object authority was not hoisted");
+    }
+    emit_lir_op(ctx, lir::LirLoadOp{
+                         result, lir::LirTypeRef(ty),
+                         lir::LirOperand::ssa(it->second, authority->second.pointer_definition),
+                         false, authority->second});
     return result;
   }
 

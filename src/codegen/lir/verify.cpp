@@ -1871,6 +1871,47 @@ void verify_selected_memcpy_pointer_authority(const LirModule& mod,
   }
 }
 
+void verify_local_object_authority(const LirModule& mod, const LirFunction& function,
+                                   const LirCurrentFunctionLocalObjectPointer& authority,
+                                   std::string_view field) {
+  if (!authority.pointer_definition.valid() || !authority.object.valid() ||
+      authority.owner == kInvalidLinkName || authority.owner != function.link_name_id ||
+      authority.pointer_type.kind() != LirTypeKind::Pointer || !authority.live) {
+    fail_verify(std::string(field),
+                "local object authority requires valid current-function pointer, object, "
+                "owner, type, and liveness facts");
+  }
+  const std::size_t owner_count = static_cast<std::size_t>(std::count_if(
+      mod.functions.begin(), mod.functions.end(), [&](const LirFunction& candidate) {
+        return candidate.link_name_id == authority.owner;
+      }));
+  if (owner_count != 1) {
+    fail_verify(std::string(field), "local object authority has no unique current-function owner");
+  }
+}
+
+void verify_local_object_authorities(const LirModule& mod, const LirFunction& function) {
+  const auto verify = [&](const auto& op, std::string_view field) {
+    if (op.local_object_authority) {
+      verify_local_object_authority(mod, function, *op.local_object_authority, field);
+    }
+  };
+  for (const auto& inst : function.alloca_insts) {
+    if (const auto* op = std::get_if<LirAllocaOp>(&inst)) verify(*op, "LirAllocaOp.local_object_authority");
+    if (const auto* op = std::get_if<LirStoreOp>(&inst)) verify(*op, "LirStoreOp.local_object_authority");
+    if (const auto* op = std::get_if<LirGepOp>(&inst)) verify(*op, "LirGepOp.local_object_authority");
+    if (const auto* op = std::get_if<LirLoadOp>(&inst)) verify(*op, "LirLoadOp.local_object_authority");
+  }
+  for (const auto& block : function.blocks) for (const auto& inst : block.insts) {
+    if (const auto* op = std::get_if<LirAllocaOp>(&inst)) verify(*op, "LirAllocaOp.local_object_authority");
+    if (const auto* op = std::get_if<LirStoreOp>(&inst)) verify(*op, "LirStoreOp.local_object_authority");
+    if (const auto* op = std::get_if<LirGepOp>(&inst)) verify(*op, "LirGepOp.local_object_authority");
+    if (const auto* op = std::get_if<LirLoadOp>(&inst)) verify(*op, "LirLoadOp.local_object_authority");
+    if (const auto* op = std::get_if<LirStackSaveOp>(&inst)) verify(*op, "LirStackSaveOp.local_object_authority");
+    if (const auto* op = std::get_if<LirStackRestoreOp>(&inst)) verify(*op, "LirStackRestoreOp.local_object_authority");
+  }
+}
+
 void verify_selected_memcpy_authority(const LirFunction& function) {
   const auto& pointer_authority = function.selected_memcpy_pointer_authority;
   std::size_t selected_count = 0;
@@ -1954,6 +1995,7 @@ void verify_function_value_ownership(const LirModule& mod,
   verify_selected_memcpy_pointer_authority(mod, function, definitions,
                                            definition_insts);
   verify_selected_memcpy_authority(function);
+  verify_local_object_authorities(mod, function);
 
   // Direct label addresses are function-owned pointer constants, not
   // instruction results.  Register them in the same current-function value

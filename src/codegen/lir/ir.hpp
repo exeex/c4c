@@ -108,6 +108,18 @@ struct LirGlobalId {
   [[nodiscard]] static constexpr LirGlobalId invalid() { return LirGlobalId{kInvalid}; }
 };
 
+// Current-function authority for one selected local object.  The pointer
+// definition, object identity, owner, pointee type, and liveness are semantic
+// facts; an instruction's spelling remains a rendering mirror only.
+struct LirCurrentFunctionLocalObjectPointer {
+  LirValueId pointer_definition = LirValueId::invalid();
+  LirObjectId object = LirObjectId::invalid();
+  LinkNameId owner = kInvalidLinkName;
+  LirTypeRef pointer_type = LirTypeRef(LirBuiltinType::Pointer);
+  LirTypeRef pointee_type;
+  bool live = false;
+};
+
 // ── Instructions (non-terminator) ────────────────────────────────────────────
 //
 // Each instruction produces zero or one result value (identified by LirValueId).
@@ -243,10 +255,12 @@ struct LirVaCopyOp {
 
 struct LirStackSaveOp {
   LirOperand result;      // SSA name for saved stack pointer
+  std::optional<LirCurrentFunctionLocalObjectPointer> local_object_authority;
 };
 
 struct LirStackRestoreOp {
   LirOperand saved_ptr;   // SSA name of saved stack pointer
+  std::optional<LirCurrentFunctionLocalObjectPointer> local_object_authority;
 };
 
 struct LirAbsOp {
@@ -293,12 +307,14 @@ struct LirLoadOp {
   LirOperand ptr;         // SSA name of pointer operand
   // Opt-in standalone native result ownership; compatibility loads remain false.
   bool requires_native_result_authority = false;
+  std::optional<LirCurrentFunctionLocalObjectPointer> local_object_authority;
 };
 
 struct LirStoreOp {
   LirTypeRef type_str;    // LLVM type string (e.g. "i32", "ptr")
   LirOperand val;         // SSA name of value (or "zeroinitializer")
   LirOperand ptr;         // SSA name of pointer operand
+  std::optional<LirCurrentFunctionLocalObjectPointer> local_object_authority;
 };
 
 struct LirMemsetOp {
@@ -386,6 +402,7 @@ struct LirGepOp {
   std::vector<LirGepIndex> indices;
   // Opt-in standalone native result ownership; compatibility GEPs remain false.
   bool requires_native_result_authority = false;
+  std::optional<LirCurrentFunctionLocalObjectPointer> local_object_authority;
 };
 
 struct LirCallSignature {
@@ -528,6 +545,7 @@ struct LirAllocaOp {
   LirTypeRef type_str;    // LLVM element type string (e.g. "i8", "i64", "%struct.foo")
   LirOperand count;       // dynamic count operand (empty for simple allocas)
   int align = 0;          // alignment in bytes (0 = unspecified)
+  std::optional<LirCurrentFunctionLocalObjectPointer> local_object_authority;
 };
 
 // Typed inline asm call instruction.

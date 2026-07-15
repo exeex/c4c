@@ -299,6 +299,14 @@ LirOperand StmtEmitter::emit_lval_operand(FnCtx& ctx, ExprId id,
         emitted_link_name(mod_, selected->link_name_id, selected->name));
     return LirOperand::global(display, selected->link_name_id);
   }
+  if (const auto* ref = std::get_if<DeclRef>(&e.payload); ref && ref->local) {
+    pointee_ts = ctx.local_types.at(ref->local->value);
+    const std::string& slot = ctx.local_slots.at(ref->local->value);
+    const auto authority = ctx.local_object_authorities.find(ref->local->value);
+    if (authority != ctx.local_object_authorities.end()) {
+      return LirOperand::ssa(slot, authority->second.pointer_definition);
+    }
+  }
   if (const auto* idx = std::get_if<IndexExpr>(&e.payload)) {
     return emit_indexed_lval_operand(ctx, *idx, pointee_ts);
   }
@@ -313,14 +321,9 @@ LirOperand StmtEmitter::emit_structured_lvalue_base_operand(FnCtx& ctx, ExprId i
     if (ref->local) {
       pointee_ts = ctx.local_types.at(ref->local->value);
       const std::string& slot = ctx.local_slots.at(ref->local->value);
-      for (lir::LirInst& inst : ctx.alloca_insts) {
-        auto* alloca = std::get_if<lir::LirAllocaOp>(&inst);
-        if (!alloca || alloca->result.str() != slot) continue;
-        if (!alloca->result.value_id()) {
-          const LirOperand authority = fresh_value(ctx);
-          alloca->result = LirOperand::ssa(slot, *authority.value_id());
-        }
-        return alloca->result;
+      const auto authority = ctx.local_object_authorities.find(ref->local->value);
+      if (authority != ctx.local_object_authorities.end()) {
+        return LirOperand::ssa(slot, authority->second.pointer_definition);
       }
     }
   }
@@ -972,9 +975,18 @@ LirOperand StmtEmitter::emit_indexed_gep(FnCtx& ctx, const LirOperand& base_ptr,
   }
 
   const LirOperand result = fresh_value(ctx);
+  std::optional<LirCurrentFunctionLocalObjectPointer> local_authority;
+  for (const auto& [local_id, authority] : ctx.local_object_authorities) {
+    (void)local_id;
+    if (base_ptr.value_id() && *base_ptr.value_id() == authority.pointer_definition) {
+      local_authority = authority;
+      break;
+    }
+  }
   emit_lir_op(ctx, lir::LirGepOp{
                        result, indexed_gep_elem_ty(base_ts, elem_structured_name_id), base_ptr,
-                       false, {lir::LirGepIndex::typed(lir::LirTypeRef::integer(64), idx)}});
+                       false, {lir::LirGepIndex::typed(lir::LirTypeRef::integer(64), idx)},
+                       false, local_authority});
   return result;
 }
 
@@ -1013,7 +1025,15 @@ LirOperand StmtEmitter::emit_rval_from_access_ptr(FnCtx& ctx, const LirOperand& 
   const std::string ty = llvm_value_ty(mod_, load_ts);
   if (ty == "void") return LirOperand::raw("");
   const LirOperand result = fresh_value(ctx);
-  emit_lir_op(ctx, lir::LirLoadOp{result, LirTypeRef(ty), ptr});
+  std::optional<LirCurrentFunctionLocalObjectPointer> local_authority;
+  for (const auto& [local_id, authority] : ctx.local_object_authorities) {
+    (void)local_id;
+    if (ptr.value_id() && *ptr.value_id() == authority.pointer_definition) {
+      local_authority = authority;
+      break;
+    }
+  }
+  emit_lir_op(ctx, lir::LirLoadOp{result, LirTypeRef(ty), ptr, false, local_authority});
   return result;
 }
 

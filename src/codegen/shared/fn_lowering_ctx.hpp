@@ -41,6 +41,10 @@ struct FnCtx {
   std::unordered_map<uint32_t, TypeSpec> local_types;
   // local_id.value → true if this local is a VLA allocated dynamically at runtime
   std::unordered_map<uint32_t, bool> local_is_vla;
+  // LocalId -> selected current-function object/pointer authority.  The
+  // string slot map is retained only as an output-spelling compatibility map.
+  std::unordered_map<uint32_t, lir::LirCurrentFunctionLocalObjectPointer>
+      local_object_authorities;
   // param_index → SSA name (e.g. "%p.x")
   std::unordered_map<uint32_t, std::string> param_slots;
   // Structured LIR blocks (replaces body_lines).
@@ -61,6 +65,8 @@ struct FnCtx {
   std::unordered_map<uint32_t, c4c::hir::FnPtrSig> global_fn_ptr_sigs;
   // Per-function stacksave pointer for VLA scope rewinds.
   std::optional<std::string> vla_stack_save_ptr;
+  std::optional<lir::LirCurrentFunctionLocalObjectPointer>
+      vla_stack_lifetime_authority;
   // Block currently being emitted (for backward-goto detection).
   uint32_t current_block_id = 0;
 };

@@ -132,6 +132,7 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const LocalDecl& d) {
   }
   if (d.vla_size) {
     const std::string slot = ctx.local_slots.at(d.id.value);
+    const auto local_authority = ctx.local_object_authorities.find(d.id.value);
     TypeSpec sz_ts{};
     std::string count = emit_rval_id(ctx, *d.vla_size, sz_ts);
     TypeSpec i64_ts{};
@@ -157,20 +158,43 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const LocalDecl& d) {
     if (elem_ty == "void") elem_ty = "i8";
     const std::string dyn_ptr = fresh_tmp(ctx);
     const int stack_align = object_align_bytes(mod_, d.type.spec);
+    if (local_authority == ctx.local_object_authorities.end() || !ctx.lir_function) {
+      throw std::logic_error("VLA local object authority was not hoisted");
+    }
+    lir::LirCurrentFunctionLocalObjectPointer dynamic_authority = local_authority->second;
+    dynamic_authority.pointer_definition = module_->alloc_value();
+    dynamic_authority.pointee_type = lir::LirTypeRef(elem_ty);
+    ctx.local_object_authorities[d.id.value] = dynamic_authority;
+    const lir::LirOperand dynamic_pointer =
+        lir::LirOperand::ssa(dyn_ptr, dynamic_authority.pointer_definition);
     emit_lir_op(
-        ctx, lir::LirAllocaOp{dyn_ptr, elem_ty, count, stack_align > 1 ? stack_align : 0});
-    emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), dyn_ptr, slot});
+        ctx, lir::LirAllocaOp{dynamic_pointer, elem_ty, count,
+                              stack_align > 1 ? stack_align : 0, dynamic_authority});
+    emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), dynamic_pointer,
+                                     lir::LirOperand::ssa(
+                                         slot, local_authority->second.pointer_definition),
+                                     dynamic_authority});
   }
 
   if (!d.init) return;
   const std::string slot = ctx.local_slots.at(d.id.value);
+  const auto authority = ctx.local_object_authorities.find(d.id.value);
+  const auto store_with_local_authority = [&](lir::LirOperand value, const std::string& type) {
+    emit_lir_op(ctx, lir::LirStoreOp{type, std::move(value),
+                                     lir::LirOperand::ssa(
+                                         slot, authority->second.pointer_definition),
+                                     authority->second});
+  };
+  if (authority == ctx.local_object_authorities.end()) {
+    throw std::logic_error("local object authority was not hoisted");
+  }
   TypeSpec rhs_ts{};
   if (std::holds_alternative<LabelAddrExpr>(get_expr(*d.init).payload)) {
     const lir::LirOperand direct = emit_rval_operand(ctx, *d.init, rhs_ts);
     const std::string ty =
         (d.type.spec.array_rank > 0) ? llvm_alloca_ty(mod_, d.type.spec)
                                      : llvm_value_ty(mod_, d.type.spec);
-    emit_lir_op(ctx, lir::LirStoreOp{ty, coerce_operand(ctx, direct, rhs_ts, d.type.spec), slot});
+    store_with_local_authority(coerce_operand(ctx, direct, rhs_ts, d.type.spec), ty);
     return;
   }
   std::string rhs = emit_rval_id(ctx, *d.init, rhs_ts);
@@ -192,12 +216,12 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const LocalDecl& d) {
       emit_lir_op(ctx, lir::LirMemsetOp{
                            slot, "0", std::to_string(sizeof_ts(mod_, d.type.spec)), false});
     } else {
-      emit_lir_op(ctx, lir::LirStoreOp{ty, std::string("zeroinitializer"), slot});
+      store_with_local_authority(lir::LirOperand::raw("zeroinitializer"), ty);
     }
     return;
   }
   rhs = coerce(ctx, rhs, rhs_ts, d.type.spec);
-  emit_lir_op(ctx, lir::LirStoreOp{ty, rhs, slot});
+  store_with_local_authority(lir::LirOperand::raw(rhs), ty);
 }
 
 void StmtEmitter::emit_stmt_impl(FnCtx& ctx, const ExprStmt& s) {
@@ -602,7 +626,13 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const GotoStmt& s) {
   if (ctx.vla_stack_save_ptr && s.target.resolved_block.valid() &&
       s.target.resolved_block.value <= ctx.current_block_id) {
     module_->need_stackrestore = true;
-    emit_lir_op(ctx, lir::LirStackRestoreOp{*ctx.vla_stack_save_ptr});
+    if (!ctx.vla_stack_lifetime_authority) {
+      throw std::logic_error("VLA stack restore without typed stack lifetime authority");
+    }
+    emit_lir_op(ctx, lir::LirStackRestoreOp{
+                         lir::LirOperand::ssa(*ctx.vla_stack_save_ptr,
+                                              ctx.vla_stack_lifetime_authority->pointer_definition),
+                         *ctx.vla_stack_lifetime_authority});
   }
   if (s.target.resolved_block.valid()) {
     emit_term_br(ctx, scheduled_target(s.target.resolved_block));

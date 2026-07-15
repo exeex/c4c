@@ -8,21 +8,26 @@ Current Step Title: Establish the selected local-object authority contract
 
 ## Just Finished
 
-- Lifecycle switch from exhausted idea 734 after accepted complete Step 7.25
-  PHI receipt (`006d79aaf`, `7dc03f23a`).
+- Step 1 completed the current-function local object-pointer contract and
+  repaired direct-local lvalue/rvalue producer plumbing. Focused coverage
+  separately exercises alloca, direct local store, static-array indexed GEP,
+  direct local load, VLA stack save, and backward-goto stack restore; each
+  selected operation retains matching typed pointer/object/liveness authority
+  after its display spelling is made misleading and verifier success is checked.
 
 ## Suggested Next
 
-- Execute Step 1 only: establish the minimal typed local-object,
-  pointer-definition, and lifetime authority contract for the selected routes.
+- Advance to Step 2's malformed-authority boundary checks, without widening
+  into Raw-BIR/importer or Step 3 handoff work.
 
 ## Watchouts
 
-- Local names, `%t`, and formatted operands are rendering compatibility, never
-  semantic authority. Do not edit Raw-BIR/importer code or absorb memory/va,
-  aggregate/vector, PHI/CFG, or target-lowering work.
+- Stack restore is emitted only on a backward goto with a VLA lifetime route;
+  ordinary VLA fixtures do not cover it. Keep authority selection keyed by
+  LocalId/current-function facts, never local names, `%t`, or formatted
+  operands. Keep Raw-BIR/importer, memory/va, aggregate/vector, PHI/CFG, and
+  target-lowering outside this packet.
 
 ## Proof
 
-- No 752 implementation proof yet. 734's accepted evidence is preserved in
-  its source resumption record and is not proof for this producer packet.
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log` passed (1/1). `test_after.log` contains the result.

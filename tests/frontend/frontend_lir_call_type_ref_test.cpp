@@ -1733,6 +1733,88 @@ void test_structured_operand_identity_foundation() {
   lir::verify_module(independent_functions);
 }
 
+void test_local_object_pointer_authority_contract() {
+  namespace lir = c4c::codegen::lir;
+  lir::LirModule module = lower_lir_module_for_target(R"c(
+int local_scalar_authority(int input) {
+  int value = input;
+  value = 7;
+  return value;
+}
+int local_indexed_authority(int index) {
+  int values[2];
+  values[index] = 7;
+  return values[index];
+}
+int vla_lifetime_authority(int n) {
+  int total = 0;
+loop:
+  {
+    int values[n];
+    values[0] = n;
+    total += values[0];
+  }
+  n = n - 1;
+  if (n > 0) goto loop;
+  return total;
+}
+)c", "x86_64-linux-gnu");
+  const auto has_local_pointer_authority = [](const auto& op, const lir::LirOperand& pointer) {
+    return op.local_object_authority && pointer.value_id() &&
+           *pointer.value_id() == op.local_object_authority->pointer_definition &&
+           op.local_object_authority->pointer_type.kind() == lir::LirTypeKind::Pointer &&
+           op.local_object_authority->object.valid() && op.local_object_authority->live;
+  };
+  bool alloca = false, store = false, gep = false, load = false;
+  bool stack_save = false, stack_restore = false;
+  for (auto& function : module.functions) {
+    for (auto& inst : function.alloca_insts) {
+      if (auto* op = std::get_if<lir::LirAllocaOp>(&inst);
+          op && has_local_pointer_authority(*op, op->result)) {
+        alloca = true;
+        op->result.str() = "%misleading.alloca";
+      }
+    }
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* op = std::get_if<lir::LirStoreOp>(&inst);
+            op && has_local_pointer_authority(*op, op->ptr)) {
+          store = true;
+          op->ptr.str() = "%misleading.store";
+        }
+        if (auto* op = std::get_if<lir::LirGepOp>(&inst);
+            op && has_local_pointer_authority(*op, op->ptr)) {
+          gep = true;
+          op->ptr.str() = "%misleading.gep";
+        }
+        if (auto* op = std::get_if<lir::LirLoadOp>(&inst);
+            op && has_local_pointer_authority(*op, op->ptr)) {
+          load = true;
+          op->ptr.str() = "%misleading.load";
+        }
+        if (auto* op = std::get_if<lir::LirStackSaveOp>(&inst);
+            op && has_local_pointer_authority(*op, op->result)) {
+          stack_save = true;
+          op->result.str() = "%misleading.save";
+        }
+        if (auto* op = std::get_if<lir::LirStackRestoreOp>(&inst);
+            op && has_local_pointer_authority(*op, op->saved_ptr)) {
+          stack_restore = true;
+          op->saved_ptr.str() = "%misleading.restore";
+        }
+      }
+    }
+  }
+  expect_true(alloca, "selected local alloca producer requires typed authority");
+  expect_true(store, "selected direct local store producer requires typed authority");
+  expect_true(gep, "selected local indexed GEP producer requires typed authority");
+  expect_true(load, "selected direct local load producer requires typed authority");
+  expect_true(stack_save, "selected VLA stack save producer requires typed authority");
+  expect_true(stack_restore,
+              "selected VLA backward-goto stack restore producer requires typed authority");
+  lir::verify_module(module);
+}
+
 c4c::LinkNameId add_identity_test_global(
     c4c::codegen::lir::LirModule& module, std::string name) {
   namespace lir = c4c::codegen::lir;
@@ -8060,6 +8142,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_amd64_vaarg_register_stack_native_operand_contract();
   test_vaarg_native_producer_result_authority_contract();
   test_structured_operand_identity_foundation();
+  test_local_object_pointer_authority_contract();
   test_standalone_cast_result_authority_contract();
   test_direct_branch_successor_identity_contract();
   test_conditional_and_switch_successor_identity_contract();

@@ -1317,18 +1317,33 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
       ctx.local_slots[d->id.value] = slot;
       ctx.local_types[d->id.value] = d->type.spec;
       ctx.local_is_vla[d->id.value] = d->vla_size.has_value();
+      const LirTypeRef pointee_type = d->vla_size
+          ? LirTypeRef(LirBuiltinType::Pointer)
+          : LirTypeRef(stmt_emitter_detail::llvm_alloca_ty(mod, d->type.spec));
+      const LirCurrentFunctionLocalObjectPointer authority{
+          .pointer_definition = const_cast<LirModule*>(lir_module)->alloc_value(),
+          .object = ctx.lir_function->alloc_object(),
+          .owner = ctx.lir_function->link_name_id,
+          .pointer_type = LirTypeRef(LirBuiltinType::Pointer),
+          .pointee_type = pointee_type,
+          .live = true,
+      };
+      ctx.local_object_authorities.emplace(d->id.value, authority);
+      const LirOperand slot_operand =
+          LirOperand::ssa(slot, authority.pointer_definition);
       if (d->vla_size) {
         // VLA: alloca a pointer slot (the actual dynamic alloca happens later)
         TypeSpec ptr_ts{};
         ptr_ts.base = TB_VOID;
         ptr_ts.ptr_level = 1;
         ctx.alloca_insts.push_back(
-            LirAllocaOp{slot, stmt_emitter_detail::llvm_alloca_ty(mod, ptr_ts), "", 0});
+            LirAllocaOp{slot_operand, stmt_emitter_detail::llvm_alloca_ty(mod, ptr_ts), "", 0,
+                        authority});
       } else {
         const int stack_align = object_align_bytes(mod, lir_module, d->type.spec);
         ctx.alloca_insts.push_back(
-            LirAllocaOp{slot, stmt_emitter_detail::llvm_alloca_ty(mod, d->type.spec), "",
-                        stack_align});
+            LirAllocaOp{slot_operand, stmt_emitter_detail::llvm_alloca_ty(mod, d->type.spec), "",
+                        stack_align, authority});
       }
     }
   }
@@ -1409,8 +1424,18 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
   // VLA stack save — must happen after alloca hoisting but before statements.
   if (fn_has_vla_locals(fn)) {
     const std::string saved_sp = "%t" + std::to_string(ctx.tmp_idx++);
-    ctx.cur_block().insts.push_back(LirStackSaveOp{saved_sp});
+    const LirCurrentFunctionLocalObjectPointer authority{
+        .pointer_definition = const_cast<LirModule*>(lir_module)->alloc_value(),
+        .object = lir_function.alloc_object(),
+        .owner = lir_function.link_name_id,
+        .pointer_type = LirTypeRef(LirBuiltinType::Pointer),
+        .pointee_type = LirTypeRef(LirBuiltinType::Pointer),
+        .live = true,
+    };
+    ctx.cur_block().insts.push_back(
+        LirStackSaveOp{LirOperand::ssa(saved_sp, authority.pointer_definition), authority});
     ctx.vla_stack_save_ptr = saved_sp;
+    ctx.vla_stack_lifetime_authority = authority;
   }
 
   return ctx;
