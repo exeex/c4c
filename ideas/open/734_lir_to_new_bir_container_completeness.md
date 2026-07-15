@@ -969,3 +969,43 @@ verification, and transactional positive/negative coverage. Do not repeat
 Steps 7.26 through 7.28 or absorb SSA-indexed/local-temporary/
 aggregate-member/VLA GEPs, stores, later loads, stack lifetime, or any other
 family.
+
+## Runbook Exhaustion Decision: post-Step 7.29 local-array GEP receipt
+
+Close rejected. Commit `4ab2deb7e` receives exactly closed 791's selected
+direct static-local-array `LirGepOp` authority into a typed Raw-BIR
+destination, importer dispatch, reachable verifier, and transactional
+positive/malformed interface coverage. Supervisor acceptance is a fresh build,
+focused `^backend_lir_to_bir_interface$` proof passing 1/1, and a matching
+non-decreasing `^backend_` before/after regression guard passing 5/5 to 5/5;
+the direct scope/diff review is accepted. Closed 791's producer handoff remains
+`ea579c648`.
+
+This one bounded receiver row does not satisfy the source completion gate.
+Unmet criteria are the no-omission checked coverage matrix and per-row typed
+authority/destination/importer/verifier/proof disposition; lossless verified
+Raw-BIR receipt of every valid current-LIR semantic fact; a complete explicit
+dispatcher with neighboring coverage; and final whole-module transactional,
+documentation-convergence, focused, and broader acceptance proof. In
+particular, valid remaining local/VLA, named/local-temporary, nonselected
+store/GEP, memory/va-list, aggregate/vector, body-parameter,
+module/type/global/metadata, other instruction/terminator, and inline-assembly
+families are still unreceived and fail closed.
+
+Classification: `separate-blocker`. New open idea
+`ideas/open/792_lir_next_local_operation_receiver_handoff.md` owns selecting,
+publishing, verifying, and handing off exactly one next valid local-operation
+row after the accepted local-array GEP. It must not edit Raw-BIR/importer code
+or derive authority from local spelling, formatted operands, printer output,
+LLVM text, or testcase identity.
+
+Resumption record: Steps 1 through 7.29 are accepted, including receiver
+commits `006d79aaf`, `7dc03f23a`, `2cce9da69`, `eabf7a3b8`, `f5cda70ee`, and
+`4ab2deb7e`; prerequisite handoffs include closed 791's `ea579c648`. Do not
+repeat those packets. The exact return point is `Step 7.30 - Receive the one
+792-authorized local-operation authority row`. After 792 closes with an exact
+typed handoff and accepted producer proof, reactivate 734 and repair its
+runbook for only that receiver row: add the minimum typed Raw-BIR destination,
+importer dispatch, reachable verification, and transactional positive/negative
+coverage. Do not absorb any other local/VLA or later family without a separate
+producer-authorized handoff.

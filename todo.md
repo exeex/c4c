@@ -1,31 +1,27 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
+Source Idea Path: ideas/open/792_lir_next_local_operation_receiver_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 7.29
-Current Step Title: Receive the selected direct static-local-array LirGepOp authority
+Current Step ID: 1
+Current Step Title: Select one native-authority local-operation row
 
 ## Just Finished
 
-- Step 7.29 received the one selected direct static-local-array `LirGepOp` as
-  a typed Raw-BIR authority payload with importer dispatch, reachable
-  verification, and transactional positive/malformed interface coverage.
+- 734 Step 7.29 accepted the selected direct static-local-array GEP receipt in
+  `4ab2deb7e`; this successor must not repeat it.
 
 ## Suggested Next
 
-- Supervisor: review this coherent Step 7.29 slice and select broader
-  acceptance proof or the next bounded packet.
+- Execute Step 1: inspect post-GEP local candidates and select exactly one
+  only when its native authority is sufficient.
 
 ## Watchouts
 
-- Presentation is nonsemantic. The receiver accepts only native result,
-  SSA base, one i64 immediate, exact element type, and coherent live local
-  authority; nonselected GEPs and every other local/later family fail closed.
+- Do not use local spelling, `%t`, rendered operands, printer output, LLVM
+  text, or testcase identity as semantic authority. Do not edit Raw-BIR.
 
 ## Proof
 
-- Passed: `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^backend_lir_to_bir_interface$'`. The delegated
-  proof was sufficient for this packet; no canonical root log was written by
-  executor instruction.
+- Before implementation, establish the focused producer proof for the one
+  selected row; the supervisor will select broader acceptance proof.
