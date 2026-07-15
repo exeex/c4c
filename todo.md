@@ -8,24 +8,24 @@ Current Step Title: Restore typed alloca-result compatibility on unselected over
 
 ## Just Finished
 
-- Switched from 753 Step 3 after its required full baseline failed 3036/3037.
-  The failure is outside 753's source scope and is now owned by this separate
-  800 regression blocker; no 753 receiver handoff was performed.
+- Completed plan Step 1: the unselected AMD64 overflow `va_arg` temporary now
+  uses `fresh_value(ctx)`, so its `LirAllocaOp` result is a typed SSA operand.
+  The selected `fresh_value` path, destination/carrier construction, and
+  native-memory authority boundary were left unchanged.
 
 ## Suggested Next
 
-- Execute Step 1 only: restore a verifier-compatible typed result operand for
-  the unselected AMD64 overflow `LirAllocaOp` route, while preserving selected
-  carrier selection and authority exactly as accepted in `c4e820a48`.
+- Supervisor: execute plan Step 2's matching full baseline and compare it to
+  the accepted 3037/3037 result before returning 753 to its receiver handoff.
 
 ## Watchouts
 
-- Do not weaken `LirAllocaOp` verification, turn the unselected route into a
-  selected carrier, recover facts from text, or modify closed 799. Keep the
-  correction limited to the unselected compatibility construction seam.
+- This correction is limited to the unselected compatibility construction seam;
+  do not weaken `LirAllocaOp` verification or alter selected-carrier authority
+  when running the parent baseline gate.
 
 ## Proof
 
-- Required for this blocker: fresh `cmake --build --preset default` plus
-  `./build/tests/frontend/frontend_lir_call_type_ref_test`; after that passes,
-  the supervisor must run a matching full baseline before returning to 753.
+- Passed: `cmake --build --preset default` and
+  `./build/tests/frontend/frontend_lir_call_type_ref_test`.
+  Proof log: `test_after.log`.

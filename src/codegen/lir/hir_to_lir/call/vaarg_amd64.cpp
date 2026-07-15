@@ -72,7 +72,7 @@ LirOperand StmtEmitter::emit_amd64_va_arg_from_overflow(
       ? LirTypeRef::struct_type(selected_payload_text,
                                 module_->struct_names.find(selected_payload_text))
       : LirTypeRef(res_ty);
-  const LirOperand tmp_addr = selected ? fresh_value(ctx) : LirOperand::raw(fresh_tmp(ctx));
+  const LirOperand tmp_addr = selected ? fresh_value(ctx) : fresh_value(ctx);
   const int align = object_align_bytes(mod_, module_, res_ts);
   std::optional<lir::LirCurrentFunctionLocalObjectPointer> destination;
   if (selected) {
