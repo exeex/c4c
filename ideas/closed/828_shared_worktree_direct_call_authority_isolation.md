@@ -1,6 +1,6 @@
 # Shared-Worktree Direct-Call Authority Isolation
 
-Status: Open
+Status: Closed — capability complete for isolation only
 Type: bounded dirty-worktree isolation prerequisite
 Predecessor: `ideas/open/827_lir_next_body_parameter_authority_handoff.md`, Step 2
 Blocked Return: `ideas/open/827_lir_next_body_parameter_authority_handoff.md`, Step 2
@@ -68,3 +68,25 @@ give 827 ownership of the restored dirty surfaces.
   parameter row, Raw-BIR/importer work, or broad cleanup under this idea.
 - Reject claiming that a green build/test proves any of the isolated semantic
   routes accepted.
+
+## Closure Record
+
+Status: capability complete — isolation only; closed after supervisor
+acceptance.
+
+- Preserved artifact: `review/828_preserved_821_822_frontend_slice.patch`
+  committed in `7b0f8671e`.
+- Restoration command: `git apply
+  review/828_preserved_821_822_frontend_slice.patch` (checked clean after the
+  removal).
+- Isolation proof: fresh `cmake --build --preset default` and `ctest
+  --test-dir build --output-on-failure -R '^frontend_lir_call_type_ref$'`
+  passed 1/1; matching `test_before.log` and `test_after.log` record the
+  focused regression guard.
+- Result: `src/codegen/lir/hir_to_lir/expr/binary.cpp` and
+  `tests/frontend/frontend_lir_function_signature_type_ref_test.cpp` are
+  clean relative to the preserved slice. This does not accept, repair, or
+  alter Ideas 821/822, and it does not publish 827 authority.
+- Return: reactivate 827 at Step 2, retaining its exact selected
+  `FixedDirectCallArgument0` contract and stipulated fresh build plus focused
+  frontend proof.

@@ -66,8 +66,8 @@ signatures, rendered operands, or compatibility fields.
 
 ## Resumption Record: shared-worktree isolation prerequisite
 
-Status: deactivated at selected Step 2 for a separately scoped shared-worktree
-isolation owner.
+Status: resumed at selected Step 2 after closed 828's accepted isolation
+checkpoint.
 
 - Last accepted progress: Step 1 selected only the native DirectScalar
   current-function parameter used unchanged as fixed direct-call argument 0.
@@ -78,11 +78,14 @@ isolation owner.
   already dirty with preserved, unaccepted Idea 821/822 material; the related
   `src/codegen/lir/hir_to_lir/expr/binary.cpp` material is likewise dirty.
   Step 2 must neither overwrite, co-commit, nor absorb that material.
-- Exact return action: after
-  `ideas/open/828_shared_worktree_direct_call_authority_isolation.md` has
-  recoverably separated the preserved dirty slice and established its clean
-  route, reactivate this source at **Step 2 — Publish and verify the selected
-  authority**. Publish only an explicit `LirCallOp.structured_args[0]`
+- Isolation completion: closed 828 preserved the dirty 821/822 slice in
+  `review/828_preserved_821_822_frontend_slice.patch` at `7b0f8671e`; restore
+  it only with `git apply review/828_preserved_821_822_frontend_slice.patch`.
+  Its clean-route build and focused frontend test passed 1/1 with matching
+  `test_before.log`/`test_after.log` evidence. That isolation accepts no
+  821/822 or 827 semantics.
+- Exact resumed action: **Step 2 — Publish and verify the selected authority**.
+  Publish only an explicit `LirCallOp.structured_args[0]`
   authority tuple for an unchanged native DirectScalar parameter at a fixed
   direct call: matching current-function definition/value/owner/index/type/
   `DirectScalar` ABI, role `FixedDirectCallArgument0`, and coherence with

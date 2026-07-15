@@ -1,65 +1,65 @@
-# Shared-Worktree Direct-Call Authority Isolation Runbook
+# Next Function-Body Parameter Authority Handoff Runbook
 
 Status: Active
-Source Idea: ideas/open/828_shared_worktree_direct_call_authority_isolation.md
-Switched from: ideas/open/827_lir_next_body_parameter_authority_handoff.md at Step 2
+Source Idea: ideas/open/827_lir_next_body_parameter_authority_handoff.md
+Resumed from: closed 828's accepted shared-worktree isolation checkpoint
 
 ## Purpose
 
-Separate the preserved unaccepted Idea 821/822 dirty slice from the shared
-worktree so the already selected 827 direct-call authority route has an
-independent implementation and proof surface.
+Publish and prove one next structured function-body parameter-use authority
+row so 734 can later receive exactly that row into Raw BIR.
 
 ## Core Rule
 
-Preserve every dirty implementation/test hunk recoverably before removing it
-from the shared route. Isolation is not semantic acceptance.
+Select one existing native semantic consumer relation and carry only its
+structured current-function facts. Never recover authority from display text,
+names, signatures, rendered operands, or diagnostics.
 
 ## Non-Goals
 
-- Any producer/schema/verifier implementation for 827.
-- Acceptance, repair, redesign, or deletion of Ideas 821/822.
-- Raw-BIR/importer work, expectation changes, or generic cleanup.
+- Raw-BIR/importer/receiver changes or any 734 receiver implementation.
+- Generic parameter admission, ABI conversion, or a multi-row sweep.
+- Reopening accepted 817--826 authority rows or absorbing other LIR families.
+- Restoring, accepting, or changing the preserved 821/822 slice.
 
 ## Ordered Steps
 
-### Step 1 - Inventory and preserve the dirty slice
+### Step 1 - Trace and select one next native parameter-use row
 
-Goal: create one named, recoverable preservation artifact for every dirty
-`binary.cpp` and frontend-test hunk owned by the pending 821/822 route.
+Status: complete before the 828 isolation switch.
 
-Actions:
+Selected contract: an unchanged native DirectScalar current-function parameter
+used as fixed direct-call argument 0. Its required authority is the exact
+`LirCallOp.structured_args[0]` tuple with matching current-function
+definition/value/owner/index/type/`DirectScalar` ABI, role
+`FixedDirectCallArgument0`, and coherence with structured argument 0 and fixed
+callee parameter 0.
 
-- record the exact source-hunk ownership and current non-accepting proof state;
-- create a reversible preservation artifact and verify its restoration command;
-- remove only the preserved dirty code/test slice from the shared route.
+### Step 2 - Publish and verify the selected authority
 
-Completion check: the artifact applies cleanly, the two code/test surfaces are
-clean relative to their pre-slice base, and no semantic behavior is accepted.
-
-### Step 2 - Prove the isolated shared route
-
-Goal: establish that the now-clean route can be independently owned by 827.
+Goal: add only the selected native carrier and fail-closed validation.
 
 Actions:
 
-- run the supervisor-selected fresh build and focused frontend proof;
-- keep the baseline/after evidence distinct from semantic acceptance; and
-- retain the named restoration procedure.
+- implement structured current-function authority only for the selected fixed
+  direct-call argument-0 row;
+- reject missing, invalid, duplicate, foreign, owner/index/type/ABI/role, and
+  consumer-incoherent authority; and
+- add nearby positive and malformed-authority coverage without receiver edits.
 
-Completion check: evidence and worktree ownership demonstrate a clean 827
-route without altering or accepting the preserved slice.
+Completion check: fresh `cmake --build --preset default`, then `ctest
+--test-dir build --output-on-failure -R '^frontend_lir_call_type_ref$'` pass;
+nonselected forms remain rejected.
 
-### Step 3 - Return to the direct-call authority handoff
+### Step 3 - Record the receiver handoff and return to 734
 
-Goal: record a durable return to 827 without changing its selected contract.
+Goal: conclude this bounded producer route with an executable receiver return.
 
 Actions:
 
-- record preservation location, restoration command, and proof references;
-- close/conclude this isolation prerequisite only after supervisor acceptance;
-- reactivate 827 exactly at Step 2.
+- record the exact authority tuple, consumer relation, proof, and commit;
+- state the one corresponding Raw-BIR receiver boundary for 734; and
+- return control to 734 without claiming Raw-BIR receipt or source completion.
 
-Completion check: the successor can reconstruct the selected
-`FixedDirectCallArgument0` contract and run its stipulated fresh build plus
-`^frontend_lir_call_type_ref$` proof without reusing preserved hunks.
+Completion check: supervisor accepts the selected proof and plan-owner can
+close this handoff and reactivate 734 at the stated bounded receiver step.
