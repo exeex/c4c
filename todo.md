@@ -1,33 +1,34 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/810_lir_gep_producer_result_authority_baseline_blocker.md
+Source Idea Path: ideas/open/795_lir_body_parameter_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair the selected GEP result-authority handoff
+Current Step ID: 1
+Current Step Title: Trace the selected parameter-index body-use handoff
+你該做code review了
 
 ## Just Finished
 
-810 Step 2 completed the selected native pointer postfix increment/decrement
-and pointer compound add/sub GEP producer handoff: their direct GEPs now carry
-native result, base, and typed i64-index authority. Compound assignment keeps
-the RHS as `LirOperand` through the pointer GEP path; nearby frontend coverage
-checks all four producers and malformed-result rejection.
+810 Steps 1--2 are accepted (`f1cb9c510`, `1f1a1fb38`), but its required
+post-commit full baseline rejected at 3035/3037. The variable parameter-index
+GEP failure is switched here; the independent PHI failure remains owned by
+806.
 
 ## Suggested Next
 
-Supervisor should select the next scoped Step 2 follow-up or acceptance packet;
-do not group other partial-log GEP failures without an independent producer
-trace.
+Trace the `pr21173.c` variable RHS from authoritative GEP-index verification
+to its native function-body parameter publication and lowering handoff. Keep
+the selected route to one body-parameter/ABI classification surface.
 
 ## Watchouts
 
-`test_before.log` failed before this packet on the unrelated structured call
-signature mismatch. The temporary variable-RHS test shape exposed an existing
-non-native parameter-index route, so coverage uses native integer-immediate
-compound RHS authority and does not widen this packet. PHI residual failures
-belong to 804/806.
+810's native-immediate RHS repair is accepted and must not be reopened. Do not
+use rendered parameter identity, weaken GEP verification, or absorb the
+`20060910-1.c` PHI producer failure owned by 806. A focused result does not
+clear the rejected 3035/3037 baseline.
 
 ## Proof
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log` — passed (1/1); `test_after.log` is the proof log. The matching `test_before.log` failed (0/1) on the pre-existing `LirCallOp.callee_signature` structured-signature mismatch.
+No 795 proof recorded yet. The outgoing 810 focused
+`frontend_lir_call_type_ref` guard was accepted at 0/1 before to 1/1 after;
+the post-commit full baseline remains rejected at 3035/3037.

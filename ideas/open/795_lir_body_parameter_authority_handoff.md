@@ -30,6 +30,18 @@ body-use authority.
   same-feature positive/negative proof; all other forms remain classified or
   fail closed.
 
+## Active Baseline-Blocker Intake
+
+795 is activated from 810's rejected post-`1f1a1fb38` full baseline. The
+selected surface is a variable RHS function-body parameter used as the index
+of a direct pointer-compound-assignment GEP (`pr21173.c` diagnostic:
+`LirGepOp.indices.value: authoritative GEP index requires integer or SSA
+authority`). Trace and repair only the native parameter body-use/index
+handoff, including exact classification if its ABI form requires it. This does
+not reopen 810's accepted native-immediate producer repair, reconstruct
+identity from text, or weaken the GEP verifier. On accepted focused proof,
+return 810 at unchanged Step 3.
+
 ## Reviewer Reject Signals
 
 - Reject reliance on closed 742 declaration publication as body-use authority.

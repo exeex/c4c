@@ -93,3 +93,32 @@ must rerun a fresh build, the focused
 `^(frontend_hir_tests|frontend_lir_call_type_ref|backend_)$` ladder, and a
 comparable supervisor-accepted full baseline before Step 3. Do not repeat 801
 Step 1 or credit its preserved repair through this blocker.
+
+## Resumption Record: function-body parameter index blocker
+
+- Last accepted progress: Step 1, *Trace and classify failing GEP producer
+  families*, was accepted in `f1cb9c510`; Step 2, *Repair the selected GEP
+  result-authority handoff*, was accepted in `1f1a1fb38`. The accepted repair
+  is limited to native-immediate RHS pointer compound add/sub together with
+  the selected postfix producer family.
+- Interrupted runbook step: Step 3, *Prove the blocker and return control to
+  801*.
+- Baseline rejection and scope boundary: the hook-managed full baseline after
+  `1f1a1fb38` passed 3035/3037 rather than 3037/3037. The `20060910-1.c` PHI
+  failure remains exclusively with the existing 806 PHI residual-producer
+  route. `pr21173.c` reaches the selected direct GEP with a variable RHS whose
+  index is a non-native function-body parameter authority; that is not the
+  native-immediate GEP producer repair accepted in Step 2 and must not be
+  solved by text recovery or verifier weakening.
+- Blocking owner: existing
+  `ideas/open/795_lir_body_parameter_authority_handoff.md` owns the bounded
+  native body-parameter/index authority and ABI-form classification route.
+- Exact return point: after 795 provides supervisor-accepted focused proof for
+  the selected parameter-index handoff, reactivate 810 unchanged at Step 3
+  only. Do not repeat or reopen accepted Steps 1--2; then obtain a fresh,
+  comparable 3037/3037 full baseline before returning 801 unchanged at its
+  Step 2 gate.
+- Accepted proof and implementation references: Step 2's focused
+  `frontend_lir_call_type_ref` guard changed from 0/1 before to 1/1 after the
+  fresh build; the matching non-decreasing guard was accepted. This is bounded
+  producer proof, not a full-baseline clearance.

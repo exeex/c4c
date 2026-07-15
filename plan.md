@@ -1,90 +1,82 @@
-# LIR GEP Producer Result Authority Baseline Blocker Runbook
+# LIR Function-Body Parameter Authority Handoff Runbook
 
 Status: Active
-Source Idea: ideas/open/810_lir_gep_producer_result_authority_baseline_blocker.md
-Activated from: 801 Step 2 full-baseline authority blocker; return to 801 only after accepted bounded proof.
+Source Idea: ideas/open/795_lir_body_parameter_authority_handoff.md
+Activated from: 810 Step 3 full-baseline blocker; return to 810 only after accepted parameter-index proof.
 
 ## Purpose
 
-Restore the native result-authority handoff for the evidenced LIR GEP producer
-family without weakening the authoritative GEP verifier or absorbing 801's
-anonymous-layout/structured-call work.
+Publish the native function-body parameter authority needed by the selected
+variable pointer-compound GEP index without treating declaration facts or
+rendered parameter text as body-use identity.
 
 ## Core Rule
 
-`LirGepOp.result` must carry native current-function `LirValueId` authority.
-Do not derive authority from rendered text, testcase identity, or instruction
-order, and do not weaken the existing verifier contract.
+A variable GEP index sourced from a function-body parameter must carry checked
+native integer or SSA authority owned by the current function. Do not recover
+identity from spelling, weaken `verify_authoritative_gep`, or broaden to ABI
+families not selected by evidence.
 
 ## Read First
 
-- `ideas/open/810_lir_gep_producer_result_authority_baseline_blocker.md`
-- `ideas/open/801_lir_anonymous_aggregate_layout_type_facts.md` resumption record
-- nearby authoritative GEP construction and `verify_authoritative_gep`
-- current full-baseline failure evidence, treating partial logs as diagnostic only
+- `ideas/open/795_lir_body_parameter_authority_handoff.md`
+- `ideas/open/810_lir_gep_producer_result_authority_baseline_blocker.md` resumption record
+- current `pr21173.c` failure trace and the direct pointer-compound GEP lowering path
+- nearby parameter publication/body-use authority and authoritative GEP verification
 
 ## Non-Goals
 
-- 801 anonymous layout/structured-call repair and its acceptance.
-- Generic provenance, pointer/object/memory, Raw-BIR, MIR/emission, or PHI work.
-- Any weakening of GEP verifier result authority or text-derived recovery.
+- Reopening 810's accepted postfix/native-immediate GEP producer repair.
+- PHI producer authority, including `20060910-1.c`, owned by 806.
+- Broad ABI/byval/HFA/vector/variadic conversion, Raw-BIR receipt, pointer or
+  memory redesign, verifier weakening, or text-derived authority.
 
 ## Ordered Steps
 
-### Step 1 - Trace and classify failing GEP producer families
+### Step 1 - Trace the selected parameter-index body-use handoff
 
-Goal: reproduce representative failures and identify the native producer or
-immediate handoff that leaves an authoritative GEP result without a valid
-current-function `LirValueId`.
-
-Actions:
-
-- trace from failing GEP verification to result construction/publication;
-- group failures only when their producer route is evidenced identical;
-- split an unshared family into a separate open successor rather than growing
-  this runbook.
-
-Completion check: one bounded producer family is selected with evidence, or
-each unshared family has an explicit successor; no verifier weakening or
-801/804/806 work is selected.
-
-Accepted: `f1cb9c510` records the trace-only packet in
-`review/810_step1_gep_producer_trace.md`. The exact focused command
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_src_00173_c$'`
-reproduced the missing `LirGepOp.result` authority. The selected shared family
-is pointer postfix increment/decrement and adjacent pointer compound add/sub:
-the postfix route loads its base through `fresh_value(ctx)` and constructs the
-GEP result through `fresh_tmp(ctx)` at `lvalue.cpp:645-649`; the adjacent
-`+=`/`-=` route has the same direct construction at `lvalue.cpp:737-741`.
-
-### Step 2 - Repair the selected GEP result-authority handoff
-
-Goal: publish the smallest checked native `LirValueId` result authority needed
-by the existing authoritative GEP contract for pointer postfix
-increment/decrement and adjacent pointer compound add/sub only.
+Goal: establish the exact native parameter identity, ownership, and ABI-form
+classification at the variable RHS index entering the direct pointer-compound
+GEP.
 
 Actions:
 
-- repair only the evidenced producer-side/immediate handoff in the selected
-  pointer postfix increment/decrement and adjacent pointer compound add/sub
-  family;
-- retain rejection of missing, foreign, stale, and unknown result authority;
+- trace `pr21173.c` from the GEP index verifier diagnostic to the function
+  body parameter publication and lowering handoff;
+- determine whether the selected parameter is native integer authority or a
+  bounded ABI-expanded form requiring explicit classification;
+- split any unshared parameter or ABI family into a separate open successor.
+
+Completion check: one body-parameter/index authority route is evidenced and
+bounded; no declaration-only, text-derived, PHI, or generic ABI work is
+selected.
+
+### Step 2 - Publish the selected parameter-index authority
+
+Goal: make the smallest producer/schema/lowering repair that supplies checked
+current-function integer or SSA authority for the selected body-parameter GEP
+index.
+
+Actions:
+
+- repair only the evidenced parameter body-use/index handoff;
+- retain rejection of malformed, foreign, type-incoherent, and display-derived
+  authority;
 - add nearby same-family positive and malformed-authority coverage.
 
-Completion check: focused coverage demonstrates the selected pointer
-increment/decrement and compound add/sub producers supply valid
-current-function authority and malformed forms still reject.
+Completion check: focused coverage proves the selected variable parameter
+index is authoritative and malformed forms remain fail-closed.
 
-### Step 3 - Prove the blocker and return control to 801
+### Step 3 - Prove the handoff and return control to 810
 
-Goal: provide accepted focused proof sufficient for 801 to retry its required
-comparable full baseline.
+Goal: give the supervisor accepted focused proof sufficient to resume 810's
+full-baseline gate.
 
 Actions:
 
-- run a fresh build and selected focused same-feature proof;
-- have the supervisor assess the evidence and reactivate 801 unchanged at
-  Step 2; do not call a partial baseline a regression guard or parent clearance.
+- run a fresh build and selected same-feature proof;
+- have the supervisor assess the evidence and reactivate 810 unchanged at
+  Step 3; do not call a focused result a 3037/3037 baseline clearance.
 
-Completion check: the supervisor accepts the bounded proof and 801 can resume
-its exact Step 2 full-baseline gate without rerunning Step 1.
+Completion check: supervisor acceptance permits 810 to resume exactly at Step
+3, where it must obtain a fresh comparable full baseline before returning 801.
