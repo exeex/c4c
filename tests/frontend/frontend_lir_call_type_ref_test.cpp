@@ -1808,7 +1808,8 @@ loop:
           op->result.str() = "%misleading.save";
         }
         if (auto* op = std::get_if<lir::LirStackRestoreOp>(&inst);
-            op && has_local_pointer_authority(*op, op->saved_ptr)) {
+            op && op->requires_native_stack_restore_authority &&
+                has_local_pointer_authority(*op, op->saved_ptr)) {
           stack_restore = true;
           op->saved_ptr.str() = "%misleading.restore";
         }
@@ -1914,6 +1915,16 @@ loop:
       for (auto& inst : block.insts) {
         if (auto* op = std::get_if<lir::LirStackSaveOp>(&inst);
             op && op->requires_native_stack_save_authority) return op;
+      }
+    }
+    return nullptr;
+  };
+  const auto selected_vla_stack_restore = [](lir::LirModule& candidate) -> lir::LirStackRestoreOp* {
+    lir::LirFunction& function = require_function(candidate, "vla_lifetime_authority");
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* op = std::get_if<lir::LirStackRestoreOp>(&inst);
+            op && op->requires_native_stack_restore_authority) return op;
       }
     }
     return nullptr;
@@ -2091,6 +2102,57 @@ loop:
     require_function(candidate, "vla_lifetime_authority").blocks.front().insts.push_back(
         std::move(duplicate));
   }, "verifier should reject more than one selected VLA stack save authority row");
+
+  lir::LirStackRestoreOp* stack_restore_op = selected_vla_stack_restore(module);
+  expect_true(stack_restore_op != nullptr && stack_restore_op->local_object_authority &&
+                  stack_restore_op->lifetime_transition && stack_restore_op->saved_ptr.value_id() &&
+                  *stack_restore_op->saved_ptr.value_id() ==
+                      stack_restore_op->local_object_authority->pointer_definition &&
+                  stack_restore_op->lifetime_transition->saved_pointer_definition ==
+                      stack_restore_op->local_object_authority->pointer_definition,
+              "selected VLA stack restore should publish native checkpoint authority");
+  const auto reject_selected_stack_restore = [&](const auto& base, auto mutate,
+                                                 const std::string& message) {
+    lir::LirModule candidate = base;
+    lir::LirStackRestoreOp* restore = selected_vla_stack_restore(candidate);
+    expect_true(restore != nullptr, "selected VLA stack restore should remain mutable");
+    mutate(candidate, *restore);
+    expect_identity_verification_rejected(candidate, message);
+  };
+  reject_selected_stack_restore(module, [](auto&, auto& restore) {
+    restore.requires_native_stack_restore_authority = false;
+  }, "verifier should reject a checkpoint transition without stack-restore admission");
+  reject_selected_stack_restore(module, [](auto&, auto& restore) {
+    restore.local_object_authority.reset();
+  }, "verifier should reject selected VLA stack restore without local authority");
+  reject_selected_stack_restore(module, [](auto&, auto& restore) {
+    restore.lifetime_transition.reset();
+  }, "verifier should reject selected VLA stack restore without checkpoint transition");
+  reject_selected_stack_restore(module, [](auto&, auto& restore) {
+    restore.lifetime_transition->saved_pointer_definition = lir::LirValueId{900001};
+  }, "verifier should reject selected VLA stack restore with a mismatched checkpoint transition");
+  reject_selected_stack_restore(module, [](auto&, auto& restore) {
+    restore.lifetime_transition->kind =
+        static_cast<lir::LirStackRestoreOp::LirStackRestoreLifetimeTransition::Kind>(99);
+  }, "verifier should reject selected VLA stack restore with an invalid checkpoint transition kind");
+  reject_selected_stack_restore(module, [](auto& candidate, auto& restore) {
+    restore.local_object_authority->owner = candidate.functions.front().link_name_id;
+  }, "verifier should reject selected VLA stack restore with a foreign owner");
+  reject_selected_stack_restore(module, [](auto&, auto& restore) {
+    restore.local_object_authority->object = lir::LirObjectId::invalid();
+  }, "verifier should reject selected VLA stack restore with an invalid local object");
+  reject_selected_stack_restore(module, [](auto&, auto& restore) {
+    restore.local_object_authority->pointer_type = lir::LirTypeRef::integer(64);
+  }, "verifier should reject selected VLA stack restore with a nonpointer authority type");
+  reject_selected_stack_restore(module, [](auto&, auto& restore) {
+    restore.local_object_authority->pointee_type = lir::LirTypeRef::integer(64);
+  }, "verifier should reject selected VLA stack restore with a nonpointer pointee type");
+  reject_selected_stack_restore(module, [](auto&, auto& restore) {
+    restore.local_object_authority->live = false;
+  }, "verifier should reject dead selected VLA stack restore authority");
+  reject_selected_stack_restore(module, [](auto&, auto& restore) {
+    restore.saved_ptr = lir::LirOperand::ssa("%foreign-vla-stack-restore", lir::LirValueId{900001});
+  }, "verifier should reject selected VLA stack restore with an unbound saved pointer");
 
   lir::LirModule missing_load_result = module;
   lir::LirLoadOp* result_load = selected_local_scalar_load(missing_load_result);

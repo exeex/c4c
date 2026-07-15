@@ -267,6 +267,14 @@ struct LirStackSaveOp {
 struct LirStackRestoreOp {
   LirOperand saved_ptr;   // SSA name of saved stack pointer
   std::optional<LirCurrentFunctionLocalObjectPointer> local_object_authority;
+  // Opt-in receipt for the selected VLA saved-stack-pointer consumer.
+  // Compatibility stack restores remain unselected.
+  bool requires_native_stack_restore_authority = false;
+  struct LirStackRestoreLifetimeTransition {
+    enum class Kind { RestoreSavedVlaStackCheckpoint } kind;
+    LirValueId saved_pointer_definition = LirValueId::invalid();
+  };
+  std::optional<LirStackRestoreLifetimeTransition> lifetime_transition;
 };
 
 struct LirAbsOp {

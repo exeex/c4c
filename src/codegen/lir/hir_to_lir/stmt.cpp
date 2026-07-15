@@ -647,7 +647,12 @@ void StmtEmitter::emit_control_flow_stmt(FnCtx& ctx, const GotoStmt& s) {
     emit_lir_op(ctx, lir::LirStackRestoreOp{
                          lir::LirOperand::ssa(*ctx.vla_stack_save_ptr,
                                               ctx.vla_stack_lifetime_authority->pointer_definition),
-                         *ctx.vla_stack_lifetime_authority});
+                         *ctx.vla_stack_lifetime_authority,
+                         true,
+                         lir::LirStackRestoreOp::LirStackRestoreLifetimeTransition{
+                             lir::LirStackRestoreOp::LirStackRestoreLifetimeTransition::Kind::
+                                 RestoreSavedVlaStackCheckpoint,
+                             ctx.vla_stack_lifetime_authority->pointer_definition}});
   }
   if (s.target.resolved_block.valid()) {
     emit_term_br(ctx, scheduled_target(s.target.resolved_block));

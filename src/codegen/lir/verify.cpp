@@ -1313,6 +1313,37 @@ void verify_native_stack_save_authority(const LirStackSaveOp& op) {
   }
 }
 
+void verify_native_stack_restore_authority(const LirStackRestoreOp& op) {
+  const auto* authority = op.local_object_authority
+                              ? &*op.local_object_authority
+                              : nullptr;
+  if (!op.requires_native_stack_restore_authority) {
+    if (op.lifetime_transition) {
+      fail_verify("LirStackRestoreOp.lifetime_transition",
+                  "unselected stack restore must not carry a native checkpoint transition");
+    }
+    return;
+  }
+  if (!authority || !op.lifetime_transition ||
+      op.saved_ptr.kind() != LirOperandKind::SsaValue || !op.saved_ptr.value_id() ||
+      !op.saved_ptr.value_id()->valid() ||
+      *op.saved_ptr.value_id() != authority->pointer_definition ||
+      authority->pointer_type.kind() != LirTypeKind::Pointer ||
+      authority->pointee_type.kind() != LirTypeKind::Pointer || !authority->live) {
+    fail_verify("LirStackRestoreOp.local_object_authority",
+                "selected VLA stack restore requires native saved-pointer and live pointer/object/type authority");
+  }
+  const auto& transition = *op.lifetime_transition;
+  if (transition.kind != LirStackRestoreOp::LirStackRestoreLifetimeTransition::Kind::
+                             RestoreSavedVlaStackCheckpoint ||
+      !transition.saved_pointer_definition.valid() ||
+      transition.saved_pointer_definition != *op.saved_ptr.value_id() ||
+      transition.saved_pointer_definition != authority->pointer_definition) {
+    fail_verify("LirStackRestoreOp.lifetime_transition",
+                "selected VLA stack restore transition must consume its saved checkpoint definition");
+  }
+}
+
 void verify_native_call_result_authority(const LirCallOp& op) {
   if (op.requires_native_result_authority && !op.result.value_id()) {
     fail_verify("LirCallOp.result",
@@ -1372,6 +1403,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
   }
   if (const auto* op = std::get_if<LirStackRestoreOp>(&inst)) {
     verify_pointer_operand(op->saved_ptr, "LirStackRestoreOp.saved_ptr");
+    verify_native_stack_restore_authority(*op);
     return;
   }
   if (const auto* op = std::get_if<LirAbsOp>(&inst)) {
