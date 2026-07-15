@@ -3880,33 +3880,44 @@ void test_ternary_coerce_result_authority_boundary() {
   namespace lir = c4c::codegen::lir;
 
   lir::LirModule lowered = lower_lir_module_for_target(R"c(
-long long lir_ternary_coerce_result_authority_loss(int condition, int input) {
-  return (condition ? input : 7LL) + 1LL;
+long long lir_ternary_coerce_result_authority_loss(int condition, long long input) {
+  return (condition ? (int)input : 7) + 1LL;
 }
 )c", "x86_64-linux-gnu");
 
   lir::LirFunction& function =
       require_function(lowered, "lir_ternary_coerce_result_authority_loss");
-  std::vector<lir::LirCastOp*> casts;
   std::vector<lir::LirPhiOp*> phis;
   std::vector<lir::LirBinOp*> binary_ops;
+  const lir::LirCondBr* branch = nullptr;
   for (auto& block : function.blocks) {
     for (auto& inst : block.insts) {
-      if (auto* cast = std::get_if<lir::LirCastOp>(&inst)) casts.push_back(cast);
       if (auto* phi = std::get_if<lir::LirPhiOp>(&inst)) phis.push_back(phi);
       if (auto* binary = std::get_if<lir::LirBinOp>(&inst)) binary_ops.push_back(binary);
     }
+    if (const auto* candidate = std::get_if<lir::LirCondBr>(&block.terminator)) {
+      expect_true(branch == nullptr,
+                  "focused ternary fixture should contain one conditional branch");
+      branch = candidate;
+    }
   }
-  const auto coercion = std::find_if(casts.begin(), casts.end(),
-                                     [](const lir::LirCastOp* cast) {
-    return cast->kind == lir::LirCastKind::Trunc &&
+  const auto then_block = std::find_if(
+      function.blocks.begin(), function.blocks.end(), [&](const lir::LirBlock& block) {
+        return branch && block.id == branch->true_successor;
+      });
+  expect_true(then_block != function.blocks.end(),
+              "focused ternary then arm should be selected through its native successor ID");
+  const auto coercion = std::find_if(then_block->insts.begin(), then_block->insts.end(),
+                                     [](const lir::LirInst& inst) {
+    const auto* cast = std::get_if<lir::LirCastOp>(&inst);
+    return cast && cast->kind == lir::LirCastKind::Trunc &&
            cast->from_type.kind() == lir::LirTypeKind::Integer &&
            cast->from_type.integer_bit_width() == 64 &&
            cast->to_type.kind() == lir::LirTypeKind::Integer &&
            cast->to_type.integer_bit_width() == 32;
   });
-  expect_true(coercion != casts.end() && phis.size() == 1 && binary_ops.size() == 1,
-              "ternary/coerce probe should retain an arm coercion, one PHI, and one later use");
+  expect_true(coercion != then_block->insts.end() && phis.size() == 1 && binary_ops.size() == 1,
+              "ternary/coerce probe should retain a selected then-arm coercion, one PHI, and one later use");
   expect_true(phis[0]->type_str.kind() == lir::LirTypeKind::Integer &&
                   phis[0]->type_str.integer_bit_width() == 32,
               "ternary PHI should retain its resolved i32 result type");
@@ -3916,9 +3927,11 @@ long long lir_ternary_coerce_result_authority_loss(int condition, int input) {
                   binary_ops[0]->type_str.kind() == lir::LirTypeKind::Integer &&
                   binary_ops[0]->type_str.integer_bit_width() == 64,
               "later ternary consumer should retain an i64 Add fact");
-  expect_true((*coercion)->result.value_id() && (*coercion)->result.value_id()->valid() &&
-                  (*coercion)->result.has_authority(),
-              "selected ternary arm coercion should retain native SSA result authority");
+  const lir::LirCastOp& selected_coercion = std::get<lir::LirCastOp>(*coercion);
+  expect_true(selected_coercion.result.value_id() &&
+                  selected_coercion.result.value_id()->valid() &&
+                  selected_coercion.result.has_authority(),
+              "selected ternary then-arm coercion should retain native SSA result authority");
   constexpr bool phi_incoming_values_are_raw_strings =
       std::is_same_v<std::decay_t<decltype(phis[0]->incoming.front().first)>, std::string>;
   expect_true(phi_incoming_values_are_raw_strings && phis[0]->incoming.size() == 2,
@@ -3930,23 +3943,35 @@ long long lir_ternary_coerce_result_authority_loss(int condition, int input) {
   const auto require_selected_coercion = [](lir::LirModule& module) -> lir::LirCastOp& {
     lir::LirFunction& focused =
         require_function(module, "lir_ternary_coerce_result_authority_loss");
+    const lir::LirCondBr* branch = nullptr;
+    for (const auto& block : focused.blocks) {
+      if (const auto* candidate = std::get_if<lir::LirCondBr>(&block.terminator)) {
+        expect_true(branch == nullptr,
+                    "focused ternary fixture should retain one conditional branch");
+        branch = candidate;
+      }
+    }
+    const auto then_block = std::find_if(
+        focused.blocks.begin(), focused.blocks.end(), [&](const lir::LirBlock& block) {
+          return branch && block.id == branch->true_successor;
+        });
+    expect_true(then_block != focused.blocks.end(),
+                "focused ternary then arm should retain its native successor ID");
     lir::LirCastOp* selected = nullptr;
-    for (auto& block : focused.blocks) {
-      for (auto& inst : block.insts) {
-        if (auto* candidate = std::get_if<lir::LirCastOp>(&inst);
-            candidate && candidate->kind == lir::LirCastKind::Trunc &&
-            candidate->from_type.kind() == lir::LirTypeKind::Integer &&
-            candidate->from_type.integer_bit_width() == 64 &&
-            candidate->to_type.kind() == lir::LirTypeKind::Integer &&
-            candidate->to_type.integer_bit_width() == 32) {
-          expect_true(selected == nullptr,
-                      "focused ternary fixture should contain one selected arm coercion");
-          selected = candidate;
-        }
+    for (auto& inst : then_block->insts) {
+      if (auto* candidate = std::get_if<lir::LirCastOp>(&inst);
+          candidate && candidate->kind == lir::LirCastKind::Trunc &&
+          candidate->from_type.kind() == lir::LirTypeKind::Integer &&
+          candidate->from_type.integer_bit_width() == 64 &&
+          candidate->to_type.kind() == lir::LirTypeKind::Integer &&
+          candidate->to_type.integer_bit_width() == 32) {
+        expect_true(selected == nullptr,
+                    "focused ternary then arm should contain one selected coercion");
+        selected = candidate;
       }
     }
     expect_true(selected && selected->result.value_id() && selected->result.value_id()->valid(),
-                "focused ternary fixture should contain an authoritative selected arm coercion");
+                "focused ternary fixture should contain an authoritative selected then-arm coercion");
     return *selected;
   };
 
