@@ -838,6 +838,16 @@ struct LirSelectedMemcpyPointerAuthority {
   LirCurrentFunctionPointerDefinition destination_alloca;
 };
 
+// Native fixed pointer parameters that are directly usable by the current
+// function body.  This is a definition carrier, not a spelling table: the
+// parameter index, exact pointer type, owner, and value identity must agree.
+struct LirCurrentFunctionBodyParameterDefinition {
+  LirValueId value = LirValueId::invalid();
+  uint32_t parameter_index = 0;
+  LirTypeRef type;
+  LinkNameId owner = kInvalidLinkName;
+};
+
 struct LirFunction {
   std::string name;
   LinkNameId link_name_id = kInvalidLinkName;
@@ -862,6 +872,9 @@ struct LirFunction {
   // foreign or stale bindings fail closed in the verifier.
   std::optional<LirSelectedMemcpyPointerAuthority>
       selected_memcpy_pointer_authority;
+
+  std::vector<LirCurrentFunctionBodyParameterDefinition>
+      native_body_parameter_definitions;
 
   // Final LLVM/output spelling for the function header plus legacy
   // no-metadata compatibility payload. Type identity mirrors live in

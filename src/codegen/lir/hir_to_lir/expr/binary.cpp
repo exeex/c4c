@@ -442,20 +442,35 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
       return emit_ptr_gep(source_rv, rts, source_lv, lts, false);
     }
     if (b.op == BinaryOp::Sub && op_ty == "ptr" && llvm_ty(rts) == "ptr") {
-      const std::string lhs_i = fresh_tmp(ctx);
-      const std::string rhs_i = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirCastOp{lhs_i, lir::LirCastKind::PtrToInt, "ptr", lv, "i64"});
-      emit_lir_op(ctx, lir::LirCastOp{rhs_i, lir::LirCastKind::PtrToInt, "ptr", rv, "i64"});
-      const std::string byte_diff = fresh_tmp(ctx);
+      const auto is_native_body_parameter = [&ctx](const LirOperand& operand) {
+        const LirValueId* value = operand.value_id();
+        return value && std::any_of(
+            ctx.param_value_authorities.begin(), ctx.param_value_authorities.end(),
+            [&](const auto& entry) { return entry.second == *value; });
+      };
+      const bool selected_parameter_chain = is_native_body_parameter(source_lv) ||
+                                            is_native_body_parameter(source_rv);
+      const LirOperand lhs_i = selected_parameter_chain ? fresh_value(ctx)
+                                                         : LirOperand::raw(fresh_tmp(ctx));
+      const LirOperand rhs_i = selected_parameter_chain ? fresh_value(ctx)
+                                                         : LirOperand::raw(fresh_tmp(ctx));
+      emit_lir_op(ctx, lir::LirCastOp{lhs_i, lir::LirCastKind::PtrToInt,
+                                      "ptr", lv, "i64"});
+      emit_lir_op(ctx, lir::LirCastOp{rhs_i, lir::LirCastKind::PtrToInt,
+                                      "ptr", rv, "i64"});
+      const LirOperand byte_diff = selected_parameter_chain ? fresh_value(ctx)
+                                                            : LirOperand::raw(fresh_tmp(ctx));
       emit_lir_op(ctx, lir::LirBinOp{byte_diff, "sub", "i64", lhs_i, rhs_i});
       TypeSpec elem_ts = lts;
       if (elem_ts.ptr_level > 0) elem_ts.ptr_level -= 1;
       const int elem_sz =
           (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0) ? 1 : std::max(1, sizeof_ts(mod_, elem_ts));
-      std::string diff = byte_diff;
+      LirOperand diff = byte_diff;
       if (elem_sz != 1) {
-        const std::string scaled = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirBinOp{scaled, "sdiv", "i64", byte_diff, std::to_string(elem_sz)});
+        const LirOperand scaled = selected_parameter_chain ? fresh_value(ctx)
+                                                            : LirOperand::raw(fresh_tmp(ctx));
+        emit_lir_op(ctx, lir::LirBinOp{scaled, "sdiv", "i64", byte_diff,
+                                       std::to_string(elem_sz)});
         diff = scaled;
       }
       TypeSpec i64_ts{};
@@ -463,7 +478,8 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
       if (res_spec.ptr_level > 0 || res_spec.array_rank > 0 || res_spec.base == TB_VOID) {
         return diff;
       }
-      return coerce(ctx, diff, i64_ts, res_spec);
+      const std::string coerced = coerce(ctx, diff.str(), i64_ts, res_spec);
+      return coerced == diff.str() ? diff : LirOperand::raw(coerced);
     }
   }
 

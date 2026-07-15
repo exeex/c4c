@@ -1403,6 +1403,22 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
     const std::string pname = "%p." + sanitize_llvm_ident(fn.params[i].name);
     ctx.param_slots[static_cast<uint32_t>(i)] = pname;
     const TypeSpec& param_ts = fn.params[i].type.spec;
+    const bool native_body_pointer_parameter =
+        param_ts.ptr_level > 0 && param_ts.array_rank == 0 &&
+        !stmt_emitter_detail::amd64_fixed_aggregate_byval(mod, param_ts) &&
+        !is_aarch64_fixed_hfa_param(mod, param_ts) &&
+        !llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod);
+    if (native_body_pointer_parameter) {
+      const LirValueId value = const_cast<LirModule*>(lir_module)->alloc_value();
+      ctx.param_value_authorities.emplace(static_cast<uint32_t>(i), value);
+      lir_function.native_body_parameter_definitions.push_back(
+          LirCurrentFunctionBodyParameterDefinition{
+              .value = value,
+              .parameter_index = static_cast<uint32_t>(i),
+              .type = LirTypeRef(LirBuiltinType::Pointer),
+              .owner = lir_function.link_name_id,
+          });
+    }
     if (const auto hfa = is_aarch64_fixed_hfa_param(mod, param_ts)
                              ? stmt_emitter_detail::classify_aarch64_hfa(mod, param_ts)
                              : std::nullopt;

@@ -47,6 +47,9 @@ struct FnCtx {
       local_object_authorities;
   // param_index → SSA name (e.g. "%p.x")
   std::unordered_map<uint32_t, std::string> param_slots;
+  // param_index → current-function native body parameter definition.  Slots
+  // remain display compatibility only; uses take authority from this map.
+  std::unordered_map<uint32_t, lir::LirValueId> param_value_authorities;
   // Structured LIR blocks (replaces body_lines).
   std::vector<lir::LirBlock> lir_blocks;
   size_t current_block_idx = 0;

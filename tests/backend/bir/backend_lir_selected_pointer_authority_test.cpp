@@ -939,6 +939,61 @@ void test_selected_current_function_pointer_authority() {
                   "non-live selected parameter definition must reject");
 }
 
+hir::Module native_body_pointer_parameter_module() {
+  hir::Module module;
+  module.target_profile = c4c::default_target_profile(c4c::TargetArch::X86_64);
+  hir::Function function;
+  function.id = module.alloc_function_id();
+  function.name = "native_body_pointer_parameter";
+  function.link_name_id = module.link_names.intern(function.name);
+  function.return_type.spec.base = c4c::TB_VOID;
+  function.return_type.spec.enum_underlying_base = c4c::TB_VOID;
+  function.return_type.spec.array_size = -1;
+  c4c::TypeSpec pointer_type;
+  pointer_type.base = c4c::TB_CHAR;
+  pointer_type.ptr_level = 1;
+  pointer_type.array_size = -1;
+  function.params.push_back(hir::Param{.name = "p", .type = hir::QualType{.spec = pointer_type}});
+  function.entry = module.alloc_block_id();
+  hir::Block entry;
+  entry.id = function.entry;
+  function.blocks.push_back(std::move(entry));
+  module.index_function_decl(function);
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+void test_native_body_parameter_authority_verifier_boundary() {
+  auto valid = lir::lower(native_body_pointer_parameter_module());
+  expect(valid.functions.size() == 1 &&
+             valid.functions[0].native_body_parameter_definitions.size() == 1,
+         "direct pointer body parameter must publish one native definition");
+  const auto& definition = valid.functions[0].native_body_parameter_definitions.front();
+  expect(definition.value.valid() && definition.parameter_index == 0 &&
+             definition.type.kind() == lir::LirTypeKind::Pointer &&
+             definition.owner == valid.functions[0].link_name_id,
+         "native parameter authority must retain value/index/type/current-function ownership");
+  lir::verify_module(valid);
+
+  auto malformed = valid;
+  malformed.functions[0].native_body_parameter_definitions.front().value =
+      lir::LirValueId::invalid();
+  expect_rejected(std::move(malformed),
+                  "native parameter authority must reject an invalid value identity");
+
+  auto foreign = valid;
+  foreign.functions[0].native_body_parameter_definitions.front().owner =
+      foreign.link_names.intern("foreign_native_parameter_owner");
+  expect_rejected(std::move(foreign),
+                  "native parameter authority must reject a foreign function owner");
+
+  auto incoherent = valid;
+  incoherent.functions[0].native_body_parameter_definitions.front().type =
+      lir::LirTypeRef::integer(64);
+  expect_rejected(std::move(incoherent),
+                  "native parameter authority must reject an incoherent non-pointer type");
+}
+
 void test_selected_memcpy_raw_bir_receipt_and_rollback() {
   auto valid = selected_authority_module();
   auto raw = bir::lower_lir_to_raw_bir(valid);
@@ -1044,6 +1099,7 @@ int main() {
   test_amd64_overflow_aggregate_carrier();
   test_native_memory_va_authority_verifier_boundary();
   test_selected_current_function_pointer_authority();
+  test_native_body_parameter_authority_verifier_boundary();
   test_selected_byval_materialization_populates_authority();
   test_selected_memcpy_authority_verifier_boundary();
   test_selected_memcpy_raw_bir_receipt_and_rollback();

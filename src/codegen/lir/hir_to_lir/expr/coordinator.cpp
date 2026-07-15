@@ -657,6 +657,10 @@ LirOperand StmtEmitter::emit_decl_ref_rval_operand(FnCtx& ctx, const DeclRef& r,
         emit_lir_op(ctx, lir::LirLoadOp{result, llvm_value_ty(mod_, pts), it->second});
         return result;
       }
+      const auto authority = ctx.param_value_authorities.find(*r.param_index);
+      if (authority != ctx.param_value_authorities.end()) {
+        return LirOperand::ssa(it->second, authority->second);
+      }
       return LirOperand::raw(it->second);
     }
     if (amd64_fixed_aggregate_byval(mod_, ctx.fn->params[*r.param_index].type.spec)) {

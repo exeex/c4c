@@ -698,6 +698,18 @@ void verify_cast_op_authority(const LirCastOp& op) {
     }
     return;
   }
+  if (op.kind == LirCastKind::PtrToInt) {
+    if (op.from_type.kind() != LirTypeKind::Pointer ||
+        op.to_type.kind() != LirTypeKind::Integer) {
+      fail_verify("LirCastOp.from_type",
+                  "authoritative pointer-to-integer cast requires pointer-to-integer endpoint type refs");
+    }
+    if (!op.to_type.integer_bit_width()) {
+      fail_verify("LirCastOp.to_type",
+                  "authoritative pointer-to-integer cast requires an exact integer destination type");
+    }
+    return;
+  }
   if (op.from_type.kind() != LirTypeKind::Integer ||
       op.to_type.kind() != LirTypeKind::Integer) {
     fail_verify("LirCastOp.from_type",
@@ -2045,6 +2057,37 @@ void verify_selected_memcpy_pointer_authority(const LirModule& mod,
   }
 }
 
+void verify_native_body_parameter_definitions(
+    const LirModule& mod, const LirFunction& function,
+    std::unordered_set<uint32_t>& definitions,
+    std::unordered_map<uint32_t, const LirInst*>& definition_insts) {
+  if (function.native_body_parameter_definitions.empty()) return;
+  if (function.is_declaration || function.link_name_id == kInvalidLinkName ||
+      mod.link_names.spelling(function.link_name_id).empty()) {
+    fail_verify("LirFunction.native_body_parameter_definitions",
+                "body parameter authority requires a defined current-function owner");
+  }
+  std::unordered_set<uint32_t> parameter_indices;
+  for (const auto& definition : function.native_body_parameter_definitions) {
+    constexpr std::string_view field =
+        "LirFunction.native_body_parameter_definitions";
+    if (!definition.value.valid() || definition.owner != function.link_name_id ||
+        definition.parameter_index >= function.params.size() ||
+        definition.parameter_index >= function.signature_param_type_refs.size() ||
+        definition.type.kind() != LirTypeKind::Pointer ||
+        function.signature_param_type_refs[definition.parameter_index] != definition.type) {
+      fail_verify(field, "requires a native current-function pointer parameter identity and type");
+    }
+    if (!parameter_indices.insert(definition.parameter_index).second) {
+      fail_verify(field, "must not duplicate a native body parameter index");
+    }
+    if (!definitions.insert(definition.value.value).second) {
+      fail_verify(field, "duplicates a current-function LirValueId definition");
+    }
+    definition_insts.emplace(definition.value.value, nullptr);
+  }
+}
+
 void verify_local_object_authority(const LirModule& mod, const LirFunction& function,
                                    const LirCurrentFunctionLocalObjectPointer& authority,
                                    std::string_view field) {
@@ -2488,6 +2531,8 @@ void verify_function_value_ownership(const LirModule& mod,
 
   verify_selected_memcpy_pointer_authority(mod, function, definitions,
                                            definition_insts);
+  verify_native_body_parameter_definitions(mod, function, definitions,
+                                           definition_insts);
   verify_selected_memcpy_authority(function);
   verify_selected_stack_save_authority(function);
   verify_local_object_authorities(mod, function);
@@ -2826,9 +2871,16 @@ void verify_function_value_ownership(const LirModule& mod,
           gep && gep->result.value_id() &&
           gep->ptr.kind() == LirOperandKind::SsaValue && gep->ptr.value_id()) {
         const auto base_definition = definition_insts.find(gep->ptr.value_id()->value);
+        const bool native_body_parameter = std::any_of(
+            function.native_body_parameter_definitions.begin(),
+            function.native_body_parameter_definitions.end(), [&](const auto& parameter) {
+              return parameter.value == *gep->ptr.value_id() &&
+                     parameter.type.kind() == LirTypeKind::Pointer;
+            });
         if (base_definition == definition_insts.end() ||
-            base_definition->second == nullptr ||
-            !modeled_pointer_result(*base_definition->second)) {
+            (!native_body_parameter &&
+             (base_definition->second == nullptr ||
+              !modeled_pointer_result(*base_definition->second)))) {
           fail_verify("LirGepOp.ptr",
                       "SSA GEP base must identify a current-function pointer value definition");
         }
