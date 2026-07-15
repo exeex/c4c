@@ -84,3 +84,39 @@ explicitly excludes. This foundation isolates only the carrier question before
 - Reject helper renames, expectation downgrades, weaker contracts, or retaining
   the string-only first-loss path behind a new abstraction name as capability
   progress.
+
+## Resumption Record: generic call-result operand carrier blocker
+
+Last accepted progress: Step 1, `Inventory carrier surfaces and prove
+structural-probe feasibility`, accepted at commit `b96751b03`. Step 2, `Bind
+the minimal generic carrier contract`, was interrupted. The active switch to
+this 784 foundation is commit `969d81eaf`.
+
+The Step 2 implementation attempt encountered the existing fail-closed GEP
+native-index requirement. It was limited to unaccepted GP/FP subchain plumbing
+and fully reverted when the AArch64 FP128 alignment route reached ptrmask:
+`make_lir_call_op` retains its result as a string, erasing the native
+`LirOperand`/`LirValueId` before `aligned_stack_ptr` can become the required
+PHI input. Assigning authority at the PHI caller would fabricate it; changing
+the generic call-result factory is outside this vaarg-only source scope.
+
+Classification: `separate-blocker`. Active
+`ideas/open/785_lir_call_result_operand_carrier_foundation.md` owns only the
+minimal generic current-function call-result carrier for `make_lir_call_op` and
+directly required support. It excludes generic expression redesign, PHI incoming
+transport/verification, predecessor/edge identity, Raw-BIR/importer, backend,
+target lowering, MIR, emission, and vaarg-specific helpers. If its direct
+support type cannot carry `LirOperand` without unrelated generic call/argument
+families, it must name that exact narrower successor.
+
+Exact return point: after 785 accepts the direct generic call-result carrier,
+reactivate 784 at Step 2 and retry its minimal generic carrier contract with
+the call result available. Then preserve 784's distinct decision on whether
+value-only PHI incoming transport is needed; do not treat 785 as PHI progress.
+The remaining Step 2 action is otherwise unchanged.
+
+Accepted proof after the reverted partial work:
+`cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^frontend_lir_call_type_ref$'` passed 1/1; full output
+is `test_after.log`. No code or test change was accepted, and `test_before.log`
+and `test_after.log` match.
