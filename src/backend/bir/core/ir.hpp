@@ -162,6 +162,7 @@ enum class Opcode : std::uint8_t {
   Phi,
   AllocaAuthority,
   StackSaveAuthority,
+  StackRestoreAuthority,
 };
 
 struct InlineAsmNode {
@@ -346,12 +347,24 @@ struct StackSaveAuthorityNode {
   bool live = false;
 };
 
+// Receipt of the producer-selected VLA stack-restore checkpoint consumption.
+// The transition kind is implicit in this one selected node; its saved pointer
+// is retained both as an operand and as source authority.
+struct StackRestoreAuthorityNode {
+  SourceValueId saved_pointer_definition{};
+  SourceObjectId object{};
+  LinkNameId owner{};
+  Type pointer_type{TypeKind::Pointer};
+  Type pointee_type{};
+  bool live = false;
+};
+
 using InstPayload =
     std::variant<InlineAsmNode, StoreNode, LoadNode, GetElementPtrNode,
     AbsNode, CallNode, BinaryNode, CompareNode, SelectNode, SelectedMemcpyNode,
     IntrinsicCallNode, CastNode, PhiNode, AllocaAuthorityNode,
     LocalLoadAuthorityNode, LocalStoreAuthorityNode, LocalArrayGepAuthorityNode,
-    StackSaveAuthorityNode>;
+    StackSaveAuthorityNode, StackRestoreAuthorityNode>;
 
 class BlockView;
 class FunctionView;

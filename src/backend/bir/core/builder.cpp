@@ -2263,6 +2263,55 @@ Result<BuildResult, BuildError> FunctionBuilder::append(
   return Result<BuildResult, BuildError>::success(BuildResult{instruction_id, {result_id}});
 }
 
+Result<BuildResult, BuildError> FunctionBuilder::append(
+    BlockId block, StackRestoreAuthoritySpec spec) {
+  auto function = mutable_function();
+  if (!function) return Result<BuildResult, BuildError>::failure(function.error());
+  if (!same_owner(function_, block) || !spec.saved_pointer_definition.valid() ||
+      !spec.object.valid() || spec.saved_pointer_definition.owner != function_ ||
+      spec.object.owner != function_ || !spec.owner.valid() ||
+      spec.owner.epoch != parent_->data_->epoch_ ||
+      spec.owner.slot >= parent_->data_->link_names_.size() ||
+      spec.pointer_type != Type{TypeKind::Pointer} ||
+      spec.pointee_type != Type{TypeKind::Pointer} || !spec.live)
+    return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  auto& data = function.value().get();
+  if (!data.blocks_.contains(function_, block))
+    return Result<BuildResult, BuildError>::failure(BuildError::InvalidBlock);
+  const auto saved = data.values_by_source_id_.find(spec.saved_pointer_definition.value);
+  if (saved == data.values_by_source_id_.end())
+    return Result<BuildResult, BuildError>::failure(BuildError::InvalidSourceValueId);
+  const auto value = data.values_.get(function_, saved->second);
+  const auto* definition = value ? std::get_if<InstResultDef>(&value.value().get().definition) : nullptr;
+  const auto producer = definition
+      ? data.insts_.get(function_, definition->instruction)
+      : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(ResolveError::OutOfRange);
+  const auto* stack_save = producer
+      ? std::get_if<StackSaveAuthorityNode>(&producer.value().get().payload) : nullptr;
+  if (!value || value.value().get().type != Type{TypeKind::Pointer} || !stack_save ||
+      stack_save->result != spec.saved_pointer_definition ||
+      stack_save->pointer_definition != spec.saved_pointer_definition ||
+      stack_save->object.owner != spec.object.owner ||
+      stack_save->object.value != spec.object.value || stack_save->owner != spec.owner ||
+      stack_save->pointer_type != spec.pointer_type ||
+      stack_save->pointee_type != spec.pointee_type || !stack_save->live)
+    return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  detail::InstData instruction;
+  instruction.opcode = Opcode::StackRestoreAuthority;
+  instruction.payload = StackRestoreAuthorityNode{spec.saved_pointer_definition,
+      spec.object, spec.owner, spec.pointer_type, spec.pointee_type, spec.live};
+  instruction.operands = {saved->second};
+  auto inserted = data.insts_.emplace(function_, std::move(instruction));
+  if (!inserted) return Result<BuildResult, BuildError>::failure(storage_error(inserted.error()));
+  const auto instruction_id = inserted.value();
+  auto block_data = data.blocks_.get_mut(function_, block);
+  if (!block_data || !block_data.value().get().instruction_order_.append(instruction_id)) {
+    data.insts_.erase(function_, instruction_id);
+    return Result<BuildResult, BuildError>::failure(BuildError::StorageExhausted);
+  }
+  return Result<BuildResult, BuildError>::success(BuildResult{instruction_id, {}});
+}
+
 Result<void, BuildError> FunctionBuilder::set_terminator(
     BlockId block, TerminatorSpec terminator) {
   auto function_result = mutable_function();

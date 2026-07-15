@@ -12059,6 +12059,16 @@ void test_selected_vla_stack_save_receipt_and_rejections() {
           lir::LirValueId{42}, lir::LirObjectId{7}, owner,
           lir::LirTypeRef(lir::LirBuiltinType::Pointer),
           lir::LirTypeRef(lir::LirBuiltinType::Pointer), true}, true});
+  entry.insts.push_back(lir::LirStackRestoreOp{
+      lir::LirOperand::ssa("%misleading.saved.pointer", lir::LirValueId{42}),
+      lir::LirCurrentFunctionLocalObjectPointer{
+          lir::LirValueId{42}, lir::LirObjectId{7}, owner,
+          lir::LirTypeRef(lir::LirBuiltinType::Pointer),
+          lir::LirTypeRef(lir::LirBuiltinType::Pointer), true}, true,
+      lir::LirStackRestoreOp::LirStackRestoreLifetimeTransition{
+          lir::LirStackRestoreOp::LirStackRestoreLifetimeTransition::Kind::
+              RestoreSavedVlaStackCheckpoint,
+          lir::LirValueId{42}}});
   lir::LirFunction function = void_definition("typed_vla_stack_save_owner", {entry});
   function.link_name_id = owner;
   module.functions.push_back(std::move(function));
@@ -12076,6 +12086,14 @@ void test_selected_vla_stack_save_receipt_and_rejections() {
              stack_save->pointer_type == bir::Type{bir::TypeKind::Pointer} &&
              stack_save->pointee_type == bir::Type{bir::TypeKind::Pointer} && stack_save->live,
          "Raw BIR VLA stack save must retain only typed result and live local-object authority");
+  const auto stack_restore_authority =
+      function_view.instruction(instructions[1]).value().stack_restore_authority();
+  expect(stack_restore_authority &&
+             stack_restore_authority->saved_pointer_definition == bir::SourceValueId{function_view.id(), 42} &&
+             stack_restore_authority->object.owner == function_view.id() && stack_restore_authority->object.value == 7 &&
+             stack_restore_authority->pointer_type == bir::Type{bir::TypeKind::Pointer} &&
+             stack_restore_authority->pointee_type == bir::Type{bir::TypeKind::Pointer} && stack_restore_authority->live,
+         "Raw BIR VLA stack restore must retain only typed saved-checkpoint authority");
 
   const auto rejected = [&](auto mutate, const std::string& message) {
     auto candidate = module;
@@ -12099,6 +12117,55 @@ void test_selected_vla_stack_save_receipt_and_rejections() {
            "VLA stack-save pointee type must remain pointer-typed");
   rejected([](auto&, auto& stack_save) { stack_save.local_object_authority->live = false; },
            "dead VLA stack-save authority must reject transactionally");
+  const auto rejected_restore = [&](auto mutate, const std::string& message) {
+    auto candidate = module;
+    auto& stack_restore =
+        std::get<lir::LirStackRestoreOp>(candidate.functions[0].blocks[0].insts[1]);
+    mutate(candidate, stack_restore);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value() &&
+               !bir::lower_lir_to_canonical_bir(candidate).has_value(), message);
+  };
+  rejected_restore([](auto&, auto& stack_restore) {
+    stack_restore.requires_native_stack_restore_authority = false;
+  }, "unselected stack restore must reject transactionally");
+  rejected_restore([](auto&, auto& stack_restore) {
+    stack_restore.saved_ptr = lir::LirOperand::integer("not-an-ssa", 0);
+  }, "non-SSA stack restore must reject transactionally");
+  rejected_restore([](auto&, auto& stack_restore) {
+    stack_restore.saved_ptr = lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+  }, "invalid stack restore saved pointer must reject transactionally");
+  rejected_restore([](auto&, auto& stack_restore) {
+    stack_restore.saved_ptr = lir::LirOperand::ssa("%unbound", lir::LirValueId{99});
+  }, "unbound stack restore saved pointer must reject transactionally");
+  rejected_restore([](auto&, auto& stack_restore) {
+    stack_restore.local_object_authority->pointer_definition = lir::LirValueId{99};
+  }, "mismatched stack restore authority definition must reject transactionally");
+  rejected_restore([](auto& candidate, auto& stack_restore) {
+    stack_restore.local_object_authority->owner =
+        candidate.link_names.intern("foreign_vla_stack_restore_owner");
+  }, "foreign stack restore owner must reject transactionally");
+  rejected_restore([](auto&, auto& stack_restore) {
+    stack_restore.local_object_authority->object = lir::LirObjectId::invalid();
+  }, "invalid stack restore object must reject transactionally");
+  rejected_restore([](auto&, auto& stack_restore) {
+    stack_restore.local_object_authority->pointer_type = lir::LirTypeRef::integer(64);
+  }, "nonpointer stack restore authority type must reject transactionally");
+  rejected_restore([](auto&, auto& stack_restore) {
+    stack_restore.local_object_authority->pointee_type = lir::LirTypeRef::integer(64);
+  }, "nonpointer stack restore pointee type must reject transactionally");
+  rejected_restore([](auto&, auto& stack_restore) {
+    stack_restore.local_object_authority->live = false;
+  }, "dead stack restore authority must reject transactionally");
+  rejected_restore([](auto&, auto& stack_restore) {
+    stack_restore.lifetime_transition.reset();
+  }, "stack restore without checkpoint transition must reject transactionally");
+  rejected_restore([](auto&, auto& stack_restore) {
+    stack_restore.lifetime_transition->kind =
+        static_cast<lir::LirStackRestoreOp::LirStackRestoreLifetimeTransition::Kind>(99);
+  }, "stack restore with invalid checkpoint transition kind must reject transactionally");
+  rejected_restore([](auto&, auto& stack_restore) {
+    stack_restore.lifetime_transition->saved_pointer_definition = lir::LirValueId{99};
+  }, "stack restore with mismatched checkpoint transition must reject transactionally");
   auto two_saves = module;
   two_saves.functions[0].blocks[0].insts.push_back(lir::LirStackSaveOp{
       lir::LirOperand::ssa("%second", lir::LirValueId{43}),
@@ -12116,7 +12183,7 @@ void test_selected_vla_stack_save_receipt_and_rejections() {
           lir::LirTypeRef(lir::LirBuiltinType::Pointer),
           lir::LirTypeRef(lir::LirBuiltinType::Pointer), true}});
   expect(!bir::lower_lir_to_raw_bir(stack_restore).has_value(),
-         "VLA stack restore must remain transactionally rejected");
+         "a second or unselected VLA stack restore must reject transactionally");
   auto dynamic_vla_alloca = module;
   dynamic_vla_alloca.functions[0].alloca_insts.push_back(lir::LirAllocaOp{
       lir::LirOperand::ssa("%dynamic.vla", lir::LirValueId{43}),

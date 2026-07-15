@@ -2292,17 +2292,25 @@ Result<void, ImportError> validate_function(const LirModule& module,
   }
 
   std::size_t selected_stack_save_count = 0;
+  std::size_t selected_stack_restore_count = 0;
   for (const auto& block : function.blocks) {
     for (const auto& instruction : block.insts) {
       if (const auto* stack_save =
               std::get_if<codegen::lir::LirStackSaveOp>(&instruction);
           stack_save && stack_save->requires_native_stack_save_authority)
         ++selected_stack_save_count;
+      if (const auto* stack_restore =
+              std::get_if<codegen::lir::LirStackRestoreOp>(&instruction);
+          stack_restore && stack_restore->requires_native_stack_restore_authority)
+        ++selected_stack_restore_count;
     }
   }
   if (selected_stack_save_count > 1)
     return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
                       "current function may publish exactly one selected VLA stack-save authority");
+  if (selected_stack_restore_count > 1)
+    return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
+                      "current function may publish exactly one selected VLA stack-restore authority");
 
   std::size_t selected_memcpy_count = 0;
   for (const auto& block : function.blocks) {
@@ -2708,6 +2716,30 @@ Result<void, ImportError> validate_function(const LirModule& module,
         if (!source_values.emplace(result->value, Type{TypeKind::Pointer}).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name,
                             block.label, "duplicate authoritative LirValueId definition");
+        continue;
+      }
+      if (const auto* stack_restore = std::get_if<codegen::lir::LirStackRestoreOp>(&instruction)) {
+        const auto* authority = stack_restore->local_object_authority
+            ? &*stack_restore->local_object_authority : nullptr;
+        const auto* saved = stack_restore->saved_ptr.value_id();
+        const auto pointer_type = authority
+            ? lower_lir_type(module, authority->pointer_type) : std::optional<Type>{};
+        const auto pointee_type = authority
+            ? lower_lir_type(module, authority->pointee_type) : std::optional<Type>{};
+        const auto transition = stack_restore->lifetime_transition
+            ? &*stack_restore->lifetime_transition : nullptr;
+        const bool selected = stack_restore->requires_native_stack_restore_authority && authority &&
+            stack_restore->saved_ptr.kind() == codegen::lir::LirOperandKind::SsaValue &&
+            saved && saved->valid() && *saved == authority->pointer_definition &&
+            authority->object.valid() && function.link_name_id != c4c::kInvalidLinkName &&
+            authority->owner == function.link_name_id && pointer_type == Type{TypeKind::Pointer} &&
+            pointee_type == Type{TypeKind::Pointer} && authority->live && transition &&
+            transition->kind == codegen::lir::LirStackRestoreOp::LirStackRestoreLifetimeTransition::Kind::RestoreSavedVlaStackCheckpoint &&
+            transition->saved_pointer_definition == *saved &&
+            source_values.count(saved->value) == 1;
+        if (!selected)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                            "stack restore requires the one selected native live VLA checkpoint transition and matching saved-pointer authority");
         continue;
       }
       if (const auto* gep = std::get_if<LirGepOp>(&instruction)) {
@@ -4141,6 +4173,28 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
                       name, block.label, "VLA stack-save result collided in the current-function source registry"};
                   return Result<void, BuildError>::failure(BuildError::DuplicateSourceValue);
+                }
+                continue;
+              }
+              if (const auto* stack_restore = std::get_if<codegen::lir::LirStackRestoreOp>(&instruction)) {
+                const auto& authority = *stack_restore->local_object_authority;
+                const auto saved = source_values.find(stack_restore->saved_ptr.value_id()->value);
+                const auto owner = imported_link_names.find(authority.owner);
+                if (saved == source_values.end() || owner == imported_link_names.end()) {
+                  edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                      name, block.label, "validated VLA stack-restore checkpoint disappeared"};
+                  return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                }
+                auto appended = function_builder.append(
+                    blocks.at(block.id.value), StackRestoreAuthoritySpec{
+                        SourceValueId{function_ids[function_index], authority.pointer_definition.value},
+                        SourceObjectId{function_ids[function_index], authority.object.value}, owner->second,
+                        *lower_lir_type(module, authority.pointer_type),
+                        *lower_lir_type(module, authority.pointee_type), authority.live});
+                if (!appended) {
+                  edit_error = builder_failure(name, block.label,
+                                               "append VLA stack-restore authority", appended.error());
+                  return Result<void, BuildError>::failure(appended.error());
                 }
                 continue;
               }

@@ -76,6 +76,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
              std::holds_alternative<LocalArrayGepAuthorityNode>(instruction.payload);
     case Opcode::StackSaveAuthority:
       return std::holds_alternative<StackSaveAuthorityNode>(instruction.payload);
+    case Opcode::StackRestoreAuthority:
+      return std::holds_alternative<StackRestoreAuthorityNode>(instruction.payload);
     case Opcode::Abs:
       return std::holds_alternative<AbsNode>(instruction.payload);
     case Opcode::Call:
@@ -965,6 +967,43 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         if (!exact)
           report(result, VerificationRule::ValueDefinition, function_id, inst_id,
                  "stack save must retain one live typed current-function saved-pointer/object authority and exact result");
+      }
+      if (const auto* stack_restore =
+              std::get_if<StackRestoreAuthorityNode>(&instruction.payload)) {
+        const ValueDef* saved_value = nullptr;
+        const StackSaveAuthorityNode* stack_save = nullptr;
+        if (instruction.operands.size() == 1) {
+          const auto resolved = function.values_.get(function_id, instruction.operands.front());
+          if (resolved) {
+            saved_value = &resolved.value().get();
+            if (const auto* definition = std::get_if<InstResultDef>(&saved_value->definition)) {
+              const auto producer = function.insts_.get(function_id, definition->instruction);
+              if (producer)
+                stack_save = std::get_if<StackSaveAuthorityNode>(&producer.value().get().payload);
+            }
+          }
+        }
+        const bool owner_resolves = stack_restore->owner.valid() &&
+            stack_restore->owner.epoch == module.epoch_ &&
+            stack_restore->owner.slot < module.link_names_.size();
+        const bool exact = stack_restore->saved_pointer_definition.valid() &&
+            stack_restore->object.valid() &&
+            stack_restore->saved_pointer_definition.owner == function_id &&
+            stack_restore->object.owner == function_id && owner_resolves &&
+            stack_restore->pointer_type == Type{TypeKind::Pointer} &&
+            stack_restore->pointee_type == Type{TypeKind::Pointer} && stack_restore->live &&
+            saved_value && saved_value->source_id == stack_restore->saved_pointer_definition &&
+            saved_value->type == Type{TypeKind::Pointer} && stack_save &&
+            stack_save->result == stack_restore->saved_pointer_definition &&
+            stack_save->pointer_definition == stack_restore->saved_pointer_definition &&
+            stack_save->object.owner == stack_restore->object.owner &&
+            stack_save->object.value == stack_restore->object.value &&
+            stack_save->owner == stack_restore->owner &&
+            stack_save->pointer_type == stack_restore->pointer_type &&
+            stack_save->pointee_type == stack_restore->pointee_type && stack_save->live;
+        if (!exact)
+          report(result, VerificationRule::ValueDefinition, function_id, inst_id,
+                 "stack restore must consume the matching live typed VLA stack-save checkpoint authority");
       }
       if (const auto* abs = std::get_if<AbsNode>(&instruction.payload)) {
         const Type i32{TypeKind::Integer, 32, "i32"};
