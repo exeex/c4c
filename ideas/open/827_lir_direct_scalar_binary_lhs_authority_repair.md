@@ -15,9 +15,13 @@ operation directly uses that parameter as its LHS.
 The preserved, unaccepted Idea 825 Step 2 work advances the exact focused
 frontend CTest past its earlier `LirSwitch.selector` abort, but it now stops
 at `LirBinOp.scalar_lhs_parameter_authority: is required when LirBinOp.lhs
-uses a native direct-scalar parameter`. This is a distinct binary-LHS
-producer/verifier first bad fact. Closed Idea 820's bounded `ull` publication
-does not own or authorize this newly exposed native binary-LHS gap.
+uses a native direct-scalar parameter`. Step 1 found that the producer requires
+the native definition type to equal the binary operation type, while the
+verifier's missing-authority relation can match the same LHS value and ABI
+without that type predicate. The exact full-route operation and a standalone
+reproduction of that mismatch must be identified before a repair is designed.
+This remains a distinct binary-LHS producer/verifier first bad fact; closed
+Idea 820's bounded `ull` publication does not own or authorize it.
 
 ## In Scope
 
@@ -25,6 +29,9 @@ does not own or authorize this newly exposed native binary-LHS gap.
   `lhs` is a current-function `DirectScalar` parameter, and the matching
   `verify_scalar_binary_lhs_authority` check in
   `src/codegen/lir/verify.cpp`.
+- Before implementation, identify the first failing lowered operation from the
+  full parent diagnostic route and create a minimal standalone reproduction of
+  its value/ABI-match plus definition-type/operation-type mismatch.
 - Publish/check exactly the existing `LirBinOp.scalar_lhs_parameter_authority`
   tuple: native parameter `LirValueId`, current-function `LinkNameId` owner,
   parameter index, `LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`,
@@ -45,19 +52,22 @@ does not own or authorize this newly exposed native binary-LHS gap.
 
 ## Acceptance Criteria
 
-1. The native binary-LHS producer emits the exact structured authority only
+1. The actual full-route binary-LHS failure and a standalone reproduction both
+   establish the native DirectScalar value/ABI match and the differing
+   definition/operation types before any producer repair is selected.
+2. The native binary-LHS producer emits the exact structured authority only
    when its LHS directly matches one current-function DirectScalar parameter.
-2. The verifier rejects missing, invalid, duplicate, foreign,
+3. The verifier rejects missing, invalid, duplicate, foreign,
    owner/index/type/ABI/role-invalid, and LHS or operation-type-incoherent
    authority; unselected forms remain fail closed.
-3. A fresh `cmake --build --preset default` and exact
+4. A fresh `cmake --build --preset default` and exact
    `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_function_signature_type_ref$'`
    provide independently attributable focused acceptance evidence, including
    the nearby positive/malformed binary-LHS coverage, without crediting or
    requiring Idea 825's selector slice. The full
    `^frontend_lir_call_type_ref$` CTest remains a parent/composite checkpoint
    for Idea 825 after it resumes; it is not claimed as 827 evidence.
-4. The handoff resumes Idea 825 exactly at Step 2 with its selector work still
+5. The handoff resumes Idea 825 exactly at Step 2 with its selector work still
    unaccepted and untouched by this blocker.
 
 ## Reviewer Reject Signals
@@ -73,3 +83,6 @@ does not own or authorize this newly exposed native binary-LHS gap.
   CTest, any use of the dirty selector slice to clear it, or any claim that
   the parent `^frontend_lir_call_type_ref$` checkpoint already passes or that
   closed 820 already owns this gap.
+- Reject a producer predicate change or an arithmetic test shape (including
+  `ull x + 1`) offered without the exact full-route failing operation and a
+  standalone reproduction of the definition-type/operation-type mismatch.
