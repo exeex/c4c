@@ -2136,6 +2136,13 @@ loop:
                   immediate_gep->element_type.array_element_type()->kind() ==
                       lir::LirTypeKind::Integer,
               "selected direct local-array GEP should construct its array element type from structured facts");
+  lir::LirModule stale_array_text = module;
+  lir::LirGepOp* stale_text_gep = selected_local_immediate_gep(stale_array_text);
+  expect_true(stale_text_gep != nullptr,
+              "selected local-array GEP should remain mutable for stale text proof");
+  stale_text_gep->element_type.str() = "[99 x i8]";
+  stale_text_gep->local_object_authority->indexed_element_type->str() = "[99 x i8]";
+  lir::verify_module(stale_array_text);
   const auto reject_selected_local_gep = [&](const auto& base, auto mutate,
                                              const std::string& message) {
     lir::LirModule candidate = base;
