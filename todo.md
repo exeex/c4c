@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/840_lir_nominal_vector_store_schema_migration.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Retire Duplicate Vector Mirrors For Migrated Consumers
+Current Step ID: 5
+Current Step Title: Prove The Vector Migration And Return The Queue
 
 # Current Packet
 
@@ -19,10 +19,18 @@ operation mirrors remain coherent.
 
 ## Suggested Next
 
-Select the next Step 4 retirement gate only after supervisor review. Likely
-bounded candidate: determine whether any migrated vector consumer can now drop
-or further demote a compatibility field without weakening mask, poison, or
-nonselected-producer checks.
+Run the final Step 5 acceptance proof for the vector-store migration route and
+return the queue to lifecycle review. Use a fresh build plus focused vector
+lowering, verifier, and printer coverage. Include:
+
+- `backend_lir_native_vector_authority`
+- `llvm_gcc_c_torture_src_pr60960_c`
+- `llvm_gcc_c_torture_src_scal_to_vec1_c`
+- `llvm_gcc_c_torture_src_scal_to_vec2_c`
+
+Do not perform additional mirror deletion in this proof packet. Treat remaining
+`LirNativeVectorShape`, mask, and type fields as compatibility boundaries for
+unmigrated or non-required paths unless a later source explicitly selects them.
 
 ## Watchouts
 
@@ -42,15 +50,20 @@ nonselected-producer checks.
 - Required scalar-splat `LirShuffleVectorOp` row-local shape mirrors are now
   demoted; keep malformed lane/element rejection on the vector-store entry and
   keep mask and poison checks on their migrated structured facts.
+- Remaining `LirNativeVectorShape`, mask, `vec_type`, `elem_type`,
+  `mask_type`, and related row-local fields still protect compatibility for
+  unmigrated or non-required vector paths; deleting them now would weaken
+  checks outside the completed Step 4 packets.
 - Aggregate vector elements now fail closed unless their typed element ref is
   backed by an accepted aggregate-store fact from the 838 route; do not add a
   separate aggregate owner for vector work.
 
 ## Proof
 
-Passed focused proof:
-`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_native_vector_authority$' ) > test_after.log 2>&1`.
-Additional guard passed:
-`ctest --test-dir build -j --output-on-failure -R 'llvm_gcc_c_torture_src_(pr60960_c|scal_to_vec1_c|scal_to_vec2_c)$'`.
-Matching before/after vector-authority guard passed for the shuffle mirror
-demotion.
+Required Step 5 proof:
+
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_native_vector_authority|llvm_gcc_c_torture_src_(pr60960_c|scal_to_vec1_c|scal_to_vec2_c))$' ) > test_after.log 2>&1`
+
+After the fresh focused proof, run `git diff --check`. Supervisor should decide
+whether matching before/after regression logs are needed before final
+acceptance or closure.
