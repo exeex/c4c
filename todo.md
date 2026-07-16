@@ -8,58 +8,81 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed Step 3: semantic string escape-hatch packets have been accepted and
-committed through the operand, comparison, arithmetic, call argument, and
-ternary preservation slices. Mutable `str()` accessors, implicit LIR operand
-string conversions, and selected frontend display-text equality gates are no
-longer used as valid-LIR semantic authority.
+Completed Step 4 no-code audit packet for the requested LIR-to-BIR bridge
+comments only. No implementation files were edited.
 
-Remaining `.str()` checks are classified as verifier/signature/call formatting
-mirror or output-boundary consistency surfaces, not selected mutable,
-implicit-conversion, or semantic preservation gates.
+Classification:
+- `aggregate.cpp`: retained output/no-id compatibility with aggregate-slot
+  owner. `selected_aggregate_type_layout(...)`,
+  `lower_byval_aggregate_layout(...)`, `collect_aggregate_params()`, and
+  `append_local_aggregate_copy_from_slots(...)` still own rendered aggregate
+  slot state, legacy byval params, and aggregate copy planning until
+  `LocalAggregateSlots` and byval copy state carry structured type refs or an
+  explicit no-id marker.
+- `call_abi.cpp`: retained output/no-id compatibility with call ABI owner.
+  `lower_signature_aggregate_layout(...)`,
+  `parse_function_signature_params(...)`,
+  `lower_return_info_from_function(...)`,
+  `lower_function_params_with_layouts(...)`, and
+  `lower_function_params_fallback(...)` still own hand-built legacy LIR and
+  non-enforced target signature parsing until signature return/param metadata
+  is mandatory at this boundary.
+- `calling.cpp`: retained output/no-id compatibility with call lowering owner.
+  The legacy raw no-ref call-arg byval fallback is fenced to args with no
+  type-ref carrier and no structured ABI payload; direct callee raw-name and
+  variadic aggregate `va_arg` comments remain owned by LinkNameId and variadic
+  aggregate type-ref threading respectively.
+- `types.cpp`: retained output/no-id compatibility with central aggregate
+  layout resolver owner. The raw `TypeDeclMap` fallback is still the central
+  no-id route for callers that do not carry `StructNameId`; metadata-bearing
+  refs already fail closed through
+  `lookup_backend_aggregate_type_ref_layout_result(...)`.
+- `memory/provenance.cpp`: retained output/no-id compatibility with provenance
+  owner. Scalar-subobject checks still receive rendered aggregate text from
+  `GlobalInfo`, `LocalSlotAddress`, and `PointerAddress`; imported-function
+  raw symbol lookups are Step 3 LinkNameId fences, not Step 4 aggregate layout
+  removal candidates.
+- `memory/intrinsics.cpp`: retained output/no-id compatibility with intrinsic
+  memory owner. Local memset/memcpy leaf views still derive from
+  `LocalAggregateSlots` and pointer slot state without aggregate
+  `LirTypeRef/StructNameId` metadata.
+- `cfg.cpp`: retained output/no-id compatibility with CFG owner. Aggregate PHI
+  planning still stores rendered `LirPhiOp::type_str` in `PhiLoweringPlan`
+  and uses the aggregate selected-layout fence for slot alignment.
+- `call_abi.cpp`, `calling.cpp`, and `ir.hpp`: no universal/raw fallback comment
+  in the audited scope was already safely removable without first changing an
+  owner boundary. The relevant `ir.hpp` comments describe compatibility/output
+  payloads and context carriers only; no implementation action belongs there in
+  this packet.
 
 ## Suggested Next
 
-Begin Step 4 with a narrow adapter/fallback audit packet: inspect receiver,
-dispatcher, verifier, printer, construction, and HIR-to-LIR boundary paths for
-expired M1--M15 adapters or universal fallbacks that can still re-enter deleted
-compatibility. Record each candidate as removable, already absent, or preserved
-with an explicit out-of-scope owner before making code changes.
+No clearly removable code packet was identified under the requested Step 4
+audit scope. Suggested Next: choose one owner-boundary conversion instead of a
+deletion pass, starting with `src/backend/bir/lir_to_bir/cfg.cpp`
+`plan_phi_lowering(...)`: thread structured aggregate type identity from
+`LirPhiOp` into `PhiLoweringPlan` so aggregate PHI slot alignment can stop
+using rendered `type_str`. Focused proof command:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|verify_tests_)'; } > test_after.log 2>&1`.
 
 ## Watchouts
 
-- Step 4 should remove expired adapters and universal fallbacks only after the
-  audit identifies their accepted M1--M15 replacement evidence.
-- Resolve compile errors with native-specific facts, not new compatibility
-  shims, generic runtime-text factories, or renamed universal bags.
-- Preserve residual owner-specific strings by documenting their owner in this
-  file; do not silently move 812/813 non-type strings, 821/822 switch selector
-  surfaces, or 797 coverage convergence into this deletion packet.
-- Do not restore mutable `LirTypeRef::str()`, mutable `LirOperand::str()`, or
-  implicit LIR string conversions while removing adapters.
-- Signature-store mirror text equality is intentionally preserved at the
-  function signature store boundary; it is output-boundary consistency, not
-  semantic type authority.
-- `same_signature_store_type_fact(...)` in `src/codegen/lir/verify.cpp` and
-  `LirModule::same_function_signature_entry(...)` behavior were left intact.
-- The remaining `lhs.str() == rhs.str()` search hit in `verify.cpp` is the
-  preserved signature-store mirror equality surface, not inline-asm ordinary
-  binding agreement.
-- The remaining `mirror.str()` checks in `exact_plain_scalar_mirror(...)` are
-  integer mirror/output consistency checks, not floating scalar
-  classification.
-- `function_signature_line(...)` parsing of `signature_text`,
-  `aggregate_signature_param_mirror_matches_type(...)` byval fragment checks,
-  and direct aggregate signature mirror checks are compatibility/output
-  validation surfaces; leave them alone unless separately selected.
-- Step 3 accepted commits: `199974299`, `7ade00edd`, `613c40c28`,
-  `c7274edf3`, `f05f8d806`, and `7338180ee`.
+- Treat all retained comments above as owner-boundary work, not immediate
+  deletion candidates.
+- Do not delete central raw-text layout fallbacks before the named callers carry
+  structured identity or an explicit no-id legacy marker; that would turn
+  hand-built/output compatibility into silent backend loss rather than escape
+  hatch deletion.
+- `calling.cpp` raw no-ref byval fallback is already restricted by structured
+  arg/type-ref and ABI-payload checks; removing it requires first making
+  metadata mandatory for legacy hand-built calls.
+- `memory/provenance.cpp` imported-function raw symbol lookups are LinkNameId
+  compatibility fences from Step 3, not aggregate layout bridges.
+- Closed Step 3 evidence is still relevant as a guardrail: do not restore
+  mutable `LirTypeRef::str()`, mutable `LirOperand::str()`, or implicit LIR
+  string conversions while converting retained Step 4 owners.
 
 ## Proof
 
-Accepted Step 3 packet proof for each slice:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'; } > test_after.log 2>&1`.
-
-Accepted Step 3 checkpoint proof:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|verify_tests_)'`
-passed 12/12.
+No build required for this no-code audit packet. `test_after.log` was not
+updated.
