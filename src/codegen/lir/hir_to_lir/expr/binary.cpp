@@ -31,6 +31,23 @@ LirOperand preserve_exact_binary_operand(const LirOperand& source,
   return source;
 }
 
+LirOperand preserve_scalar_comparison_operand(const LirOperand& source,
+                                              const TypeSpec& source_type,
+                                              const std::string& normalized,
+                                              const LirTypeRef& comparison_type) {
+  if (!source.has_authority()) return LirOperand(normalized);
+  if (source.value_id() != nullptr) {
+    return llvm_ty(source_type) == comparison_type.str() ? source
+                                                         : LirOperand(normalized);
+  }
+  if (source.integer_immediate() != nullptr) {
+    return integer_immediate_representable_by_type(source, comparison_type)
+               ? source
+               : LirOperand(normalized);
+  }
+  return LirOperand(normalized);
+}
+
 bool selected_floating_lhs_authority_opcode(std::string_view opcode) {
   return opcode == "fadd" || opcode == "fsub" || opcode == "fmul";
 }
@@ -198,9 +215,11 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
 
   TypeSpec lts{};
   const LirOperand source_lv = emit_rval_operand(ctx, b.lhs, lts);
+  const TypeSpec source_lts = lts;
   std::string lv = source_lv.str();
   TypeSpec rts{};
   const LirOperand source_rv = emit_rval_operand(ctx, b.rhs, rts);
+  const TypeSpec source_rts = rts;
   std::string rv = source_rv.str();
   TypeSpec res_spec =
       (e.type.spec.base != TB_VOID || e.type.spec.ptr_level > 0) ? e.type.spec : lts;
@@ -689,23 +708,34 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
       const LirOperand cmp_result = authoritative_scalar_compare
                                         ? fresh_value(ctx)
                                         : LirOperand(fresh_tmp(ctx));
-      const LirOperand lhs = authoritative_scalar_compare &&
-                                     source_lv.has_authority() &&
-                                     source_lv.str() == lv
-                                 ? source_lv
-                                 : LirOperand(lv);
-      const LirOperand rhs = authoritative_scalar_compare &&
-                                     source_rv.has_authority() &&
-                                     source_rv.str() == rv
-                                 ? source_rv
-                                 : LirOperand(rv);
       if (lf) {
+        const LirTypeRef comparison_type(op_ty);
+        const LirOperand lhs =
+            authoritative_scalar_compare
+                ? preserve_scalar_comparison_operand(source_lv, source_lts, lv,
+                                                     comparison_type)
+                : LirOperand(lv);
+        const LirOperand rhs =
+            authoritative_scalar_compare
+                ? preserve_scalar_comparison_operand(source_rv, source_rts, rv,
+                                                     comparison_type)
+                : LirOperand(rv);
         emit_lir_op(ctx, lir::LirCmpOp{cmp_result, true,
                                        LirCmpPredicateRef(row.f),
-                                       LirTypeRef(op_ty), lhs, rhs});
+                                       comparison_type, lhs, rhs});
       } else {
         const LirCmpPredicate pred = ls ? row.is : row.iu;
         const LirTypeRef comparison_type(op_ty);
+        const LirOperand lhs =
+            authoritative_scalar_compare
+                ? preserve_scalar_comparison_operand(source_lv, source_lts, lv,
+                                                     comparison_type)
+                : LirOperand(lv);
+        const LirOperand rhs =
+            authoritative_scalar_compare
+                ? preserve_scalar_comparison_operand(source_rv, source_rts, rv,
+                                                     comparison_type)
+                : LirOperand(rv);
         std::optional<lir::LirTruthinessComparisonLhsParameterAuthority>
             truthiness_lhs_authority;
         if (pred == LirCmpPredicate::Ne && comparison_type.kind() == LirTypeKind::Integer &&

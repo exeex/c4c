@@ -8,25 +8,30 @@ Current Step Title: Delete semantic string escape hatches
 
 ## Just Finished
 
-Completed Step 3 packet to delete the mutable `LirOperand::str()` escape hatch
-from `src/codegen/lir/operands.hpp`.
+Completed Step 3 packet to delete scalar comparison operand preservation that
+used direct `source_lv.str() == lv` / `source_rv.str() == rv` text equality as
+semantic authority in `src/codegen/lir/hir_to_lir/expr/binary.cpp`.
 
-Removed `[[nodiscard]] std::string& str()` while preserving the const explicit
-`.str()` output boundary. Repaired direct compile fallout in LIR call argument
-normalization by reconstructing operands when normalization changes their text.
-Updated direct test mutation fallout to use explicit operand replacement or
-test-local authority-preserving reconstruction helpers instead of mutating the
-operand's backing string.
+Added comparison-specific operand preservation that keeps native SSA authority
+only when the original operand type matches the comparison type, and keeps
+integer immediate authority only when the immediate is representable by the
+comparison type. Scalar comparison fallback now reconstructs raw normalized
+operands instead of treating matching display text as authority.
 
 ## Suggested Next
 
-Supervisor should review and commit this Step 3 mutable `LirOperand::str()`
-deletion slice if accepted, then continue with the next remaining Step 3 string
-escape hatch candidate. Do not widen the next packet into Step 4 adapter
-removal.
+Supervisor should review and commit this Step 3 scalar comparison preservation
+slice if accepted, then select the next remaining Step 3 semantic string escape
+hatch candidate. Do not widen the next packet into Step 4 adapter removal.
 
 ## Watchouts
 
+- `preserve_exact_binary_operand(...)` still contains its existing display
+  equality guard for scalar arithmetic; this packet only owned scalar
+  comparison operand preservation.
+- Scalar comparison preservation now depends on source TypeSpec snapshots taken
+  before usual arithmetic conversion. Preserve that distinction if later
+  packets refactor the conversion flow.
 - Do not restore a mutable `LirTypeRef::str()` accessor or add a test-only
   backdoor.
 - Do not restore mutable `operator std::string&()` or replace it with another
