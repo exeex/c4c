@@ -205,6 +205,28 @@ render_extract_element_vector_type_from_store(const LirModule& mod,
   return "<" + std::to_string(vector->lane_count) + " x " + elem_type + ">";
 }
 
+std::optional<std::pair<std::string, std::string>>
+render_required_shuffle_vector_types_from_store(const LirModule& mod,
+                                                const LirShuffleVectorOp& op) {
+  if (!op.requires_native_vector_authority || !op.native_vector_authority ||
+      !op.native_vector_authority->vector_ref) {
+    return std::nullopt;
+  }
+  const LirVectorStoreEntry* vector =
+      mod.find_vector(*op.native_vector_authority->vector_ref);
+  if (!vector || vector->lane_count == 0 || vector->element_type.empty()) {
+    throw LirVerifyError(
+        LirVerifyErrorKind::Malformed,
+        "LirShuffleVectorOp.native_vector_authority.vector_ref must reference a complete vector store fact");
+  }
+  const std::string elem_type =
+      require_type_ref(vector->element_type,
+                       "LirShuffleVectorOp.native_vector_authority.vector_ref.element_type");
+  return std::pair<std::string, std::string>{
+      "<" + std::to_string(vector->lane_count) + " x " + elem_type + ">",
+      "<" + std::to_string(vector->lane_count) + " x i32>"};
+}
+
 std::string_view signature_header_line(const LirFunction& function) {
   std::string_view signature = function.signature_text;
   while (!signature.empty()) {
@@ -807,8 +829,13 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
                                 LirOperandKind::SpecialToken})
        << "\n";
   } else if (const auto* op = std::get_if<LirShuffleVectorOp>(&inst)) {
-    const auto& vec_type =
-        require_type_ref(op->vec_type, "LirShuffleVectorOp.vec_type");
+    const auto store_types = render_required_shuffle_vector_types_from_store(mod, *op);
+    const std::string vec_type =
+        store_types ? store_types->first
+                    : require_type_ref(op->vec_type, "LirShuffleVectorOp.vec_type");
+    const std::string mask_type =
+        store_types ? store_types->second
+                    : require_type_ref(op->mask_type, "LirShuffleVectorOp.mask_type");
     os << "  "
        << require_operand_kind(op->result, "LirShuffleVectorOp.result",
                                {LirOperandKind::SsaValue})
@@ -824,8 +851,7 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
                                 LirOperandKind::Global,
                                 LirOperandKind::Immediate,
                                 LirOperandKind::SpecialToken})
-       << ", " << require_type_ref(op->mask_type, "LirShuffleVectorOp.mask_type")
-       << " "
+       << ", " << mask_type << " "
        << require_operand_kind(op->mask, "LirShuffleVectorOp.mask",
                                {LirOperandKind::SsaValue,
                                 LirOperandKind::Global,

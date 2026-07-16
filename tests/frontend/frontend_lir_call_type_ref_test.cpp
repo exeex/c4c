@@ -10235,6 +10235,99 @@ void test_extract_element_native_vector_printer_authority() {
       module, "extract-element native vector store shape mismatch should be rejected");
 }
 
+void test_shuffle_vector_required_native_vector_printer_authority() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  const c4c::LinkNameId owner = module.link_names.intern("shuffle_vector_authority");
+  const lir::LirVectorRef vector_ref = module.register_vector(
+      lir::LirVectorStoreEntry{4, lir::LirTypeRef::integer(64)});
+
+  lir::LirFunction function;
+  function.name = "shuffle_vector_authority";
+  function.link_name_id = owner;
+  function.signature_text = "define void @shuffle_vector_authority() {";
+  function.signature_return_type_ref = lir::LirTypeRef(lir::LirBuiltinType::Void);
+  function.entry = lir::LirBlockId{0};
+
+  lir::LirBlock block;
+  block.label = "entry";
+  block.id = function.entry;
+
+  lir::LirNativeVectorAuthority insert_authority;
+  insert_authority.owner = owner;
+  insert_authority.result = lir::LirValueId{1};
+  insert_authority.result_shape = {4, lir::LirTypeRef::integer(64)};
+  insert_authority.index =
+      lir::LirNativeVectorIndex{lir::LirOperand::integer("0", 0),
+                                lir::LirTypeRef::integer(64)};
+  insert_authority.vector_ref = vector_ref;
+
+  block.insts.push_back(lir::LirInsertElementOp{
+      lir::LirOperand::ssa("%seed", insert_authority.result),
+      lir::LirTypeRef("<4 x i64>"),
+      lir::LirOperand::special_token(lir::LirSpecialToken::Poison),
+      lir::LirTypeRef::integer(64),
+      lir::LirOperand::integer("7", 7),
+      lir::LirOperand::integer("0", 0),
+      insert_authority,
+      true});
+
+  lir::LirNativeVectorAuthority shuffle_authority;
+  shuffle_authority.owner = owner;
+  shuffle_authority.result = lir::LirValueId{2};
+  shuffle_authority.first_vector_use = insert_authority.result;
+  shuffle_authority.result_shape = {4, lir::LirTypeRef::integer(64)};
+  shuffle_authority.first_vector_shape =
+      lir::LirNativeVectorShape{4, lir::LirTypeRef::integer(64)};
+  shuffle_authority.second_vector_shape =
+      lir::LirNativeVectorShape{4, lir::LirTypeRef::integer(64)};
+  shuffle_authority.mask_lanes = std::vector<lir::LirShuffleMaskLane>(
+      4, {.kind = lir::LirShuffleMaskLane::Kind::Selected, .selected_lane = 0});
+  shuffle_authority.vector_ref = vector_ref;
+
+  block.insts.push_back(lir::LirShuffleVectorOp{
+      lir::LirOperand::ssa("%splat", shuffle_authority.result),
+      lir::LirTypeRef("<4 x i64>"),
+      lir::LirOperand::ssa("%seed", insert_authority.result),
+      lir::LirOperand::special_token(lir::LirSpecialToken::Poison),
+      lir::LirTypeRef("<4 x i32>"),
+      lir::LirOperand::special_token(lir::LirSpecialToken::ZeroInitializer),
+      shuffle_authority,
+      true});
+  block.terminator = lir::LirRet{std::nullopt,
+                                 lir::LirTypeRef(lir::LirBuiltinType::Void)};
+  function.blocks.push_back(std::move(block));
+  module.functions.push_back(std::move(function));
+
+  expect_true(owner != c4c::kInvalidLinkName,
+              "synthetic shuffle-vector fixture should have a valid owner ID");
+  expect_true(module.functions.size() == 1 &&
+                  module.functions[0].link_name_id == owner,
+              "synthetic shuffle-vector fixture should have one matching owner");
+  lir::verify_module(module);
+
+  auto& shuffle = std::get<lir::LirShuffleVectorOp>(
+      module.functions[0].blocks[0].insts[1]);
+  shuffle.vec_type.str() = "<99 x double>";
+  shuffle.mask_type.str() = "<99 x i64>";
+  lir::verify_module(module);
+  const std::string stale_ir = lir::print_llvm(module);
+  expect_contains(stale_ir,
+                  "shufflevector <4 x i64> %seed, <4 x i64> poison, <4 x i32> zeroinitializer",
+                  "required shuffle-vector printer should render native vector store authority");
+  expect_true(stale_ir.find("<99 x double>") == std::string::npos,
+              "required shuffle-vector printer must not emit stale vector display text");
+  expect_true(stale_ir.find("<99 x i64>") == std::string::npos,
+              "required shuffle-vector printer must not emit stale mask display text");
+
+  shuffle.native_vector_authority->mask_lanes.pop_back();
+  expect_identity_verification_rejected(
+      module, "shuffle native mask lane count mismatch should be rejected");
+}
+
 }  // namespace
 
 int main() {
@@ -10796,6 +10889,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_lir_phi_restricted_boundary_value_type_authority();
   test_insert_element_required_native_vector_printer_authority();
   test_extract_element_native_vector_printer_authority();
+  test_shuffle_vector_required_native_vector_printer_authority();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
   return 0;
