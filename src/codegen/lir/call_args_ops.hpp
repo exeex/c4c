@@ -258,7 +258,7 @@ inline std::optional<ParsedLirTypedCallView> parse_lir_typed_call_or_infer_param
 inline std::optional<ParsedLirDirectGlobalTypedCallView>
 parse_lir_direct_global_typed_call(const LirCallOp& call) {
   return parse_lir_direct_global_typed_call(
-      call.callee, call.callee_type_suffix, call.args_str);
+      call.callee.str(), call.callee_type_suffix, call.args_str);
 }
 
 inline bool lir_call_has_no_args(const LirCallOp& call) {
@@ -267,22 +267,24 @@ inline bool lir_call_has_no_args(const LirCallOp& call) {
 
 inline void collect_lir_value_names_from_call(const LirCallOp& call,
                                               std::vector<std::string>& values) {
-  collect_lir_value_names_from_call(call.callee, call.args_str, values);
+  collect_lir_value_names_from_call(call.callee.str(), call.args_str, values);
 }
 
 template <typename Fn>
 inline void collect_lir_global_symbol_refs_from_call(const LirCallOp& call, Fn&& visit) {
   collect_lir_global_symbol_refs_from_call(
-      call.callee, call.args_str, std::forward<Fn>(visit));
+      call.callee.str(), call.args_str, std::forward<Fn>(visit));
 }
 
 template <typename Fn>
 inline void rewrite_lir_call_operands(LirCallOp& call, Fn&& rewrite_operand) {
-  rewrite_lir_call_operands(call.callee, call.args_str, std::forward<Fn>(rewrite_operand));
+  rewrite_lir_call_operands(call.callee.str(), call.args_str,
+                            std::forward<Fn>(rewrite_operand));
 }
 
 inline std::string format_lir_call_site(const LirCallOp& call) {
-  return format_lir_call_site(call.callee, call.callee_type_suffix, call.args_str);
+  return format_lir_call_site(call.callee.str(), call.callee_type_suffix,
+                              call.args_str);
 }
 
 }  // namespace c4c::codegen::lir

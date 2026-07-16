@@ -357,14 +357,14 @@ std::optional<std::string> render_function_signature_from_store(
 
 std::string resolve_direct_call_callee(const LirCallOp& call,
                                        const c4c::LinkNameTable& link_names) {
-  if (!parse_lir_direct_global_callee(call.callee).has_value()) {
-    return call.callee;
+  if (!parse_lir_direct_global_callee(call.callee.str()).has_value()) {
+    return call.callee.str();
   }
 
   const std::string_view resolved_name =
       resolve_link_name(link_names, call.direct_callee_link_name_id);
   if (resolved_name.empty()) {
-    return call.callee;
+    return call.callee.str();
   }
   return llvm_global_sym(std::string(resolved_name));
 }

@@ -109,7 +109,7 @@ c4c::codegen::lir::LirCallOp& require_call_to(
   for (auto& block : fn.blocks) {
     for (auto& inst : block.insts) {
       auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst);
-      if (call && call->callee == callee) return *call;
+      if (call && call->callee.str() == callee) return *call;
     }
   }
   fail("fixture function should contain call to " + std::string(callee));

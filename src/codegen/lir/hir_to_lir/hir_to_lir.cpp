@@ -1936,11 +1936,11 @@ static void collect_inst_refs(const LirInst& inst, LirGlobalRefs& refs) {
     } else if constexpr (std::is_same_v<T, LirInsertValueOp>) {
       collect_operand_ref(op.agg, refs); collect_operand_ref(op.elem, refs);
     } else if constexpr (std::is_same_v<T, LirAllocaOp>) {
-      S(op.count);
+      collect_operand_ref(op.count, refs);
     } else if constexpr (std::is_same_v<T, LirInlineAsmOp>) {
       S(op.args_str);
     } else if constexpr (std::is_same_v<T, LirAbsOp>) {
-      S(op.arg);
+      collect_operand_ref(op.arg, refs);
     } else if constexpr (std::is_same_v<T, LirInsertElementOp>) {
       collect_operand_ref(op.vec, refs); collect_operand_ref(op.elem, refs);
     } else if constexpr (std::is_same_v<T, LirExtractElementOp>) {
@@ -1948,19 +1948,19 @@ static void collect_inst_refs(const LirInst& inst, LirGlobalRefs& refs) {
     } else if constexpr (std::is_same_v<T, LirShuffleVectorOp>) {
       collect_operand_ref(op.vec1, refs); collect_operand_ref(op.vec2, refs);
     } else if constexpr (std::is_same_v<T, LirVaArgOp>) {
-      S(op.ap_ptr);
+      collect_operand_ref(op.ap_ptr, refs);
     } else if constexpr (std::is_same_v<T, LirMemcpyOp>) {
-      S(op.dst); S(op.src);
+      collect_operand_ref(op.dst, refs); collect_operand_ref(op.src, refs);
     } else if constexpr (std::is_same_v<T, LirVaStartOp>) {
-      S(op.ap_ptr);
+      collect_operand_ref(op.ap_ptr, refs);
     } else if constexpr (std::is_same_v<T, LirVaEndOp>) {
-      S(op.ap_ptr);
+      collect_operand_ref(op.ap_ptr, refs);
     } else if constexpr (std::is_same_v<T, LirVaCopyOp>) {
-      S(op.dst_ptr); S(op.src_ptr);
+      collect_operand_ref(op.dst_ptr, refs); collect_operand_ref(op.src_ptr, refs);
     } else if constexpr (std::is_same_v<T, LirStackRestoreOp>) {
-      S(op.saved_ptr);
+      collect_operand_ref(op.saved_ptr, refs);
     } else if constexpr (std::is_same_v<T, LirIndirectBrOp>) {
-      S(op.addr);
+      collect_operand_ref(op.addr, refs);
     }
     // LirStackSaveOp and legacy typed ops: no string operands to scan.
   };

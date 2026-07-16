@@ -8,20 +8,21 @@ Current Step Title: Delete semantic string escape hatches
 
 ## Just Finished
 
-Completed Step 3 packet to delete the remaining implicit string conversion
-escape hatches from `LirBinaryOpcodeRef` and `LirCmpPredicateRef` in
-`src/codegen/lir/types.hpp`.
+Completed Step 3 packet to delete the implicit string conversion escape hatches
+from `LirOperand` in `src/codegen/lir/operands.hpp`.
 
-Removed both `operator const std::string&()` and `operator std::string_view()`
-from each wrapper while preserving explicit `.str()`, `typed()`, equality,
-concatenation, and stream output helpers. The compile-enforced proof found no
-direct users needing repair.
+Removed `operator std::string&()`, `operator const std::string&() const`, and
+`operator std::string_view() const` while preserving explicit mutable and const
+`.str()` access. Repaired direct compile-error users in LIR call helpers,
+printer/lowering text-boundary code, global-reference collection, and the
+focused frontend test by using explicit `.str()` or existing operand authority
+collection as appropriate.
 
 ## Suggested Next
 
-Supervisor should review and commit this Step 3 opcode/predicate wrapper slice
-if accepted, then continue with the next remaining Step 3 string escape hatch
-candidate. Do not widen the next packet into Step 4 adapter removal.
+Supervisor should review and commit this Step 3 `LirOperand` conversion-removal
+slice if accepted, then continue with the next remaining Step 3 string escape
+hatch candidate. Do not widen the next packet into Step 4 adapter removal.
 
 ## Watchouts
 
@@ -34,6 +35,9 @@ candidate. Do not widen the next packet into Step 4 adapter removal.
 - Do not restore implicit `std::string` or `std::string_view` conversions on
   `LirBinaryOpcodeRef` or `LirCmpPredicateRef`; direct users should call
   `.str()` or use `typed()` as appropriate.
+- Do not restore implicit `std::string&`, `const std::string&`, or
+  `std::string_view` conversions on `LirOperand`; direct users should call
+  `.str()` or use native operand authority access as appropriate.
 - Do not add a renamed generic runtime-text factory; remaining text-backed
   constructions should stay behind named compatibility factories or explicit
   constructors until their own packet deletes them.
@@ -64,8 +68,9 @@ candidate. Do not widen the next packet into Step 4 adapter removal.
   `return_type.str() == "double"/"float"/"x86_fp80"/"fp128"` selected direct
   scalar floating classification, and no remaining local `LirTypeRef("double")`
   selected-route probes.
-- `src/codegen/lir/operands.hpp` still has separate string conversions on
-  operand refs; that is outside this packet.
+- `collect_inst_refs(...)` now routes affected `LirOperand` fields through
+  `collect_operand_ref(...)`, so structured link-name authority is preferred
+  before fallback text scanning.
 
 ## Proof
 

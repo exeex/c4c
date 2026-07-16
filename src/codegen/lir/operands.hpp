@@ -144,10 +144,6 @@ class LirOperand {
     return authority_ == other.authority_;
   }
 
-  operator std::string&() { return text_; }
-  operator const std::string&() const { return text_; }
-  operator std::string_view() const { return text_; }
-
   [[nodiscard]] friend bool operator==(const LirOperand& lhs,
                                        const LirOperand& rhs) {
     return lhs.text_ == rhs.text_;

@@ -70,7 +70,7 @@ LirOperand StmtEmitter::emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u,
       return val;
     }
     case UnaryOp::Minus: {
-      std::string promoted_val = val;
+      std::string promoted_val = val.str();
       std::string promoted_ty = op_ty;
       if (op_ty != ty && !is_vector_value(op_ts) && !is_float_base(op_ts.base)) {
         const std::string ext = fresh_tmp(ctx);
@@ -118,7 +118,7 @@ LirOperand StmtEmitter::emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u,
       }
     }
     case UnaryOp::Not: {
-      const std::string cmp = to_bool(ctx, val, op_ts);
+      const std::string cmp = to_bool(ctx, val.str(), op_ts);
       const std::string inv = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirBinOp{inv, "xor", "i1", cmp, "true"});
       if (ty == "i1") return inv;
@@ -169,7 +169,7 @@ LirOperand StmtEmitter::emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u,
         return tmp;
       } else {
         const LirOperand tmp = fresh_value(ctx);
-        std::string promoted_val = val;
+        std::string promoted_val = val.str();
         std::string promoted_ty = op_ty;
         if (op_ty != ty && !is_vector_value(op_ts)) {
           const std::string ext = fresh_tmp(ctx);
@@ -199,7 +199,7 @@ LirOperand StmtEmitter::emit_unary_rval_operand(FnCtx& ctx, const UnaryExpr& u,
       const std::string load_ty = llvm_ty(load_ts);
       const LirOperand tmp = fresh_value(ctx);
       emit_lir_op(ctx,
-                  lir::LirLoadOp{tmp, load_ty, LirOperand::raw(val)});
+                  lir::LirLoadOp{tmp, load_ty, LirOperand::raw(val.str())});
       return tmp;
     }
     case UnaryOp::PreInc:

@@ -554,7 +554,7 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
       (void)emit_compound_assign_value(ctx, lhs, assign->op, rhs, rhs_ts);
     }
     pts = lhs.pointee_ts;
-    return lhs.ptr;
+    return lhs.ptr.str();
   }
   if (const auto* c = std::get_if<CastExpr>(&e.payload)) {
     if (c->to_type.spec.is_rvalue_ref || c->to_type.spec.is_lvalue_ref) {
@@ -598,7 +598,7 @@ LoadedAssignableValue StmtEmitter::emit_load_assignable_value(FnCtx& ctx,
   LoadedAssignableValue loaded;
   if (lhs.is_bitfield()) {
     loaded.value_ts = bitfield_promoted_ts(lhs.bf);
-    loaded.value = emit_bitfield_load(ctx, lhs.ptr, lhs.bf);
+    loaded.value = emit_bitfield_load(ctx, lhs.ptr.str(), lhs.bf);
     return loaded;
   }
 
@@ -800,7 +800,8 @@ std::string StmtEmitter::emit_compound_assign_value(FnCtx& ctx, const Assignable
          row.bop == BinaryOp::Div) &&
         (is_complex_base(lhs_ts.base) || is_complex_base(rhs_ts.base))) {
       const std::string result =
-          emit_complex_binary_arith(ctx, row.bop, loaded.value, lhs_ts, coerced_rhs, rhs_ts, lhs_ts);
+          emit_complex_binary_arith(ctx, row.bop, loaded.value.str(), lhs_ts,
+                                    coerced_rhs, rhs_ts, lhs_ts).str();
       return emit_store_assignable_value(ctx, lhs, result, lhs_ts, false);
     }
     op_ts = resolve_compound_assign_op_type(row.bop, lhs_ts, rhs_ts);
@@ -870,8 +871,8 @@ std::string StmtEmitter::emit_nonptr_compound_assign_value(
   const TypeSpec& lhs_ts = lhs.pointee_ts;
   const TypeSpec op_ts = resolve_compound_assign_op_type(op, lhs_ts, rhs_ts);
   const std::string op_ty = llvm_ty(op_ts);
-  std::string lhs_op = loaded.value;
-  if (op_ty != llvm_ty(lhs_ts)) lhs_op = coerce(ctx, loaded.value, lhs_ts, op_ts);
+  std::string lhs_op = loaded.value.str();
+  if (op_ty != llvm_ty(lhs_ts)) lhs_op = coerce(ctx, loaded.value.str(), lhs_ts, op_ts);
   const std::string rhs_op = coerce(ctx, rhs, rhs_ts, op_ts);
   const std::string result = fresh_tmp(ctx);
   emit_lir_op(ctx, lir::LirBinOp{result, std::string(instr), op_ty, lhs_op, rhs_op});
