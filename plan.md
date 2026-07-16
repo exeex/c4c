@@ -81,3 +81,29 @@ Completion check:
 
 - `todo.md` names the selected row or blocker, its evidence, rejected
   presentation-derived alternatives, and the next executable packet.
+
+### Step 2 - Publish DirectPointer Truthiness Parameter Authority
+
+Goal: publish and verify exactly one DirectPointer body-parameter truthiness
+authority relation for the pointer `to_bool_operand` lowering route.
+
+Actions:
+
+- Add a native carrier with the original parameter `LirValueId`, owner,
+  parameter index, pointer type, `DirectPointer` ABI, and explicit
+  pointer-truthiness role.
+- Populate it only when `StmtEmitter::to_bool_operand` lowers a native
+  current-function DirectPointer parameter through the existing `PtrToInt`
+  plus `icmp ne i64 <ptr-int>, 0` consumer shape.
+- Verify missing, invalid, duplicate, foreign, owner/index/type/ABI/role, and
+  consumer-incoherent authority fails closed without recovering facts from
+  rendered operands or comparison text.
+- Add nearby focused positive and malformed producer coverage.
+
+Completion check:
+
+- Fresh build passes.
+- `frontend_lir_call_type_ref` focused proof passes.
+- `git diff --check` passes.
+- `todo.md` records the exact produced tuple and asks for 734 return
+  reassessment.
