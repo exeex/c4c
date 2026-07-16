@@ -221,6 +221,38 @@ return chain, every unowned/insufficient row handed to 813, and every excluded
 intentional text family. It must state explicitly that no successor or semantic
 implementation was created.
 
+## Closure Record
+
+Disposition: capability complete for this evidence-classification umbrella;
+this does **not** claim semantic string-authority migration completion.
+
+The accepted evidence revision is
+`d58b8d44c9b64d2005d2b3760a0592b1b47ebd03`. The completed package is
+`docs/lir_string_authority_remaining_routes/{evidence_baseline,closure_reconciliation,existing_owner_map,intentional_text_registry,field_callsite_disposition_matrix,handoff_to_813,closure_trace}.md`.
+The 29 rows are: 2 structured-authoritative, 1 checked mirror, 19 existing
+open owner, 4 intentional opaque/render text, 0 unowned semantic route, and
+3 insufficient evidence.
+
+The open 813 handoff contains exactly
+`global.policy-identity-evidence`, `instruction.intrinsic-binding-evidence`,
+and `cfg.phi-raw-bindings-evidence`. 813 must route or bound their missing
+evidence before implementation scope; it must not treat this handoff as
+implementation or silently create successors outside its own routing contract.
+
+The credited bounded closures are 759, 760, 761, 762, 763, 754, 811, 814,
+815, 832, 833, 834, and 835, only as reconciled in
+`closure_reconciliation.md`. Retained owners and returns are 734, 795 -> 810
+Step 3, 796 -> 801 Step 2, 797, 829 -> 830 -> 831 -> 836 and 836 -> 831 Step
+4 -> 830 Step 3 -> 829 Step 2, separate 821/822, and 838--847, as recorded in
+`existing_owner_map.md` and `closure_trace.md`. Excluded intentional text is
+display/link-name mirrors, inline-assembly templates/constraints, raw
+literal/data and final initializer spelling, and final printer/diagnostic/
+data-layout/target text; none may become semantic input.
+
+812 created no implementation, test, lifecycle, or successor. Its accepted
+documentation-only proof commits are `edbb1a2ba`, `b9f248d01`, and
+`f374ab3f5`.
+
 ## Reviewer Reject Signals
 
 - Reject implementation, test, verifier, schema, runtime, receiver, lifecycle,

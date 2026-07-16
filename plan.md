@@ -1,76 +1,78 @@
-# LIR String-Authority Current-State Inventory Runbook
+# LIR String Semantic Authority Completion Routing Runbook
 
 Status: Active
-Source Idea: ideas/open/812_lir_string_authority_remaining_routes_umbrella.md
-Activated from: closure of 848's intentionally concluded no-change route
+Source Idea: ideas/open/813_lir_string_semantic_authority_completion_umbrella.md
+Activated from: accepted evidence-only closure of 812
 
 ## Purpose
 
-Produce the current evidence inventory that lets 813 route genuinely
-unfinished semantic string-authority work without reopening bounded closures
-or implementing any repair.
+Turn 812's accepted unresolved-evidence handoff into exact, dependency-ordered
+open ownership without implementing semantic repairs.
 
 ## Core Rule
 
-Classify evidence only. Do not change implementation, tests, runtime behavior,
-existing lifecycle ownership, or create successor ideas.
+Consume only the three stable 812 routing keys. Do not repeat the inventory,
+claim the handoff is implementation, create a successor before routing its
+first owner, or alter code, tests, runtime behavior, draft 837, or existing
+active return chains.
 
 ## Read First
 
-- `ideas/open/812_lir_string_authority_remaining_routes_umbrella.md`
-- Current open-owner records for 734, 795, 796, 797, 829--831, and 836.
-- Exact closure records named by 812 before crediting any bounded work.
+- `ideas/open/813_lir_string_semantic_authority_completion_umbrella.md`
+- `ideas/closed/812_lir_string_authority_remaining_routes_umbrella.md`
+- `docs/lir_string_authority_remaining_routes/handoff_to_813.md`
+- `docs/lir_string_authority_remaining_routes/closure_trace.md`
+- Current sources and resumption records for 734, 795--797, 829--831, 836,
+  and newer owners 838--847.
 
 ## Ordered Steps
 
-### Step 1 - Establish the evidence baseline and inventory
+### Step 1 - Validate the accepted 812 input and refresh lifecycle state
 
-Goal: record one current tree revision, the required closure inventory, and
-the current open-owner/return-chain state.
-
-Actions:
-
-- Create the required handoff directory and baseline, closure reconciliation,
-  and existing-owner evidence documents.
-- Inspect the required LIR producer/consumer surfaces and all required
-  classification families.
-- Credit closures only for their exact accepted rows; record blocked and
-  parked owner chains without changing them.
-
-Completion check: the evidence revision, scanned surfaces, closure inventory,
-and current owner map are explicit and traceable.
-
-### Step 2 - Build the exhaustive disposition matrix
-
-Goal: classify every discovered semantic-risk field/API/callsite using exactly
-one permitted disposition.
+Goal: establish that the three-key handoff is current and that no exact open
+owner or closure change supersedes it.
 
 Actions:
 
-- Trace each row from producer to semantic consumers and identify structured
-  authority, text precedence, proof requirement, open owner, and stable 813
-  routing key.
-- Record recursive `LirTypeRef` outer and nested shape evidence, including the
-  first text-primary level.
-- Keep intrinsic opaque/render text in the intentional-text registry with its
-  forbidden semantic uses.
+- Record the accepted 812 evidence revision and handoff selection in
+  `docs/lir_string_semantic_authority_completion/input_validation.md`.
+- Refresh open/closed lifecycle state and compare each routing key against
+  exact current source scope and closure records.
+- Preserve the 836 -> 831 -> 830 -> 829 return chain; do not activate,
+  interrupt, or reinterpret it.
 
-Completion check: every row has all required matrix columns and no row relies
-on text, names, rendering, diagnostics, or testcase identity as authority.
+Completion check: each key is still insufficient evidence or has an exact,
+current existing owner; no completed or intentional-text row enters routing.
 
-### Step 3 - Reconcile and hand off only unresolved rows
+### Step 2 - Assign first owners and bounded evidence routes
 
-Goal: produce a precise 813 input and the closure trace for this
-classification-only initiative.
+Goal: give every valid unresolved key exactly one owner without inventing
+implementation scope.
 
 Actions:
 
-- Write `handoff_to_813.md` containing all and only unowned or
-  insufficient-evidence rows and stable routing keys.
-- Write the closure trace with disposition counts, omissions check, evidence
-  revision, current owners, and excluded intentional text.
-- Verify no semantic implementation, test, lifecycle, or successor change was
-  introduced by this route.
+- Create the row-to-owner map and existing-owner dependency record.
+- Reuse an open source only for its exact scope and return point.
+- Where no first owner can be proved, create one narrowly scoped open
+evidence/research source for that key, with the required proof boundary and
+reject signals; do not create implementation successors from missing evidence.
 
-Completion check: the required evidence documents are complete and the source
-can be sent to plan-owner for an evidence-only completion decision.
+Completion check: all keys map once to an existing owner or bounded evidence
+route; no duplicate, mixed, or unowned route remains.
+
+### Step 3 - Publish dependency order and receiver handoff
+
+Goal: leave an executable ownership queue for later lifecycle work.
+
+Actions:
+
+- Write `successor_queue.md`, `architecture_alignment.md`,
+  `handoff_to_734_and_797.md`, and `closure_trace.md` under the 813 handoff
+  directory.
+- Order evidence/prerequisite work before producer handoffs, then 734 receipts,
+  then 797 convergence; record independent versus serialized items.
+- Keep draft 837 as non-executable architecture input unless a separate
+  lifecycle operation promotes it.
+
+Completion check: documents name every generated/reused owner, dependency,
+excluded completed or intentional row, and terminal 734/797 relationship.

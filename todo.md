@@ -1,31 +1,23 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/812_lir_string_authority_remaining_routes_umbrella.md
+Source Idea Path: ideas/open/813_lir_string_semantic_authority_completion_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Reconcile and hand off only unresolved rows
+Current Step ID: 1
+Current Step Title: Validate the accepted 812 input and refresh lifecycle state
 
 ## Just Finished
 
-- Step 3 completed: created the exact unresolved-row handoff and closure trace
-  from the committed Step 2 matrix; reconciled all 29 dispositions, retained
-  only the three insufficient-evidence keys, and recorded that no
-  implementation, test, lifecycle, or successor change occurred.
+- Activated 813 after 812's accepted evidence-only closure; no 813 routing work has yet run.
 
 ## Suggested Next
 
-- Submit the exhausted 812 evidence package to plan-owner for an evidence-only
-  completion decision; do not infer closure from runbook exhaustion.
+- Validate the three-key 812 handoff against current lifecycle state and record the result in 813's input-validation document.
 
 ## Watchouts
 
-- The handoff contains no existing-owner or intentional-text row, and creates
-  no successor; plan-owner must make the explicit close, repair, replace, or
-  conclude decision.
+- Do not treat the evidence handoff as implementation, interrupt the 836 return chain, or create a successor before its first owner and missing-evidence boundary are proved.
 
 ## Proof
 
-- Documentation-only Step 3: `git diff --check` run and the handoff key set
-  compared with the matrix's qualifying dispositions; no build/test subset
-  applies and no `test_after.log` was created.
+- Documentation/lifecycle activation only: verify source links, accepted 812 handoff key set, and `git diff --check` before dispatching Step 1.

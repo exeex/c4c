@@ -2,7 +2,7 @@
 
 Status: Open
 Type: Umbrella semantic completion router and follow-up idea generator
-Parent Evidence Classifier: `ideas/open/812_lir_string_authority_remaining_routes_umbrella.md`
+Parent Evidence Classifier: `ideas/closed/812_lir_string_authority_remaining_routes_umbrella.md` (accepted evidence-only closure at `f374ab3f5`)
 Handoff Directory: `docs/lir_string_semantic_authority_completion/`
 Related Architecture Input:
 - `ideas/draft/837_lir_nominal_type_family_architecture.md` (parked,
