@@ -243,6 +243,25 @@ const std::string& require_module_type_ref(const LirModule& mod,
   return rendered;
 }
 
+const std::vector<LirTypeRef>& require_native_anonymous_struct_fields(
+    const LirModule& mod,
+    const LirTypeRef& type,
+    std::string_view field) {
+  if (type.kind() != LirTypeKind::Struct || type.has_struct_name_id()) {
+    fail_verify(field,
+                "native aggregate authority requires an unnamed struct type");
+  }
+  const std::vector<LirTypeRef>* fields = type.anonymous_struct_field_types();
+  if (!fields || fields->empty()) {
+    fail_verify(field,
+                "native aggregate authority requires ordered native field types");
+  }
+  for (const LirTypeRef& field_type : *fields) {
+    require_module_type_ref(mod, field_type, field);
+  }
+  return *fields;
+}
+
 void require_module_cast_endpoint_type_ref(const LirModule& mod,
                                            const LirTypeRef& type,
                                            std::string_view field) {
@@ -1982,7 +2001,8 @@ bool requires_native_result_authority(const LirInst& inst) {
   return false;
 }
 
-void verify_extract_value_authority(const LirExtractValueOp& op) {
+void verify_extract_value_authority(const LirModule& mod,
+                                    const LirExtractValueOp& op) {
   if (!op.requires_native_result_authority) return;
   if (op.result.kind() != LirOperandKind::SsaValue || !op.result.value_id() ||
       !op.result.value_id()->valid()) {
@@ -1994,17 +2014,15 @@ void verify_extract_value_authority(const LirExtractValueOp& op) {
     fail_verify("LirExtractValueOp.agg",
                 "native extractvalue aggregate requires valid SSA LirValueId authority");
   }
-  const std::vector<LirTypeRef>* fields = op.agg_type.anonymous_struct_field_types();
-  if (!fields) {
-    fail_verify("LirExtractValueOp.agg_type",
-                "native extractvalue aggregate requires ordered native field types");
-  }
-  if (op.index < 0 || static_cast<size_t>(op.index) >= fields->size()) {
+  const std::vector<LirTypeRef>& fields = require_native_anonymous_struct_fields(
+      mod, op.agg_type, "LirExtractValueOp.agg_type");
+  if (op.index < 0 || static_cast<size_t>(op.index) >= fields.size()) {
     fail_verify("LirExtractValueOp.index",
                 "native extractvalue field index must select an aggregate field");
   }
   if (!op.result_element_type ||
-      *op.result_element_type != (*fields)[static_cast<size_t>(op.index)]) {
+      !same_native_type_fact(*op.result_element_type,
+                             fields[static_cast<size_t>(op.index)])) {
     fail_verify("LirExtractValueOp.result_element_type",
                 "native extractvalue result type must match its selected aggregate field");
   }
@@ -2089,13 +2107,18 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
   }
   if (const auto* op = std::get_if<LirExtractValueOp>(&inst)) {
     verify_result_operand(op->result, "LirExtractValueOp.result");
-    require_module_type_ref(mod, op->agg_type, "LirExtractValueOp.agg_type");
+    if (op->requires_native_result_authority) {
+      (void)require_native_anonymous_struct_fields(
+          mod, op->agg_type, "LirExtractValueOp.agg_type");
+    } else {
+      require_module_type_ref(mod, op->agg_type, "LirExtractValueOp.agg_type");
+    }
     verify_value_operand(op->agg, "LirExtractValueOp.agg");
     if (op->result_element_type) {
       require_module_type_ref(mod, *op->result_element_type,
                               "LirExtractValueOp.result_element_type");
     }
-    verify_extract_value_authority(*op);
+    verify_extract_value_authority(mod, *op);
     return;
   }
   if (const auto* op = std::get_if<LirInsertValueOp>(&inst)) {
@@ -4427,7 +4450,7 @@ void verify_function_value_ownership(const LirModule& mod,
         }
         if (!selected_producer || !producer_result || !producer_result->value_id() ||
             *producer_result->value_id() != *aggregate_id || !producer_type ||
-            *producer_type != extract->agg_type) {
+            !same_native_type_fact(*producer_type, extract->agg_type)) {
           fail_verify("LirExtractValueOp.agg",
                       "aggregate SSA authority must select a matching current-function aggregate producer type");
         }

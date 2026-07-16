@@ -8,21 +8,21 @@ Current Step Title: Decide Next 846 Packet Or 847 Handoff
 
 ## Just Finished
 
-Completed `plan.md` Step 5 selected consumer repair for `LirShuffleVectorOp`
-required native-vector printer/verifier rendering.
+Completed `plan.md` Step 5 selected consumer repair for `LirExtractValueOp`
+native aggregate verifier/printer rendering.
 
-- Updated required native-authoritative shuffle printing to render the vector
-  type and mask type from the module-owned `LirVectorStoreEntry` and native
-  mask lane facts reached through `native_vector_authority.vector_ref`.
-- Repaired required native-authoritative shuffle verification so stale
-  `vec_type.str()` and `mask_type.str()` display text is check-only when the
-  module-owned vector store fact, native result shape, mask lanes, poison
-  second vector, owner/result/use facts, and vector operand facts remain valid.
-- Preserved the generic `require_type_ref` path for legacy/unselected
-  shuffle-vector instructions without required native vector authority.
-- Added focused stale-display coverage proving required shuffle printing emits
-  the vector-store type and native mask type after mutating stale display text,
-  plus a same-feature rejection for native mask lane count mismatch.
+- Updated selected native-authoritative extractvalue printing to render the
+  aggregate type from ordered native anonymous-struct field facts instead of
+  stale `agg_type.str()` display text.
+- Repaired selected native-authoritative extractvalue verification so stale
+  aggregate display text is check-only while native field facts, selected
+  result element facts, result/aggregate SSA authority, and matching
+  current-function aggregate producer facts remain fail-closed.
+- Preserved legacy/unselected extractvalue validation and printing through the
+  generic `require_type_ref` path, and left insertvalue behavior unchanged.
+- Added focused stale-display coverage proving selected extractvalue accepts a
+  stale aggregate display mirror only when native facts remain valid and
+  `print_llvm` emits the native aggregate type, not the stale text.
 
 ## Suggested Next
 
@@ -32,16 +32,16 @@ if no bounded 846 consumer remains.
 
 ## Watchouts
 
-This packet intentionally did not broaden vector verifier policy, vector
-lowering, insert/extract/select/cmp/ret consumers, Raw-BIR, generic helper
-deletion, or idea 847 deletion work. The stale-display allowance is limited to
-required native-authoritative `LirShuffleVectorOp` instances with complete
-module-owned `native_vector_authority.vector_ref`; legacy shuffle validation
-still treats display mirrors as semantic input.
+This packet intentionally did not broaden insertvalue behavior, vector/select/
+cmp/ret/switch consumers, Raw-BIR/backend/lowering, generic helper deletion, or
+idea 847 deletion work. The stale-display allowance is limited to selected
+native-authoritative `LirExtractValueOp` instances with complete ordered native
+aggregate fields and matching current-function producer facts; legacy
+extractvalue validation still treats display mirrors as semantic input.
 
 ## Proof
 
-Completed selected shuffle-vector packet proof:
+Completed selected extractvalue packet proof:
 
 - `cmake --build build`
 - `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`

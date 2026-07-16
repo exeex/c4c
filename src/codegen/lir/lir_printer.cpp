@@ -227,6 +227,19 @@ render_required_shuffle_vector_types_from_store(const LirModule& mod,
       "<" + std::to_string(vector->lane_count) + " x i32>"};
 }
 
+std::string render_extract_value_aggregate_type(const LirExtractValueOp& op) {
+  if (!op.requires_native_result_authority) {
+    return require_type_ref(op.agg_type, "LirExtractValueOp.agg_type");
+  }
+  const auto* fields = op.agg_type.anonymous_struct_field_types();
+  if (!fields || fields->empty()) {
+    throw LirVerifyError(
+        LirVerifyErrorKind::Malformed,
+        "LirExtractValueOp.agg_type requires ordered native field types for native aggregate rendering");
+  }
+  return op.agg_type.render_llvm();
+}
+
 std::string_view signature_header_line(const LirFunction& function) {
   std::string_view signature = function.signature_text;
   while (!signature.empty()) {
@@ -528,7 +541,7 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
        << require_operand_kind(op->result, "LirExtractValueOp.result",
                                {LirOperandKind::SsaValue})
        << " = extractvalue "
-       << require_type_ref(op->agg_type, "LirExtractValueOp.agg_type") << " "
+       << render_extract_value_aggregate_type(*op) << " "
        << require_operand_kind(op->agg, "LirExtractValueOp.agg",
                                {LirOperandKind::SsaValue,
                                 LirOperandKind::Global,

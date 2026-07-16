@@ -9647,6 +9647,19 @@ float extract_real(int value) { return __real__ complex_source(value); }
       "%non_mirror_result", *display_extract.result.value_id());
   lir::verify_module(result_display_is_not_authority);
 
+  lir::LirModule aggregate_display_is_not_authority = direct_complex;
+  lir::LirExtractValueOp& stale_aggregate_display =
+      selected_direct_extract(aggregate_display_is_not_authority);
+  stale_aggregate_display.agg_type.str() = "{ i777, i777 }";
+  lir::verify_module(aggregate_display_is_not_authority);
+  const std::string stale_aggregate_ir =
+      lir::print_llvm(aggregate_display_is_not_authority);
+  expect_true(stale_aggregate_ir.find("extractvalue { float, float } ") !=
+                  std::string::npos,
+              "selected extractvalue printer should render native aggregate fields");
+  expect_true(stale_aggregate_ir.find("{ i777, i777 }") == std::string::npos,
+              "selected extractvalue printer must not render stale aggregate display text");
+
   lir::LirModule negative_direct_index = direct_complex;
   selected_direct_extract(negative_direct_index).index = -1;
   expect_identity_verification_rejected(
