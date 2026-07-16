@@ -70,6 +70,9 @@ separately accepted producer-side handoff.
   belongs to 734 after this handoff closes.
 - Reject selecting a function-body parameter row, multiple rows, a generic
   residual sweep, or any row already accepted by 734 through Step 7.50.
+- Reject selecting fixed direct-call argument 0 or argument 1 parameter
+  authority. Idea 734 already accepted those receiver rows in Steps 7.40 and
+  7.41.
 - Reject recovering identity, role, type, opcode, operand relation, or
   consumer coherence from rendered text, names, signatures, diagnostics,
   compatibility mirrors, `monostate`, or testcase-specific shape.
