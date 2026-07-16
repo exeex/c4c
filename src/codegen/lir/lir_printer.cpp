@@ -576,11 +576,15 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
       }
       type = &op->compact_scalar_type->type;
     }
+    const auto rendered_type =
+        type->kind() == LirTypeKind::Integer
+            ? render_integer_type_ref(*type, "LirBinOp.compact_scalar_type")
+            : require_type_ref(*type, "LirBinOp.compact_scalar_type", true);
     os << "  "
        << require_operand_kind(op->result, "LirBinOp.result",
                                {LirOperandKind::SsaValue})
        << " = " << render_binary_opcode(op->opcode, "LirBinOp.opcode") << " "
-       << require_type_ref(*type, "LirBinOp.compact_scalar_type", true) << " ";
+       << rendered_type << " ";
     if (op->rhs.empty()) {
       // Unary op (fneg): "fneg type lhs"
       os << require_operand_kind(op->lhs, "LirBinOp.lhs",

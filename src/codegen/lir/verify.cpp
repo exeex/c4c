@@ -2160,7 +2160,12 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
   if (const auto* op = std::get_if<LirBinOp>(&inst)) {
     verify_result_operand(op->result, "LirBinOp.result");
     (void)render_binary_opcode(op->opcode, "LirBinOp.opcode");
-    require_module_type_ref(mod, op->type_str, "LirBinOp.type_str", true);
+    if (op->compact_scalar_type &&
+        op->compact_scalar_type->type.kind() == LirTypeKind::Integer) {
+      (void)render_integer_type_ref(op->type_str, "LirBinOp.type_str");
+    } else {
+      require_module_type_ref(mod, op->type_str, "LirBinOp.type_str", true);
+    }
     verify_value_operand(op->lhs, "LirBinOp.lhs");
     if (op->rhs.empty()) {
       if (op->opcode.typed() != LirBinaryOpcode::FNeg) {

@@ -9647,6 +9647,16 @@ void test_lir_binop_compact_scalar_type_authority_boundary() {
   const std::string integer_ir = lir::print_llvm(integer);
   expect_true(integer_ir.find("add i32 1, 2") != std::string::npos,
               "integer LirBinOp should render through compact scalar parity text");
+  integer_op.type_str = lir::LirTypeRef("i64", lir::LirTypeKind::Integer, 32);
+  integer_op.compact_scalar_type->type =
+      lir::LirTypeRef("i64", lir::LirTypeKind::Integer, 32);
+  const std::string stale_integer_carrier_ir = lir::print_llvm(integer);
+  expect_true(stale_integer_carrier_ir.find("add i32 1, 2") !=
+                  std::string::npos,
+              "integer LirBinOp compact scalar render should use native width authority");
+  expect_true(stale_integer_carrier_ir.find("add i64 1, 2") ==
+                  std::string::npos,
+              "integer LirBinOp compact scalar render must not recover semantics from stale text");
 
   lir::LirModule floating = make_module(lir::LirTypeRef(lir::LirBuiltinType::Double));
   auto& floating_op =

@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/846_lir_family_overloaded_verifier_dispatch_printer.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add The Bounded Family Overload
+Current Step ID: 5
+Current Step Title: Decide Next 846 Packet Or 847 Handoff
 
 # Current Packet
 
@@ -101,12 +101,22 @@ integer scalar renderer inside the already selected `LirBinOp`
 - Focused compact-scalar wrong-family/stale-mirror coverage already exists in
   `tests/frontend/frontend_lir_call_type_ref_test.cpp`.
 
+Completed the selected integer `LirBinOp.compact_scalar_type` packet:
+
+- Reused `render_integer_type_ref` for integer compact-scalar verifier and
+  printer branches.
+- Preserved floating compact scalar rendering and unselected `LirBinOp`
+  generic type refs.
+- Added focused stale-display coverage proving integer compact-scalar binop
+  rendering uses native integer width authority rather than mutable display
+  text.
+
 ## Suggested Next
 
-Execute `plan.md` Step 2 and Step 3 for only the integer
-`LirBinOp.compact_scalar_type` rendering branch. Reuse or extend the bounded
-scalar integer type-ref requirement as appropriate, while leaving floating
-compact scalar rendering and unselected `LirBinOp.type_str` callers untouched.
+Execute `plan.md` Step 5: inventory remaining universal classifier, renderer,
+mutable semantic string, and implicit conversion callers. Classify the next
+exact 846-owned consumer or record the handoff/blocker decision if no 846
+consumer is ready.
 
 ## Watchouts
 
@@ -152,12 +162,15 @@ Next Step 5 decision is trace/lifecycle state unless it selects and records
 another bounded implementation packet.
 
 Step 5 trace selected the integer `LirBinOp.compact_scalar_type` rendering
-branch for the next bounded packet. Expected code-changing proof for that
-packet:
+branch for the next bounded packet. Completed binop compact integer packet
+proof:
 
 - `cmake --build build`
 - `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
 - `git diff --check`
+
+Next Step 5 decision is trace/lifecycle state unless it selects and records
+another bounded implementation packet.
 
 Step 5 trace selected the integer branch of `LirCmpOp.type_str` for the next
 bounded packet. Completed integer compare packet proof:
