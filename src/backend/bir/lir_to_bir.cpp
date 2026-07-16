@@ -669,6 +669,18 @@ bool exact_direct_integer_call(
       return false;
     resolved = true;
   }
+  if (!resolved) {
+    const auto extern_it =
+        module.extern_decl_link_name_map.find(call.direct_callee_link_name_id);
+    if (extern_it == module.extern_decl_link_name_map.end() ||
+        extern_it->second.function_signature_ref.value !=
+            call.callee_signature_ref.value ||
+        extern_it->second.return_type != call.return_type ||
+        extern_it->second.return_ext_attr != LirExtAttr::None) {
+      return false;
+    }
+    resolved = true;
+  }
   return resolved;
 }
 
@@ -4442,6 +4454,50 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
             ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
             "function LinkNameId resolves to conflicting BIR identities");
     }
+  }
+  for (const auto& declaration : module.extern_decls) {
+    if (declaration.link_name_id == c4c::kInvalidLinkName ||
+        functions_by_link_name_id.find(declaration.link_name_id) !=
+            functions_by_link_name_id.end() ||
+        !declaration.function_signature_ref.valid()) {
+      continue;
+    }
+    const auto* signature_entry =
+        module.find_function_signature(declaration.function_signature_ref);
+    if (!signature_entry || !signature_entry->return_type_ref.has_value()) {
+      continue;
+    }
+    FunctionSignature signature;
+    const auto return_type =
+        lower_lir_type(module, *signature_entry->return_type_ref);
+    if (!return_type) {
+      return fail<RawBir>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                          declaration.name, {},
+                          "extern declaration signature adapter return type is unsupported");
+    }
+    signature.return_type = *return_type;
+    signature.is_variadic = signature_entry->is_variadic;
+    signature.parameter_types.reserve(
+        signature_entry->fixed_param_type_refs.size());
+    for (const auto& param_ref : signature_entry->fixed_param_type_refs) {
+      const auto param_type = lower_lir_type(module, param_ref);
+      if (!param_type) {
+        return fail<RawBir>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            declaration.name, {},
+                            "extern declaration signature adapter parameter type is unsupported");
+      }
+      signature.parameter_types.push_back(*param_type);
+    }
+    auto created = builder.create_function(std::move(signature),
+                                           declaration.name, true,
+                                           FunctionMetadata{});
+    if (!created) {
+      return Result<RawBir, ImportError>::failure(builder_failure(
+          declaration.name, {}, "create extern declaration function",
+          created.error()));
+    }
+    functions_by_link_name_id.emplace(declaration.link_name_id,
+                                      created.value());
   }
 
   for (std::size_t function_index = 0;

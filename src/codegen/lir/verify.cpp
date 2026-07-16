@@ -628,6 +628,13 @@ const LirFunction* find_unique_function_by_link_name(const LirModule& mod,
   return found;
 }
 
+const LirModule::ExternDeclInfo* find_extern_decl_by_link_name(
+    const LirModule& mod, LinkNameId link_name_id) {
+  if (link_name_id == kInvalidLinkName) return nullptr;
+  const auto it = mod.extern_decl_link_name_map.find(link_name_id);
+  return it == mod.extern_decl_link_name_map.end() ? nullptr : &it->second;
+}
+
 void verify_call_callee_signature_ref(const LirModule& mod,
                                       const LirCallOp& call) {
   constexpr std::string_view field = "LirCallOp.callee_signature_ref";
@@ -640,13 +647,19 @@ void verify_call_callee_signature_ref(const LirModule& mod,
   }
   const LirFunction* callee = find_unique_function_by_link_name(
       mod, call.direct_callee_link_name_id, field);
-  if (!callee) {
+  const LirModule::ExternDeclInfo* extern_decl =
+      callee ? nullptr : find_extern_decl_by_link_name(
+                            mod, call.direct_callee_link_name_id);
+  if (!callee && !extern_decl) {
     fail_verify(field,
-                "callee signature ref requires a matching module Function LinkNameId");
+                "callee signature ref requires a matching module Function or extern declaration LinkNameId");
   }
-  if (callee->function_signature_ref.value != call.callee_signature_ref.value) {
+  const LirFunctionSignatureRef resolved_signature_ref =
+      callee ? callee->function_signature_ref
+             : extern_decl->function_signature_ref;
+  if (resolved_signature_ref.value != call.callee_signature_ref.value) {
     fail_verify(field,
-                "callee signature ref must match the resolved module Function signature ref");
+                "callee signature ref must match the resolved module callee signature ref");
   }
 
   const LirFunctionSignatureStoreEntry* signature =

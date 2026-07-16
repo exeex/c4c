@@ -1467,6 +1467,7 @@ static void finalize_module(LirModule& module,
       if (finalized_type.has_struct_name_id()) ed.return_type = finalized_type;
     }
     ed.link_name_id = decl_info.link_name_id;
+    ed.function_signature_ref = decl_info.function_signature_ref;
     module.extern_decls.push_back(std::move(ed));
   };
 

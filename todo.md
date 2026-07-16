@@ -3,26 +3,23 @@
 Status: Active
 Source Idea Path: ideas/open/839_lir_nominal_function_signature_call_composition.md
 Source Plan Path: plan.md
-Current Step ID: 3A
-Current Step Title: Repair variadic declaration admission before call migration
+Current Step ID: 3B
+Current Step Title: Add raw extern signature-store adapter entries
 
 ## Just Finished
 
-- Step 3A completed: backend LIR variadic declarations now pass function
-  admission only when declaration mirrors match module-owned
-  `LirFunctionSignatureRef` store facts, including structured variadic state,
-  fixed-prefix refs/byval facts, and return extension attributes. Nearby
-  backend coverage proves a variadic direct-call fixture reaches
-  store-backed `callee_signature_ref` validation, while retained/store and
-  declaration/store variadic disagreement fail closed without making retained
-  text or parsed call strings authoritative.
+- Step 3B completed: raw extern declaration facts now carry a named one-way
+  `LirFunctionSignatureRef` adapter entry built from structured extern call
+  signature facts, and migrated direct-call consumers can resolve those refs
+  through the module signature store. Backend LIR coverage proves a raw extern
+  fixed integer direct call imports through the adapter-backed BIR declaration
+  target, while stale store facts or a missing extern adapter ref fail closed.
 
 ## Suggested Next
 
-- Continue repaired Step 3 at Step 3B: add the narrow raw extern
-  signature-store adapter entries needed for direct-call compatibility through
-  `LirFunctionSignatureRef`, without absorbing broader extern/global type-fact
-  migration.
+- Continue repaired Step 3 at Step 3C: split fixed aggregate/byval call
+  composition so module signature-store facts are authoritative while retained
+  ABI metadata remains verifier-local compatibility only.
 
 ## Watchouts
 
@@ -52,13 +49,14 @@ Current Step Title: Repair variadic declaration admission before call migration
 - Step 3A admitted only variadic declaration/callee signature facts. Variadic
   body-use, va_list lowering, variadic argument value identity, and runtime
   helper work remain out of scope under source 839.
-- Step 3B may add a raw extern one-way adapter for function-signature facts, but
-  must not absorb the broader global/extern type-fact migration owned by later
-  work such as 844.
 - Step 3C may split store-backed signature authority from retained
   verifier-local ABI metadata, but must return to plan-owner if it requires
   aggregate producer migration, body parameter authority, or unrestricted value
   carrier work.
+- The raw extern adapter is intentionally narrow: it creates function-signature
+  facts for LinkNameId-backed extern function declarations and direct-call
+  verification/import, not broader global/extern initializer or type-fact
+  migration.
 
 ## Proof
 

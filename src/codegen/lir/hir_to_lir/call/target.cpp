@@ -220,15 +220,12 @@ std::optional<LirCallSignature> structured_callee_signature(
 }
 
 LirFunctionSignatureRef direct_callee_signature_ref(
-    const LirModule* lir_module,
+    LirModule* lir_module,
     const CallTargetInfo& call_target,
     const std::optional<LirCallSignature>& retained_signature) {
-  if (!call_target.target_fn || call_target.target_fn->attrs.unspecified_params ||
-      call_target.target_fn->attrs.variadic) {
-    return LirFunctionSignatureRef::invalid();
-  }
-  if (call_target.target_fn->linkage.is_extern &&
-      call_target.target_fn->blocks.empty()) {
+  if (call_target.target_fn &&
+      (call_target.target_fn->attrs.unspecified_params ||
+       call_target.target_fn->attrs.variadic)) {
     return LirFunctionSignatureRef::invalid();
   }
   if (!lir_module || call_target.callee_link_name_id == kInvalidLinkName) {
@@ -260,6 +257,35 @@ LirFunctionSignatureRef direct_callee_signature_ref(
       }
       return function.function_signature_ref;
     }
+  }
+  const auto extern_it =
+      lir_module->extern_decl_link_name_map.find(call_target.callee_link_name_id);
+  if (extern_it != lir_module->extern_decl_link_name_map.end()) {
+    if (!extern_it->second.function_signature_ref.valid() &&
+        retained_signature.has_value()) {
+      const LirFunctionSignatureRef extern_signature_ref =
+          lir_module->register_extern_function_signature(
+              extern_it->second.name, call_target.callee_link_name_id,
+              *retained_signature);
+      (void)extern_signature_ref;
+    }
+    const LirFunctionSignatureStoreEntry* signature =
+        lir_module->find_function_signature(extern_it->second.function_signature_ref);
+    if (!signature || !retained_signature.has_value() ||
+        retained_signature->return_type_ref.has_value() !=
+            signature->return_type_ref.has_value() ||
+        (retained_signature->return_type_ref.has_value() &&
+         *retained_signature->return_type_ref != *signature->return_type_ref) ||
+        retained_signature->return_ext_attr != signature->return_ext_attr ||
+        retained_signature->fixed_param_type_refs !=
+            signature->fixed_param_type_refs ||
+        retained_signature->is_variadic != signature->is_variadic ||
+        retained_signature->has_void_param_list !=
+            signature->has_void_param_list ||
+        retained_signature->has_unspecified_params) {
+      return LirFunctionSignatureRef::invalid();
+    }
+    return extern_it->second.function_signature_ref;
   }
   return LirFunctionSignatureRef::invalid();
 }
@@ -361,6 +387,17 @@ CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr&
   if (unresolved_external_callee && !info.builtin_special) {
     record_extern_call_decl(unresolved_external_name, info.ret_ty,
                             info.callee_link_name_id, info.return_ext_attr);
+  }
+  if (unresolved_external_callee && !info.builtin_special && module_ &&
+      info.callee_link_name_id != kInvalidLinkName && info.callee_fn_ptr_sig) {
+    LirCallSignature extern_signature =
+        lir_call_signature_from_fn_ptr_sig(mod_, module_, *info.callee_fn_ptr_sig);
+    extern_signature.return_ext_attr = info.return_ext_attr;
+    const LirFunctionSignatureRef extern_signature_ref =
+        module_->register_extern_function_signature(
+            unresolved_external_name, info.callee_link_name_id,
+            extern_signature);
+    (void)extern_signature_ref;
   }
 
   return info;

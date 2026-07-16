@@ -982,6 +982,8 @@ struct LirExternDecl {
   LirTypeRef return_type;
   LirExtAttr return_ext_attr = LirExtAttr::None;
   LinkNameId link_name_id = kInvalidLinkName;
+  LirFunctionSignatureRef function_signature_ref =
+      LirFunctionSignatureRef::invalid();
 };
 
 // ── Function ─────────────────────────────────────────────────────────────────
@@ -1204,6 +1206,8 @@ struct LirModule {
     LirTypeRef return_type;
     LirExtAttr return_ext_attr = LirExtAttr::None;
     LinkNameId link_name_id = kInvalidLinkName;
+    LirFunctionSignatureRef function_signature_ref =
+        LirFunctionSignatureRef::invalid();
   };
 
   c4c::TargetProfile target_profile{};
@@ -1448,6 +1452,39 @@ struct LirModule {
     return ref.valid() && ref.value < function_signature_store.size()
                ? &function_signature_store[ref.value]
                : nullptr;
+  }
+
+  [[nodiscard]] LirFunctionSignatureRef register_extern_function_signature(
+      const std::string& name, LinkNameId link_name_id,
+      const LirCallSignature& signature) {
+    if (!signature.return_type_ref.has_value() ||
+        signature.has_unspecified_params ||
+        signature.fixed_param_types.size() !=
+            signature.fixed_param_type_refs.size()) {
+      return LirFunctionSignatureRef::invalid();
+    }
+    LirFunctionSignatureStoreEntry entry;
+    entry.return_type_ref = signature.return_type_ref;
+    entry.return_ext_attr = signature.return_ext_attr;
+    entry.fixed_param_type_refs = signature.fixed_param_type_refs;
+    entry.fixed_param_is_byval.assign(entry.fixed_param_type_refs.size(), false);
+    entry.is_variadic = signature.is_variadic;
+    entry.has_void_param_list = signature.has_void_param_list;
+    const LirFunctionSignatureRef ref =
+        register_function_signature(std::move(entry));
+
+    if (link_name_id != kInvalidLinkName) {
+      auto it = extern_decl_link_name_map.find(link_name_id);
+      if (it != extern_decl_link_name_map.end()) {
+        it->second.function_signature_ref = ref;
+      }
+      return ref;
+    }
+    auto it = extern_decl_name_map.find(name);
+    if (it != extern_decl_name_map.end()) {
+      it->second.function_signature_ref = ref;
+    }
+    return ref;
   }
 
   LirStructDecl* find_struct_decl(StructNameId name_id) {

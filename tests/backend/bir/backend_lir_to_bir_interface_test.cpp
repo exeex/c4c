@@ -9847,6 +9847,97 @@ void test_direct_zero_argument_void_call_receipt() {
          "direct void call must ignore retained text when signature ref resolves");
 }
 
+lir::LirFunction direct_integer_function(std::string name, bool declaration,
+                                         std::vector<c4c::TypeBase> parameters);
+lir::LirCallOp direct_integer_call(c4c::LinkNameId target);
+
+lir::LirModule raw_extern_direct_integer_call_module() {
+  lir::LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const auto caller_link =
+      module.link_names.intern("raw_extern_direct_integer_caller");
+  const auto extern_link = module.link_names.intern("raw_extern_integer_target");
+
+  auto caller = direct_integer_function("raw_extern_direct_integer_caller",
+                                        false, {});
+  caller.link_name_id = caller_link;
+  caller.blocks[0].insts.push_back(
+      lir::LirConstInt{lir::LirValueId{3}, scalar_type(c4c::TB_INT), 41});
+  caller.blocks[0].insts.push_back(direct_integer_call(extern_link));
+  caller.blocks[0].terminator = lir::LirRet{
+      lir::LirOperand::ssa("%misleading-return", lir::LirValueId{9}),
+      lir::LirTypeRef::integer(32)};
+  module.functions.push_back(std::move(caller));
+
+  module.record_extern_decl("raw_extern_integer_target", "i32", extern_link);
+  lir::LirCallSignature signature;
+  signature.return_type_ref = lir::LirTypeRef::integer(32);
+  signature.fixed_param_types = {"i32", "i32"};
+  signature.fixed_param_type_refs = {lir::LirTypeRef::integer(32),
+                                     lir::LirTypeRef::integer(32)};
+  const lir::LirFunctionSignatureRef extern_ref =
+      module.register_extern_function_signature("raw_extern_integer_target",
+                                                extern_link, signature);
+  module.extern_decls.push_back(lir::LirExternDecl{
+      .name = "raw_extern_integer_target",
+      .return_type_str = "i32",
+      .return_type = lir::LirTypeRef::integer(32),
+      .link_name_id = extern_link,
+      .function_signature_ref = extern_ref,
+  });
+  auto& call = std::get<lir::LirCallOp>(module.functions[0].blocks[0].insts[1]);
+  call.callee = lir::LirOperand::global("@raw_extern_integer_target", extern_link);
+  call.callee_signature_ref = extern_ref;
+
+  lir::LirFunctionSignatureStoreEntry caller_entry;
+  caller_entry.return_type_ref = lir::LirTypeRef::integer(32);
+  module.functions[0].function_signature_ref =
+      module.register_function_signature(std::move(caller_entry));
+  return module;
+}
+
+void test_raw_extern_direct_integer_call_signature_adapter() {
+  auto module = raw_extern_direct_integer_call_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         std::string("raw extern direct integer call must resolve through the extern signature-store adapter") +
+             (raw.has_value() ? std::string{} : ": " + raw.error().detail));
+
+  auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(),
+         "raw extern direct integer call signature adapter should canonicalize");
+
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto candidate = raw_extern_direct_integer_call_module();
+    auto& candidate_call =
+        std::get<lir::LirCallOp>(candidate.functions[0].blocks[0].insts[1]);
+    mutate(candidate, candidate_call);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() &&
+               raw_rejected.error().code ==
+                   bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value() &&
+               canonical_rejected.error().code ==
+                   bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Canonical rollback)");
+  };
+  rejected([](auto& candidate, auto& candidate_call) {
+             candidate.function_signature_store[candidate_call.callee_signature_ref.value]
+                 .fixed_param_type_refs[1] = lir::LirTypeRef::integer(64);
+           },
+           "raw extern signature-store parameter mismatch must reject");
+  rejected([](auto& candidate, auto& candidate_call) {
+             candidate
+                 .extern_decl_link_name_map[candidate_call.direct_callee_link_name_id]
+                 .function_signature_ref = lir::LirFunctionSignatureRef::invalid();
+           },
+           "raw extern declaration missing adapter ref must reject");
+}
+
 void test_direct_zero_argument_void_call_builder_contract() {
   bir::ModuleBuilder builder;
   const bir::FunctionSignature void_signature{bir::Type{bir::TypeKind::Void},
@@ -13806,6 +13897,7 @@ int main() {
   test_accumulated_module_surface_checkpoint();
   test_inline_asm_shape_rejection();
   test_direct_zero_argument_void_call_receipt();
+  test_raw_extern_direct_integer_call_signature_adapter();
   test_direct_zero_argument_void_call_builder_contract();
   test_native_floating_call_result_builder_contract();
   test_direct_zero_argument_void_call_rejections();

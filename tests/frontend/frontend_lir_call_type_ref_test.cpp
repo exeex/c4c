@@ -9513,12 +9513,38 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
       require_call_to(call_no_args, "@no_args");
   expect_true(no_args_call.callee_signature.has_value(),
               "metadata-rich direct void-parameter call should carry callee signature");
+  expect_true(no_args_call.callee_signature_ref.valid(),
+              "raw extern direct void-parameter call should carry an adapter signature ref");
+  expect_true(lir_module.find_function_signature(no_args_call.callee_signature_ref) !=
+                  nullptr,
+              "extern direct void-parameter call signature ref should resolve through the store");
   expect_true(no_args_call.callee_signature->has_void_param_list,
               "direct void-parameter call should keep void parameter list state");
   expect_true(!no_args_call.callee_signature->has_unspecified_params,
               "direct void-parameter call should not be modeled as unspecified");
   expect_true(no_args_call.callee_signature->fixed_param_types.empty(),
               "direct void-parameter call should not carry fixed parameter mirrors");
+
+  c4c::codegen::lir::LirModule raw_extern_without_retained_signature = lir_module;
+  c4c::codegen::lir::LirCallOp& raw_extern_without_retained_signature_call =
+      require_call_to(require_function(raw_extern_without_retained_signature,
+                                       "call_no_args"),
+                      "@no_args");
+  raw_extern_without_retained_signature_call.callee_signature.reset();
+  c4c::codegen::lir::verify_module(raw_extern_without_retained_signature);
+
+  c4c::codegen::lir::LirModule raw_extern_stale_store = lir_module;
+  c4c::codegen::lir::LirCallOp& raw_extern_stale_store_call =
+      require_call_to(require_function(raw_extern_stale_store, "call_no_args"),
+                      "@no_args");
+  raw_extern_stale_store
+      .function_signature_store[raw_extern_stale_store_call.callee_signature_ref.value]
+      .fixed_param_type_refs = {c4c::codegen::lir::LirTypeRef::integer(32)};
+  try {
+    c4c::codegen::lir::verify_module(raw_extern_stale_store);
+    fail("verifier should reject a raw extern direct call with stale store facts");
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
 
   c4c::codegen::lir::LirFunction& call_int_indirect =
       require_function(lir_module, "call_int_indirect");
