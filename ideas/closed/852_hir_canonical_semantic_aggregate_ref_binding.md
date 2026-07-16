@@ -1,6 +1,6 @@
 # HIR Canonical Semantic Aggregate-Ref Materialization Binding
 
-Status: Open
+Status: Closed
 Type: upstream HIR semantic-type materialization prerequisite
 Directly Blocked Parent:
 - `ideas/open/838_lir_canonical_module_owned_aggregate_ref_store_convergence.md`, Step 2
@@ -9,6 +9,35 @@ Architecture Evidence:
 - `ideas/closed/848_hir_aggregate_occurrence_canonical_ref_population.md`
 - `ideas/closed/849_hir_function_signature_direct_aggregate_ref_carrier.md`
 - `ideas/closed/851_hir_function_signature_definition_provenance_architecture_blocker.md`
+
+## Closure Record
+
+Disposition: close accepted; capability complete for the bounded HIR
+prerequisite.
+
+Accepted implementation and proof:
+
+- `6e043498a` materialized HIR aggregate refs for ordinary free-function return
+  and parameter signatures through production HIR construction.
+- `1c22e5eba` added supported complex production-path coverage for typedef
+  alias of a named nested aggregate, template aggregate instantiation, and
+  nested aggregate typed child structure.
+- Supervisor accepted fresh proof:
+  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$' ) > test_after.log 2>&1`.
+
+The proportional HIR-to-LIR proof reached the intended downstream boundary:
+`frontend_lir_function_signature_type_ref` aborts with
+`LIR-owned aggregate function type requires a structured owner key`. That is
+accepted as the executable return to
+`ideas/open/838_lir_canonical_module_owned_aggregate_ref_store_convergence.md`
+Step 2, not a 852 repair item.
+
+Return to 838: reactivate 838 at its existing interrupted Step 2 and migrate
+only the bounded `lir_owned_type_spec` function-signature occurrence producer
+to consume populated `QualType::aggregate_ref` through the already accepted
+HIR-ref-to-LIR-ref intern relation. Do not revive owner-key, tag,
+parser-pointer, `record_def`, rendered-text, runtime-string, or `Node*`
+reconstruction inside that return.
 
 ## Goal
 
