@@ -8,32 +8,32 @@ Current Step Title: Select One Carrier-Backed Collector Seam
 
 ## Just Finished
 
-Completed plan step 1 packet migrating only `LirInsertValueOp.agg` in
+Supervisor accepted and committed `8c57acace`, completing the previous
+one-field packet that migrated only `LirInsertValueOp.agg` in
 `collect_inst_refs` from raw scanner collection to
-`collect_operand_ref(op.agg, refs)`. `LirInsertValueOp.elem` remains on the
-raw scanner path.
+`collect_operand_ref(op.agg, refs)`.
 
 ## Suggested Next
 
-After proof, hand back to supervisor for the next one-field carrier-backed
-collector packet selection.
+Repair-current-route: execute the next one-field packet by migrating only
+`LirInsertValueOp.elem` in `collect_inst_refs` from `S(op.elem)` to
+`collect_operand_ref(op.elem, refs)`, then prove parity with the focused
+collector test.
 
 ## Watchouts
 
 Do not close 845 yet. Do not perform a broad collector sweep. Leave
-`LirInsertValueOp.elem`, `LirShuffleVectorOp.vec1`,
-`LirShuffleVectorOp.vec2`, inline asm, and residual raw/global text on their
-current scanner paths. Do not reconstruct references from rendered names or
-text. Do not change producers, verifier semantics, tests, or BIR lowering
-unless the selected field is disproven during executor inspection.
+`LirShuffleVectorOp.vec1`, `LirShuffleVectorOp.vec2`, inline asm, and residual
+raw/global text on their current scanner paths. Do not reconstruct references
+from rendered names or text. Do not change producers, verifier semantics, or
+BIR lowering unless the selected field is disproven during executor inspection.
+`LirInsertValueOp.agg` is already accepted; do not revisit it.
 
 ## Proof
 
-Proof completed for this packet:
+Required proof for the next packet:
 
 ```
 { cmake --build build && ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure; } > test_after.log 2>&1
 git diff --check
 ```
-
-Result: passed. Proof log path: `test_after.log`.
