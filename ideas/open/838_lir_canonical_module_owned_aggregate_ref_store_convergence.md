@@ -48,7 +48,7 @@ reference and intern it once into its owning LIR module's aggregate store.
 - Reject operation-local aggregate metadata retained as competing authority,
   testcase-shaped fixes, weakened owner rejection, or broad family migration.
 
-## Resumption Record: canonical HIR aggregate-occurrence ref blocker
+## Resumption Record: canonical HIR aggregate-occurrence ref return
 
 - Last accepted progress: Step 1 established the canonical aggregate-ref/store
   seam in commits `69ffa299f` and `a50d35d4e`. Step 2's declaration/store fact
@@ -59,28 +59,28 @@ reference and intern it once into its owning LIR module's aggregate store.
   fact capture but remains incomplete.
 - Interrupted step: Step 2 — **Preserve recursive aggregate facts and all
   aggregate forms**.
-- Blocker outside this idea's scope: `QualType::aggregate_ref` exists but HIR
-  construction does not populate it for aggregate occurrences, including
-  function return and parameter occurrences. `Lowerer::qtype_from` therefore
-  retains only legacy `aggregate_owner_identity`; canonical-reference
-  enforcement breaks supported aggregate function signatures. Populating the
-  definition-backed HIR occurrence fact is an upstream HIR producer migration,
-  outside this idea's LIR M4--M6 scope.
-- Blocker disposition: 848's Step 2b is deliberately no-change under the
-  current contract. 851's accepted `fb3b74fee` trace found no legal earlier
-  direct-fact producer, so neither 848 nor 851 unblocks this idea and neither
-  provides a returnable implementation route.
-- Exact return condition: remain blocked. Do not resume Step 2 or retry the
-  bounded `lir_owned_type_spec` function-signature occurrence-producer
-  migration unless a future separately scoped and explicitly approved
-  architecture first establishes a legal direct definition fact before
-  signature normalization. No such successor is named or authorized by this
-  no-change conclusion.
-- Remaining action if that condition is ever satisfied: retain the captured
-  declaration facts and migrate that one LIR occurrence producer; do not add
-  owner-key, tag, or rendered-text fallback.
+- Prior blocker outside this idea's scope: `QualType::aggregate_ref` existed
+  but HIR construction did not populate it for aggregate occurrences, including
+  function return and parameter occurrences. Populating that definition-backed
+  HIR occurrence fact was an upstream HIR producer migration outside this
+  idea's LIR M4--M6 scope.
+- Blocker disposition: closed 852 satisfied the return condition. Commit
+  `a4f822740` closed
+  `ideas/closed/852_hir_canonical_semantic_aggregate_ref_binding.md`; its
+  accepted production HIR work populated ordinary aggregate free-function
+  return and parameter `QualType::aggregate_ref` occurrences and proved the
+  handoff with a fresh default build plus focused `frontend_hir_tests`.
+- Exact return point: resume Step 2 and migrate only the bounded
+  `lir_owned_type_spec` function-signature occurrence producer to consume the
+  populated `QualType::aggregate_ref` through the already accepted
+  HIR-ref-to-LIR-ref intern relation.
+- Remaining action: retain the captured declaration facts and migrate that one
+  LIR occurrence producer; do not add owner-key, tag, parser-pointer,
+  `record_def`, rendered-text, runtime-string, or `Node*` reconstruction.
 - Accepted proof/commit references: `8eca000c9` has the accepted fresh
   `cmake --build --preset default` and
   `ctest --test-dir build -j --output-on-failure -R '^backend_'` proof (6/6).
-  The attempted partial canonical-enforcement patch was reverted; its failed
-  `test_after.log` is not acceptance evidence.
+  `a4f822740` closed the upstream HIR prerequisite after accepted
+  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$' ) > test_after.log 2>&1`
+  proof. The attempted pre-852 partial canonical-enforcement patch was
+  reverted; its failed `test_after.log` is not acceptance evidence.
