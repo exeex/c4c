@@ -8,19 +8,21 @@ Current Step Title: Retire selected extern legacy mirrors only with parity
 
 ## Just Finished
 
-Completed repaired plan.md Step 3 for the selected extern aggregate return
-target. The extern declaration printer now renders aggregate return type names
-from `LirExternDecl.return_type` `StructNameId` authority when present, and the
-verifier treats the structured carrier as selected authority even when retained
-`return_type_str` or return mirror text is stale. Focused coverage proves stale
-extern return text cannot drive selected aggregate declaration output.
+Completed repaired plan.md Step 4 for the selected extern aggregate return
+target as a bounded no-code retirement conclusion. No safe deletion remains
+inside the selected extern aggregate return slice: `return_type_str` is no
+longer semantic authority for verifier/printer behavior when a valid structured
+`return_type` carrier exists, but it still remains compatibility/output text
+and fallback for nonaggregate runtime-text declarations and unselected extern
+parameter/signature-store work.
 
 ## Suggested Next
 
-Execute repaired plan.md Step 4 for the selected extern aggregate return
-target. Retire only the exact selected extern return text mirror if all named
-verifier/printer/consumer parity is proven; otherwise record a bounded no-code
-conclusion that `return_type_str` must remain compatibility/output text for now.
+Send the exhausted repaired runbook to plan-owner for semantic disposition of
+idea 844: close as completed for the selected global and extern aggregate
+return slices, repair the route for another in-scope extern parameter target,
+or switch to a separately scoped successor if remaining durable intent should
+continue elsewhere.
 
 ## Watchouts
 
@@ -34,6 +36,11 @@ Do not widen Step 4 into extern parameter/signature-store migration,
 collector/import-preparation, Raw-BIR receiver work, or nonaggregate runtime
 text handling.
 
+Baseline review note: hook candidate `test_baseline.new.log` at commit
+`3323d25e2` regressed five varargs tests. The candidate was rejected with
+`scripts/plan_review_state.py reject-baseline`; commit `17c5aaf88` narrowed the
+global aggregate verifier gate, and a fresh full-suite proof passed 3038/3038.
+
 ## Proof
 
-Step 3 proof command: `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_extern_decl_type_ref$|^frontend_lir_global_label_address_initializer$'; } > test_after.log 2>&1`
+Step 4 proof command: full-suite `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure; } > test_after.log 2>&1`, passed 3038/3038.
