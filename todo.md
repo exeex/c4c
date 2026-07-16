@@ -1,26 +1,27 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/848_hir_aggregate_occurrence_canonical_ref_population.md
+Source Idea Path: ideas/open/812_lir_string_authority_remaining_routes_umbrella.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Archive the bounded no-change route
+Current Step Title: Establish the evidence baseline and inventory
 
 ## Just Finished
 
-- 851 was intentionally concluded after `fb3b74fee` confirmed no legal
-  direct-fact producer for the current function-signature contract.
+- Activated the 812 evidence-inventory route after 848 was intentionally
+  concluded no-change. No 812 execution packet has completed.
 
 ## Suggested Next
 
-- Execute plan Step 1: archive 848 as its own no-change conclusion. Keep 838
-  blocked; do not implement or test a route.
+- Execute Step 1: establish the current evidence baseline, closure inventory,
+  and open-owner map without modifying semantic code or lifecycle ownership.
 
 ## Watchouts
 
-- Do not retry 848 Step 2b or infer canonical identity from parser,
-  `TypeSpec`, owner/tag/text, `Node*`, or lookup state.
+- Do not create successors, alter existing owner chains, or treat bounded
+  closure evidence as family-wide completion.
 
 ## Proof
 
-- Lifecycle-only transition. No new build or test claim is made.
+- Documentation/evidence route: verify required documents, complete row
+  dispositions, and a clean scope diff before requesting closure.

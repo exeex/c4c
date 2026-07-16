@@ -140,3 +140,26 @@ to 838, and do not create a parser/`TypeSpec`/owner/tag/text/`Node*` recovery
 path. 838 remains blocked unless a future separately scoped, explicitly
 approved architecture changes the supported contract and establishes a legal
 direct-fact producer; no such successor is created or approved here.
+
+## Closure Disposition (2026-07-16)
+
+Status: intentionally concluded no-change; archive this bounded route.
+
+The accepted Step 1/Step 2a construction result remains `359a9b94b` (`hir:
+add direct aggregate occurrence ref input`) with its recorded focused proof.
+It establishes only the explicit direct-input seam and fail-closed boundary;
+it does **not** populate aggregate function return or parameter occurrences.
+
+Step 2b was never implemented and has no accepted proof. 851's accepted
+`fb3b74fee` decision established that the current free-function signature
+normalization inputs have no legal pre-normalization, definition-backed
+direct-fact producer. Under this idea's contract, no implementation route
+exists without forbidden parser, `TypeSpec`, owner/tag/text, `Node*`, legacy
+map, or reconstructed-lookup recovery. Do not retry Step 2b or claim
+canonical occurrence propagation as a capability.
+
+838 remains blocked at its existing Step 2 return condition. This conclusion
+does not unblock or return control to 838. Only a future separately scoped and
+explicitly approved architecture that changes the supported contract and
+supplies a legal direct-fact producer may create a new route; none is created
+by this closure.
