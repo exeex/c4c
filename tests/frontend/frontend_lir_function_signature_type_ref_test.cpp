@@ -938,7 +938,7 @@ double scalar_unary_fneg_lhs(double x) { return -x; }
         if (auto* candidate_binary = std::get_if<c4c::codegen::lir::LirBinOp>(&inst);
             candidate_binary != nullptr &&
             candidate_binary->opcode.typed() == c4c::codegen::lir::LirBinaryOpcode::FNeg) {
-          mutate(*candidate_binary);
+          mutate(candidate, candidate_function, *candidate_binary);
           expect_verify_rejects(candidate, message);
           return;
         }
@@ -946,14 +946,54 @@ double scalar_unary_fneg_lhs(double x) { return -x; }
     }
     fail("mutable scalar unary fneg fixture should contain one fneg LirBinOp");
   };
-  rejects([](auto& binary) { binary.scalar_lhs_parameter_authority.reset(); },
+  rejects([](auto&, auto&, auto& binary) { binary.scalar_lhs_parameter_authority.reset(); },
           "DirectScalar unary fneg verifier must reject omitted authority");
-  rejects([](auto& binary) {
+  rejects([](auto&, auto& function, auto&) {
+            function.native_body_parameter_definitions.clear();
+          },
+          "DirectScalar unary fneg verifier must reject missing parameter definition");
+  rejects([](auto&, auto&, auto& binary) {
+            binary.scalar_lhs_parameter_authority->value =
+                c4c::codegen::lir::LirValueId::invalid();
+          },
+          "DirectScalar unary fneg verifier must reject invalid parameter identity");
+  rejects([](auto&, auto& function, auto&) {
+            function.native_body_parameter_definitions.push_back(
+                function.native_body_parameter_definitions.front());
+          },
+          "DirectScalar unary fneg verifier must reject duplicate parameter definitions");
+  rejects([](auto& candidate, auto&, auto& binary) {
+            binary.scalar_lhs_parameter_authority->owner =
+                candidate.link_names.intern("foreign_unary_fneg_owner");
+          },
+          "DirectScalar unary fneg verifier must reject foreign parameter owner");
+  rejects([](auto&, auto&, auto& binary) {
+            binary.scalar_lhs_parameter_authority->parameter_index = 1;
+          },
+          "DirectScalar unary fneg verifier must reject wrong parameter index");
+  rejects([](auto&, auto&, auto& binary) {
             binary.scalar_lhs_parameter_authority->type =
                 c4c::codegen::lir::LirTypeRef("float");
           },
-          "DirectScalar unary fneg verifier must reject mismatched authority tuple");
-  rejects([](auto& binary) { binary.rhs = binary.lhs; },
+          "DirectScalar unary fneg verifier must reject wrong parameter type");
+  rejects([](auto&, auto&, auto& binary) {
+            binary.scalar_lhs_parameter_authority->abi =
+                c4c::codegen::lir::LirNativeBodyParameterAbi::DirectPointer;
+          },
+          "DirectScalar unary fneg verifier must reject wrong parameter ABI");
+  rejects([](auto&, auto&, auto& binary) {
+            binary.scalar_lhs_parameter_authority->role =
+                c4c::codegen::lir::LirScalarBinaryParameterRole::Rhs;
+          },
+          "DirectScalar unary fneg verifier must reject wrong parameter role");
+  rejects([](auto&, auto&, auto& binary) { binary.opcode = "fadd"; },
+          "DirectScalar unary fneg verifier must reject non-fneg consumer");
+  rejects([](auto&, auto&, auto& binary) {
+            binary.lhs = c4c::codegen::lir::LirOperand::ssa(
+                "%foreign", c4c::codegen::lir::LirValueId{999999});
+          },
+          "DirectScalar unary fneg verifier must reject LHS mismatch");
+  rejects([](auto&, auto&, auto& binary) { binary.rhs = binary.lhs; },
           "unary fneg verifier must reject a populated rhs");
 }
 }  // namespace
