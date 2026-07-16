@@ -7766,6 +7766,16 @@ int lir_scalar_select_result_use_identity(void) {
       conflicting_type,
       "verifier should reject noninteger type on authoritative scalar select");
 
+  lir::LirModule stale_display_type = lowered;
+  require_focused_select(stale_display_type).first.type_str.str() = "double";
+  lir::verify_module(stale_display_type);
+  const std::string stale_display_ir = lir::print_llvm(stale_display_type);
+  expect_true(stale_display_ir.find(" = select i1 ") != std::string::npos &&
+                  stale_display_ir.find(", i32 ") != std::string::npos,
+              "scalar select printer should render integer type from native width authority");
+  expect_true(stale_display_ir.find(", double ") == std::string::npos,
+              "scalar select printer must not recover type semantics from stale display text");
+
   lir::LirModule missing_condition = lowered;
   require_focused_select(missing_condition).first.cond = lir::LirOperand{};
   expect_identity_verification_rejected(

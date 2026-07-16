@@ -631,7 +631,8 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
     }
     os << "\n";
   } else if (const auto* op = std::get_if<LirSelectOp>(&inst)) {
-    const auto& type = require_type_ref(op->type_str, "LirSelectOp.type_str");
+    const auto type = render_integer_type_ref(op->type_str,
+                                              "LirSelectOp.type_str");
     os << "  "
        << require_operand_kind(op->result, "LirSelectOp.result",
                                {LirOperandKind::SsaValue})

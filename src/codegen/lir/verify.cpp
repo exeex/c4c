@@ -2198,7 +2198,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
   }
   if (const auto* op = std::get_if<LirSelectOp>(&inst)) {
     verify_result_operand(op->result, "LirSelectOp.result");
-    require_module_type_ref(mod, op->type_str, "LirSelectOp.type_str");
+    (void)render_integer_type_ref(op->type_str, "LirSelectOp.type_str");
     verify_value_operand(op->cond, "LirSelectOp.cond");
     verify_value_operand(op->true_val, "LirSelectOp.true_val");
     verify_value_operand(op->false_val, "LirSelectOp.false_val");

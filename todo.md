@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/846_lir_family_overloaded_verifier_dispatch_printer.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add The Bounded Family Overload
+Current Step ID: 5
+Current Step Title: Decide Next 846 Packet Or 847 Handoff
 
 # Current Packet
 
@@ -56,12 +56,19 @@ verifier/printer:
   `tests/frontend/frontend_lir_call_type_ref_test.cpp`, with backend BIR
   receipt/rejection coverage in `backend_lir_to_bir_interface`.
 
+Completed the selected `LirSelectOp.type_str` packet:
+
+- Reused `render_integer_type_ref` for the select verifier/printer type field.
+- Migrated only the `LirSelectOp.type_str` verifier and printer callsites.
+- Added focused stale-display coverage proving scalar select printing uses
+  native integer width authority rather than mutable display text.
+
 ## Suggested Next
 
-Execute `plan.md` Step 2 and Step 3 for the selected
-`LirSelectOp.type_str` surface. Reuse or extend the bounded scalar integer
-type-ref requirement as appropriate, then migrate only the selected select
-verifier/printer callsites.
+Execute `plan.md` Step 5: inventory remaining universal classifier, renderer,
+mutable semantic string, and implicit conversion callers. Classify the next
+exact 846-owned consumer or record the handoff/blocker decision if no 846
+consumer is ready.
 
 ## Watchouts
 
@@ -89,9 +96,12 @@ Completed Step 2 through Step 4 proof:
 - `git diff --check`
 
 Step 5 trace selected `LirSelectOp.type_str` for the next bounded packet.
-Expected code-changing proof for that packet:
+Completed select packet proof:
 
 - `cmake --build build`
 - `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
 - `ctest --test-dir build -R '^backend_lir_to_bir_interface$' --output-on-failure`
 - `git diff --check`
+
+Next Step 5 decision is trace/lifecycle state unless it selects and records
+another bounded implementation packet.
