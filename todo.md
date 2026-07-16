@@ -8,18 +8,25 @@ Current Step Title: Establish first-owner decomposition from exact reproductions
 
 ## Just Finished
 
-- Lifecycle switch: 830 Steps 1 and 2 remain accepted; its Step 3 baseline
-  gate is parked because the rejected 14-failure candidate is evidenced to
-  predate `f0fc85e4f` and lies outside its direct-call argument-1 scope.
+- Step 1 established two separate pre-existing owners from the exact 14-case
+  reproduction. `frontend_hir_tests` still segfaults; a narrow backtrace puts
+  its first owning seam at `typespec_aggregate_owner_key`, reached from
+  `lir_owned_type_spec` / `populate_lir_function_params` in
+  `test_hir_to_lir_object_helper_callees_prefer_link_name_ids`. The clean,
+  backend-enabled `f0fc85e4f^` reproduction independently segfaults there.
+- The 13 named GCC torture tests all instead stop at the unchanged-before-
+  `f0fc85e4f` `verify_truthiness_lhs_parameter_authority` seam, which rejects
+  missing `LirCmpOp.truthiness_lhs_parameter_authority` for a native
+  direct-scalar truthiness LHS. These are separate first-owner families; no
+  repair or baseline clearance is claimed.
 
 ## Suggested Next
 
-- Reproduce the exact 14-failure subset and establish the first owning seam
-  independently for the `frontend_hir_tests` segfault and the 13
-  `LirCmpOp.truthiness_lhs_parameter_authority` torture failures.
-- Do not implement a combined repair. If ownership differs as the supplied
-  evidence indicates, create ordered separately scoped repair successors
-  before code changes.
+- Plan-owner: create ordered separate successors before code changes: first,
+  a narrowly scoped `typespec_aggregate_owner_key` / LIR function-parameter
+  ownership crash diagnosis and repair for the named HIR test; second, a
+  native `LirCmpOp.truthiness_lhs_parameter_authority` producer/verification
+  completion route for the 13 GCC torture cases. Do not combine the routes.
 
 ## Watchouts
 
@@ -32,3 +39,7 @@ Current Step Title: Establish first-owner decomposition from exact reproductions
 - Baseline provenance: `test_baseline.log` at `8418036b` accepted 3038/3038;
   `test_baseline.new.log` at `f0fc85e4f` rejected 3024/3038. Step 1 starts
   with the exact 14-failure reproduction command recorded in the source idea.
+- Fresh Step 1 reproduction: `cmake --build --preset default && ctest --test-dir
+  build -j --output-on-failure -R '^(frontend_hir_tests|llvm_gcc_c_torture_src_(20090113_2|930719_1|931012_1|950512_1|961112_1|comp_goto_1|pr23604|pr28289|pr37780|pr43385|pr46909_2|pr51323|pr88714)_c)$'`
+  failed 14/14: one HIR segfault and the 13 matching truthiness-authority
+  frontend rejections.
