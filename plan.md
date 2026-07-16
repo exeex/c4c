@@ -1,88 +1,77 @@
-# Direct-Call Structured Argument Identity Prerequisite Runbook
+# Pre-existing Baseline Failure-Family Decomposition Blocker Runbook
 
 Status: Active
-Source Idea: ideas/open/830_lir_direct_call_structured_argument_identity_prerequisite.md
-Activated from: 829 Step 2 separate-blocker decision
+Source Idea: ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md
+Switched from: 830 Step 3 rejected-baseline gate
 
 ## Purpose
 
-Create only the missing native LIR structured argument-1 identity/type
-producer relation required before 829 can assess authority publication.
+Keep 830's accepted direct-call argument-1 slice parked while independently
+pre-existing baseline failures are assigned to their first owning layer.
 
 ## Core Rule
 
-Use native structured construction and verifier facts only. Do not recover
-identity or type from text, names, signatures, rendered operands, diagnostics,
-or parser-shaped representations.
+Treat the HIR segfault and truthiness-parameter verifier failures as separate
+implementation families unless concrete evidence proves one shared first-owner
+seam. Do not modify 830 while this blocker is active.
+
+## Read First
+
+- `ideas/open/830_lir_direct_call_structured_argument_identity_prerequisite.md`
+- `test_baseline.log` and `test_baseline.new.log`
+- `f0fc85e4f^` provenance evidence supplied with this switch
 
 ## Non-Goals
 
-- Any body-parameter authority publication, role, or Raw-BIR receiver work.
-- Generic call argument handling, other call forms/indices, ABI conversion,
-  or unrelated 821/822 material.
+- Direct-call argument identity/type production, 829 authority publication,
+  Raw-BIR, generic calls, or any repair by expectation/harness weakening.
+- A mixed implementation patch for the two failure families.
 
 ## Ordered Steps
 
-### Step 1 - Trace the smallest native structured producer seam
+### Step 1 - Establish first-owner decomposition from exact reproductions
 
-Goal: identify how the selected argument-1 call relation can be represented
-with native identity and exact type at construction time.
-
-Actions:
-
-- inspect only the direct-call construction, native LIR representation, and
-  verifier seam;
-- demonstrate the current non-SSA/text-only gap without treating signature or
-  display data as a substitute; and
-- select one bounded direct/non-variadic/specified argument-1 relation.
-
-Completion check: the intended structural producer/verifier contract is
-explicit and no generic or presentation-derived route is admitted.
-
-### Step 2 - Produce and verify the structural argument relation
-
-Goal: implement the selected native identity/type carrier and fail-closed
-producer verification.
+Goal: preserve the supplied pre-830 provenance and determine whether the HIR
+segfault and truthiness-parameter verifier failures can share an honest repair
+owner.
 
 Actions:
 
-- populate the relation directly at the native LIR construction seam;
-- verify presence, ownership/coherence, direct-call form, argument index, and
-  exact callee parameter-1 type; and
-- leave all other call forms and argument indices outside the contract.
+- run the exact 14-failure subset and inspect only the first owning
+  failure/provenance seam for each family;
+- confirm the HIR segfault independently on clean `f0fc85e4f^` with backend
+  enabled and confirm the torture diagnostics use the unchanged truthiness
+  verifier route; and
+- if the owners differ, have lifecycle create ordered, separately scoped repair
+  successors before any implementation. If a shared seam is evidenced, record
+  that seam and narrow the next packet to it.
 
-Completion check: the relation is structural and verifier-checked without any
-829 authority tuple or presentation recovery.
+Completion check: each family has an evidenced first owner and either a proven
+shared bounded repair seam or named separate repair successors.
 
-### Step 3 - Diagnose and repair the rejected post-commit baseline
+### Step 2 - Repair the selected owner route(s) without contract weakening
 
-Goal: resolve the rejected full-suite acceptance gate before 830 can continue
-or produce another commit.
-
-Actions:
-
-- diagnose the post-`f0fc85e4f` candidate regression from 3038/3038 to
-  3024/3038, including the `frontend_hir_tests` segfault and 13
-  `llvm_gcc_c_torture` failures;
-- determine whether the new failures are caused by the 830 slice and repair
-  only an in-scope cause, without broadening the native relation contract; and
-- rerun a comparable full-suite baseline and obtain supervisor acceptance that
-  no new baseline problem remains before any further commit.
-
-Completion check: the rejected candidate is replaced by accepted comparable
-proof of no new baseline problem. Focused proof alone cannot clear this gate.
-
-### Step 4 - Prove the prerequisite and return to 829
-
-Goal: establish focused same-feature positive and malformed proof, then
-document the exact parent return condition.
+Goal: obtain accepted focused proof for each separately scoped owner route.
 
 Actions:
 
-- run a fresh build and focused producer proof selected by the supervisor;
-- cover missing or incoherent structural relation rejection; and
-- record the resulting relation and reactivate 829 only if it can support its
-  existing parameter-definition tuple without recovery.
+- execute only the successor route(s) authorized by Step 1; and
+- preserve test/harness contracts and return their accepted proof to this
+  blocker.
 
-Completion check: after Step 3 clears the baseline gate, 830 can conclude as
-a producer prerequisite and 829's exact Step 2 return action is durable.
+Completion check: every failure family has accepted focused owner proof; no
+mixed or testcase-shaped baseline workaround was used.
+
+### Step 3 - Obtain comparable baseline proof and return 830
+
+Goal: clear the rejected baseline gate without claiming 830 capability work.
+
+Actions:
+
+- obtain supervisor-owned comparable full-suite evidence against the accepted
+  3038/3038 baseline; and
+- record clearance, then reactivate 830 at unchanged Step 3 solely to accept
+  that gate, followed by its existing Step 4 and 829 Step 2 return.
+
+Completion check: accepted comparable proof shows no new baseline problem and
+the parent return point is durable.

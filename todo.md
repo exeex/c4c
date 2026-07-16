@@ -1,53 +1,34 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/830_lir_direct_call_structured_argument_identity_prerequisite.md
+Source Idea Path: ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Diagnose and repair the rejected post-commit baseline
+Current Step ID: 1
+Current Step Title: Establish first-owner decomposition from exact reproductions
 
 ## Just Finished
 
-- Step 2 completed the selected direct-global, non-variadic, specified
-  two-parameter argument-1 relation. `prepare_call_arg` now preserves the
-  already-native `source_operand` and `LirTypeRef(out_llvm_ty)` only when
-  argument 1 is an unconverted current-function `DirectScalar` SSA source.
-  Existing owned-call construction carries them into `structured_args[1]` and
-  `arg_type_refs[1]` without recovering either from presentation text.
-- The native verifier now recognizes that exact direct two-parameter shape
-  when argument 1 names a current-function `DirectScalar` definition, and
-  rejects missing or incoherent argument/type/fixed-parameter-1 mirrors.
-  Focused positive and malformed coverage verifies the native relation; no
-  body-parameter authority tuple or role was added.
+- Lifecycle switch: 830 Steps 1 and 2 remain accepted; its Step 3 baseline
+  gate is parked because the rejected 14-failure candidate is evidenced to
+  predate `f0fc85e4f` and lies outside its direct-call argument-1 scope.
 
 ## Suggested Next
 
-- Step 3 is an acceptance blocker: diagnose the full-suite candidate rejected
-  after `f0fc85e4f` before treating the focused 1/1 result as sufficient.
-  The candidate regressed from 3038/3038 to 3024/3038, with
-  `frontend_hir_tests` segfaulting and 13 `llvm_gcc_c_torture` failures.
-- Establish whether those failures are introduced by the 830 slice, repair
-  only an in-scope cause if present, and rerun the comparable full baseline.
-  Do not make another commit until the supervisor has proof that no new
-  baseline problem remains relative to the accepted 3038/3038 baseline.
-- Only then resume the focused completion record and 829 Step 2 return route;
-  do not widen into parameter authority, Raw-BIR, generic calls, or other
-  argument indices.
+- Reproduce the exact 14-failure subset and establish the first owning seam
+  independently for the `frontend_hir_tests` segfault and the 13
+  `LirCmpOp.truthiness_lhs_parameter_authority` torture failures.
+- Do not implement a combined repair. If ownership differs as the supplied
+  evidence indicates, create ordered separately scoped repair successors
+  before code changes.
 
 ## Watchouts
 
-- Keep 830 limited to the direct/non-variadic/specified argument-1 native
-  relation. Do not touch Raw-BIR, 734, generic call arguments, or unrelated
-  821/822 material. `args_str` and rendered operand/type strings remain
-  compatibility mirrors, not sources of this relation.
+- Preserve the accepted `f0fc85e4f` focused 1/1 result and do not change 830.
+  No expectation downgrade, unsupported marker, allowlist, test filter, or
+  weaker harness contract can clear this baseline gate.
 
 ## Proof
 
-- Passed: `cmake --build --preset default && ctest --test-dir build -j
-  --output-on-failure -R '^frontend_lir_call_type_ref$' > test_after.log`.
-  The focused `frontend_lir_call_type_ref` subset passed (1/1); proof log:
-  `test_after.log`.
-- Rejected baseline gate: post-commit `test_baseline.new.log` for
-  `f0fc85e4f` is not acceptance evidence (3024/3038 versus the accepted
-  3038/3038 baseline). A fresh comparable full-suite result showing no new
-  baseline problem is required before any further commit.
+- Baseline provenance: `test_baseline.log` at `8418036b` accepted 3038/3038;
+  `test_baseline.new.log` at `f0fc85e4f` rejected 3024/3038. Step 1 starts
+  with the exact 14-failure reproduction command recorded in the source idea.

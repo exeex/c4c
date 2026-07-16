@@ -65,3 +65,36 @@ entries. There is no authoritative value/type relation for 829 to consume.
   argument relation or lacks malformed/incoherent rejection.
 - Reject publishing the 829 authority tuple or `FixedDirectCallArgument1`
   role before 829 is reactivated and independently validates the prerequisite.
+
+## Resumption Record: rejected baseline-family decomposition blocker
+
+Status: parked by lifecycle switch to
+`ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md`.
+
+- Last accepted progress: Steps 1 and 2 are complete. Step 2's accepted
+  implementation commit is `f0fc85e4f` (`Preserve direct-call argument
+  identity`), with focused `frontend_lir_call_type_ref` proof passing 1/1.
+- Interrupted step: Step 3 — **Diagnose and repair the rejected post-commit
+  baseline**. No Step 3 repair or acceptance is claimed.
+- Rejected baseline evidence: the accepted baseline at `8418036b` was
+  3038/3038; the candidate at `f0fc85e4f` was 3024/3038. The exact 14
+  failures reproduce with `cmake --build --preset default && ctest --test-dir
+  build -j --output-on-failure -R
+  '^(frontend_hir_tests|llvm_gcc_c_torture_src_(20090113_2|930719_1|931012_1|950512_1|961112_1|comp_goto_1|pr23604|pr28289|pr37780|pr43385|pr46909_2|pr51323|pr88714)_c)$'
+  > test_after.log`.
+- Blocker outside this idea's scope: the 13 torture failures report the
+  pre-existing `LirCmpOp.truthiness_lhs_parameter_authority` verifier route,
+  unchanged in `f0fc85e4f^`; a clean isolated `f0fc85e4f^` build with
+  `ENABLE_C4C_BACKEND=ON` independently reproduces the `frontend_hir_tests`
+  segfault. Neither belongs to this idea's bounded direct/non-variadic,
+  specified argument-1 relation.
+- Lifecycle decision: the HIR segfault and truthiness-parameter verifier
+  family do not honestly share one implementation owner. New Idea 831 owns
+  only their evidence-preserving first-owner decomposition and the resulting
+  dependency order; it must create separately scoped repair routes before
+  either repair is attempted.
+- Exact return point: after the required repair route(s) produce accepted
+  comparable full-suite evidence with no new baseline problem, reactivate 830
+  at unchanged Step 3 solely to accept that gate. Then execute existing Step
+  4 focused completion and return to 829 Step 2. Do not make an 830 code
+  change while this blocker route is active.
