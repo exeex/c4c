@@ -2003,7 +2003,7 @@ static void collect_inst_refs(const LirInst& inst, LirGlobalRefs& refs) {
     } else if constexpr (std::is_same_v<T, LirAbsOp>) {
       S(op.arg);
     } else if constexpr (std::is_same_v<T, LirInsertElementOp>) {
-      S(op.vec); collect_operand_ref(op.elem, refs);
+      collect_operand_ref(op.vec, refs); collect_operand_ref(op.elem, refs);
     } else if constexpr (std::is_same_v<T, LirExtractElementOp>) {
       collect_operand_ref(op.vec, refs);
     } else if constexpr (std::is_same_v<T, LirShuffleVectorOp>) {
