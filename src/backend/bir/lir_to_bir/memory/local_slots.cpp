@@ -1552,12 +1552,6 @@ bool BirFunctionLowerer::lower_memory_load_inst(
       }
       return true;
     }
-    // Step 4 no-id compatibility bridge: local/global aggregate load lowering
-    // owns LirLoadOp::type_str rendered text for aggregate loads. The
-    // limitation is that the load instruction does not expose a
-    // StructNameId-bearing LirTypeRef at this boundary, so layout selection
-    // delegates to the shared aggregate.cpp no-id fence. Remove this once
-    // aggregate memory load ops carry structured type identity.
     const auto aggregate_layout =
         lower_byval_aggregate_layout(load.type_str.str(), type_decls_, &structured_layouts_);
     if (!aggregate_layout.has_value()) {
@@ -1606,8 +1600,10 @@ bool BirFunctionLowerer::lower_memory_load_inst(
           });
         }
 
-        if (!declare_local_aggregate_slots(
-                load.type_str.str(), load.result.str(), aggregate_layout->align_bytes)) {
+        if (!declare_local_aggregate_slots(load.type_str.str(),
+                                           load.type_str,
+                                           load.result.str(),
+                                           aggregate_layout->align_bytes)) {
           return false;
         }
         const auto aggregate_it = local_aggregate_slots_.find(load.result.str());
@@ -1657,8 +1653,10 @@ bool BirFunctionLowerer::lower_memory_load_inst(
             addressed_layout->size_bytes < aggregate_layout->size_bytes) {
           return false;
         }
-        if (!declare_local_aggregate_slots(
-                load.type_str.str(), load.result.str(), aggregate_layout->align_bytes)) {
+        if (!declare_local_aggregate_slots(load.type_str.str(),
+                                           load.type_str,
+                                           load.result.str(),
+                                           aggregate_layout->align_bytes)) {
           return false;
         }
         const auto aggregate_it = local_aggregate_slots_.find(load.result.str());
@@ -1726,8 +1724,10 @@ bool BirFunctionLowerer::lower_memory_load_inst(
       return false;
     }
 
-    if (!declare_local_aggregate_slots(
-            load.type_str.str(), load.result.str(), aggregate_layout->align_bytes)) {
+    if (!declare_local_aggregate_slots(load.type_str.str(),
+                                       load.type_str,
+                                       load.result.str(),
+                                       aggregate_layout->align_bytes)) {
       return false;
     }
     const auto aggregate_it = local_aggregate_slots_.find(load.result.str());

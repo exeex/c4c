@@ -8,32 +8,32 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed Step 4 aggregate alloca slot-state conversion.
+Completed Step 4 aggregate load-result slot-state conversion.
 
-`lower_memory_alloca_inst(...)` now threads the existing `LirAllocaOp::type_str`
-`LirTypeRef` into `declare_local_aggregate_slots(...)` for the aggregate alloca
-construction path. StructNameId-bearing aggregate allocas now populate
+`lower_memory_load_inst(...)` now threads the existing `LirLoadOp::type_str`
+`LirTypeRef` into `declare_local_aggregate_slots(...)` for aggregate load result
+slots created from local array, addressed pointer, and global aggregate load
+paths. StructNameId-bearing aggregate load results now populate
 `LocalAggregateSlots::type_ref` and use the structured layout lookup/fail-closed
-route; scalar, local array, vector, and unrelated text-only callers remain on
-their existing paths.
+route; non-load aggregate slot construction paths remain unchanged.
 
 ## Suggested Next
 
-Suggested Next: choose one remaining non-alloca local aggregate slot
-construction path that already has structured type metadata available, thread
-that `LirTypeRef` into the slot state, and leave no-id/text-only callers on the
-explicit legacy fallback.
+Suggested Next: migrate another remaining local aggregate slot construction path
+that already has structured type metadata available, excluding call returns,
+variadic aggregate `va_arg`, aggregate params, and unrelated subobject/view
+construction unless the supervisor explicitly scopes them.
 
 ## Watchouts
 
-- This packet deliberately did not broaden into load/store, call return, or
-  variadic aggregate construction paths.
-- `LirAllocaOp::type_str` may still be a no-id/text-only ref for legacy inputs;
-  those allocas continue through the documented no-id fallback in
+- This packet deliberately did not broaden into call returns, variadic aggregate
+  `va_arg`, aggregate params, or subobject/view construction paths.
+- `LirLoadOp::type_str` may still be a no-id/text-only ref for legacy inputs;
+  those aggregate load results continue through the documented no-id fallback in
   `declare_local_aggregate_slots(...)`.
-- StructNameId-bearing aggregate alloca slots now rely on the structured lookup
-  before any later leaf-slot collection, so unresolved structured metadata fails
-  closed.
+- The aggregate layout probe in `lower_memory_load_inst(...)` still uses
+  `lower_byval_aggregate_layout(load.type_str.str(), ...)` before slot
+  declaration; this packet only migrated aggregate load result slot creation.
 
 ## Proof
 
