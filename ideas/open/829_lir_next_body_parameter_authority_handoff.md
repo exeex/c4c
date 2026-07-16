@@ -63,3 +63,37 @@ signatures, rendered operands, diagnostics, or compatibility fields.
   type, role, or consumer coherence.
 - Reject retaining the exact missing authority behind a renamed carrier, or
   accepting a row without malformed/foreign/duplicate rejection coverage.
+
+## Resumption Record: structured direct-call argument identity prerequisite
+
+- Last accepted progress: Step 1 was traced and recorded in `78b17b3d3`
+  (`[todo_only] Trace next call parameter authority`). The initially selected
+  relation was the second current-function `DirectScalar` parameter at
+  `LirCallOp.structured_args[1]` of a direct, non-variadic, specified call.
+  This is trace evidence only; it did **not** publish an authority row.
+- Interrupted step and disposition: Step 2, *Publish and verify the selected
+  authority*, is blocked and this idea remains open. Closure is rejected:
+  its acceptance criterion requires one structured, verifier-checked producer
+  contract and focused positive/negative proof, neither of which exists for
+  argument 1.
+- Blocker outside this idea's scope: valid two-parameter direct calls do have
+  native parameter definitions and callee signature entries, but
+  `LirCallOp.arg_type_refs` is empty and
+  `structured_args[1].operand` is non-SSA/text-only. Thus there is no existing
+  authoritative value/type relation that 829 may publish. The attempted
+  `frontend_lir_call_type_ref` positive fixture fails; it is preserved in
+  `test_after.log` and is not acceptance evidence. Text, signature, rendered
+  operand, diagnostic, and parser-shaped recovery are forbidden.
+- Separate-blocker route: `ideas/open/830_lir_direct_call_structured_argument_identity_prerequisite.md`
+  owns establishing a bounded native LIR call-argument structured identity and
+  type relation at the producing seam, with native verification and focused
+  proof. It must not publish 829's body-parameter authority or implement any
+  Raw-BIR receiver work.
+- Exact return point: after 830 accepts one valid structured direct-call
+  argument-1 identity/type relation, reactivate 829 at Step 2. Revalidate that
+  the relation can carry the existing current-function parameter definition's
+  value/owner/index/type/ABI/role tuple without recovery; only then publish
+  that one 829 authority row and add its malformed-authority coverage.
+- Preserved evidence: no 829 code commit exists. `test_before.log` remains the
+  focused 1/1 before baseline; do not replace either canonical regression log
+  during this lifecycle switch.

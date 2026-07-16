@@ -1,73 +1,70 @@
-# Next Body-Parameter Authority Handoff Runbook
+# Direct-Call Structured Argument Identity Prerequisite Runbook
 
 Status: Active
-Source Idea: ideas/open/829_lir_next_body_parameter_authority_handoff.md
-Activated from: 734 post-Step 7.40 separate-blocker decision
+Source Idea: ideas/open/830_lir_direct_call_structured_argument_identity_prerequisite.md
+Activated from: 829 Step 2 separate-blocker decision
 
 ## Purpose
 
-Publish one exact next native function-body parameter-use authority row so 734
-can later receive that row without presentation-derived recovery.
+Create only the missing native LIR structured argument-1 identity/type
+producer relation required before 829 can assess authority publication.
 
 ## Core Rule
 
-Select and publish one existing producer relation only. Native structured
-authority, not names, signatures, diagnostics, printed operands, or
-compatibility fields, must carry every semantic fact needed by the later
-receiver.
+Use native structured construction and verifier facts only. Do not recover
+identity or type from text, names, signatures, rendered operands, diagnostics,
+or parser-shaped representations.
 
 ## Non-Goals
 
-- Raw-BIR/importer/container/verifier work or receiver implementation.
-- Generic parameter support, ABI conversion, or a multi-row sweep.
-- Reopening any authority row already received by 734 through Step 7.40.
-- Memory/VA, aggregate/vector, module/type/global/metadata, residual
-  instruction/terminator, inline-assembly, and unrelated 821/822 material.
+- Any body-parameter authority publication, role, or Raw-BIR receiver work.
+- Generic call argument handling, other call forms/indices, ABI conversion,
+  or unrelated 821/822 material.
 
 ## Ordered Steps
 
-### Step 1 - Trace and select one next native parameter-use relation
+### Step 1 - Trace the smallest native structured producer seam
 
-Goal: identify one currently produced, valid function-body parameter consumer
-after the accepted fixed-direct-call argument-0 row and demonstrate why it
-requires a new typed authority tuple.
-
-Actions:
-
-- inspect only native LIR construction, its verifier, and nearby focused test
-  surface;
-- record the selected current-function value/owner/index/type/ABI/role and
-  exact consumer coherence relation; and
-- leave every nonselected form fail closed without using presentation fields.
-
-Completion check: a single receiver-consumable relation and its bounded
-producer/verifier seam are explicit; otherwise conclude no eligible row rather
-than broadening scope.
-
-### Step 2 - Publish and verify the selected authority
-
-Goal: add only the selected structured carrier and native verification.
+Goal: identify how the selected argument-1 call relation can be represented
+with native identity and exact type at construction time.
 
 Actions:
 
-- populate authority directly from the existing parameter definition and
-  selected consumer;
-- reject missing, invalid, duplicate, foreign, owner/index/type/ABI/role, and
-  consumer-incoherent authority before downstream use; and
-- add same-feature positive plus malformed-authority coverage.
+- inspect only the direct-call construction, native LIR representation, and
+  verifier seam;
+- demonstrate the current non-SSA/text-only gap without treating signature or
+  display data as a substitute; and
+- select one bounded direct/non-variadic/specified argument-1 relation.
 
-Completion check: fresh build and exact focused producer proof pass with the
-selected semantic relation exercised.
+Completion check: the intended structural producer/verifier contract is
+explicit and no generic or presentation-derived route is admitted.
 
-### Step 3 - Record the one-row handoff to 734
+### Step 2 - Produce and verify the structural argument relation
 
-Goal: make the producer result receiver-ready without implementing receipt.
+Goal: implement the selected native identity/type carrier and fail-closed
+producer verification.
 
 Actions:
 
-- record the exact authority tuple, consumer relation, implementation commit,
-  and accepted focused proof in the source idea; and
-- name 734's exact next bounded receiver return action.
+- populate the relation directly at the native LIR construction seam;
+- verify presence, ownership/coherence, direct-call form, argument index, and
+  exact callee parameter-1 type; and
+- leave all other call forms and argument indices outside the contract.
 
-Completion check: 829 can close as a producer-only capability and 734 can be
-reactivated without rediscovering the selected row.
+Completion check: the relation is structural and verifier-checked without any
+829 authority tuple or presentation recovery.
+
+### Step 3 - Prove the prerequisite and return to 829
+
+Goal: establish focused same-feature positive and malformed proof, then
+document the exact parent return condition.
+
+Actions:
+
+- run a fresh build and focused producer proof selected by the supervisor;
+- cover missing or incoherent structural relation rejection; and
+- record the resulting relation and reactivate 829 only if it can support its
+  existing parameter-definition tuple without recovery.
+
+Completion check: 830 can conclude as a producer prerequisite and 829's exact
+Step 2 return action is durable.

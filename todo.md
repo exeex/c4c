@@ -1,48 +1,28 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/829_lir_next_body_parameter_authority_handoff.md
+Source Idea Path: ideas/open/830_lir_direct_call_structured_argument_identity_prerequisite.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish and verify the selected authority
+Current Step ID: 1
+Current Step Title: Trace the smallest native structured producer seam
 
 ## Just Finished
 
-- Step 1 traced and selected exactly one next row: a DirectScalar
-  current-function parameter used unchanged as `LirCallOp.structured_args[1]`
-  of a direct, non-variadic, specified call. Its source tuple is the existing
-  `LirCurrentFunctionBodyParameterDefinition` for that second source parameter
-  (`value`, current-function `LinkNameId` owner, `parameter_index = 1`, exact
-  `LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`); its required
-  consumer coherence is `structured_args[1].operand == value`, equal argument,
-  `arg_type_refs[1]`, and fixed-callee parameter-1 types. Native construction
-  currently allocates this definition in `hir_to_lir.cpp`, but
-  `publish_fixed_direct_call_argument0_authority` and its verifier inspect
-  index 0 only, so this valid index-1 relation has no structured carrier and
-  cannot be recovered from display operands/signatures.
+- Lifecycle switch from 829 Step 2: its selected argument-1 relation is not
+  structurally produced, so 830 now owns the prerequisite producer route.
 
 ## Suggested Next
 
-- Step 2 only: add an index-1-specific call-argument authority carrier and
-  `FixedDirectCallArgument1` role; publish it from the existing parameter
-  definition and verify the exact direct/non-variadic/specified,
-  SSA/value-owner-index-type-ABI-role, and parameter-1 type-coherence rules.
-  Add one two-parameter direct-call positive fixture plus missing, invalid,
-  duplicate, foreign, owner/index/type/ABI/role, and consumer-incoherent
-  malformed cases. Proposed files: `src/codegen/lir/ir.hpp`,
-  `src/codegen/lir/hir_to_lir/call/target.cpp`, `src/codegen/lir/verify.cpp`,
-  and `tests/frontend/frontend_lir_call_type_ref_test.cpp`.
+- Execute Step 1 only. Preserve 829's resumption record; do not publish a
+  parameter authority tuple or recover semantics from presentation fields.
 
 ## Watchouts
 
-- Do not change Raw-BIR/importer code, reopen 734's accepted rows, or infer
-  semantic authority from presentation fields.
-- Keep all other call indices, indirect/variadic/unspecified calls, converted
-  arguments, and every other parameter form fail closed; this is not generic
-  call-argument parameter authority.
-- Preserve unrelated 821/822 worktree material.
+- Keep 830 limited to the direct/non-variadic/specified argument-1 native
+  relation. Do not touch Raw-BIR, 734, generic call arguments, or unrelated
+  821/822 material.
 
 ## Proof
 
-- No 829 proof yet. Step 2 requires a fresh build and exact focused producer
-  proof selected from the traced semantic relation.
+- No proof has been accepted for 830. Preserve `test_before.log` and
+  `test_after.log`; the latter records 829's failed attempted fixture.
