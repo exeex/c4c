@@ -27,17 +27,6 @@ LirTypeRef lir_aggregate_gep_type_ref(const std::string& rendered_text,
                                       lir::LirModule* module,
                                       StructNameId name_id, bool is_union);
 
-// Indexed-GEP element text is rendered from a resolved HIR TypeSpec. It can
-// legitimately be an array, pointer, vector, or other non-builtin spelling,
-// so retain it through this local, auditable runtime-text boundary.
-[[nodiscard, deprecated(
-                  "HIR-rendered indexed-GEP element type text: audit this runtime-text "
-                  "compatibility boundary")]]
-LirTypeRef hir_rendered_indexed_gep_element_type_text(
-    std::string rendered_text) {
-  return LirTypeRef(std::move(rendered_text));
-}
-
 StructNameId indexed_gep_structured_name_id(const c4c::hir::Module& mod,
                                             const lir::LirModule* module,
                                             const std::string& rendered_text,
@@ -1032,7 +1021,7 @@ LirTypeRef StmtEmitter::indexed_gep_elem_ty(const TypeSpec& base_ts,
                                         elem_ts.base == TB_UNION);
     }
   }
-  return hir_rendered_indexed_gep_element_type_text(std::move(rendered_text));
+  return LirTypeRef(std::move(rendered_text));
 }
 
 std::string StmtEmitter::emit_indexed_gep(FnCtx& ctx, const std::string& base_ptr,
