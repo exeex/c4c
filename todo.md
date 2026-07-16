@@ -9,15 +9,15 @@ Current Step Title: Delete mutable LIR type text escape hatches in small packets
 ## Just Finished
 
 Completed Step 2 packet to delete the single named deprecated factory family
-`LirTypeRef::parsed_typed_call_argument_text`. Updated both direct typed-call
-argument callsites to use explicit `LirTypeRef(...)` construction from the
-existing parsed argument type text.
+`LirTypeRef::parsed_typed_call_return_text`. Updated the direct typed-call
+return callsite to use explicit `LirTypeRef(...)` construction from the
+existing already-trimmed parsed return type text.
 
 ## Suggested Next
 
 Continue Step 2 with one remaining named deprecated compatibility factory
-family in a separate narrow packet. `parsed_typed_call_return_text` is the next
-small typed-call family, with a single direct callsite in `call_args_ops.hpp`.
+family in a separate narrow packet, selected by the supervisor from the current
+warning inventory.
 
 ## Watchouts
 
@@ -33,6 +33,8 @@ small typed-call family, with a single direct callsite in `call_args_ops.hpp`.
 - Do not delete const `str()`, additional named compatibility factories,
   non-`LirTypeRef` wrapper conversions, or equality/classification helpers in
   the same packet.
+- `rg -n "parsed_typed_call_return_text" src tests/frontend tests/backend`
+  is now clean.
 - `rg -n "parsed_typed_call_argument_text" src tests/frontend tests/backend`
   is now clean.
 - Required scalar-to-vector splat shuffles now reject incoherent native

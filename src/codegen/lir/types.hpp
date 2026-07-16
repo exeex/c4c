@@ -90,15 +90,6 @@ class LirTypeRef {
     return LirTypeRef("i" + std::to_string(bit_width), LirTypeKind::Integer, bit_width);
   }
 
-  // Parsed LIR call return types are re-owned runtime text from input, not a
-  // closed set of builtins. Dynamic aggregate, vector, struct, and function
-  // spellings must remain supported through this local compatibility boundary.
-  [[nodiscard, deprecated(
-      "parsed/re-owned LIR typed-call return text: audit this compatibility boundary")]]
-  static LirTypeRef parsed_typed_call_return_text(std::string text) {
-    return LirTypeRef(std::move(text));
-  }
-
   // Inline-assembly operands and results retain LLVM type text rendered from
   // HIR TypeSpec. That text is runtime-derived rather than a closed builtin
   // set, so keep this deprecated inventory boundary local to inline assembly.
