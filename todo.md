@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/846_lir_family_overloaded_verifier_dispatch_printer.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Decide Next 846 Packet Or 847 Handoff
+Current Step ID: 2
+Current Step Title: Add The Bounded Family Overload
 
 # Current Packet
 
@@ -63,12 +63,27 @@ Completed the selected `LirSelectOp.type_str` packet:
 - Added focused stale-display coverage proving scalar select printing uses
   native integer width authority rather than mutable display text.
 
+Completed Step 5 inventory for the next 846 packet. 846 still owns generic
+family consumers, so the next selected surface is the integer compare branch of
+`LirCmpOp.type_str` verifier/printer:
+
+- `src/codegen/lir/verify.cpp` still verifies `LirCmpOp.type_str` with
+  `require_module_type_ref(mod, op->type_str, "LirCmpOp.type_str")`.
+- `src/codegen/lir/lir_printer.cpp` still renders `LirCmpOp.type_str` with
+  `require_type_ref(op->type_str, "LirCmpOp.type_str")`.
+- `verify_cmp_op_authority` already distinguishes integer and floating
+  compares; the next packet must migrate only the non-floating integer branch
+  and preserve the existing floating compare behavior.
+- Focused integer compare coverage exists in
+  `tests/frontend/frontend_lir_call_type_ref_test.cpp`, with backend BIR
+  comparison receipt/rejection coverage in `backend_lir_to_bir_interface`.
+
 ## Suggested Next
 
-Execute `plan.md` Step 5: inventory remaining universal classifier, renderer,
-mutable semantic string, and implicit conversion callers. Classify the next
-exact 846-owned consumer or record the handoff/blocker decision if no 846
-consumer is ready.
+Execute `plan.md` Step 2 and Step 3 for only the non-floating integer branch
+of `LirCmpOp.type_str`. Reuse or extend the bounded scalar integer type-ref
+requirement as appropriate, while leaving floating compare type refs on the
+existing generic path.
 
 ## Watchouts
 
@@ -82,6 +97,9 @@ helper deletion unless no semantic callers remain, no dispatch migration beyond
 one selected surface, no producer/carrier repair, and no expectation downgrade
 or testcase-shaped special case. Do not migrate `LirCmpOp`, `LirBinOp`, vector,
 aggregate, load/store, or cast type refs in the select packet.
+
+For the compare packet, do not migrate floating compares, `LirBinOp`, vector,
+aggregate, load/store, or cast type refs.
 
 ## Proof
 
@@ -105,3 +123,11 @@ Completed select packet proof:
 
 Next Step 5 decision is trace/lifecycle state unless it selects and records
 another bounded implementation packet.
+
+Step 5 trace selected the integer branch of `LirCmpOp.type_str` for the next
+bounded packet. Expected code-changing proof for that packet:
+
+- `cmake --build build`
+- `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
+- `ctest --test-dir build -R '^backend_lir_to_bir_interface$' --output-on-failure`
+- `git diff --check`
