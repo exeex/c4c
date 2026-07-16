@@ -576,9 +576,21 @@ bool has_complete_fixed_call_type_authority(const LirModule& mod,
 }
 
 bool is_native_scalar_floating_type(const LirTypeRef& type) {
+  if (type.kind() != LirTypeKind::Floating) return false;
+  switch (type.builtin_type().value_or(LirBuiltinType::Void)) {
+    case LirBuiltinType::Float:
+    case LirBuiltinType::Double:
+    case LirBuiltinType::X86Fp80:
+    case LirBuiltinType::Fp128:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool is_native_double_type(const LirTypeRef& type) {
   return type.kind() == LirTypeKind::Floating &&
-         (type.str() == "float" || type.str() == "double" ||
-          type.str() == "x86_fp80" || type.str() == "fp128");
+         type.builtin_type() == LirBuiltinType::Double;
 }
 
 bool is_direct_zero_arg_scalar_floating_result_claim(const LirCallOp& call) {
@@ -595,7 +607,7 @@ bool is_direct_zero_arg_scalar_floating_result_claim(const LirCallOp& call) {
 }
 
 bool is_direct_one_double_arg_scalar_floating_result_claim(const LirCallOp& call) {
-  return call.return_type == LirTypeRef("double") &&
+  return is_native_double_type(call.return_type) &&
          call.callee.kind() == LirOperandKind::Global &&
          call.direct_callee_link_name_id != kInvalidLinkName &&
          call.callee_signature.has_value() &&
@@ -603,7 +615,7 @@ bool is_direct_one_double_arg_scalar_floating_result_claim(const LirCallOp& call
          !call.callee_signature->has_unspecified_params &&
          !call.callee_signature->has_void_param_list &&
          call.callee_signature->fixed_param_type_refs.size() == 1 &&
-         call.callee_signature->fixed_param_type_refs[0] == LirTypeRef("double") &&
+         is_native_double_type(call.callee_signature->fixed_param_type_refs[0]) &&
          call.structured_args.size() == 1;
 }
 
@@ -735,9 +747,9 @@ void verify_direct_one_double_arg_scalar_floating_result_call(
     fail_verify(field,
                 "direct one-double-argument scalar floating call callee authority must match the direct callee");
   }
-  if (authority->return_type != LirTypeRef("double") ||
+  if (!is_native_double_type(authority->return_type) ||
       authority->return_type != call.return_type ||
-      authority->argument_type != LirTypeRef("double")) {
+      !is_native_double_type(authority->argument_type)) {
     fail_verify(field,
                 "direct one-double-argument scalar floating call type authority must be double(double)");
   }
@@ -764,11 +776,11 @@ void verify_direct_one_double_arg_scalar_floating_result_call(
                 "direct one-double-argument scalar floating call requires a module-owned LinkNameId");
   }
   if (!callee_function->signature_return_type_ref.has_value() ||
-      *callee_function->signature_return_type_ref != LirTypeRef("double") ||
+      !is_native_double_type(*callee_function->signature_return_type_ref) ||
       callee_function->signature_is_variadic ||
       callee_function->signature_has_void_param_list ||
       callee_function->signature_param_type_refs.size() != 1 ||
-      callee_function->signature_param_type_refs[0] != LirTypeRef("double")) {
+      !is_native_double_type(callee_function->signature_param_type_refs[0])) {
     fail_verify("LirCallOp.direct_callee_link_name_id",
                 "direct one-double-argument scalar floating call requires a matching module Function signature");
   }
@@ -5157,9 +5169,11 @@ bool same_plain_fixed_scalar_type(const TypeSpec& lhs,
 bool exact_plain_scalar_mirror(const LirModule& mod, const TypeSpec& type,
                                const LirTypeRef& mirror) {
   if (type.base == TB_FLOAT)
-    return mirror.kind() == LirTypeKind::Floating && mirror.str() == "float";
+    return mirror.kind() == LirTypeKind::Floating &&
+           mirror.builtin_type() == LirBuiltinType::Float;
   if (type.base == TB_DOUBLE)
-    return mirror.kind() == LirTypeKind::Floating && mirror.str() == "double";
+    return mirror.kind() == LirTypeKind::Floating &&
+           mirror.builtin_type() == LirBuiltinType::Double;
   unsigned expected_width = 64;
   if (type.base == TB_INT || type.base == TB_UINT) {
     expected_width = 32;
