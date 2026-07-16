@@ -1,8 +1,8 @@
 # LIR-To-New-BIR Container And Import Completeness
 
 Status: Open (paused after accepted Step 7.49 DirectScalar binary-`fsub` RHS
-receipt; active blocker 862 owns the next producer-side body-parameter
-handoff)
+receipt; active blocker 863 owns the next producer-side non-body-parameter
+handoff after 862 concluded no-change)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -2396,11 +2396,11 @@ dispositions. They remain fail closed; no receiver may recover authority from
 text, names, rendered operands, signatures, compatibility mirrors,
 `monostate`, or unclassified values.
 
-Classification: `separate-blocker`. New open idea
-`ideas/open/862_lir_next_body_parameter_authority_handoff.md` owns only
+Classification: `separate-blocker`. The now-closed attempted route
+`ideas/closed/862_lir_next_body_parameter_authority_handoff.md` owned only
 tracing, publishing, verifying, and handing off exactly one next valid
 function-body parameter-use row after the accepted DirectScalar binary-`fsub`
-RHS receipt. It must not edit Raw-BIR/importer code, reopen accepted
+RHS receipt. It did not edit Raw-BIR/importer code, reopen accepted
 DirectPointer or DirectScalar body-parameter receipts, select from
 presentation fields, or absorb another family.
 
@@ -2408,9 +2408,44 @@ Resumption record: Steps 1 through 7.49 are accepted historical work, most
 recently receiver commit `44edfbacd` with the fresh focused proof, broader
 backend proof, and `git diff --check` stated above. Interrupted point: source
 completion reassessment after Step 7.49; no further 734 receiver row is
-authorized. After 862 closes with one exact structured handoff and accepted
-focused producer proof, reactivate 734 and repair its runbook only for that
-matching typed Raw-BIR receiver row. Do not repeat Step 7.49 or receive
+authorized. The originally selected 862 body-parameter route is superseded by
+the no-change decision below; do not use this earlier paragraph as authority
+to wait for a body-parameter handoff. Do not repeat Step 7.49 or receive
 another parameter, memory/VA, aggregate/vector, module/type/global,
 instruction/terminator, inline-assembly, ABI-expanded or aggregate parameter,
 or any other form without its separately scoped first-owner handoff.
+
+## No-Change Body-Parameter Successor Decision: post-862
+
+Close accepted as intentionally concluded, negative/no-change. Idea 862
+inspected the post-Step 7.49 function-body parameter authority surface but
+selected no executable row and made no code changes. The current structured
+body-parameter carriers available under 862's scope are DirectPointer
+GEP/truthiness and DirectScalar unary, return, switch, comparison/truthiness,
+direct-call, and binary `fmul`/`fadd`/`fsub` rows. They are already accepted by
+734 through Step 7.49 or explicitly excluded from reopening by 862. No further
+current-LIR body-parameter receiver row is authorized without expanding into a
+new family.
+
+This does not satisfy 734's completion gate. Durable remaining intent still
+includes valid current-LIR rows outside the exhausted body-parameter surface,
+including memory/VA, aggregate/vector, module/type/global/metadata, residual
+instruction/terminator, inline-assembly, and any other semantic facts not yet
+covered by accepted typed Raw-BIR receiver dispositions.
+
+Classification: `separate-blocker`. New open idea
+`ideas/open/863_lir_next_non_body_parameter_authority_handoff.md` owns exactly
+one next producer-side non-body-parameter handoff. It must not edit Raw-BIR/
+importer code, reopen accepted body-parameter receipts, select from
+presentation fields, or absorb a generic residual sweep.
+
+Resumption record: Steps 1 through 7.49 remain accepted historical work, most
+recently receiver commit `44edfbacd` with the fresh focused receiver proof,
+broader backend proof, and `git diff --check` stated above. Interrupted point:
+source completion reassessment after Step 7.49, after the no-change 862
+body-parameter route. After 863 closes with one exact structured
+non-body-parameter handoff and accepted focused producer proof, reactivate 734
+and repair its runbook only for that matching typed Raw-BIR receiver row. Do
+not repeat Step 7.49 or receive another parameter, memory/VA, aggregate/vector,
+module/type/global, instruction/terminator, inline-assembly, or any other form
+without its separately scoped first-owner handoff.

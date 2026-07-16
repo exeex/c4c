@@ -1,8 +1,9 @@
 # LIR Next Body Parameter Authority Handoff
 
-Status: Open
+Status: Closed - intentionally concluded no-change
 Type: producer/schema/verifier handoff for one next function-body parameter-use row
 Parent Source: ideas/open/734_lir_to_new_bir_container_completeness.md
+Successor: ideas/open/863_lir_next_non_body_parameter_authority_handoff.md
 
 ## Goal
 
@@ -75,3 +76,19 @@ producer-side handoff.
 - Reject broad LIR schema churn, ABI redesign, target-lowering behavior, or
   unrelated memory/VA, aggregate/vector, module/type/global/metadata,
   instruction/terminator, or inline-assembly work.
+
+## Closure Disposition
+
+Close accepted as intentionally concluded, negative/no-change. The executor
+performed Step 1 inspection only and made no code changes. No valid row was
+selected because the current LIR body-parameter authority surface is exhausted
+under this source's exclusions: DirectPointer GEP/truthiness and DirectScalar
+unary, return, switch, comparison/truthiness, direct-call, and binary `fmul`/
+`fadd`/`fsub` rows are already accepted by 734 through Step 7.49 or explicitly
+out of scope for reopening.
+
+This conclusion does not claim capability completion for 734 and does not
+weaken any receiver or producer contract. The remaining 734 intent is now
+owned by `ideas/open/863_lir_next_non_body_parameter_authority_handoff.md`,
+which must select exactly one next non-body-parameter producer handoff before
+734 can receive another Raw-BIR row.
