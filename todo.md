@@ -9,11 +9,11 @@ Current Step Title: Delete mutable LIR type text escape hatches in small packets
 ## Just Finished
 
 Completed Step 2 packet to delete the single named deprecated factory family
-`LirTypeRef::hir_inline_asm_type_text`. Removed the factory declaration from
-`src/codegen/lir/types.hpp` and updated the direct inline-asm lowering
-callsites in `src/codegen/lir/hir_to_lir/stmt.cpp` to use explicit
-`LirTypeRef(...)` construction from the existing inline-asm type text
-expressions.
+`LirTypeRef::hir_rendered_aggregate_field_signature_type_text`. Removed the
+factory declaration from `src/codegen/lir/types.hpp` and updated the five direct
+aggregate/field/signature lowering callsites in
+`src/codegen/lir/hir_to_lir/hir_to_lir.cpp` to use explicit `LirTypeRef(...)`
+construction from the existing rendered or field type text expressions.
 
 ## Suggested Next
 
@@ -35,6 +35,8 @@ warning inventory.
 - Do not delete const `str()`, additional named compatibility factories,
   non-`LirTypeRef` wrapper conversions, or equality/classification helpers in
   the same packet.
+- `rg -n "hir_rendered_aggregate_field_signature_type_text" src tests/frontend tests/backend`
+  is now clean.
 - `rg -n "hir_inline_asm_type_text" src tests/frontend tests/backend` is now
   clean.
 - `rg -n "parsed_typed_call_return_text" src tests/frontend tests/backend`
@@ -58,7 +60,8 @@ warning inventory.
 
 Proof run passed:
 `cmake --build build && ctest --test-dir build -R
-'^frontend_hir_tests$' --output-on-failure > test_after.log
+'^frontend_lir_(global_type_ref|function_signature_type_ref)$'
+--output-on-failure > test_after.log
 2>&1`.
-`test_after.log` contains the focused CTest subset output with 1/1 tests
+`test_after.log` contains the focused CTest subset output with 2/2 tests
 passing. The supervisor-selected proof was sufficient for this packet.
