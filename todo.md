@@ -1,8 +1,8 @@
 Status: Active
-Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
+Source Idea Path: ideas/open/859_lir_next_body_parameter_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 7.47
-Current Step Title: Receive the one 858-authorized DirectScalar binary-fadd-RHS parameter authority row
+Current Step ID: 1
+Current Step Title: Select and publish one next body-parameter authority row
 你該做code review了
 你該做test baseline review了
 
@@ -10,50 +10,24 @@ Current Step Title: Receive the one 858-authorized DirectScalar binary-fadd-RHS 
 
 ## Just Finished
 
-Completed `plan.md` Step 7.47 by receiving only the closed-858
-`LirBinOp.scalar_rhs_parameter_authority` floating `fadd` RHS DirectScalar
-parameter-use row into typed Raw BIR.
-
-The receiver now preserves the original RHS parameter source value, owner,
-parameter index, lowered floating scalar type, DirectScalar ABI, explicit RHS
-role, `fadd` opcode, RHS operand identity, matching operation type, and a
-nonselected scalar LHS. LIR producer authority remains owned by closed 858 and
-was not edited.
-
-Focused receiver coverage verifies the positive Raw-BIR `direct_scalar_rhs`
-payload and transactional rejection for omitted/missing, invalid, duplicate
-definition, foreign owner, wrong index/type/ABI/role, non-`fadd`, RHS mismatch,
-operation type mismatch, nonselected-LHS mismatch/type mismatch, and duplicate
-selected consumer forms. Neighboring fmul-RHS receiver coverage now uses
-nonselected `fsub` for its non-`fmul` negative.
+Switched away from 734 after accepted Step 7.47 receiver commit `b26d47f15`.
+The new active packet is the producer-side blocker that must publish exactly
+one next structured body-parameter authority row for a later 734 receiver.
 
 ## Suggested Next
 
-Supervisor should accept the Step 7.47 receiver slice if the committed diff and
-proof remain coherent, then ask plan-owner whether 734 should close, repair,
-continue with another scoped handoff, or activate a successor. Do not start a
-new row from this packet without lifecycle reassessment.
+Inspect accepted body-parameter authority patterns through 734 Step 7.47,
+select one next valid current-LIR row, and implement only the LIR
+producer/schema/verifier/test handoff for that row.
 
 ## Watchouts
 
-Do not repeat Step 7.46, edit LIR producer authority, claim Raw-BIR receipt
-from 858 before this receiver packet, receive floating binary-`fadd` LHS,
-other floating binary parameter uses, memory/VA, aggregate/vector,
+Do not edit Raw-BIR receiver code, reopen accepted DirectPointer or
+DirectScalar receipts, select multiple rows, recover authority from
+presentation text, or absorb memory/VA, aggregate/vector,
 module/type/global/metadata, residual instruction/terminator, inline-assembly,
-ABI-expanded or aggregate parameters, direct-call argument positions beyond
-the bounded accepted slots, generic parameter sweeps, or any other family.
+ABI-expanded or aggregate parameters, or target-lowering work.
 
 ## Proof
 
-Focused proof and broader backend LIR-to-BIR guard:
-
-```
-( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$' ) > test_after.log 2>&1 && git diff --check
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
-
-( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir' ) > test_before.log 2>&1
-( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir' ) > test_after.log 2>&1 && git diff --check
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
-```
-
-Both matching before/after guards passed with no new or unresolved failures.
+No proof has run for Step 1 yet.

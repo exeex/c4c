@@ -2165,3 +2165,60 @@ aggregate/vector, module/type/global/metadata, residual
 instruction/terminator, inline-assembly, ABI-expanded or aggregate
 parameters, generic parameter sweeps, or any other family without its
 separately scoped first-owner handoff.
+
+## Runbook Exhaustion Decision: post-Step 7.47 DirectScalar binary-fadd-RHS receipt
+
+Close rejected. Commit `b26d47f15` receives exactly closed 858's
+`LirBinOp.scalar_rhs_parameter_authority` tuple into typed Raw BIR for a
+current-function `DirectScalar` floating parameter used as binary `fadd` RHS.
+The accepted receiver preserves the original RHS parameter source value,
+owner, parameter index, lowered floating scalar type, `DirectScalar` ABI,
+explicit `Rhs` role, `fadd` opcode, RHS operand identity, matching operation
+type, and nonselected scalar LHS. LIR producer authority remains owned by
+closed 858 and was not edited.
+
+Focused receiver coverage rejects omitted/missing, invalid, duplicate
+definition, foreign owner, wrong index/type/ABI/role, non-`fadd`, RHS
+mismatch, operation type mismatch, nonselected-LHS mismatch/type mismatch, and
+duplicate selected consumer forms transactionally before publication. The
+neighboring `fmul` RHS receiver negative now uses nonselected `fsub` for its
+non-`fmul` case.
+
+The supervisor accepted the fresh focused receiver proof
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$' ) > test_after.log 2>&1 && git diff --check`
+with regression guard, plus the matching broader `^backend_lir_to_bir`
+before/after guard with 1/1 passing on both sides and no new failures under
+`--allow-non-decreasing-passed`.
+
+This bounded receiver row does not satisfy the source completion gate. The
+checked no-omission coverage matrix and its per-row typed authority,
+destination, importer, verifier, and proof disposition remain incomplete;
+lossless verified receipt of every valid current-LIR semantic fact, complete
+explicit dispatcher and neighboring coverage, whole-module transactional
+proof, documentation convergence, and source-wide focused/broader proof are
+still unmet. Valid unreceived families include further function-body
+parameter uses, memory/VA, aggregate/vector, module/type/global/metadata,
+residual instruction/terminator, inline-assembly, and any other current-LIR
+semantic facts not yet covered by accepted typed Raw-BIR receiver
+dispositions. They remain fail closed; no receiver may recover authority from
+text, names, rendered operands, signatures, compatibility mirrors,
+`monostate`, or unclassified values.
+
+Classification: `separate-blocker`. New open idea
+`ideas/open/859_lir_next_body_parameter_authority_handoff.md` owns only
+tracing, publishing, verifying, and handing off exactly one next valid
+function-body parameter-use row after the accepted DirectScalar binary-`fadd`
+RHS receipt. It must not edit Raw-BIR/importer code, reopen accepted
+DirectPointer or DirectScalar body-parameter receipts, select from
+presentation fields, or absorb another family.
+
+Resumption record: Steps 1 through 7.47 are accepted historical work, most
+recently receiver commit `b26d47f15` with the fresh focused proof, matching
+broader accepted regression guard, and `git diff --check` stated above.
+Interrupted point: source completion reassessment after Step 7.47; no further
+734 receiver row is authorized. After 859 closes with one exact structured
+handoff and accepted focused producer proof, reactivate 734 and repair its
+runbook only for that matching typed Raw-BIR receiver row. Do not repeat Step
+7.47 or receive another parameter, memory/VA, aggregate/vector,
+module/type/global, instruction/terminator, or inline-assembly form without
+its separately scoped first-owner handoff.

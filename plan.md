@@ -1,109 +1,94 @@
-# LIR-To-New-BIR Container Completeness Runbook
+# LIR Next Body Parameter Authority Handoff Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Resumed After: closed 858 DirectScalar binary-`fadd` RHS parameter-authority handoff
+Source Idea: ideas/open/859_lir_next_body_parameter_authority_handoff.md
+Switched From: ideas/open/734_lir_to_new_bir_container_completeness.md after accepted Step 7.47 receiver commit `b26d47f15`
 
 ## Purpose
 
-Resume idea 734 from its accepted post-Step 7.46 state and receive exactly the
-closed 858 body-parameter handoff into typed Raw BIR.
+Unblock idea 734 by producing exactly one next structured current-LIR
+function-body parameter-use authority handoff. This runbook is producer-side
+only and must not edit Raw-BIR receiver code.
 
 ## Goal
 
-Implement one bounded Raw-BIR receiver packet for the selected
-`LirBinOp.scalar_rhs_parameter_authority` floating `fadd` RHS DirectScalar
-parameter-use row.
+Select, publish, verify, test, and hand off one next valid body-parameter-use
+row after the accepted DirectScalar binary-`fadd` RHS receiver.
 
 ## Core Rule
 
-Receive only structured LIR authority from the accepted 858 handoff. Do not
-recover semantic identity from text, names, rendered operands, signatures,
-diagnostics, compatibility mirrors, `monostate`, or testcase shape.
+Authority must come from native typed LIR fields and verifier checks. Do not
+recover parameter identity, role, type, opcode, operand relation, or consumer
+coherence from rendered text, names, signatures, diagnostics, compatibility
+mirrors, `monostate`, or testcase shape.
 
 ## Read First
 
+- `ideas/open/859_lir_next_body_parameter_authority_handoff.md`
 - `ideas/open/734_lir_to_new_bir_container_completeness.md`
-- `ideas/closed/858_lir_next_body_parameter_authority_handoff.md`
-- Accepted 734 Step 7.46 receiver commit `d5a301ec9`
-- 858 implementation commit `80d8a339c`
-- 858 lifecycle close commit `5cd7c1283`
-- Existing Raw-BIR body-parameter receiver patterns for Steps 7.34 through
-  7.46
+- Closed predecessor `ideas/closed/858_lir_next_body_parameter_authority_handoff.md`
+- Accepted 734 receiver commit `b26d47f15`
+- Existing LIR body-parameter authority producers, verifier checks, and
+  focused tests for accepted rows through Step 7.47
 
 ## Current Targets And Scope
 
-- Preserve accepted 734 Steps 1 through 7.46 as historical work.
-- Add only the typed Raw-BIR destination, importer dispatch, reachable verifier
-  path, and transactional coverage needed for the 858-authorized row.
-- The selected row is a current-function `DirectScalar` floating parameter used
-  as RHS of binary `fadd` through `LirBinOp.scalar_rhs_parameter_authority`.
-- Preserve original parameter identity, owner, parameter index, floating type,
-  DirectScalar ABI, explicit `Rhs` role, `fadd` opcode, RHS value coherence,
-  matching operation type, and nonselected scalar LHS.
+- Inspect remaining valid current-LIR body-parameter-use forms after the
+  accepted DirectPointer and DirectScalar receipts through 734 Step 7.47.
+- Choose exactly one next row that can be represented with structured LIR
+  authority.
+- Add only producer/schema/verifier/test changes required for that one row.
+- Preserve the parameter `LirValueId`, current-function owner, parameter
+  index, `LirTypeRef`, native ABI, explicit role, and selected consumer
+  relation.
+- Provide a closure handoff back to 734 naming the exact later Raw-BIR
+  receiver packet.
 
 ## Non-Goals
 
-- Do not edit LIR producer/schema/verifier authority for this row; 858 owns
-  that producer-side prerequisite.
-- Do not repeat Step 7.46 or reopen accepted DirectPointer or DirectScalar
-  body-parameter receipts.
-- Do not receive floating binary-`fadd` LHS or any other parameter row.
+- Do not edit Raw-BIR containers, builders, views, importer dispatch,
+  verifier, or backend receiver tests.
+- Do not reopen accepted 734 DirectPointer or DirectScalar body-parameter
+  receiver rows.
+- Do not select multiple rows or a generic parameter family.
 - Do not absorb memory/VA, aggregate/vector, module/type/global/metadata,
   residual instruction/terminator, inline-assembly, ABI-expanded or aggregate
-  parameters, direct-call argument positions beyond bounded accepted slots,
-  generic parameter sweeps, or any other family.
-- Do not weaken unsupported diagnostics, expectation contracts, or no-partial-
-  publication behavior.
+  parameters, or target-lowering work.
 
 ## Execution Rules
 
-- Keep the packet receiver-side only and tied to the exact 858 handoff tuple.
-- Reuse existing typed Raw-BIR body-parameter receiver conventions where they
-  match the selected RHS row.
-- Reject malformed authority before any partial Raw-BIR publication.
-- Add nearby same-feature positive and malformed receiver coverage for
-  omitted or missing authority, invalid value, duplicate definition, foreign
-  owner, wrong index, wrong type, wrong ABI, wrong role, non-`fadd`, RHS
-  mismatch, type mismatch, selected-LHS incoherence, duplicate selected
-  consumer forms, and a neighboring nonselected-operator negative such as
-  `fsub` where appropriate.
-- For code changes, run a fresh build, focused receiver proof, and
-  `git diff --check`. Escalate to broader backend proof if shared importer or
-  verifier code is touched.
+- Keep this producer-side and tied to one selected row.
+- Reject malformed authority before printing or downstream use.
+- Add nearby positive and malformed verifier coverage for the selected row.
+- Keep all nonselected rows fail-closed without presentation recovery.
+- For code changes, run a fresh build, focused producer/verifier proof,
+  `git diff --check`, and any matching regression guard required by the
+  supervisor.
 
 ## Steps
 
-### Step 7.47 - Receive the one 858-authorized DirectScalar binary-fadd-RHS parameter authority row
+### Step 1 - Select and publish one next body-parameter authority row
 
-Goal: consume exactly the 858 `fadd` RHS DirectScalar parameter-use handoff in
-typed Raw BIR.
-
-Primary targets:
-
-- Raw-BIR body-parameter receiver container/builder/view surface for the
-  selected RHS relation.
-- LIR-to-Raw-BIR importer dispatch for `LirBinOp.scalar_rhs_parameter_authority`.
-- Reachable Raw-BIR verifier checks and transactional malformed-input coverage.
+Goal: identify the first valid unreceived body-parameter-use row after 734
+Step 7.47 and publish structured LIR authority for exactly that row.
 
 Actions:
 
-- Inspect the accepted Step 7.46 LHS receiver and adjacent body-parameter
-  receiver patterns before editing.
-- Add only the destination and importer handling needed for
-  `LirBinOp.scalar_rhs_parameter_authority` with `Rhs` role and binary `fadd`.
-- Preserve and verify the original parameter `LirValueId`, owner
-  `LinkNameId`, parameter index, matching floating `LirTypeRef`,
-  `LirNativeBodyParameterAbi::DirectScalar`, explicit `Rhs` role, RHS operand
-  identity, operation type, and nonselected scalar LHS coherence.
-- Add positive and malformed receiver coverage matching the 858 handoff's
-  malformed matrix.
-- Keep all nonselected rows fail-closed without presentation recovery.
+- Inspect accepted body-parameter rows through Step 7.47 and the remaining
+  current-LIR producer surface.
+- Select one next bounded row only.
+- Add the minimal LIR carrier, producer population, verifier checks, and
+  focused positive/malformed coverage required for that row.
+- Preserve the full parameter tuple and selected consumer relation in typed
+  native fields.
+- Document the exact handoff and 734 return action in the source idea closure
+  record.
 
 Completion check:
 
 - Fresh build passes.
-- Focused receiver proof passes for the body-parameter Raw-BIR importer path.
+- Focused producer/verifier proof passes.
 - `git diff --check` passes.
-- The packet does not modify LIR producer authority, repeat accepted Steps 1
-  through 7.46, or admit any row beyond the selected 858 handoff.
+- Matching regression guard passes if the selected proof has a comparable
+  before/after baseline.
+- No Raw-BIR receiver work lands in this idea.
