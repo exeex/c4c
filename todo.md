@@ -8,39 +8,58 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed Step 4 call-return sret aggregate slot metadata handoff.
+Completed the Step 4 aggregate-slot adapter cleanup series, but Step 4 is not
+complete enough to hand off to Step 5 yet.
 
-`lower_call_inst()` now tracks the selected sret storage type with both the
-rendered storage text and an optional `StructNameId`-bearing `LirTypeRef`.
-Direct sret returns carry `call.return_type` into
-`declare_local_aggregate_slots(...)` when it has structured identity, and the
-store-derived sret correction switches both the storage text and optional ref
-to `LirStoreOp::type_str`. Legacy/no-id return paths still pass no structured
-ref and keep the existing rendered-text fallback.
+Accepted progress in this series:
+- PHI aggregate slot declarations now carry
+  `PhiLoweringPlan::boundary_type_ref`.
+- `LocalAggregateSlots` has optional `LirTypeRef` identity.
+- `declare_local_aggregate_slots(...)` has structured-ref overloads;
+  metadata-bearing refs prefer structured layout/fail closed, and absent/no-id
+  paths retain the explicit text fallback.
+- Aggregate alloca, aggregate load result, variadic aggregate `va_arg`,
+  aggregate parameter alias, and call-return sret slot declarations now pass
+  available structured refs into local aggregate slot state.
+- Matching backend before/after guards passed for each code slice.
+
+Unmet Step 4 criteria:
+- Residual no-id bridge comments remain outside the direct aggregate-slot
+  declaration packet, including memory/provenance, memory/addressing,
+  memory/intrinsics, `local_gep`, globals, call ABI raw signature/byval routes,
+  aggregate helper/copy layout, type raw lookup, and global initializers.
+- These are still potentially within 847's compile-time separation and expired
+  adapter deletion scope until classified with evidence as already safe,
+  deleted, or owned by a separate source idea.
 
 ## Suggested Next
 
-Suggested Next: supervisor review of the covered Step 4 aggregate slot
-declaration paths, or one final targeted packet if another expired adapter
-boundary remains in scope.
+Suggested Next: bounded Step 4 repair packet.
+
+Classify the residual no-id bridge inventory by valid-LIR authority risk, then
+delete or structurally route one tight family of remaining in-scope adapters.
+Start with whichever family has direct valid-LIR authority impact and nearby
+proof available, likely memory/provenance or call ABI raw signature/byval
+routes. For each residual bridge touched, prove one of:
+- structured/native facts now replace the bridge and the adapter can be deleted;
+- the path is a deliberate no-id fallback with no semantic authority and should
+  be documented in `todo.md` only;
+- the path belongs to a separately scoped blocker/successor and needs
+  plan-owner lifecycle representation before execution continues.
 
 ## Watchouts
 
-- This packet deliberately did not broaden into aggregate parameters,
-  variadic `va_arg`, loads, allocas, PHI, or subobject/view paths.
-- Store-derived sret correction still detects aggregate sret from the existing
-  return-info path; the new structured ref is consumed at the local aggregate
-  slot declaration boundary, where metadata-bearing refs fail closed and
-  no-id refs retain fallback behavior.
+- Do not advance to Step 5 while residual no-id bridge comments that may be
+  valid-LIR semantic authority remain unclassified.
+- Do not silently expand 847 into unrelated owners. If a residual bridge is not
+  an 847 deletion target, preserve the current Step 4 return point and ask
+  plan-owner to create or switch to the correct separate initiative.
+- Keep legitimate no-id text fallbacks explicit and narrow; do not replace the
+  deleted universal model with a renamed compatibility bag.
 
 ## Proof
 
-Ran exactly:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
+Latest supplemental proof after the aggregate-slot series:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_|frontend_lir_|verify_tests_)'; } > test_after.log 2>&1`
 
-Result: passed. `test_after.log` contains `100% tests passed, 0 tests failed
-out of 6`.
-
-Supervisor regression guard:
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
-reported before 6/6, after 6/6, result PASS.
+Result: passed, 18/18.
