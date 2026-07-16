@@ -2222,3 +2222,47 @@ runbook only for that matching typed Raw-BIR receiver row. Do not repeat Step
 7.47 or receive another parameter, memory/VA, aggregate/vector,
 module/type/global, instruction/terminator, or inline-assembly form without
 its separately scoped first-owner handoff.
+
+## Resumption Record: DirectScalar binary-fsub-LHS parameter authority completion
+
+Closed idea 859 completed the next body-parameter producer handoff with
+accepted implementation `c3a7883a4`. The selected row is
+`LirBinOp.scalar_lhs_parameter_authority` for a current-function
+`DirectScalar` floating parameter used as the LHS of binary `fsub`, with
+producer shape `return x - 2.0;`.
+
+The handed-off native tuple is the original parameter `LirValueId`, current
+`LirFunction.link_name_id` owner, parameter index, matching floating
+`LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`, and explicit
+`LirScalarBinaryParameterRole::Lhs`. The selected consumer relation is a
+`LirBinOp` `fsub` whose `lhs` is the same parameter SSA/value as the authority
+tuple, whose `type_str` matches the authority type, and whose `rhs` is a
+nonselected scalar operand.
+
+The existing emitter already publishes the carrier. The verifier admits this
+selected floating `fsub` LHS authority, requires a nonselected scalar RHS, and
+rejects duplicate selected floating-`fsub` LHS consumers in the current
+function. Malformed coverage rejects omitted/missing, invalid, duplicate
+definition, foreign owner, wrong index, wrong type, wrong ABI, wrong role,
+non-`fsub`, LHS mismatch, type mismatch, selected-RHS incoherence, and
+duplicate selected consumer forms. Neighboring `fadd` and `fmul` LHS
+malformed coverage uses nonselected `fdiv` instead of now-selected `fsub`.
+
+Accepted proof is the focused
+`^frontend_lir_function_signature_type_ref$` producer/verifier proof with
+`git diff --check` and regression guard 1/1, plus the broader matching
+`^frontend_lir_` before/after guard with 7/7 passing on both sides. No
+Raw-BIR work landed in 859.
+
+Exact return action: do not activate this idea as part of this record. When
+the supervisor next activates 734, plan-owner must repair the runbook for one
+bounded Raw-BIR receiver packet only: receive the selected binary-`fsub` LHS
+DirectScalar parameter-use row into typed Raw BIR, preserving the handed-off
+parameter tuple and binary consumer coherence in the container, importer,
+reachable verifier path, and transactional positive/negative coverage. Do not
+repeat Step 7.47, start receiver implementation during the 859 closure,
+receive floating binary-`fsub` RHS, other floating binary parameter uses,
+memory/VA, aggregate/vector, module/type/global/metadata, residual
+instruction/terminator, inline-assembly, ABI-expanded or aggregate
+parameters, generic parameter sweeps, or any other family without its
+separately scoped first-owner handoff.
