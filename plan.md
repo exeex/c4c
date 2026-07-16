@@ -1,92 +1,125 @@
-# LIR-To-New-BIR Body-Parameter Receiver Runbook
+# LIR Next Body-Parameter Authority Handoff Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
+Source Idea: ideas/open/854_lir_next_body_parameter_authority_handoff.md
 
 ## Purpose
 
-Resume 734 after closed 853's accepted producer/schema/verifier handoff and
-receive exactly one further function-body parameter row into typed Raw BIR.
+Identify and publish the next one-row native LIR body-parameter authority
+handoff needed before 734 can continue receiving parameter facts into typed
+Raw BIR.
 
 ## Goal
 
-Add the Raw-BIR receiver for the closed-853 DirectPointer pointer-truthiness
-body-parameter authority while preserving all accepted receiver history through
-Step 7.41.
+Trace, verify, and hand off exactly one next valid function-body parameter-use
+row after 734's accepted Step 7.42 DirectPointer pointer-truthiness receipt.
 
 ## Core Rule
 
-Use only native structured LIR authority. Do not recover parameter identity,
-type, ABI, owner, role, or consumer coherence from text, names, rendered
-operands, signatures, diagnostics, compatibility mirrors, or testcase shape.
+Publish only native structured LIR authority. Do not recover parameter
+identity, type, ABI, owner, role, or consumer coherence from text, names,
+rendered operands, signatures, diagnostics, compatibility mirrors, or testcase
+shape.
 
 ## Read First
 
+- `ideas/open/854_lir_next_body_parameter_authority_handoff.md`
 - `ideas/open/734_lir_to_new_bir_container_completeness.md`
 - `ideas/closed/853_lir_next_body_parameter_authority_handoff.md`
-- Current Raw-BIR body-parameter receiver code and verifier coverage
-- Existing accepted Step 7.34 through Step 7.41 parameter receiver tests
+- Current LIR body-parameter producer/schema/verifier carriers
+- Existing focused body-parameter authority tests
 
 ## Current Targets And Scope
 
-- Preserve accepted Steps 1 through 7.41, most recently receiver commit
-  `380ee782f`.
-- Consume only closed 853's DirectPointer `PointerTruthiness` tuple:
-  original current-function parameter `LirValueId`, owner, parameter index,
-  pointer `LirTypeRef`, `DirectPointer` ABI, explicit role, and verified
-  `PtrToInt` plus `icmp ne i64 <ptr-int>, 0` consumer relation.
-- Add only the minimum typed Raw-BIR destination, importer dispatch, reachable
-  verifier path, and transactional positive/negative coverage needed for that
-  row.
+- Preserve 734's accepted receiver history through Step 7.42, most recently
+  commit `96853b2a2`.
+- Select exactly one next valid function-body parameter-use row after the
+  accepted DirectPointer pointer-truthiness row.
+- Publish only the selected row's current-function value identity, owner,
+  parameter index, type, ABI, explicit role, and consumer coherence facts.
+- Hand off the exact tuple and accepted producer/verifier proof back to 734.
 
 ## Non-Goals
 
-- Do not repeat accepted parameter receipts through fixed-direct-call
-  argument 1.
-- Do not receive another parameter row, memory/VA row, aggregate/vector row,
-  module/type/global/metadata row, residual instruction/terminator row, or
-  inline-assembly row.
-- Do not edit LIR producer/schema code as part of this receiver packet.
-- Do not infer missing facts from pointer text, cast spelling, comparison
-  text, signatures, names, diagnostics, or compatibility mirrors.
+- Do not edit Raw-BIR containers, builders, importer, or Raw-BIR verifier.
+- Do not reopen accepted DirectPointer or DirectScalar GEP, binary-LHS,
+  binary-RHS, ReturnValue, switch-selector, truthiness-comparison-LHS,
+  fixed-direct-call argument-0, fixed-direct-call argument-1, or
+  pointer-truthiness rows.
+- Do not publish generic parameter authority, declaration-only authority, or a
+  multi-row parameter sweep.
+- Do not absorb memory/VA, aggregate/vector, module/type/global/metadata,
+  residual instruction/terminator, inline-assembly, or downstream receiver
+  work.
 
 ## Execution Rules
 
-- Keep the packet bounded to Step 7.42 unless the verifier exposes a true
-  blocker outside 734's receiver scope.
-- Add nearby same-feature malformed-authority coverage for the selected row.
-- For code changes, run a fresh build, focused backend receiver proof, and the
-  supervisor-selected regression guard.
-- After the one receipt, return to the 734 source completion gate; do not
-  claim source-wide completeness from this row alone.
+- Keep the route bounded to one producer/schema/verifier handoff.
+- Add same-feature positive and malformed-authority coverage for the selected
+  row.
+- For code changes, run a fresh build, focused producer/verifier proof, and
+  the supervisor-selected matching regression guard.
+- Do not claim Raw-BIR receipt or 734 source completion from this handoff.
 
 ## Steps
 
-### Step 7.42 - Receive DirectPointer Truthiness Parameter Authority
+### Step 1 - Select The Next Body-Parameter Authority Row
 
-Goal: receive closed 853's one DirectPointer pointer-truthiness body-parameter
-authority row into typed Raw BIR.
+Goal: find exactly one next valid function-body parameter-use row after 734's
+accepted Step 7.42 DirectPointer pointer-truthiness receipt.
 
 Actions:
 
-- Inspect the existing typed Raw-BIR parameter receiver structures for the
-  accepted DirectPointer and DirectScalar rows.
-- Add the smallest destination/verifier representation for the selected
-  `PointerTruthiness` role if none already exists.
-- Import only a verified closed-853 tuple whose original parameter identity,
-  owner, parameter index, pointer type, DirectPointer ABI, role, `PtrToInt`,
-  and `icmp ne i64 <ptr-int>, 0` consumer coherence are present and
-  consistent.
-- Reject missing, invalid, foreign, duplicate, owner/index/type/ABI/role, and
-  consumer-incoherent authority before Raw-BIR publication.
-- Add focused positive and malformed tests next to the existing body-parameter
-  receiver coverage.
+- Inspect current LIR producers that use native function-body parameters after
+  the accepted body-parameter rows listed in the source.
+- Select one bounded semantic consumer relation that can be represented with
+  native authority.
+- Record why earlier accepted rows are not being reopened and why nonselected
+  candidates remain fail closed.
+
+Completion check:
+
+- One selected row and consumer relation are identified.
+- No selection depends on text, names, signatures, diagnostics, rendered
+  operands, compatibility mirrors, or testcase shape.
+
+### Step 2 - Publish And Verify The Selected Authority
+
+Goal: add the native LIR carrier and verifier checks for only the selected
+row.
+
+Actions:
+
+- Publish the selected row's current-function value identity, owner, parameter
+  index, `LirTypeRef`, ABI, explicit role, and consumer coherence facts.
+- Reject missing, invalid, duplicate, foreign, owner/index/type/ABI/role, and
+  consumer-incoherent authority before downstream use.
+- Keep nonselected parameter forms fail closed.
+- Add focused positive and malformed-authority coverage next to same-feature
+  producer/verifier tests.
 
 Completion check:
 
 - Fresh build passes.
-- Focused backend receiver proof passes.
+- Focused producer/verifier proof passes.
 - Matching regression guard is non-regressive.
 - `git diff --check` passes.
-- `todo.md` records the exact received tuple, proof, and source completion
-  reassessment request.
+
+### Step 3 - Hand Off To 734
+
+Goal: make the accepted producer fact executable by a later 734 receiver
+runbook without claiming Raw-BIR receipt.
+
+Actions:
+
+- Record the exact receiver tuple, consumer relation, accepted proof, and 734
+  return action in `ideas/open/854_lir_next_body_parameter_authority_handoff.md`.
+- State that Raw-BIR container/importer/verifier receipt remains out of scope.
+- Return to plan-owner for closure/switch decision after supervisor
+  acceptance.
+
+Completion check:
+
+- The handoff is precise enough for plan-owner to repair 734 for exactly one
+  later Raw-BIR receiver row.
+- The source idea does not claim 734 completion or Raw-BIR receipt.

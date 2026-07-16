@@ -1725,3 +1725,51 @@ one exact structured handoff and accepted focused producer proof, reactivate
 Do not repeat Step 7.41 or receive another parameter, memory/VA,
 aggregate/vector, module/type/global, instruction/terminator, or
 inline-assembly form without its separately scoped first-owner handoff.
+
+## Runbook Exhaustion Decision: post-Step 7.42 DirectPointer truthiness receipt
+
+Close rejected. Commit `96853b2a2` receives exactly closed 853's
+DirectPointer pointer-truthiness body-parameter authority row into typed Raw
+BIR. The accepted tuple is the original current-function parameter
+`LirValueId{81}`, owner `pointer_truthiness_parameter_owner`, parameter index
+`0`, pointer `LirTypeRef`, `DirectPointer` ABI, `PointerTruthiness` role, and
+the verified `PtrToInt` plus `icmp ne i64 <ptr-int>, 0` consumer relation.
+The focused receiver proof is a fresh
+`cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure -R '^backend_lir_to_bir_interface$'` result recorded in
+`test_after.log`, followed by `git diff --check`; the matching regression
+guard passed with before 1/1 and after 1/1 and no new failures. Nearby
+coverage includes positive Raw-BIR receipt and malformed missing, invalid,
+foreign, duplicate, owner/index/type/ABI/role, non-PtrToInt, operand,
+compare-LHS, zero-RHS, and duplicate-row rejection cases.
+
+This bounded receiver row does not satisfy the source completion gate. The
+checked no-omission coverage matrix and its per-row typed authority,
+destination, importer, verifier, and proof disposition remain incomplete;
+lossless verified receipt of every valid current-LIR semantic fact, complete
+explicit dispatcher and neighboring coverage, whole-module transactional
+proof, documentation convergence, and source-wide focused/broader proof are
+still unmet. Valid unreceived families include further function-body parameter
+uses, memory/VA, aggregate/vector, module/type/global/metadata, residual
+instruction/terminator, and inline-assembly forms. They remain fail closed;
+no receiver may recover authority from text, names, rendered operands,
+signatures, compatibility mirrors, `monostate`, or unclassified values.
+
+Classification: `separate-blocker`. New open idea
+`ideas/open/854_lir_next_body_parameter_authority_handoff.md` owns only
+tracing, publishing, verifying, and handing off exactly one next valid
+function-body parameter-use row after the accepted DirectPointer
+pointer-truthiness receipt. It must not edit Raw-BIR/importer code, reopen any
+accepted DirectPointer or DirectScalar body-parameter receipt, select from
+presentation fields, or absorb another family.
+
+Resumption record: Steps 1 through 7.42 are accepted historical work, most
+recently receiver commit `96853b2a2` with the fresh focused proof, matching
+accepted regression guard, and `git diff --check` stated above. Interrupted
+point: source completion reassessment after Step 7.42; no further 734
+receiver row is authorized. After 854 closes with one exact structured
+handoff and accepted focused producer proof, reactivate 734 and repair its
+runbook only for that matching typed Raw-BIR receiver row. Do not repeat Step
+7.42 or receive another parameter, memory/VA, aggregate/vector,
+module/type/global, instruction/terminator, or inline-assembly form without
+its separately scoped first-owner handoff.

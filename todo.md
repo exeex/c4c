@@ -1,38 +1,33 @@
 Status: Active
-Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
+Source Idea Path: ideas/open/854_lir_next_body_parameter_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 7.42
-Current Step Title: Receive DirectPointer Truthiness Parameter Authority
+Current Step ID: 1
+Current Step Title: Select The Next Body-Parameter Authority Row
 
 # Current Packet
 
 ## Just Finished
 
-Step 7.42 received the closed-853 DirectPointer pointer-truthiness
-body-parameter authority row into typed Raw BIR. The accepted tuple is the
-original current-function parameter `LirValueId{81}`, owner
-`pointer_truthiness_parameter_owner`, parameter index `0`, pointer
-`LirTypeRef`, `DirectPointer` ABI, `PointerTruthiness` role, and the verified
-`PtrToInt` plus `icmp ne i64 <ptr-int>, 0` consumer relation. The focused
-backend coverage now includes the positive Raw-BIR receipt and malformed
-missing, invalid, foreign, duplicate, owner/index/type/ABI/role, non-PtrToInt,
-operand, compare-LHS, zero-RHS, and duplicate-row rejection cases.
+Lifecycle switched from exhausted 734 after accepted Step 7.42 to the separate
+blocker idea 854. The preserved 734 return point is source completion
+reassessment after commit `96853b2a2`; after 854 closes with an exact handoff,
+reactivate 734 and repair it for one matching typed Raw-BIR receiver row.
 
 ## Suggested Next
 
-Ask plan-owner to reassess source completion for 734 now that Step 7.42 is
-implemented and the runbook appears exhausted.
+Start Step 1 by tracing the next valid currently produced function-body
+parameter use after the accepted DirectPointer pointer-truthiness row. Select
+exactly one bounded semantic consumer relation that can be published and
+verified natively.
 
 ## Watchouts
 
-No LIR producer/schema files were edited. Keep any further work out of adjacent
-parameter rows unless plan-owner repairs or replaces the runbook.
+Do not edit Raw-BIR/importer code in 854. Do not reopen accepted
+body-parameter rows or infer authority from text, names, signatures,
+diagnostics, rendered operands, compatibility mirrors, or testcase shape.
 
 ## Proof
 
-Passed delegated focused proof:
-
-`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$' ) > test_after.log 2>&1 && git diff --check`
-
-Result: build passed, `backend_lir_to_bir_interface` passed 1/1, and
-`git diff --check` passed. Proof log: `test_after.log`.
+No 854 implementation proof yet. Accepted 734 Step 7.42 proof was the fresh
+build plus focused `^backend_lir_to_bir_interface$` result in `test_after.log`,
+`git diff --check`, and matching non-decreasing 1/1 regression guard.
