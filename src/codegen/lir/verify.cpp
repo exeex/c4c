@@ -2186,8 +2186,10 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
     (void)render_cmp_predicate(op->predicate, "LirCmpOp.predicate");
     if (op->is_float) {
       (void)render_floating_type_ref(op->type_str, "LirCmpOp.type_str");
-    } else {
+    } else if (op->type_str.kind() == LirTypeKind::Integer) {
       (void)render_integer_type_ref(op->type_str, "LirCmpOp.type_str");
+    } else {
+      require_module_type_ref(mod, op->type_str, "LirCmpOp.type_str");
     }
     verify_value_operand(op->lhs, "LirCmpOp.lhs");
     verify_value_operand(op->rhs, "LirCmpOp.rhs");

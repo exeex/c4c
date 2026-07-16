@@ -152,6 +152,14 @@ Completed the selected floating `LirBinOp.compact_scalar_type` packet:
   rendering uses native floating builtin authority rather than mutable display
   text.
 
+Completed the hook-mandated code and baseline review after the floating binop
+packet. The attempted full-suite baseline regressed from `3038/3038` passing to
+`2881/3038` passing and was rejected. Reproduction showed the compare helper
+had been applied too broadly to non-floating pointer compares; the verifier and
+printer are now narrowed so only integer `LirCmpOp.type_str` uses
+`render_integer_type_ref`, while pointer and other non-integer `icmp` types
+stay on the generic path.
+
 ## Suggested Next
 
 Execute `plan.md` Step 5: inventory remaining universal classifier, renderer,
@@ -207,6 +215,13 @@ Completed select packet proof:
 
 Next Step 5 decision is trace/lifecycle state unless it selects and records
 another bounded implementation packet.
+
+Post-review repair proof:
+
+- `cmake --build build`
+- `ctest --test-dir build -R '^(frontend_lir_call_type_ref|frontend_lir_global_label_address_initializer|frontend_lir_label_address_rvalue_probe)$' --output-on-failure`
+- `ctest --test-dir build -R '^cpp_positive_sema_free_operator_eq_overload_frontend_cpp$' --output-on-failure`
+- `git diff --check`
 
 Step 5 trace selected the floating `LirBinOp.compact_scalar_type` rendering
 branch for the next bounded packet. Completed floating binop compact packet
