@@ -60,10 +60,8 @@ unmigrated or non-required paths unless a later source explicitly selects them.
 
 ## Proof
 
-Required Step 5 proof:
+Passed Step 5 proof:
 
 `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_native_vector_authority|llvm_gcc_c_torture_src_(pr60960_c|scal_to_vec1_c|scal_to_vec2_c))$' ) > test_after.log 2>&1`
 
-After the fresh focused proof, run `git diff --check`. Supervisor should decide
-whether matching before/after regression logs are needed before final
-acceptance or closure.
+Result: 4/4 tests passed. `git diff --check` also passed.
