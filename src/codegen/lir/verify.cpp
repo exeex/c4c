@@ -555,6 +555,19 @@ bool is_direct_zero_arg_scalar_floating_result_claim(const LirCallOp& call) {
          call.structured_args.empty() && call.arg_type_refs.empty();
 }
 
+bool is_direct_one_double_arg_scalar_floating_result_claim(const LirCallOp& call) {
+  return call.return_type == LirTypeRef("double") &&
+         call.callee.kind() == LirOperandKind::Global &&
+         call.direct_callee_link_name_id != kInvalidLinkName &&
+         call.callee_signature.has_value() &&
+         !call.callee_signature->is_variadic &&
+         !call.callee_signature->has_unspecified_params &&
+         !call.callee_signature->has_void_param_list &&
+         call.callee_signature->fixed_param_type_refs.size() == 1 &&
+         call.callee_signature->fixed_param_type_refs[0] == LirTypeRef("double") &&
+         call.structured_args.size() == 1;
+}
+
 void verify_direct_zero_arg_scalar_floating_result_call(
     const LirModule& mod, const LirFunction* owner_function,
     const LirCallOp& call) {
@@ -642,6 +655,83 @@ void verify_direct_zero_arg_scalar_floating_result_call(
       !callee_function->signature_param_type_refs.empty()) {
     fail_verify("LirCallOp.direct_callee_link_name_id",
                 "direct zero-argument scalar floating call requires a matching module Function signature");
+  }
+}
+
+void verify_direct_one_double_arg_scalar_floating_result_call(
+    const LirModule& mod, const LirFunction* owner_function,
+    const LirCallOp& call) {
+  const bool authority_present =
+      call.callee.kind() == LirOperandKind::Global &&
+      call.direct_one_double_arg_scalar_floating_call_authority.has_value();
+  if (!authority_present &&
+      !is_direct_one_double_arg_scalar_floating_result_claim(call)) {
+    return;
+  }
+
+  constexpr std::string_view field =
+      "LirCallOp.direct_one_double_arg_scalar_floating_call_authority";
+  const auto& authority = call.direct_one_double_arg_scalar_floating_call_authority;
+  if (!authority.has_value()) {
+    fail_verify(field,
+                "direct one-double-argument scalar floating call requires native authority");
+  }
+  if (!call.result.value_id()) {
+    fail_verify("LirCallOp.result",
+                "direct one-double-argument scalar floating call requires LirValueId result authority");
+  }
+  if (authority->result != *call.result.value_id() ||
+      !authority->result.valid()) {
+    fail_verify(field,
+                "direct one-double-argument scalar floating call result authority must match the result operand");
+  }
+  if (!owner_function ||
+      owner_function->link_name_id == kInvalidLinkName ||
+      authority->owner != owner_function->link_name_id) {
+    fail_verify(field,
+                "direct one-double-argument scalar floating call owner must match the current function");
+  }
+  if (authority->callee != call.direct_callee_link_name_id ||
+      authority->callee == kInvalidLinkName) {
+    fail_verify(field,
+                "direct one-double-argument scalar floating call callee authority must match the direct callee");
+  }
+  if (authority->return_type != LirTypeRef("double") ||
+      authority->return_type != call.return_type ||
+      authority->argument_type != LirTypeRef("double")) {
+    fail_verify(field,
+                "direct one-double-argument scalar floating call type authority must be double(double)");
+  }
+  if (authority->role !=
+      LirDirectOneDoubleArgScalarFloatingCallRole::DirectCallResult) {
+    fail_verify(field,
+                "direct one-double-argument scalar floating call requires the selected call-result role");
+  }
+  if (!is_direct_one_double_arg_scalar_floating_result_claim(call)) {
+    fail_verify("LirCallOp.callee_signature",
+                "direct one-double-argument scalar floating call requires a fixed double(double) signature");
+  }
+  const LirFunction* callee_function = nullptr;
+  for (const LirFunction& function : mod.functions) {
+    if (function.link_name_id != call.direct_callee_link_name_id) continue;
+    if (callee_function) {
+      fail_verify("LirCallOp.direct_callee_link_name_id",
+                  "direct one-double-argument scalar floating call requires a unique module Function LinkNameId");
+    }
+    callee_function = &function;
+  }
+  if (!callee_function) {
+    fail_verify("LirCallOp.direct_callee_link_name_id",
+                "direct one-double-argument scalar floating call requires a module-owned LinkNameId");
+  }
+  if (!callee_function->signature_return_type_ref.has_value() ||
+      *callee_function->signature_return_type_ref != LirTypeRef("double") ||
+      callee_function->signature_is_variadic ||
+      callee_function->signature_has_void_param_list ||
+      callee_function->signature_param_type_refs.size() != 1 ||
+      callee_function->signature_param_type_refs[0] != LirTypeRef("double")) {
+    fail_verify("LirCallOp.direct_callee_link_name_id",
+                "direct one-double-argument scalar floating call requires a matching module Function signature");
   }
 }
 
@@ -1975,6 +2065,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
     verify_direct_void_fixed_integer_immediate_call(mod, *op);
     verify_direct_void_fixed_integer_ssa_call(mod, *op);
     verify_direct_zero_arg_scalar_floating_result_call(mod, owner_function, *op);
+    verify_direct_one_double_arg_scalar_floating_result_call(mod, owner_function, *op);
     verify_integer_boolean_flag_call_authority(mod, *op);
     verify_integer_count_call_authority(mod, *op);
     verify_native_call_result_authority(*op);

@@ -8,18 +8,19 @@ Current Step Title: Select and hand off one next non-body-parameter authority ro
 
 ## Just Finished
 
-No accepted packet yet for `plan.md` Step 1. A rejected executor attempt
-selected
-`LirCallOp.structured_args[0].fixed_direct_call_argument_parameter_authority`,
-but fixed direct-call argument 0 was already accepted by 734 Step 7.40, so 864
-remains active at Step 1.
+Completed `plan.md` Step 1 by selecting and publishing exactly one next
+producer-side non-body-parameter row:
+`LirCallOp.direct_one_double_arg_scalar_floating_call_authority` for a direct
+nonvariadic `double(double)` call result.
+The row is outside 734's accepted history through Step 7.50: Steps 7.34-7.49
+cover body-parameter rows, Steps 7.40/7.41 cover fixed direct-call arguments
+0/1, and Step 7.50 covers only direct zero-argument scalar floating call-result
+authority.
 
 ## Suggested Next
 
-Continue `plan.md` Step 1 by selecting exactly one valid current-LIR
-non-body-parameter authority row not already accepted by 734 through Step 7.50.
-Document why the selected row is unaccepted, producer-ready, and bounded to one
-handoff.
+Have plan-owner close or route 864, then reactivate 734 for one bounded
+receiver packet for only the selected `double(double)` direct call-result row.
 
 ## Watchouts
 
@@ -27,10 +28,15 @@ Do not select fixed direct-call argument 0 or fixed direct-call argument 1
 parameter authority. Idea 734 already accepted argument 0 in Step 7.40 and
 argument 1 in Step 7.41, and backend receiver coverage already includes
 `test_fixed_direct_call_argument0_parameter_authority_receipt_and_rejections`.
-Do not touch Raw-BIR receiver/importer/container/verifier code while 864 is
-active.
+The selected row is not a generic call-result sweep: zero-argument scalar
+floating call results remain accepted 863/734 Step 7.50 work, and other
+one-argument types, variadic calls, indirect calls, aggregate results, and
+parameter-use families remain separately scoped and fail closed.
+This is now a call-result-only row: selected downstream floating binary LHS
+consumer coherence is deliberately not part of the handoff contract.
 
 ## Proof
 
-Required for the next accepted Step 1 packet: fresh build, focused
-producer/verifier proof for the newly selected row, and `git diff --check`.
+Ran `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'; } > test_after.log 2>&1`.
+Result: passed, `frontend_lir_call_type_ref` 1/1, with proof log at
+`test_after.log`.

@@ -27,11 +27,10 @@ separately accepted producer-side handoff.
 - Add only the LIR producer/schema/verifier fields and checks required for the
   selected row.
 - Verify the row's native identity, current-function or module ownership as
-  applicable, typed `LirTypeRef` or other structured type facts, explicit role,
-  and selected consumer relation.
+  applicable, typed `LirTypeRef` or other structured type facts, and explicit
+  role.
 - Add focused malformed-authority coverage for absent, invalid, duplicate,
-  foreign, owner/type/role-incoherent, and consumer-incoherent forms relevant
-  to the selected row.
+  foreign, and owner/type/role-incoherent forms relevant to the selected row.
 - Hand off the exact row, fields, proof, and malformed matrix back to 734 for
   one later Raw-BIR receiver packet.
 
@@ -54,7 +53,7 @@ separately accepted producer-side handoff.
 
 - Exactly one next valid non-body-parameter row is selected and documented.
 - The selected row has native structured LIR authority for its identity/type
-  tuple and selected consumer relation.
+  tuple.
 - The LIR verifier rejects malformed authority before printing or downstream
   use.
 - Focused producer/verifier coverage proves the positive row and nearby
@@ -73,8 +72,8 @@ separately accepted producer-side handoff.
 - Reject selecting fixed direct-call argument 0 or argument 1 parameter
   authority. Idea 734 already accepted those receiver rows in Steps 7.40 and
   7.41.
-- Reject recovering identity, role, type, opcode, operand relation, or
-  consumer coherence from rendered text, names, signatures, diagnostics,
+- Reject recovering identity, role, type, opcode, or operand relation from
+  rendered text, names, signatures, diagnostics,
   compatibility mirrors, `monostate`, or testcase-specific shape.
 - Reject expectation downgrades, unsupported-to-supported label changes,
   helper renames, or classification-only edits claimed as authority
@@ -82,3 +81,71 @@ separately accepted producer-side handoff.
 - Reject broad LIR schema churn, target-lowering behavior, final convergence,
   or unrelated memory/VA, aggregate/vector, module/type/global/metadata, CFG/
   PHI, instruction/terminator, or inline-assembly work.
+
+## Step 1 Handoff: direct one-double-argument scalar floating call-result authority
+
+Selected row: `LirCallOp.direct_one_double_arg_scalar_floating_call_authority`
+for exactly a direct, nonvariadic `double(double)` call result.
+
+Acceptance-history justification: this row is not already accepted by 734
+through Step 7.50. The accepted body-parameter receiver surface through Steps
+7.34-7.49 covers function-body parameter-use rows only. Steps 7.40 and 7.41
+specifically cover fixed direct-call argument 0 and argument 1 parameter
+authority, not call-result authority. Step 7.50 covers the closed-863 direct
+zero-argument scalar floating call-result row only. The selected row has one
+fixed `double` argument and therefore is not the Step 7.50 zero-argument row.
+
+Native LIR tuple:
+
+- carrier: `LirDirectOneDoubleArgScalarFloatingCallAuthority`
+- result identity: `result` equals the call result `LirValueId`
+- owner: `owner` equals the current `LirFunction.link_name_id`
+- callee: `callee` equals `LirCallOp.direct_callee_link_name_id`
+- return type: `return_type == double`
+- argument type: `argument_type == double`
+- role: `DirectCallResult`
+- downstream consumers: not part of this row. The producer publishes the
+  carrier for direct nonvariadic `double(double)` call results even when the
+  result has no selected floating binary LHS consumer.
+
+Producer/schema/verifier disposition:
+
+- `src/codegen/lir/ir.hpp` adds the one-row carrier and role enum without
+  changing the accepted zero-argument carrier.
+- `src/codegen/lir/hir_to_lir/call/target.cpp` publishes the carrier only for
+  direct nonvariadic `double(double)` calls with one argument and a structured
+  direct callee signature.
+- `src/codegen/lir/verify.cpp` rejects absent carriers on selected
+  `double(double)` calls, invalid/stale result IDs, foreign owners/callees,
+  non-`double(double)` type authority, invalid role, nonmatching direct callee
+  signatures, and duplicate results.
+
+Malformed matrix covered in
+`tests/frontend/frontend_lir_call_type_ref_test.cpp`:
+
+- absent carrier
+- invalid result ID
+- stale carrier result
+- duplicate result ID
+- foreign callee
+- foreign owner
+- signature/type mismatch
+- carrier argument-type mismatch
+- invalid role
+- producer presence with no selected downstream floating binary LHS consumer
+- misleading presentation strings remain non-authority
+
+Proof: fresh focused command
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'; } > test_after.log 2>&1`
+passed with `frontend_lir_call_type_ref` 1/1.
+
+Exact 734 return action: reactivate 734 for one bounded receiver packet only:
+receive `LirCallOp.direct_one_double_arg_scalar_floating_call_authority` for the
+direct nonvariadic `double(double)` call-result row. Preserve only the native
+result `LirValueId`, current-function owner, direct callee `LinkNameId`,
+`double(double)` type tuple, and explicit call-result role. Do not require or
+infer selected downstream floating binary LHS consumer coherence for this row.
+Do not repeat Step 7.50, reopen fixed direct-call arguments 0/1, receive any
+body-parameter row, or generalize to other call-result, memory/VA,
+aggregate/vector, module/type/global/metadata, CFG/PHI, inline-assembly, or
+instruction/terminator families.

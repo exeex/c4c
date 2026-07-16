@@ -567,6 +567,23 @@ struct LirDirectZeroArgScalarFloatingCallAuthority {
       LirDirectZeroArgScalarFloatingCallRole::Invalid;
 };
 
+enum class LirDirectOneDoubleArgScalarFloatingCallRole : uint8_t {
+  Invalid,
+  DirectCallResult,
+};
+
+// Native authority for exactly one direct nonvariadic double(double) call-result
+// row.  The argument and callee spelling remain checked mirrors.
+struct LirDirectOneDoubleArgScalarFloatingCallAuthority {
+  LirValueId result = LirValueId::invalid();
+  LinkNameId owner = kInvalidLinkName;
+  LinkNameId callee = kInvalidLinkName;
+  LirTypeRef return_type;
+  LirTypeRef argument_type;
+  LirDirectOneDoubleArgScalarFloatingCallRole role =
+      LirDirectOneDoubleArgScalarFloatingCallRole::Invalid;
+};
+
 // Typed call instruction.
 // Covers both direct calls, indirect calls, and intrinsic calls.
 struct LirCallOp {
@@ -588,6 +605,8 @@ struct LirCallOp {
       LirFunctionSignatureRef::invalid();
   std::optional<LirDirectZeroArgScalarFloatingCallAuthority>
       direct_zero_arg_scalar_floating_call_authority;
+  std::optional<LirDirectOneDoubleArgScalarFloatingCallAuthority>
+      direct_one_double_arg_scalar_floating_call_authority;
 };
 
 enum class LirScalarBinaryParameterRole : uint8_t {

@@ -306,6 +306,22 @@ bool selected_direct_zero_arg_scalar_floating_call(
          callee_signature->fixed_param_type_refs.empty() && args.empty();
 }
 
+bool selected_direct_one_double_arg_scalar_floating_call(
+    const CallTargetInfo& call_target,
+    const std::optional<LirCallSignature>& callee_signature,
+    const LirTypeRef& return_type,
+    const std::vector<OwnedLirTypedCallArg>& args) {
+  return call_target.callee_link_name_id != kInvalidLinkName &&
+         callee_signature.has_value() &&
+         return_type == LirTypeRef("double") &&
+         !callee_signature->is_variadic &&
+         !callee_signature->has_unspecified_params &&
+         !callee_signature->has_void_param_list &&
+         callee_signature->fixed_param_type_refs.size() == 1 &&
+         callee_signature->fixed_param_type_refs[0] == LirTypeRef("double") &&
+         args.size() == 1;
+}
+
 std::optional<LirDirectZeroArgScalarFloatingCallAuthority>
 direct_zero_arg_scalar_floating_call_authority(
     const FnCtx& ctx, const CallTargetInfo& call_target, const LirOperand& result,
@@ -322,6 +338,26 @@ direct_zero_arg_scalar_floating_call_authority(
       .callee = call_target.callee_link_name_id,
       .return_type = return_type,
       .role = LirDirectZeroArgScalarFloatingCallRole::ResultIntoFloatingBinaryLhs,
+  };
+}
+
+std::optional<LirDirectOneDoubleArgScalarFloatingCallAuthority>
+direct_one_double_arg_scalar_floating_call_authority(
+    const FnCtx& ctx, const CallTargetInfo& call_target, const LirOperand& result,
+    const LirTypeRef& return_type) {
+  if (!result.value_id() || !result.value_id()->valid() ||
+      !ctx.lir_function ||
+      ctx.lir_function->link_name_id == kInvalidLinkName ||
+      call_target.callee_link_name_id == kInvalidLinkName) {
+    return std::nullopt;
+  }
+  return LirDirectOneDoubleArgScalarFloatingCallAuthority{
+      .result = *result.value_id(),
+      .owner = ctx.lir_function->link_name_id,
+      .callee = call_target.callee_link_name_id,
+      .return_type = return_type,
+      .argument_type = LirTypeRef("double"),
+      .role = LirDirectOneDoubleArgScalarFloatingCallRole::DirectCallResult,
   };
 }
 
@@ -523,11 +559,15 @@ LirOperand StmtEmitter::emit_call_with_result(
   const bool direct_zero_arg_scalar_floating_result =
       selected_direct_zero_arg_scalar_floating_call(
           call_target, callee_signature, return_type, args);
+  const bool direct_one_double_arg_scalar_floating_result =
+      selected_direct_one_double_arg_scalar_floating_call(
+          call_target, callee_signature, return_type, args);
   const bool authoritative_direct_result = aggregate_result_for_selected_extract ||
       call_target.callee_link_name_id != kInvalidLinkName &&
       callee_signature.has_value() &&
       (return_type.kind() == LirTypeKind::Integer ||
-       direct_zero_arg_scalar_floating_result);
+       direct_zero_arg_scalar_floating_result ||
+       direct_one_double_arg_scalar_floating_result);
   const LirOperand result = authoritative_direct_result
                                 ? fresh_value(ctx)
                                 : LirOperand(fresh_tmp(ctx));
@@ -541,6 +581,11 @@ LirOperand StmtEmitter::emit_call_with_result(
     call.direct_zero_arg_scalar_floating_call_authority =
         direct_zero_arg_scalar_floating_call_authority(ctx, call_target, result,
                                                        call.return_type);
+  }
+  if (direct_one_double_arg_scalar_floating_result) {
+    call.direct_one_double_arg_scalar_floating_call_authority =
+        direct_one_double_arg_scalar_floating_call_authority(
+            ctx, call_target, result, call.return_type);
   }
   publish_fixed_direct_call_argument_parameter_authority(
       ctx, call_target, call, 0,
