@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/846_lir_family_overloaded_verifier_dispatch_printer.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Decide Next 846 Packet Or 847 Handoff
+Current Step ID: 2
+Current Step Title: Add The Bounded Family Overload
 
 # Current Packet
 
@@ -111,12 +111,24 @@ Completed the selected integer `LirBinOp.compact_scalar_type` packet:
   rendering uses native integer width authority rather than mutable display
   text.
 
+Completed Step 5 inventory for the next 846 packet. 846 still owns the
+floating compare branch of `LirCmpOp.type_str` verifier/printer:
+
+- The previous integer compare packet left `op->is_float` on the existing
+  generic type-ref path.
+- `verify_cmp_op_authority` already requires floating type authority when
+  `op.is_float` is true.
+- `LirTypeRef` retains `builtin_type()` for floating builtins independently of
+  mutable display text.
+- Focused floating compare coverage exists in
+  `tests/frontend/frontend_lir_call_type_ref_test.cpp`.
+
 ## Suggested Next
 
-Execute `plan.md` Step 5: inventory remaining universal classifier, renderer,
-mutable semantic string, and implicit conversion callers. Classify the next
-exact 846-owned consumer or record the handoff/blocker decision if no 846
-consumer is ready.
+Execute `plan.md` Step 2 and Step 3 for only the floating
+`LirCmpOp.type_str` branch. Add a bounded floating builtin type-ref renderer
+using native builtin authority, then migrate only the selected floating compare
+verifier/printer path.
 
 ## Watchouts
 
@@ -137,6 +149,9 @@ aggregate, load/store, or cast type refs.
 For the binop packet, do not migrate floating compact scalar rendering,
 unselected `LirBinOp.type_str`, vector, aggregate, load/store, or cast type
 refs.
+
+For the floating compare packet, do not migrate floating `LirBinOp`, casts,
+load/store, vector, aggregate, or non-builtin floating surfaces.
 
 ## Proof
 
@@ -160,6 +175,13 @@ Completed select packet proof:
 
 Next Step 5 decision is trace/lifecycle state unless it selects and records
 another bounded implementation packet.
+
+Step 5 trace selected the floating branch of `LirCmpOp.type_str` for the next
+bounded packet. Expected code-changing proof for that packet:
+
+- `cmake --build build`
+- `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
+- `git diff --check`
 
 Step 5 trace selected the integer `LirBinOp.compact_scalar_type` rendering
 branch for the next bounded packet. Completed binop compact integer packet
