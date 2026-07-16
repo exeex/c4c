@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/839_lir_nominal_function_signature_call_composition.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Migrate printer and reference collectors
+Current Step ID: 5
+Current Step Title: Delete migrated mirrors and assess convergence
 
 ## Just Finished
 
