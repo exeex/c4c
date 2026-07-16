@@ -8,25 +8,24 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed the Step 4 globals/global-initializer residual classification packet.
+Completed the Step 4 memory projection residual classification packet.
 
-Global storage lowering now documents rendered aggregate type layout as a
-legacy no-id fallback only: metadata-bearing globals use `llvm_type_ref` and
-fail closed through `lookup_structured_global_layout_result(...)` before
-reaching that path. Global initializer recursion now documents rendered
-subobject text as the no-id fallback after metadata-bearing aggregate globals
-enter through the structured root initializer path.
+Shared memory/addressing and local GEP projection helpers now document rendered
+subobject type text as an explicit no-id fallback after the root address or
+local aggregate has already been accepted. Metadata-bearing root callers must
+use structured type-ref lookup and fail closed before those recursive
+projection helpers are used.
 
 ## Suggested Next
 
 Suggested Next: continue Step 4 residual classification with one non-call-ABI
-family, likely memory/provenance, memory/addressing/local GEP, local slots, or
-raw `TypeDeclMap` lookup. Do not mix families in one packet.
+family, likely memory/provenance, memory intrinsics/local slots, or raw
+`TypeDeclMap` lookup. Do not mix families in one packet.
 
 ## Watchouts
 
-- Keep this packet narrow. Memory/provenance, addressing, intrinsics,
-  `local_gep`, local slots, and raw `TypeDeclMap`
+- Keep this packet narrow. Memory/provenance, intrinsics, local slots, and raw
+  `TypeDeclMap`
   residuals are not cleared by this decision; they remain later Step 4
   classification/repair candidates unless evidence proves them no-id only or
   separately owned.

@@ -44,12 +44,10 @@ BackendAggregateLayoutLookup lookup_addressing_layout_result(
     const BirFunctionLowerer::TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable* structured_layouts) {
   if (structured_layouts != nullptr) {
-    // Step 4 no-id compatibility bridge: shared memory/addressing helpers are
-    // still raw rendered-type-text callers for byte and child-index projection.
-    // The central resolver owns the TypeDeclMap fallback; structured type-ref
-    // callers must use the metadata-bearing lookup and fail closed before this
-    // path. Remove this bridge once these addressing helpers accept LirTypeRef
-    // or another StructNameId carrier instead of rendered spelling.
+    // Step 4 no-id compatibility bridge: shared memory/addressing projection
+    // helpers recurse through rendered subobject type text after the root
+    // address has already been accepted. Metadata-bearing root callers must use
+    // type-ref lookup and fail closed before entering this subobject fallback.
     return lookup_backend_aggregate_type_layout_result(type_text, type_decls, *structured_layouts);
   }
   const BackendStructuredLayoutTable empty_structured_layouts;
