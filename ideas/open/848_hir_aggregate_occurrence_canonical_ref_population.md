@@ -18,6 +18,27 @@ preserves legacy owner identity. Enforcing the canonical contract consequently
 breaks supported aggregate function signatures. This is an upstream producer
 gap, not an LIR M4--M6 consumer migration.
 
+## Accepted Discovery Checkpoint
+
+Step 1 established the producer seam without implementation changes:
+
+- `Lowerer::qtype_from` (`src/frontend/hir/hir_types.cpp:469`) constructs HIR
+  `QualType`, retaining legacy owner identity; function return and parameter
+  construction reaches it at `src/frontend/hir/hir_functions.cpp:543` and
+  `:1157`.
+- `Module::register_aggregate_definition` and
+  `aggregate_ref_for_definition` are the existing HIR definition/ref seams
+  (`src/frontend/hir/hir_ir.hpp:2611` and `:2618`).
+- Current registration happens only later in downstream `lir::lower`
+  (`src/codegen/lir/hir_to_lir/hir_to_lir.cpp:1804-1805`), after the HIR
+  occurrence is built. Step 2 must register the definition on the HIR side
+  before `qtype_from` resolves that existing definition-backed ref.
+
+The producer contract fails closed: leave `aggregate_ref` unset if no direct
+registered HIR definition ref exists or it is not module-owned and complete.
+No legacy owner-key, tag, parser-pointer, rendered-text, or reconstructed
+lookup may supply canonical identity.
+
 ## In Scope
 
 - Trace aggregate definition registration and `QualType` construction to the

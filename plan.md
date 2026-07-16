@@ -68,6 +68,19 @@ Actions:
 Completion check: the implementation seam and fail-closed contract are explicit
 without changing LIR lowering or using legacy recovery.
 
+Accepted discovery: `Lowerer::qtype_from` in
+`src/frontend/hir/hir_types.cpp:469` constructs `QualType`, including legacy
+owner identity; function returns and parameters call it at
+`src/frontend/hir/hir_functions.cpp:543` and `:1157`. HIR exposes
+`Module::register_aggregate_definition` / `aggregate_ref_for_definition` in
+`src/frontend/hir/hir_ir.hpp:2611` / `:2618`, while the current registration is
+only in downstream `lir::lower` at
+`src/codegen/lir/hir_to_lir/hir_to_lir.cpp:1804-1805`. Therefore HIR-side
+definition registration must precede `qtype_from` resolving the existing HIR
+definition-backed ref. If no direct registered ref exists, or it is not
+module-owned and complete, leave `aggregate_ref` unset; do not recover it from
+legacy owner/tag/parser/text state.
+
 ### Step 2 - Populate canonical refs for aggregate function signatures
 
 Goal: make supported aggregate function return and parameter occurrences carry
