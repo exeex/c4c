@@ -227,41 +227,6 @@ std::optional<std::string> tag_from_structured_lir_name(std::string_view name,
   return std::nullopt;
 }
 
-std::optional<std::string> direct_owned_aggregate_type_text(
-    const c4c::hir::Module& mod, const TypeSpec& type,
-    const LirModule* lir_module) {
-  if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
-      type.array_rank > 0 || type.tag_text_id == kInvalidText ||
-      !mod.link_name_texts) {
-    return std::nullopt;
-  }
-  const std::string_view tag = mod.link_name_texts->lookup(type.tag_text_id);
-  if (tag.empty()) return std::nullopt;
-  if (tag.rfind("%struct.", 0) == 0 || tag.rfind("%\"struct.", 0) == 0 ||
-      tag.rfind("%union.", 0) == 0 || tag.rfind("%\"union.", 0) == 0) {
-    return std::string(tag);
-  }
-  if (lir_module) {
-    const std::string struct_name =
-        c4c::codegen::llvm_helpers::llvm_struct_type_str(std::string(tag));
-    const c4c::StructNameId struct_id =
-        lir_module->struct_names.find(struct_name);
-    if (struct_id != c4c::kInvalidStructName &&
-        lir_module->find_struct_decl(struct_id)) {
-      return struct_name;
-    }
-    const std::string union_name = "%union." + std::string(tag);
-    const c4c::StructNameId union_id =
-        lir_module->struct_names.find(union_name);
-    if (union_id != c4c::kInvalidStructName &&
-        lir_module->find_struct_decl(union_id)) {
-      return union_name;
-    }
-  }
-  if (type.base == TB_UNION) return "%union." + std::string(tag);
-  return c4c::codegen::llvm_helpers::llvm_struct_type_str(std::string(tag));
-}
-
 std::optional<std::string> declared_lir_aggregate_type_text_for_tag(
     const c4c::hir::Module& mod, const TypeSpec& type,
     const LirModule* lir_module) {
@@ -634,20 +599,8 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
   lir_fn.signature_param_type_refs.clear();
   const TypeSpec return_ts =
       lir_owned_type_spec(mod, fn.return_type, lir_module);
-  const bool templated_aggregate_return =
-      (return_ts.base == TB_STRUCT || return_ts.base == TB_UNION) &&
-      return_ts.ptr_level == 0 && return_ts.array_rank == 0 &&
-      (fn.template_origin.empty() == false ||
-       (return_ts.tpl_struct_origin && return_ts.tpl_struct_origin[0]) ||
-       (return_ts.tpl_struct_args.data && return_ts.tpl_struct_args.size > 0));
-  const bool direct_aggregate_return =
-      !return_ts.is_lvalue_ref && !return_ts.is_rvalue_ref &&
-      !templated_aggregate_return;
   const std::string return_type_text =
-      direct_aggregate_return
-          ? direct_owned_aggregate_type_text(mod, return_ts, lir_module)
-                .value_or(rendered_signature_return_type(mod, return_ts))
-          : rendered_signature_return_type(mod, return_ts);
+      rendered_signature_return_type(mod, return_ts);
   lir_fn.signature_return_type_ref =
       lir_signature_type_ref(return_type_text, lir_module, mod, return_ts);
   lir_fn.signature_return_ext_attr =
@@ -679,14 +632,8 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
         llvm_cc::amd64_fixed_aggregate_passed_byval(param.type.spec, mod);
     const std::string rendered_param_type =
         rendered_signature_param_type(mod, lir_module, param_ts);
-    const std::optional<std::string> direct_param_type =
-        !is_byval_signature_param
-            ? direct_owned_aggregate_type_text(mod, param_ts, lir_module)
-            : std::nullopt;
     const std::string param_type_text =
-        direct_param_type.has_value() && *direct_param_type == rendered_param_type
-            ? *direct_param_type
-            : rendered_param_type;
+        rendered_param_type;
     lir_fn.signature_params.push_back(
         {pname, param_ts, is_byval_signature_param});
     lir_fn.signature_param_type_refs.push_back(lir_signature_type_ref(
