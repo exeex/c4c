@@ -2977,6 +2977,7 @@ void verify_function_value_ownership(const LirModule& mod,
   }
 
   std::size_t selected_floating_fadd_lhs_authority_count = 0;
+  std::size_t selected_floating_fsub_lhs_authority_count = 0;
   const auto verify_scalar_binary_lhs_authority = [&](const LirBinOp& op) {
     const auto scalar_lhs_definition = std::find_if(
         function.native_body_parameter_definitions.begin(),
@@ -3008,12 +3009,14 @@ void verify_function_value_ownership(const LirModule& mod,
     }
     if (authority.type.kind() == LirTypeKind::Floating) {
       const std::optional<LirBinaryOpcode> opcode = op.opcode.typed();
-      if (opcode != LirBinaryOpcode::FAdd && opcode != LirBinaryOpcode::FMul &&
+      if (opcode != LirBinaryOpcode::FAdd && opcode != LirBinaryOpcode::FSub &&
+          opcode != LirBinaryOpcode::FMul &&
           opcode != LirBinaryOpcode::FNeg) {
         fail_verify(field,
-                    "floating LHS parameter authority is limited to selected fadd, fmul, and fneg consumers");
+                    "floating LHS parameter authority is limited to selected fadd, fsub, fmul, and fneg consumers");
       }
-      if (opcode == LirBinaryOpcode::FAdd || opcode == LirBinaryOpcode::FMul) {
+      if (opcode == LirBinaryOpcode::FAdd || opcode == LirBinaryOpcode::FSub ||
+          opcode == LirBinaryOpcode::FMul) {
         const bool rhs_is_direct_scalar_parameter =
             op.rhs.value_id() &&
             std::any_of(function.native_body_parameter_definitions.begin(),
@@ -3029,6 +3032,7 @@ void verify_function_value_ownership(const LirModule& mod,
                       "selected floating binary LHS authority requires a nonselected scalar RHS");
         }
         if (opcode == LirBinaryOpcode::FAdd) ++selected_floating_fadd_lhs_authority_count;
+        if (opcode == LirBinaryOpcode::FSub) ++selected_floating_fsub_lhs_authority_count;
       }
     }
     const auto matches = std::count_if(
@@ -3390,6 +3394,10 @@ void verify_function_value_ownership(const LirModule& mod,
   if (selected_floating_fadd_lhs_authority_count > 1) {
     fail_verify("LirBinOp.scalar_lhs_parameter_authority",
                 "current function may publish exactly one selected floating fadd LHS authority");
+  }
+  if (selected_floating_fsub_lhs_authority_count > 1) {
+    fail_verify("LirBinOp.scalar_lhs_parameter_authority",
+                "current function may publish exactly one selected floating fsub LHS authority");
   }
 
   const auto verify_return_value_parameter_authority = [&](const LirRet& ret) {
