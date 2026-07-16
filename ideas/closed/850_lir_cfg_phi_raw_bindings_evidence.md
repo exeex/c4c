@@ -1,6 +1,6 @@
 # LIR CFG and PHI Raw-Binding Evidence
 
-Status: Open
+Status: Closed - evidence complete, no direct 734 handoff
 Type: Research and architecture documentation
 Parent: `ideas/open/813_lir_string_semantic_authority_completion_umbrella.md`
 Related:
@@ -121,3 +121,40 @@ typed handoff or identifies a separately scoped producer successor; accepted
   progress.
 - Reject a 734 receipt or 797 convergence claim that lacks an accepted exact
   producer handoff.
+
+## Closure Note
+
+Close accepted as documentation/evidence complete. Commit `3c314634a` created
+the required docs directory and exactly the required files:
+
+- `docs/lir_cfg_phi_raw_bindings_evidence/index.md`
+- `docs/lir_cfg_phi_raw_bindings_evidence/01_cfg_phi_raw_binding_route.md`
+
+The evidence maps `LirPhi` and terminator forms through LIR fields, verifier
+checks, Raw-BIR importer paths, and accepted receiver tests. Current modeled
+PHI, direct branch, conditional branch, switch, return, indirect branch, and
+unreachable forms carry native block/value/type/edge authority where supported.
+
+Conclusion: accepted 734 bounded receipts already cover the modeled CFG/PHI
+Raw-BIR receiver rows described by this evidence. 850 does not authorize a new
+direct 734 receiver handoff. If a future raw CFG/PHI seam appears, a separate
+producer/verifier owner must first publish exact native block/value/type/edge
+facts and malformed-boundary proof.
+
+Return relation:
+
+- 734 remains downstream with no new receiver row authorized by this idea.
+- 797 remains downstream of any future 734 disposition.
+- Text-based reconstruction of block labels, value names, predecessor labels,
+  case labels, or LLVM terminator spelling remains rejected as authority.
+
+Accepted proof:
+
+```sh
+find docs/lir_cfg_phi_raw_bindings_evidence -maxdepth 1 -type f -printf '%f\n' | sort
+git diff --check
+```
+
+Result: PASS. The directory contained exactly
+`01_cfg_phi_raw_binding_route.md` and `index.md`, and no implementation files
+were modified.
