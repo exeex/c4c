@@ -117,7 +117,6 @@ class LirOperand {
   }
 
   [[nodiscard]] const std::string& str() const { return text_; }
-  [[nodiscard]] std::string& str() { return text_; }
   [[nodiscard]] LirOperandKind kind() const { return kind_; }
   [[nodiscard]] bool empty() const { return text_.empty(); }
   [[nodiscard]] bool has_authority() const {

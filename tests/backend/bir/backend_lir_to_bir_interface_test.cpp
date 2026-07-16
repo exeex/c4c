@@ -29,6 +29,24 @@ void expect(bool condition, const std::string& message) {
   if (!condition) fail(message);
 }
 
+lir::LirOperand with_operand_display(const lir::LirOperand& operand,
+                                     std::string display) {
+  if (const auto* id = operand.value_id()) {
+    return lir::LirOperand::ssa(std::move(display), *id);
+  }
+  if (const auto* id = operand.link_name_id()) {
+    return lir::LirOperand::global(std::move(display), *id);
+  }
+  if (const auto* immediate = operand.integer_immediate()) {
+    return lir::LirOperand::integer(std::move(display), immediate->value);
+  }
+  if (const auto* token = operand.special_token()) {
+    return lir::LirOperand::special_token(std::move(display), *token,
+                                          operand.kind());
+  }
+  return lir::LirOperand(std::move(display), operand.kind());
+}
+
 void test_structured_gep_index_adapter() {
   namespace detail = c4c::backend::lir_to_bir_detail;
 
@@ -3769,7 +3787,7 @@ void test_direct_label_address_constant_receipt_and_rejections() {
   }, "nonpointer direct GEP definition must reject in the verifier");
   rejected_direct_gep_by_verifier([](lir::LirModule& candidate) {
     auto& gep = std::get<lir::LirGepOp>(candidate.functions[0].blocks[0].insts[0]);
-    gep.ptr.str() = "%misleading-direct-gep-base";
+    gep.ptr = with_operand_display(gep.ptr, "%misleading-direct-gep-base");
   }, "direct GEP display spelling must not override structured identity");
   rejected_direct_gep_by_verifier([](lir::LirModule& candidate) {
     auto& gep = std::get<lir::LirGepOp>(candidate.functions[0].blocks[0].insts[0]);
@@ -12480,8 +12498,8 @@ void test_builtin_ctz_call_narrow_final_use_receipt_and_rejections() {
                "non-Trunc ctz narrowing must reject atomically");
     auto misleading = builtin_ctz_final_use_module(width);
     auto& call = std::get<lir::LirCallOp>(misleading.functions[0].blocks[0].insts[1]);
-    call.result.str() = "%display-only";
-    call.callee.str() = "@display-only";
+    call.result = with_operand_display(call.result, "%display-only");
+    call.callee = with_operand_display(call.callee, "@display-only");
     call.args_str = "display-only";
     expect(bir::lower_lir_to_raw_bir(misleading).has_value(),
            "ctz receipt must retain native authority despite misleading displays");
@@ -12529,8 +12547,8 @@ void test_builtin_clz_call_narrow_final_use_receipt_and_rejections() {
                "non-Trunc clz narrowing must reject atomically");
     auto misleading = builtin_clz_final_use_module(width);
     auto& call = std::get<lir::LirCallOp>(misleading.functions[0].blocks[0].insts[1]);
-    call.result.str() = "%display-only";
-    call.callee.str() = "@display-only";
+    call.result = with_operand_display(call.result, "%display-only");
+    call.callee = with_operand_display(call.callee, "@display-only");
     call.args_str = "display-only";
     expect(bir::lower_lir_to_raw_bir(misleading).has_value(),
            "clz receipt must retain native authority despite misleading displays");
@@ -12656,8 +12674,8 @@ void test_builtin_popcount_call_narrow_final_use_receipt_and_rejections() {
              }, "cross-owner popcount result use must reject atomically");
     auto misleading = builtin_popcount_final_use_module(width);
     auto& ctpop = std::get<lir::LirCallOp>(misleading.functions[0].blocks[0].insts[1]);
-    ctpop.result.str() = "%display-only";
-    ctpop.callee.str() = "@display-only";
+    ctpop.result = with_operand_display(ctpop.result, "%display-only");
+    ctpop.callee = with_operand_display(ctpop.callee, "@display-only");
     ctpop.args_str = "display-only";
     expect(bir::lower_lir_to_raw_bir(misleading).has_value(),
            "popcount receipt must retain native authority despite misleading displays");

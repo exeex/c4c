@@ -401,7 +401,7 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
   LirOperand call_operand = preserve_native_argument
                                 ? source_operand
                                 : LirOperand(arg);
-  call_operand.str() = arg;
+  if (call_operand.str() != arg) call_operand = LirOperand(arg);
   PreparedCallArg out_arg{
       {{.type = out_llvm_ty,
         .operand = std::move(call_operand),

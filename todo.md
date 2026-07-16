@@ -8,21 +8,22 @@ Current Step Title: Delete semantic string escape hatches
 
 ## Just Finished
 
-Completed Step 3 packet to delete the implicit string conversion escape hatches
-from `LirOperand` in `src/codegen/lir/operands.hpp`.
+Completed Step 3 packet to delete the mutable `LirOperand::str()` escape hatch
+from `src/codegen/lir/operands.hpp`.
 
-Removed `operator std::string&()`, `operator const std::string&() const`, and
-`operator std::string_view() const` while preserving explicit mutable and const
-`.str()` access. Repaired direct compile-error users in LIR call helpers,
-printer/lowering text-boundary code, global-reference collection, and the
-focused frontend test by using explicit `.str()` or existing operand authority
-collection as appropriate.
+Removed `[[nodiscard]] std::string& str()` while preserving the const explicit
+`.str()` output boundary. Repaired direct compile fallout in LIR call argument
+normalization by reconstructing operands when normalization changes their text.
+Updated direct test mutation fallout to use explicit operand replacement or
+test-local authority-preserving reconstruction helpers instead of mutating the
+operand's backing string.
 
 ## Suggested Next
 
-Supervisor should review and commit this Step 3 `LirOperand` conversion-removal
-slice if accepted, then continue with the next remaining Step 3 string escape
-hatch candidate. Do not widen the next packet into Step 4 adapter removal.
+Supervisor should review and commit this Step 3 mutable `LirOperand::str()`
+deletion slice if accepted, then continue with the next remaining Step 3 string
+escape hatch candidate. Do not widen the next packet into Step 4 adapter
+removal.
 
 ## Watchouts
 
@@ -38,6 +39,8 @@ hatch candidate. Do not widen the next packet into Step 4 adapter removal.
 - Do not restore implicit `std::string&`, `const std::string&`, or
   `std::string_view` conversions on `LirOperand`; direct users should call
   `.str()` or use native operand authority access as appropriate.
+- Do not restore mutable `LirOperand::str()`; tests that need stale display
+  text should use explicit reconstruction while preserving native authority.
 - Do not add a renamed generic runtime-text factory; remaining text-backed
   constructions should stay behind named compatibility factories or explicit
   constructors until their own packet deletes them.
@@ -71,10 +74,15 @@ hatch candidate. Do not widen the next packet into Step 4 adapter removal.
 - `collect_inst_refs(...)` now routes affected `LirOperand` fields through
   `collect_operand_ref(...)`, so structured link-name authority is preferred
   before fallback text scanning.
+- `clang-format` was not available in this environment, so no automatic
+  formatting pass was run.
 
 ## Proof
 
-Proof run passed:
+Baseline captured before edits with:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'; } > test_before.log 2>&1`.
+
+Proof run passed after edits:
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'; } > test_after.log 2>&1`.
 `test_after.log` contains the delegated build plus focused CTest output with
 `frontend_lir_call_type_ref` passing.

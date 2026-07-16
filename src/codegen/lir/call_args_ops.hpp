@@ -69,7 +69,9 @@ inline std::vector<LirCallArg> lir_call_structured_args(
   structured_args.reserve(args.size());
   for (const auto& arg : args) {
     LirOperand operand = arg.operand;
-    operand.str() = std::string(trim_lir_arg_text(operand.str()));
+    const std::string trimmed_operand =
+        std::string(trim_lir_arg_text(operand.str()));
+    if (trimmed_operand != operand.str()) operand = LirOperand(trimmed_operand);
     structured_args.push_back(
         {.type = std::string(trim_lir_arg_text(arg.type)),
          .operand = std::move(operand),
@@ -91,7 +93,9 @@ inline LirCallOp make_lir_call_op_with_return_type_ref(
     LinkNameId direct_callee_link_name_id = kInvalidLinkName,
     std::optional<LirCallSignature> callee_signature = std::nullopt) {
   const auto formatted = format_lir_call_fields(callee_type_suffix, args);
-  result.str() = std::string(trim_lir_arg_text(result.str()));
+  const std::string trimmed_result =
+      std::string(trim_lir_arg_text(result.str()));
+  if (trimmed_result != result.str()) result = LirOperand(trimmed_result);
   const LirExtAttr return_ext_attr =
       callee_signature ? callee_signature->return_ext_attr : LirExtAttr::None;
   const std::string callee_text =
@@ -117,8 +121,10 @@ inline LirCallOp make_lir_call_op(std::string result,
                                   std::string callee,
                                   std::string_view callee_type_suffix,
                                   const std::vector<OwnedLirTypedCallArg>& args,
-                                  LinkNameId direct_callee_link_name_id = kInvalidLinkName,
-                                  std::optional<LirCallSignature> callee_signature = std::nullopt) {
+                                  LinkNameId direct_callee_link_name_id =
+                                      kInvalidLinkName,
+                                  std::optional<LirCallSignature>
+                                      callee_signature = std::nullopt) {
   return make_lir_call_op_with_return_type_ref(
       LirOperand(std::string(trim_lir_arg_text(result))),
       LirTypeRef(std::string(trim_lir_arg_text(return_type))),

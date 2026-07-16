@@ -58,6 +58,25 @@ void expect_eq(std::string_view actual, std::string_view expected,
   }
 }
 
+c4c::codegen::lir::LirOperand with_operand_display(
+    const c4c::codegen::lir::LirOperand& operand, std::string display) {
+  namespace lir = c4c::codegen::lir;
+  if (const auto* id = operand.value_id()) {
+    return lir::LirOperand::ssa(std::move(display), *id);
+  }
+  if (const auto* id = operand.link_name_id()) {
+    return lir::LirOperand::global(std::move(display), *id);
+  }
+  if (const auto* immediate = operand.integer_immediate()) {
+    return lir::LirOperand::integer(std::move(display), immediate->value);
+  }
+  if (const auto* token = operand.special_token()) {
+    return lir::LirOperand::special_token(std::move(display), *token,
+                                          operand.kind());
+  }
+  return lir::LirOperand(std::move(display), operand.kind());
+}
+
 void expect_eq_int(int actual, int expected, const std::string& msg) {
   if (actual != expected) {
     fail(msg + "\nExpected: " + std::to_string(expected) +
@@ -9185,10 +9204,12 @@ int inline_asm_output_identity(void) {
 
   lir::LirModule misleading = lowered;
   FocusedPair misleading_pair = require_pair(misleading);
-  misleading_pair.inline_asm->result.str() = "@rendered-not-asm-result";
-  misleading_pair.inline_asm->ordinary_results[0].value.str() =
-      "7";
-  misleading_pair.later_store->val.str() = "%rendered-not-output-use";
+  misleading_pair.inline_asm->result =
+      with_operand_display(misleading_pair.inline_asm->result, "@rendered-not-asm-result");
+  misleading_pair.inline_asm->ordinary_results[0].value = with_operand_display(
+      misleading_pair.inline_asm->ordinary_results[0].value, "7");
+  misleading_pair.later_store->val =
+      with_operand_display(misleading_pair.later_store->val, "%rendered-not-output-use");
   misleading_pair.inline_asm->asm_text = "rendered replacement";
   misleading_pair.inline_asm->constraints = "rendered constraints";
   misleading_pair.inline_asm->args_str = "rendered arguments";
@@ -9363,9 +9384,12 @@ long long inline_asm_i64_output_identity(void) {
 
   lir::LirModule misleading = lowered;
   FocusedPair misleading_pair = require_pair(misleading);
-  misleading_pair.inline_asm->result.str() = "@rendered-not-i64-result";
-  misleading_pair.inline_asm->ordinary_results[0].value.str() = "17";
-  misleading_pair.later_store->val.str() = "%rendered-not-i64-use";
+  misleading_pair.inline_asm->result =
+      with_operand_display(misleading_pair.inline_asm->result, "@rendered-not-i64-result");
+  misleading_pair.inline_asm->ordinary_results[0].value = with_operand_display(
+      misleading_pair.inline_asm->ordinary_results[0].value, "17");
+  misleading_pair.later_store->val =
+      with_operand_display(misleading_pair.later_store->val, "%rendered-not-i64-use");
   misleading_pair.inline_asm->asm_text = "rendered replacement";
   misleading_pair.inline_asm->constraints = "rendered constraints";
   misleading_pair.inline_asm->args_str = "rendered arguments";

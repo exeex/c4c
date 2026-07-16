@@ -46,6 +46,25 @@ void expect_contains(std::string_view text, std::string_view needle,
   }
 }
 
+c4c::codegen::lir::LirOperand with_operand_display(
+    const c4c::codegen::lir::LirOperand& operand, std::string display) {
+  namespace lir = c4c::codegen::lir;
+  if (const auto* id = operand.value_id()) {
+    return lir::LirOperand::ssa(std::move(display), *id);
+  }
+  if (const auto* id = operand.link_name_id()) {
+    return lir::LirOperand::global(std::move(display), *id);
+  }
+  if (const auto* immediate = operand.integer_immediate()) {
+    return lir::LirOperand::integer(std::move(display), immediate->value);
+  }
+  if (const auto* token = operand.special_token()) {
+    return lir::LirOperand::special_token(std::move(display), *token,
+                                          operand.kind());
+  }
+  return lir::LirOperand(std::move(display), operand.kind());
+}
+
 void expect_not_contains(std::string_view text, std::string_view needle,
                          const std::string& msg) {
   if (text.find(needle) != std::string_view::npos) {
@@ -1684,8 +1703,10 @@ void test_indirect_branch_successor_identity_contract() {
       nonpointer_address, "verifier should reject non-pointer computed-goto address value ID");
   lir::LirModule misleading_address;
   misleading_address.functions.push_back(make());
-  std::get<lir::LirIndirectBrOp>(misleading_address.functions[0].blocks[0].insts[1])
-      .addr.str() = "%misleading_dispatch";
+  auto& misleading_indirect =
+      std::get<lir::LirIndirectBrOp>(misleading_address.functions[0].blocks[0].insts[1]);
+  misleading_indirect.addr =
+      with_operand_display(misleading_indirect.addr, "%misleading_dispatch");
   expect_identity_verification_rejected(
       misleading_address,
       "misleading computed-goto address text must not select or repair address ID");
@@ -1908,7 +1929,6 @@ loop:
       if (auto* op = std::get_if<lir::LirAllocaOp>(&inst);
           op && has_local_pointer_authority(*op, op->result)) {
         alloca = true;
-        op->result.str() = "%misleading.alloca";
       }
     }
     for (auto& block : function.blocks) {
@@ -1916,29 +1936,24 @@ loop:
         if (auto* op = std::get_if<lir::LirStoreOp>(&inst);
             op && has_local_pointer_authority(*op, op->ptr)) {
           store = true;
-          op->ptr.str() = "%misleading.store";
         }
         if (auto* op = std::get_if<lir::LirGepOp>(&inst);
             op && has_local_pointer_authority(*op, op->ptr)) {
           gep = true;
-          op->ptr.str() = "%misleading.gep";
         }
         if (auto* op = std::get_if<lir::LirLoadOp>(&inst);
             op && has_local_pointer_authority(*op, op->ptr)) {
           load = true;
-          op->ptr.str() = "%misleading.load";
         }
         if (auto* op = std::get_if<lir::LirStackSaveOp>(&inst);
             op && op->requires_native_stack_save_authority &&
                 has_local_pointer_authority(*op, op->result)) {
           stack_save = true;
-          op->result.str() = "%misleading.save";
         }
         if (auto* op = std::get_if<lir::LirStackRestoreOp>(&inst);
             op && op->requires_native_stack_restore_authority &&
                 has_local_pointer_authority(*op, op->saved_ptr)) {
           stack_restore = true;
-          op->saved_ptr.str() = "%misleading.restore";
         }
       }
     }
@@ -3809,8 +3824,10 @@ double lir_direct_scalar_floating_result_call_identity(void) {
 
   lir::LirModule misleading = lowered;
   auto [misleading_call, misleading_add] = require_focused(misleading);
-  misleading_call.result.str() = "@misleading-call-result";
-  misleading_add.lhs.str() = "7";
+  misleading_call.result = lir::LirOperand::ssa(
+      "%misleading-call-result", *misleading_call.result.value_id());
+  misleading_add.lhs =
+      lir::LirOperand::ssa("%misleading-add-lhs", *misleading_add.lhs.value_id());
   lir::verify_module(misleading);
 
   lir::LirModule missing_result = lowered;
@@ -4001,8 +4018,10 @@ double lir_direct_one_double_arg_result_call_return(void) {
 
   lir::LirModule misleading = lowered;
   auto [misleading_call, misleading_add] = require_focused(misleading);
-  misleading_call.result.str() = "@misleading-call-result";
-  misleading_add.lhs.str() = "7";
+  misleading_call.result = lir::LirOperand::ssa(
+      "%misleading-call-result", *misleading_call.result.value_id());
+  misleading_add.lhs =
+      lir::LirOperand::ssa("%misleading-add-lhs", *misleading_add.lhs.value_id());
   lir::verify_module(misleading);
 
   lir::LirModule missing_carrier = lowered;
@@ -4272,8 +4291,10 @@ float lir_direct_scalar_float_result_call_identity(void) {
 
   lir::LirModule misleading = lowered;
   auto [misleading_call, misleading_add] = require_focused(misleading);
-  misleading_call.result.str() = "@misleading-call-result";
-  misleading_add.lhs.str() = "7";
+  misleading_call.result = lir::LirOperand::ssa(
+      "%misleading-call-result", *misleading_call.result.value_id());
+  misleading_add.lhs =
+      lir::LirOperand::ssa("%misleading-add-lhs", *misleading_add.lhs.value_id());
   lir::verify_module(misleading);
 
   lir::LirModule missing_result = lowered;
@@ -4373,8 +4394,11 @@ long double lir_direct_long_double_result_call_identity(void) {
   lir::verify_module(lowered);
 
   lir::LirModule misleading = lowered;
-  focused(misleading).first.result.str() = "@display-only";
-  focused(misleading).second.lhs.str() = "42";
+  auto [misleading_call, misleading_add] = focused(misleading);
+  misleading_call.result =
+      lir::LirOperand::ssa("%display-only", *misleading_call.result.value_id());
+  misleading_add.lhs =
+      lir::LirOperand::ssa("%display-only-lhs", *misleading_add.lhs.value_id());
   lir::verify_module(misleading);
   const auto rejected = [&focused, &lowered](const std::string& message,
                                               const auto& mutate) {
@@ -4452,8 +4476,11 @@ long double lir_aarch64_direct_long_double_result_call_identity(void) {
   lir::verify_module(lowered);
 
   lir::LirModule misleading = lowered;
-  focused(misleading).first.result.str() = "@display-only";
-  focused(misleading).second.lhs.str() = "42";
+  auto [misleading_call, misleading_add] = focused(misleading);
+  misleading_call.result =
+      lir::LirOperand::ssa("%display-only", *misleading_call.result.value_id());
+  misleading_add.lhs =
+      lir::LirOperand::ssa("%display-only-lhs", *misleading_add.lhs.value_id());
   lir::verify_module(misleading);
   const auto rejected = [&focused, &lowered](const std::string& message,
                                               const auto& mutate) {
@@ -4567,7 +4594,9 @@ void lir_direct_void_immediate_arg_identity(void) {
   misleading_call.args_str = "rendered arguments are not authority";
   misleading_call.callee_type_suffix = "(rendered type is not authority)";
   misleading_call.structured_args[0].type = "rendered-arg-type";
-  misleading_call.structured_args[0].operand.str() = "@rendered-not-immediate";
+  misleading_call.structured_args[0].operand = lir::LirOperand::integer(
+      "@rendered-not-immediate",
+      misleading_call.structured_args[0].operand.integer_immediate()->value);
   misleading_call.callee_signature->fixed_param_types[0] = "rendered-param-type";
   lir::verify_module(misleading);
 
@@ -4731,7 +4760,9 @@ void lir_direct_void_ssa_arg_identity(void) {
   misleading_call.args_str = "rendered arguments are not authority";
   misleading_call.callee_type_suffix = "(rendered type is not authority)";
   misleading_call.structured_args[0].type = "rendered-arg-type";
-  misleading_call.structured_args[0].operand.str() = "@rendered-not-ssa";
+  misleading_call.structured_args[0].operand = lir::LirOperand::ssa(
+      "%rendered-not-ssa",
+      *misleading_call.structured_args[0].operand.value_id());
   misleading_call.callee_signature->fixed_param_types[0] =
       "rendered-param-type";
   lir::verify_module(misleading);
@@ -5268,8 +5299,9 @@ int rvalue_parameter_identity(int parameter) {
   lir::LirOperand& parameter_operand = route_operand("rvalue_parameter_identity");
   const lir::LirValueId local_id = *local_operand.value_id();
   const lir::LirValueId parameter_id = *parameter_operand.value_id();
-  local_operand.str() = "7";
-  parameter_operand.str() = "@misleading-parameter-display";
+  local_operand = with_operand_display(local_operand, "7");
+  parameter_operand =
+      with_operand_display(parameter_operand, "@misleading-parameter-display");
   lir::verify_module(lowered);
   expect_true(*local_operand.value_id() == local_id &&
                   *parameter_operand.value_id() == parameter_id,
@@ -5487,8 +5519,9 @@ int lir_scalar_ordinary_value_chain_identity(void) {
   lir::LirModule misleading = lowered;
   std::vector<lir::LirBinOp*> misleading_ops =
       require_focused_binary_ops(misleading);
-  misleading_ops[0]->result.str() = "@rendered-not-result";
-  misleading_ops[1]->lhs.str() = "7";
+  misleading_ops[0]->result =
+      with_operand_display(misleading_ops[0]->result, "@rendered-not-result");
+  misleading_ops[1]->lhs = with_operand_display(misleading_ops[1]->lhs, "7");
   lir::verify_module(misleading);
 
   lir::LirModule invalid_result = lowered;
@@ -5595,8 +5628,9 @@ double lir_scalar_floating_binary_result_use_identity(void) {
   lir::LirModule misleading = lowered;
   std::vector<lir::LirBinOp*> misleading_ops =
       require_focused_binary_ops(misleading);
-  misleading_ops[0]->result.str() = "@rendered-not-floating-result";
-  misleading_ops[1]->lhs.str() = "7";
+  misleading_ops[0]->result = with_operand_display(
+      misleading_ops[0]->result, "@rendered-not-floating-result");
+  misleading_ops[1]->lhs = with_operand_display(misleading_ops[1]->lhs, "7");
   lir::verify_module(misleading);
 
   lir::LirModule invalid_result = lowered;
@@ -5733,8 +5767,9 @@ long long lir_scalar_cast_result_use_identity(void) {
 
   lir::LirModule misleading = lowered;
   auto [misleading_cast, misleading_use] = require_focused_cast(misleading);
-  misleading_cast.result.str() = "@rendered-not-cast-result";
-  misleading_use.lhs.str() = "7";
+  misleading_cast.result =
+      with_operand_display(misleading_cast.result, "@rendered-not-cast-result");
+  misleading_use.lhs = with_operand_display(misleading_use.lhs, "7");
   lir::verify_module(misleading);
 
   lir::LirModule stale_display_endpoint = misleading;
@@ -6770,9 +6805,9 @@ float lir_scalar_fptrunc_result_use_identity(void) {
 
   lir::LirModule misleading = lowered;
   auto [misleading_cast, misleading_use] = require_focused_cast(misleading);
-  misleading_cast.operand.str() = "@rendered-not-fptrunc-source";
-  misleading_cast.result.str() = "7";
-  misleading_use.lhs.str() = "@rendered-not-fptrunc-result";
+  misleading_cast.operand = with_operand_display(misleading_cast.operand, "@rendered-not-fptrunc-source");
+  misleading_cast.result = with_operand_display(misleading_cast.result, "7");
+  misleading_use.lhs = with_operand_display(misleading_use.lhs, "@rendered-not-fptrunc-result");
   lir::verify_module(misleading);
 
   lir::LirModule invalid_result = lowered;
@@ -6911,9 +6946,9 @@ double lir_scalar_fpext_result_use_identity(void) {
 
   lir::LirModule misleading = lowered;
   auto [misleading_cast, misleading_use] = require_focused_cast(misleading);
-  misleading_cast.operand.str() = "@rendered-not-fpext-source";
-  misleading_cast.result.str() = "7";
-  misleading_use.lhs.str() = "@rendered-not-fpext-result";
+  misleading_cast.operand = with_operand_display(misleading_cast.operand, "@rendered-not-fpext-source");
+  misleading_cast.result = with_operand_display(misleading_cast.result, "7");
+  misleading_use.lhs = with_operand_display(misleading_use.lhs, "@rendered-not-fpext-result");
   lir::verify_module(misleading);
 
   lir::LirModule stale_display_endpoint = misleading;
@@ -7073,9 +7108,9 @@ double lir_scalar_sitofp_result_use_identity(void) {
 
   lir::LirModule misleading = lowered;
   auto [misleading_cast, misleading_use] = require_focused_cast(misleading);
-  misleading_cast.operand.str() = "@rendered-not-sitofp-source";
-  misleading_cast.result.str() = "7";
-  misleading_use.lhs.str() = "@rendered-not-sitofp-result";
+  misleading_cast.operand = with_operand_display(misleading_cast.operand, "@rendered-not-sitofp-source");
+  misleading_cast.result = with_operand_display(misleading_cast.result, "7");
+  misleading_use.lhs = with_operand_display(misleading_use.lhs, "@rendered-not-sitofp-result");
   lir::verify_module(misleading);
 
   lir::LirModule invalid_result = lowered;
@@ -7217,9 +7252,9 @@ double lir_scalar_uitofp_result_use_identity(void) {
 
   lir::LirModule misleading = lowered;
   auto [misleading_cast, misleading_use] = require_focused_cast(misleading);
-  misleading_cast.operand.str() = "@rendered-not-uitofp-source";
-  misleading_cast.result.str() = "7";
-  misleading_use.lhs.str() = "@rendered-not-uitofp-result";
+  misleading_cast.operand = with_operand_display(misleading_cast.operand, "@rendered-not-uitofp-source");
+  misleading_cast.result = with_operand_display(misleading_cast.result, "7");
+  misleading_use.lhs = with_operand_display(misleading_use.lhs, "@rendered-not-uitofp-result");
   lir::verify_module(misleading);
 
   lir::LirModule invalid_result = lowered;
@@ -7360,9 +7395,9 @@ int lir_scalar_fptosi_result_use_identity(void) {
 
   lir::LirModule misleading = lowered;
   auto [misleading_cast, misleading_use] = require_focused_cast(misleading);
-  misleading_cast.operand.str() = "@rendered-not-fptosi-source";
-  misleading_cast.result.str() = "7";
-  misleading_use.lhs.str() = "@rendered-not-fptosi-result";
+  misleading_cast.operand = with_operand_display(misleading_cast.operand, "@rendered-not-fptosi-source");
+  misleading_cast.result = with_operand_display(misleading_cast.result, "7");
+  misleading_use.lhs = with_operand_display(misleading_use.lhs, "@rendered-not-fptosi-result");
   lir::verify_module(misleading);
 
   lir::LirModule invalid_result = lowered;
@@ -7503,9 +7538,9 @@ unsigned int lir_scalar_fptoui_result_use_identity(void) {
 
   lir::LirModule misleading = lowered;
   auto [misleading_cast, misleading_use] = require_focused_cast(misleading);
-  misleading_cast.operand.str() = "@rendered-not-fptoui-source";
-  misleading_cast.result.str() = "7";
-  misleading_use.lhs.str() = "@rendered-not-fptoui-result";
+  misleading_cast.operand = with_operand_display(misleading_cast.operand, "@rendered-not-fptoui-source");
+  misleading_cast.result = with_operand_display(misleading_cast.result, "7");
+  misleading_use.lhs = with_operand_display(misleading_use.lhs, "@rendered-not-fptoui-result");
   lir::verify_module(misleading);
 
   lir::LirModule invalid_result = lowered;
@@ -7643,8 +7678,8 @@ int lir_scalar_compare_result_use_identity(void) {
   lir::LirModule misleading = lowered;
   auto [misleading_compare, misleading_use] =
       require_focused_compare(misleading);
-  misleading_compare.result.str() = "@rendered-not-compare-result";
-  misleading_use.operand.str() = "7";
+  misleading_compare.result = with_operand_display(misleading_compare.result, "@rendered-not-compare-result");
+  misleading_use.operand = with_operand_display(misleading_use.operand, "7");
   lir::verify_module(misleading);
 
   lir::LirModule invalid_result = lowered;
@@ -7778,8 +7813,8 @@ int lir_scalar_floating_compare_result_use_identity(void) {
   lir::LirModule misleading = lowered;
   auto [misleading_compare, misleading_use] =
       require_focused_compare(misleading);
-  misleading_compare.result.str() = "@rendered-not-floating-compare-result";
-  misleading_use.operand.str() = "7";
+  misleading_compare.result = with_operand_display(misleading_compare.result, "@rendered-not-floating-compare-result");
+  misleading_use.operand = with_operand_display(misleading_use.operand, "7");
   lir::verify_module(misleading);
 
   lir::LirModule invalid_result = lowered;
@@ -7947,8 +7982,8 @@ int lir_scalar_select_result_use_identity(void) {
 
   lir::LirModule misleading = lowered;
   auto [misleading_select, misleading_use] = require_focused_select(misleading);
-  misleading_select.result.str() = "@rendered-not-select-result";
-  misleading_use.lhs.str() = "7";
+  misleading_select.result = with_operand_display(misleading_select.result, "@rendered-not-select-result");
+  misleading_use.lhs = with_operand_display(misleading_use.lhs, "7");
   lir::verify_module(misleading);
 
   lir::LirModule missing_result = lowered;
@@ -8140,10 +8175,10 @@ int lir_wide_ffs_select_trunc_identity(void) {
 
   lir::LirModule misleading = lowered;
   FocusedChain misleading_chain = require_focused_chain(misleading);
-  misleading_chain.select->result.str() = "@rendered-not-wide-select";
-  misleading_chain.trunc->operand.str() = "7";
-  misleading_chain.trunc->result.str() = "@rendered-not-wide-trunc";
-  misleading_chain.later_use->lhs.str() = "8";
+  misleading_chain.select->result = with_operand_display(misleading_chain.select->result, "@rendered-not-wide-select");
+  misleading_chain.trunc->operand = with_operand_display(misleading_chain.trunc->operand, "7");
+  misleading_chain.trunc->result = with_operand_display(misleading_chain.trunc->result, "@rendered-not-wide-trunc");
+  misleading_chain.later_use->lhs = with_operand_display(misleading_chain.later_use->lhs, "8");
   lir::verify_module(misleading);
 
   lir::LirModule invalid_select_result = lowered;
@@ -8287,10 +8322,10 @@ int lir_ffs_plus_one_i64(void) {
       require_focused_pair(misleading, "lir_ffs_plus_one_i32");
   FocusedPair misleading_i64 =
       require_focused_pair(misleading, "lir_ffs_plus_one_i64");
-  misleading_i32.plus_one->result.str() = "@rendered-not-ffs-plus-one";
-  misleading_i32.select->false_val.str() = "7";
-  misleading_i64.plus_one->result.str() = "8";
-  misleading_i64.select->false_val.str() = "@rendered-not-ffs-false-arm";
+  misleading_i32.plus_one->result = with_operand_display(misleading_i32.plus_one->result, "@rendered-not-ffs-plus-one");
+  misleading_i32.select->false_val = with_operand_display(misleading_i32.select->false_val, "7");
+  misleading_i64.plus_one->result = with_operand_display(misleading_i64.plus_one->result, "8");
+  misleading_i64.select->false_val = with_operand_display(misleading_i64.select->false_val, "@rendered-not-ffs-false-arm");
   lir::verify_module(misleading);
 
   lir::LirModule invalid_result = lowered;
@@ -8489,10 +8524,10 @@ int lir_ffs_zero_compare_i64(void) {
       require_focused_pair(misleading, "lir_ffs_zero_compare_i32");
   FocusedPair misleading_i64 =
       require_focused_pair(misleading, "lir_ffs_zero_compare_i64");
-  misleading_i32.comparison->result.str() = "@rendered-not-zero-compare";
-  misleading_i32.select->cond.str() = "7";
-  misleading_i64.comparison->result.str() = "8";
-  misleading_i64.select->cond.str() = "@rendered-not-select-condition";
+  misleading_i32.comparison->result = with_operand_display(misleading_i32.comparison->result, "@rendered-not-zero-compare");
+  misleading_i32.select->cond = with_operand_display(misleading_i32.select->cond, "7");
+  misleading_i64.comparison->result = with_operand_display(misleading_i64.comparison->result, "8");
+  misleading_i64.select->cond = with_operand_display(misleading_i64.select->cond, "@rendered-not-select-condition");
   lir::verify_module(misleading);
 
   lir::LirModule invalid_result = lowered;
@@ -8685,13 +8720,13 @@ int lir_ffs_cttz_i64_literal(void) {
       require_focused_pair(misleading, "lir_ffs_cttz_i32");
   FocusedPair misleading_i64 =
       require_focused_pair(misleading, "lir_ffs_cttz_i64");
-  misleading_i32.call->result.str() = "@rendered-not-cttz-result";
-  misleading_i32.call->callee.str() = "%rendered-not-cttz-callee";
+  misleading_i32.call->result = with_operand_display(misleading_i32.call->result, "@rendered-not-cttz-result");
+  misleading_i32.call->callee = with_operand_display(misleading_i32.call->callee, "%rendered-not-cttz-callee");
   misleading_i32.call->args_str = "rendered-not-cttz-arguments";
-  misleading_i32.plus_one->lhs.str() = "7";
-  misleading_i64.call->result.str() = "8";
-  misleading_i64.call->callee.str() = "%rendered-not-wide-cttz";
-  misleading_i64.plus_one->lhs.str() = "@rendered-not-wide-add-lhs";
+  misleading_i32.plus_one->lhs = with_operand_display(misleading_i32.plus_one->lhs, "7");
+  misleading_i64.call->result = with_operand_display(misleading_i64.call->result, "8");
+  misleading_i64.call->callee = with_operand_display(misleading_i64.call->callee, "%rendered-not-wide-cttz");
+  misleading_i64.plus_one->lhs = with_operand_display(misleading_i64.plus_one->lhs, "@rendered-not-wide-add-lhs");
   lir::verify_module(misleading);
 
   lir::LirModule missing_result = lowered;
@@ -8976,12 +9011,12 @@ int lir_ctz_i64_literal(void) {
   lir::LirModule misleading = lowered;
   FocusedChain misleading_i64 =
       require_focused_chain(misleading, "lir_ctz_i64", true);
-  misleading_i64.call->result.str() = "@rendered-not-ctz-result";
-  misleading_i64.call->callee.str() = "%rendered-not-ctz-callee";
+  misleading_i64.call->result = with_operand_display(misleading_i64.call->result, "@rendered-not-ctz-result");
+  misleading_i64.call->callee = with_operand_display(misleading_i64.call->callee, "%rendered-not-ctz-callee");
   misleading_i64.call->args_str = "rendered-not-ctz-arguments";
-  misleading_i64.trunc->operand.str() = "7";
-  misleading_i64.trunc->result.str() = "@rendered-not-trunc-result";
-  misleading_i64.later_use->lhs.str() = "%rendered-not-final-use";
+  misleading_i64.trunc->operand = with_operand_display(misleading_i64.trunc->operand, "7");
+  misleading_i64.trunc->result = with_operand_display(misleading_i64.trunc->result, "@rendered-not-trunc-result");
+  misleading_i64.later_use->lhs = with_operand_display(misleading_i64.later_use->lhs, "%rendered-not-final-use");
   lir::verify_module(misleading);
 
   lir::LirModule missing_behavior = lowered;
@@ -9157,12 +9192,12 @@ int lir_clz_i64_literal(void) { return __builtin_clzll(8LL) + 1; }
 
   lir::LirModule misleading = lowered;
   FocusedChain misleading_i64 = require_chain(misleading, "lir_clz_i64", true);
-  misleading_i64.call->result.str() = "@rendered-not-clz-result";
-  misleading_i64.call->callee.str() = "%rendered-not-clz-callee";
+  misleading_i64.call->result = with_operand_display(misleading_i64.call->result, "@rendered-not-clz-result");
+  misleading_i64.call->callee = with_operand_display(misleading_i64.call->callee, "%rendered-not-clz-callee");
   misleading_i64.call->args_str = "rendered-not-clz-arguments";
-  misleading_i64.trunc->operand.str() = "7";
-  misleading_i64.trunc->result.str() = "@rendered-not-trunc-result";
-  misleading_i64.later_use->lhs.str() = "%rendered-not-final-use";
+  misleading_i64.trunc->operand = with_operand_display(misleading_i64.trunc->operand, "7");
+  misleading_i64.trunc->result = with_operand_display(misleading_i64.trunc->result, "@rendered-not-trunc-result");
+  misleading_i64.later_use->lhs = with_operand_display(misleading_i64.later_use->lhs, "%rendered-not-final-use");
   lir::verify_module(misleading);
 
   lir::LirModule missing_kind = lowered;
@@ -9337,12 +9372,12 @@ int lir_popcount_i64_literal(void) { return __builtin_popcountll(7LL) + 1; }
   lir::LirModule misleading = lowered;
   FocusedChain misleading_i64 =
       require_chain(misleading, "lir_popcount_i64", true);
-  misleading_i64.call->result.str() = "@rendered-not-popcount-result";
-  misleading_i64.call->callee.str() = "%rendered-not-popcount-callee";
+  misleading_i64.call->result = with_operand_display(misleading_i64.call->result, "@rendered-not-popcount-result");
+  misleading_i64.call->callee = with_operand_display(misleading_i64.call->callee, "%rendered-not-popcount-callee");
   misleading_i64.call->args_str = "rendered-not-popcount-arguments";
-  misleading_i64.trunc->operand.str() = "7";
-  misleading_i64.trunc->result.str() = "@rendered-not-trunc-result";
-  misleading_i64.later_use->lhs.str() = "%rendered-not-final-use";
+  misleading_i64.trunc->operand = with_operand_display(misleading_i64.trunc->operand, "7");
+  misleading_i64.trunc->result = with_operand_display(misleading_i64.trunc->result, "@rendered-not-trunc-result");
+  misleading_i64.later_use->lhs = with_operand_display(misleading_i64.later_use->lhs, "%rendered-not-final-use");
   lir::verify_module(misleading);
 
   lir::LirModule wrong_kind = lowered;
@@ -9526,9 +9561,9 @@ long long lir_scalar_llabs_immediate_authority(void) {
 
   lir::LirModule misleading = lowered;
   auto [misleading_abs, misleading_use] = require_focused_abs(misleading);
-  misleading_abs.arg.str() = "@rendered-not-abs-argument";
-  misleading_abs.result.str() = "7";
-  misleading_use.lhs.str() = "@rendered-not-abs-result";
+  misleading_abs.arg = with_operand_display(misleading_abs.arg, "@rendered-not-abs-argument");
+  misleading_abs.result = with_operand_display(misleading_abs.result, "7");
+  misleading_use.lhs = with_operand_display(misleading_use.lhs, "@rendered-not-abs-result");
   lir::verify_module(misleading);
 
   lir::LirModule missing_result = lowered;
