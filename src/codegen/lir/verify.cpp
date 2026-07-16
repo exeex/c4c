@@ -4432,8 +4432,8 @@ void verify_terminator(const LirFunction& function, const LirTerminator& termina
     return;
   }
   if (const auto* ret = std::get_if<LirRet>(&terminator)) {
-    require_type_ref(ret->type_str, "LirRet.type_str", true);
     if (ret->type_str.kind() == LirTypeKind::Void) {
+      require_type_ref(ret->type_str, "LirRet.type_str", true);
       if (ret->value_str.has_value()) {
         fail_verify("LirRet.value_str", "void return must not carry a value");
       }
@@ -4450,12 +4450,16 @@ void verify_terminator(const LirFunction& function, const LirTerminator& termina
                           LirOperandKind::Immediate,
                           LirOperandKind::SpecialToken,
                           LirOperandKind::RawText});
-    if (!value.has_authority()) return;
+    if (!value.has_authority()) {
+      require_type_ref(ret->type_str, "LirRet.type_str", true);
+      return;
+    }
 
     if (ret->type_str.kind() != LirTypeKind::Integer) {
       fail_verify("LirRet.type_str",
                   "authoritative scalar return requires integer type");
     }
+    (void)render_integer_type_ref(ret->type_str, "LirRet.type_str");
     if (const auto* immediate = value.integer_immediate()) {
       const std::optional<unsigned> width = ret->type_str.integer_bit_width();
       if (!width || !integer_immediate_representable(immediate->value, *width)) {

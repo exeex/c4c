@@ -2963,6 +2963,18 @@ void return_void_expression(void) { return return_void_helper(); }
                   "ret i32 @display-is-not-an-id",
                   "return printer should preserve presentation after native-ID verification");
 
+  lir::LirModule stale_display_return_type = misleading;
+  require_return(require_function(stale_display_return_type, "misleading_return"))
+      .type_str.str() = "double";
+  lir::verify_module(stale_display_return_type);
+  const std::string stale_display_return_ir =
+      lir::print_llvm(stale_display_return_type);
+  expect_contains(stale_display_return_ir, "ret i32 @display-is-not-an-id",
+                  "integer return printer should render native width authority");
+  expect_true(stale_display_return_ir.find("ret double @display-is-not-an-id") ==
+                  std::string::npos,
+              "integer return printer must not recover type semantics from stale display text");
+
   lir::LirModule misleading_immediate;
   misleading_immediate.functions.push_back(make_return_test_function(
       "misleading_immediate",
@@ -3030,13 +3042,15 @@ void return_void_expression(void) { return return_void_helper(); }
   expect_identity_verification_rejected(
       cross_function, "verifier should reject cross-function return ID");
 
-  lir::LirModule type_parity;
-  type_parity.functions.push_back(make_return_test_function(
-      "return_type_parity",
+  lir::LirModule missing_integer_width;
+  missing_integer_width.functions.push_back(make_return_test_function(
+      "return_missing_integer_width",
       lir::LirRet{lir::LirOperand::integer("7", 7),
-                  lir::LirTypeRef("i32", lir::LirTypeKind::Integer, 64)}));
+                  lir::LirTypeRef("not-an-integer-width",
+                                  lir::LirTypeKind::Integer)}));
   expect_identity_verification_rejected(
-      type_parity, "verifier should reject return type-ref mirror disagreement");
+      missing_integer_width,
+      "verifier should reject return integer authority without native width");
 }
 
 void test_global_array_gep_identity_contract() {

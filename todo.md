@@ -160,6 +160,28 @@ printer are now narrowed so only integer `LirCmpOp.type_str` uses
 `render_integer_type_ref`, while pointer and other non-integer `icmp` types
 stay on the generic path.
 
+Completed Step 5 inventory for the next 846 packet. 846 still owns integer
+native-return `LirRet.type_str` verifier/printer rendering:
+
+- `src/codegen/lir/verify.cpp` still verified `LirRet.type_str` with
+  `require_type_ref(ret->type_str, "LirRet.type_str", true)`.
+- `src/codegen/lir/lir_printer.cpp` still rendered valued returns with
+  `require_type_ref(ret->type_str, "LirRet.type_str")`.
+- `verify_return_value_parameter_authority` and authoritative scalar return
+  checks already require integer type authority for native scalar returns.
+- `StmtEmitter::emit_term_ret` already publishes native integer
+  `LirReturnValueParameterAuthority` when a direct-scalar parameter is
+  returned.
+
+Completed the selected integer native-return `LirRet.type_str` packet:
+
+- Reused `render_integer_type_ref` for authoritative integer return verifier
+  and printer branches.
+- Preserved void returns and raw compatibility returns on the existing generic
+  paths.
+- Added focused stale-display coverage proving integer native return rendering
+  uses native integer width authority rather than mutable display text.
+
 ## Suggested Next
 
 Execute `plan.md` Step 5: inventory remaining universal classifier, renderer,
@@ -261,6 +283,13 @@ bounded packet. Completed integer compare packet proof:
 - `cmake --build build`
 - `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
 - `ctest --test-dir build -R '^backend_lir_to_bir_interface$' --output-on-failure`
+- `git diff --check`
+
+Step 5 trace selected the integer native-return `LirRet.type_str` verifier and
+printer branch for the next bounded packet. Completed return packet proof:
+
+- `cmake --build build`
+- `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
 - `git diff --check`
 
 Next Step 5 decision is trace/lifecycle state unless it selects and records

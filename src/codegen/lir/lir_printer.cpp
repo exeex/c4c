@@ -761,7 +761,12 @@ void render_terminator(std::ostringstream& os, const LirTerminator& term) {
     if (!ret->value_str.has_value()) {
       os << "  ret void\n";
     } else {
-      os << "  ret " << require_type_ref(ret->type_str, "LirRet.type_str")
+      const std::string type =
+          ret->value_str->has_authority() &&
+                  ret->type_str.kind() == LirTypeKind::Integer
+              ? render_integer_type_ref(ret->type_str, "LirRet.type_str")
+              : require_type_ref(ret->type_str, "LirRet.type_str");
+      os << "  ret " << type
          << " "
          << require_operand_kind(*ret->value_str, "LirRet.value_str",
                                  {LirOperandKind::SsaValue,
