@@ -8,19 +8,21 @@ Current Step Title: Delete semantic string escape hatches
 
 ## Just Finished
 
-Completed Step 3 packet to delete verifier-side semantic text reparsing in
-`src/codegen/lir/verify.cpp`. `type_ref_mismatch_detail(...)` no longer rebuilds
-`LirTypeRef` from `type.str()` to rederive kind, integer width, or VRM width;
-the verifier now leaves those facts to the native `LirTypeRef` fields while
-preserving the anonymous aggregate layout display mirror check.
+Completed Step 3 packet to remove redundant textual equality authority from
+function-signature type fact comparisons. `same_signature_store_type_fact(...)`
+in `src/codegen/lir/verify.cpp` and the local `same_type` lambda inside
+`LirModule::same_function_signature_entry(...)` in `src/codegen/lir/ir.hpp` now
+rely on native `LirTypeRef` equality instead of additionally requiring
+`str()` mirrors to match.
 
 ## Suggested Next
 
-Continue Step 3 with a narrow verifier-side packet for the next semantic
-textual equality/classification authority site, if supervisor diagnosis selects
-one. Keep signature-text compatibility parsing, byval ABI fragment checks, and
-aggregate signature mirror validation out of that packet unless the selected
-site directly requires them.
+Continue Step 3 with a narrow packet for the next selected textual
+equality/classification authority site, such as inline asm type matching or
+vector-store registration equality, if supervisor diagnosis selects it. Keep
+signature-text parsing, byval ABI fragment checks, aggregate signature mirror
+validation, Step 4 adapter/removal surfaces, and non-`LirTypeRef` wrapper
+conversions out of that packet unless separately delegated.
 
 ## Watchouts
 
@@ -38,6 +40,11 @@ site directly requires them.
   the same packet.
 - Step 3 owns verifier-side textual reparsing and textual
   equality/classification authority. Do not mix it with Step 4 adapter removal.
+- `LirTypeRef::operator==` already carries native facts for array shape,
+  anonymous aggregate layout, named aggregate identity/kind, and text fallback
+  for unstructured refs. This packet did not need to strengthen it.
+- `rg -n "lhs == rhs && lhs\.str\(\) == rhs\.str\(\)|a == b && a\.str\(\) == b\.str\(\)" src/codegen/lir/verify.cpp src/codegen/lir/ir.hpp`
+  is now clean.
 - `src/codegen/lir/verify.cpp` no longer has the selected
   `type_ref_mismatch_detail(...)` reparses from `LirTypeRef(type.str())` for
   kind, integer width, or VRM width.
@@ -87,5 +94,5 @@ Proof run passed:
 2>&1`.
 `test_after.log` contains the focused CTest subset output with 1/1 test
 passing. The clean-search done condition also passed:
-`rg -n "LirTypeRef\(type\.str\(\)\)\.(kind|integer_bit_width|vrm_width)" src/codegen/lir/verify.cpp`.
+`rg -n "lhs == rhs && lhs\.str\(\) == rhs\.str\(\)|a == b && a\.str\(\) == b\.str\(\)" src/codegen/lir/verify.cpp src/codegen/lir/ir.hpp`.
 The supervisor-selected proof was sufficient for this packet.
