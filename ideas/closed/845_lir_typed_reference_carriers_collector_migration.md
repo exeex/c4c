@@ -1,6 +1,6 @@
 # LIR Typed Reference Carriers and Collector Migration
 
-Status: Open
+Status: Closed
 Type: first-owner semantic reference-carrier migration
 Matrix Rows: M14
 Dependencies: 839, 843, 844; preserves 734; coordinates 812/813
@@ -38,3 +38,29 @@ consume without scanner or rendered-text recovery.
 
 - Reject rendered-text/name scans renamed as carriers, broad collector sweeps,
   missing/spurious-reference tolerance, or claims to complete 734/812/813.
+
+## Closure Disposition
+
+Closed after supervisor-accepted implementation commits migrated the bounded
+carrier-backed collector route one field at a time through
+`LirShuffleVectorOp.vec2`:
+
+- `ab3b775b9`: `LirExtractValueOp.agg`
+- `58143987e`: `LirExtractElementOp.vec`
+- `a54a42f14`: `LirInsertElementOp.elem`
+- `c67b0fdd1`: `LirInsertElementOp.vec`
+- `8c57acace`: `LirInsertValueOp.agg`
+- `a067e8cc5`: `LirInsertValueOp.elem`
+- `75100a96f`: `LirShuffleVectorOp.vec1`
+- `068f0bc28`: `LirShuffleVectorOp.vec2`
+
+Together with the earlier accepted route, the selected exact typed aggregate
+and vector reference carriers now use semantic collector data instead of raw
+rendered-text scanning. The accepted proof included fresh build and focused
+collector test coverage for replaced fields, `git diff --check`, and an
+accepted full-suite baseline candidate at `a067e8cc5`.
+
+Residual raw paths, including alloca count, inline asm args, abs arg,
+va/memcpy/stack/indirectbr, and shuffle mask scanning, are not claimed by this
+closure. They remain residual or legacy scanner work for the existing 812/813
+ownership path rather than scope expansion of this idea.
