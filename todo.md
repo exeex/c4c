@@ -8,16 +8,16 @@ Current Step Title: Prove Direct-Call Argument-1 Completion And Return 829
 
 ## Just Finished
 
-Completed Step 3. Closed 831 accepted the repaired comparable full-suite
-baseline gate at 3038/3038, so no 830 code change is needed for the post-Step-2
-baseline acceptance.
+Completed Step 4. The bounded direct-call argument-1 identity/type relation
+from Step 2 still passes focused proof on the current tree.
 
 ## Suggested Next
 
-Run Step 4 focused completion proof for the bounded direct-call argument-1
-identity/type relation. Use a fresh build plus `frontend_lir_call_type_ref`,
-then close 830 if the proof remains green and the completion record can return
-829 to Step 2.
+Close 830 as capability-complete for the prerequisite. The completion record
+should state that direct non-variadic specified call argument 1 now has native
+structured identity/type relation proof sufficient for 829 to resume Step 2
+and independently validate whether its selected parameter-definition tuple can
+publish body-parameter authority.
 
 ## Watchouts
 
@@ -29,3 +29,9 @@ then close 830 if the proof remains green and the completion record can return
 
 Closed 831 accepted full-suite comparable baseline: 3038/3038 passed at commit
 `4be820759` in `test_baseline.log`.
+
+Passed Step 4 focused proof:
+
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$' ) > test_after.log 2>&1 && git diff --check`
+
+Result: 1/1 tests passed; `git diff --check` passed.
