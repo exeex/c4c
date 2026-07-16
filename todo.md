@@ -8,21 +8,26 @@ Current Step Title: Delete semantic string escape hatches
 
 ## Just Finished
 
-Completed Step 3 packet to remove redundant textual equality authority from
-function-signature type fact comparisons. `same_signature_store_type_fact(...)`
-in `src/codegen/lir/verify.cpp` and the local `same_type` lambda inside
-`LirModule::same_function_signature_entry(...)` in `src/codegen/lir/ir.hpp` now
-rely on native `LirTypeRef` equality instead of additionally requiring
-`str()` mirrors to match.
+Completed Step 3 repair for the rejected hook full-suite baseline candidate
+after commit `fa7e3261c Drop signature type text equality checks`.
+`test_baseline.new.log` had one new failure,
+`frontend_lir_function_signature_type_ref`, because signature-store comparison
+accepted a stale rendered aggregate mirror when native `StructNameId` identity
+still matched.
+
+Restored signature-store mirror equality only at the output-boundary comparison
+sites: `same_signature_store_type_fact(...)` in
+`src/codegen/lir/verify.cpp` and the local `same_type` lambda inside
+`LirModule::same_function_signature_entry(...)` in
+`src/codegen/lir/ir.hpp` now require both native `LirTypeRef` equality and
+matching rendered text. This keeps stale function signature mirrors rejected
+without restoring general verifier-side text reparsing.
 
 ## Suggested Next
 
-Continue Step 3 with a narrow packet for the next selected textual
-equality/classification authority site, such as inline asm type matching or
-vector-store registration equality, if supervisor diagnosis selects it. Keep
-signature-text parsing, byval ABI fragment checks, aggregate signature mirror
-validation, Step 4 adapter/removal surfaces, and non-`LirTypeRef` wrapper
-conversions out of that packet unless separately delegated.
+Supervisor should commit this repair slice if accepted, then rerun or resume the
+baseline path that rejected `test_baseline.new.log`. Do not continue to the next
+Step 3 candidate until the repaired baseline is accepted.
 
 ## Watchouts
 
@@ -48,6 +53,9 @@ conversions out of that packet unless separately delegated.
 - `src/codegen/lir/verify.cpp` no longer has the selected
   `type_ref_mismatch_detail(...)` reparses from `LirTypeRef(type.str())` for
   kind, integer width, or VRM width.
+- Signature-store mirror text equality is intentionally preserved at the
+  function signature store boundary; it is output-boundary consistency, not
+  semantic type authority.
 - `function_signature_line(...)` parsing of `signature_text`,
   `aggregate_signature_param_mirror_matches_type(...)` byval fragment checks,
   and direct aggregate signature mirror checks are compatibility/output
@@ -89,10 +97,14 @@ conversions out of that packet unless separately delegated.
 
 Proof run passed:
 `cmake --build build && ctest --test-dir build -R
-'^frontend_lir_call_type_ref$'
+'^frontend_lir_function_signature_type_ref$|^frontend_lir_call_type_ref$'
 --output-on-failure > test_after.log
 2>&1`.
-`test_after.log` contains the focused CTest subset output with 1/1 test
-passing. The clean-search done condition also passed:
-`rg -n "lhs == rhs && lhs\.str\(\) == rhs\.str\(\)|a == b && a\.str\(\) == b\.str\(\)" src/codegen/lir/verify.cpp src/codegen/lir/ir.hpp`.
+`test_after.log` contains the focused CTest subset output with 2/2 tests
+passing, including the previously failing
+`frontend_lir_function_signature_type_ref`.
+
+The clean-search done condition remains clean:
+`rg -n "LirTypeRef\(type\.str\(\)\)\.(kind|integer_bit_width|vrm_width)" src/codegen/lir/verify.cpp`
+returned no matches.
 The supervisor-selected proof was sufficient for this packet.

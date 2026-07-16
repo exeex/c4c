@@ -1499,7 +1499,7 @@ struct LirModule {
       const LirFunctionSignatureStoreEntry& lhs,
       const LirFunctionSignatureStoreEntry& rhs) {
     const auto same_type = [](const LirTypeRef& a, const LirTypeRef& b) {
-      return a == b;
+      return a == b && a.str() == b.str();
     };
     const auto same_optional_type =
         [&](const std::optional<LirTypeRef>& a,

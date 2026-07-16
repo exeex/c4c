@@ -5272,7 +5272,7 @@ void verify_function_signature_structured_param_shape(const LirModule& mod,
 
 bool same_signature_store_type_fact(const LirTypeRef& lhs,
                                     const LirTypeRef& rhs) {
-  return lhs == rhs;
+  return lhs == rhs && lhs.str() == rhs.str();
 }
 
 bool same_signature_store_type_fact(const std::optional<LirTypeRef>& lhs,
