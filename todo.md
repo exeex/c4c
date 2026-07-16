@@ -1,38 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/845_lir_typed_reference_carriers_collector_migration.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove Parity And Fail-Closed Behavior
+Current Step ID: 1
+Current Step Title: Select One Carrier-Backed Collector Seam
 
 # Current Packet
 
 ## Just Finished
 
-Completed the sixth 845 migration packet for `LirCastOp.operand`.
-`collect_inst_refs` now routes cast operands through `collect_operand_ref`, so
-`LirOperand::global` semantic `LinkNameId` identity preempts stale rendered
-text. Raw cast operands still scan text for compatibility.
+Plan-owner rejected closure for 845 because durable source scope remains:
+`collect_inst_refs` still scans remaining carrier-capable fields after six
+accepted one-field migrations. The active route is repaired for the seventh
+packet.
 
 ## Suggested Next
 
-Ask plan-owner whether to close 845, repair with another one-field migration,
-or route a successor. Remaining scanner fields include arithmetic, compare,
-select, aggregate/vector ops, inline asm, and residual raw/global text; this
-packet did not claim them.
+Execute Step 1 for the next exact one-field migration:
+`LirBinOp.lhs` in `collect_inst_refs`.
+
+Confirm the selected field, consumer, proof target, and non-goals before code
+edits. If readiness holds, Step 2 should replace only `S(op.lhs)` in the
+`LirBinOp` arm with `collect_operand_ref(op.lhs, refs)`.
 
 ## Watchouts
 
-Do not perform a broad collector sweep. Do not reconstruct references from
-rendered names or text. Do not delete any scanner path before the exact source
-field has semantic carrier proof and nearby parity coverage. For this packet,
-loads, GEPs, PHIs, inline asm, and residual raw/global text remain outside
-scope.
+Do not close 845 yet. Do not perform a broad collector sweep. Leave
+`LirBinOp.rhs`, compare, select, aggregate/vector ops, inline asm, and residual
+raw/global text on their current scanner paths. Do not reconstruct references
+from rendered names or text.
 
 ## Proof
 
-Passed:
+Last accepted proof before this repair:
 
 ```
 { cmake --build build && ctest --test-dir build -R '^frontend_hir_tests$' --output-on-failure; } > test_after.log 2>&1
 git diff --check
 ```
+
+Next implementation packet must run fresh proof after code changes.
