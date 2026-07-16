@@ -8,32 +8,32 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed Step 4 aggregate load-result slot-state conversion.
+Completed Step 4 variadic aggregate `va_arg` slot-state conversion.
 
-`lower_memory_load_inst(...)` now threads the existing `LirLoadOp::type_str`
-`LirTypeRef` into `declare_local_aggregate_slots(...)` for aggregate load result
-slots created from local array, addressed pointer, and global aggregate load
-paths. StructNameId-bearing aggregate load results now populate
-`LocalAggregateSlots::type_ref` and use the structured layout lookup/fail-closed
-route; non-load aggregate slot construction paths remain unchanged.
+`lower_runtime_intrinsic_inst(...)` now threads the existing
+`LirVaArgOp::type_str` `LirTypeRef` into `declare_local_aggregate_slots(...)`
+for aggregate `va_arg` result slots. Metadata-bearing aggregate `va_arg` result
+refs now use structured layout lookup/fail-closed behavior; absent/no-id refs
+remain on the documented rendered-text fallback path.
 
 ## Suggested Next
 
 Suggested Next: migrate another remaining local aggregate slot construction path
-that already has structured type metadata available, excluding call returns,
-variadic aggregate `va_arg`, aggregate params, and unrelated subobject/view
-construction unless the supervisor explicitly scopes them.
+that already has structured type metadata available, excluding variadic
+aggregate `va_arg` unless the supervisor explicitly scopes follow-up validation
+or cleanup for that path.
 
 ## Watchouts
 
-- This packet deliberately did not broaden into call returns, variadic aggregate
-  `va_arg`, aggregate params, or subobject/view construction paths.
-- `LirLoadOp::type_str` may still be a no-id/text-only ref for legacy inputs;
-  those aggregate load results continue through the documented no-id fallback in
-  `declare_local_aggregate_slots(...)`.
-- The aggregate layout probe in `lower_memory_load_inst(...)` still uses
-  `lower_byval_aggregate_layout(load.type_str.str(), ...)` before slot
-  declaration; this packet only migrated aggregate load result slot creation.
+- This packet deliberately did not broaden into call returns, aggregate params,
+  loads, allocas, or subobject/view construction paths.
+- `LirVaArgOp::type_str` may still be a no-id/text-only ref for legacy inputs;
+  those aggregate `va_arg` results continue through the documented no-id
+  fallback in `declare_local_aggregate_slots(...)`.
+- The aggregate layout probe in the `va_arg` aggregate path still uses
+  `lower_byval_aggregate_layout(va_arg.type_str.str(), ...)` before slot
+  declaration; this packet only migrated aggregate `va_arg` result slot
+  creation.
 
 ## Proof
 

@@ -2528,19 +2528,17 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
       return fail_runtime_family("variadic runtime family");
     }
     if (!lowered_type.has_value()) {
-      // Step 4 no-id compatibility bridge: variadic runtime lowering owns
-      // aggregate va_arg materialization from LirVaArgOp::type_str. The
-      // limitation is that va_arg lowering currently carries rendered result
-      // type text into local aggregate slot creation instead of a
-      // LirTypeRef/StructNameId identity. Remove this once variadic aggregate
-      // runtime lowering threads structured type refs into aggregate slots.
+      // Aggregate va_arg materialization keeps the original LirVaArgOp type
+      // ref attached to the local result slots.
       const auto aggregate_layout =
           lower_byval_aggregate_layout(va_arg.type_str.str(), type_decls_, &structured_layouts_);
       if (!aggregate_layout.has_value()) {
         return fail_runtime_family("variadic runtime family");
       }
-      if (!declare_local_aggregate_slots(
-              va_arg.type_str.str(), va_arg.result.str(), aggregate_layout->align_bytes)) {
+      if (!declare_local_aggregate_slots(va_arg.type_str.str(),
+                                         va_arg.type_str,
+                                         va_arg.result.str(),
+                                         aggregate_layout->align_bytes)) {
         return fail_runtime_family("variadic runtime family");
       }
       aggregate_value_aliases_[va_arg.result.str()] = va_arg.result.str();
