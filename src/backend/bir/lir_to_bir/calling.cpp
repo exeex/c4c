@@ -1730,12 +1730,20 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     if (aggregate_it == local_aggregate_slots.end()) {
       return std::nullopt;
     }
-    // Step 4 no-id compatibility bridge: call lowering owns aggregate-value
-    // alias layout for local aggregate slots. The limitation is that
-    // LocalAggregateSlots still retain rendered type text, not the original
-    // LirTypeRef/StructNameId for the aggregate value being passed by address.
-    // Remove this once aggregate aliases and local slots carry structured type
-    // identity through call lowering.
+    if (aggregate_it->second.type_ref.has_value() &&
+        aggregate_it->second.type_ref->has_struct_name_id()) {
+      const auto lookup =
+          lir_to_bir_detail::lookup_backend_aggregate_type_ref_layout_result(
+              *aggregate_it->second.type_ref, type_decls, structured_layouts_);
+      const auto& layout = lookup.layout;
+      if (!lookup.used_structured_layout ||
+          (layout.kind != AggregateTypeLayout::Kind::Struct &&
+           layout.kind != AggregateTypeLayout::Kind::Array) ||
+          layout.size_bytes == 0 || layout.align_bytes == 0) {
+        return std::nullopt;
+      }
+      return layout;
+    }
     return lower_byval_aggregate_layout(aggregate_it->second.type_text,
                                         type_decls,
                                         &structured_layouts_);

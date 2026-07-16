@@ -8,16 +8,16 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed the first Step 4 residual bridge repair after the aggregate-slot
+Completed the second Step 4 residual bridge repair after the aggregate-slot
 adapter cleanup series.
 
-Aggregate copy lowering now uses `LocalAggregateSlots::type_ref` when present:
-copy-size validation resolves source/target slot layouts through structured
-type-ref lookup for metadata-bearing slots, and copy-to-pointer/global leaf
-discovery calls `collect_sorted_leaf_slots(source_slots)` so metadata-bearing
-sources fail closed through the shared slot-state lookup. No-id slots retain the
-existing rendered-text fallback. The stale aggregate-copy bridge comments that
-claimed `LocalAggregateSlots` only retained rendered type text were removed.
+Call lowering aggregate-value alias layout now uses
+`LocalAggregateSlots::type_ref` when present before falling back to rendered
+slot text for no-id aliases. Metadata-bearing aggregate aliases passed by
+address now resolve layout through structured type-ref lookup and fail closed on
+misses. This follows the previous aggregate-copy repair, which moved copy-size
+validation and copy-to-pointer/global leaf discovery onto the same slot-state
+lookup.
 
 Unmet Step 4 criteria:
 - Residual no-id bridge comments remain outside the direct aggregate-slot
