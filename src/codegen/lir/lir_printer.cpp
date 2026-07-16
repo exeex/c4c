@@ -126,7 +126,7 @@ std::optional<std::string> render_selected_extern_param_list_from_store(
   return out.str();
 }
 
-const LirTypeRef& require_phi_boundary_render_type(const LirPhiOp& op) {
+std::string render_phi_boundary_type_ref(const LirPhiOp& op) {
   if (!op.boundary_value_type) {
     throw LirVerifyError(LirVerifyErrorKind::Malformed,
                          "LirPhiOp.boundary_value_type is required for PHI rendering");
@@ -139,7 +139,18 @@ const LirTypeRef& require_phi_boundary_render_type(const LirPhiOp& op) {
         LirVerifyErrorKind::Malformed,
         "LirPhiOp.boundary_value_type must mirror LirPhiOp.type_str for PHI rendering");
   }
-  return op.type_str;
+  if (op.boundary_value_type->kind == LirPhiBoundaryValueKind::Scalar) {
+    if (op.boundary_value_type->type.kind() == LirTypeKind::Integer) {
+      return render_integer_type_ref(op.boundary_value_type->type,
+                                     "LirPhiOp.boundary_value_type");
+    }
+    if (op.boundary_value_type->type.kind() == LirTypeKind::Floating) {
+      return render_floating_type_ref(op.boundary_value_type->type,
+                                      "LirPhiOp.boundary_value_type");
+    }
+  }
+  return require_type_ref(op.boundary_value_type->type,
+                          "LirPhiOp.boundary_value_type");
 }
 
 std::string render_cast_endpoint_type_ref(const LirTypeRef& type,
@@ -674,8 +685,7 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
        << require_operand_kind(op->result, "LirPhiOp.result",
                                {LirOperandKind::SsaValue})
        << " = phi "
-       << require_type_ref(require_phi_boundary_render_type(*op),
-                           "LirPhiOp.boundary_value_type");
+       << render_phi_boundary_type_ref(*op);
     for (size_t i = 0; i < op->incoming.size(); ++i) {
       os << (i == 0 ? " " : ", ");
       os << "[ " << op->incoming[i].value.str() << ", %" << op->incoming[i].label << " ]";

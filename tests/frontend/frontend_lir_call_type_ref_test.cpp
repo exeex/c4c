@@ -9974,15 +9974,50 @@ void test_lir_phi_restricted_boundary_value_type_authority() {
     lir::verify_module(module);
     const std::string llvm_ir = lir::print_llvm(module);
     expect_contains(llvm_ir, " = phi " + phi.type_str.str(),
-                    message + " should render through type_str parity text");
+                    message + " should render through boundary authority");
   };
 
-  expect_valid_family(lir::LirTypeRef::integer(32),
-                      lir::LirPhiBoundaryValueKind::Scalar,
-                      "integer PHI should attach scalar boundary authority");
-  expect_valid_family(lir::LirTypeRef(lir::LirBuiltinType::Double),
-                      lir::LirPhiBoundaryValueKind::Scalar,
-                      "floating PHI should attach scalar boundary authority");
+  lir::LirModule integer = make_module(lir::LirTypeRef::integer(32));
+  auto& integer_phi = require_phi(integer);
+  expect_true(integer_phi.boundary_value_type &&
+                  integer_phi.boundary_value_type->kind ==
+                      lir::LirPhiBoundaryValueKind::Scalar &&
+                  integer_phi.boundary_value_type->type == integer_phi.type_str,
+              "integer PHI should attach scalar boundary authority");
+  lir::verify_module(integer);
+  const std::string integer_ir = lir::print_llvm(integer);
+  expect_contains(integer_ir, " = phi i32",
+                  "integer PHI should render through boundary authority");
+  integer_phi.type_str = lir::LirTypeRef("i64", lir::LirTypeKind::Integer, 32);
+  integer_phi.boundary_value_type->type =
+      lir::LirTypeRef("i64", lir::LirTypeKind::Integer, 32);
+  const std::string stale_integer_carrier_ir = lir::print_llvm(integer);
+  expect_contains(stale_integer_carrier_ir, " = phi i32",
+                  "integer PHI boundary render should use native width authority");
+  expect_true(stale_integer_carrier_ir.find(" = phi i64") == std::string::npos,
+              "integer PHI boundary render must not recover semantics from stale text");
+
+  lir::LirModule floating = make_module(lir::LirTypeRef(lir::LirBuiltinType::Double));
+  auto& floating_phi = require_phi(floating);
+  expect_true(floating_phi.boundary_value_type &&
+                  floating_phi.boundary_value_type->kind ==
+                      lir::LirPhiBoundaryValueKind::Scalar &&
+                  floating_phi.boundary_value_type->type == floating_phi.type_str,
+              "floating PHI should attach scalar boundary authority");
+  lir::verify_module(floating);
+  const std::string floating_ir = lir::print_llvm(floating);
+  expect_contains(floating_ir, " = phi double",
+                  "floating PHI should render through boundary authority");
+  floating_phi.type_str = lir::LirTypeRef(lir::LirBuiltinType::Double);
+  floating_phi.boundary_value_type->type = lir::LirTypeRef(lir::LirBuiltinType::Double);
+  floating_phi.type_str.str() = "float";
+  floating_phi.boundary_value_type->type.str() = "float";
+  const std::string stale_floating_carrier_ir = lir::print_llvm(floating);
+  expect_contains(stale_floating_carrier_ir, " = phi double",
+                  "floating PHI boundary render should use native builtin authority");
+  expect_true(stale_floating_carrier_ir.find(" = phi float") == std::string::npos,
+              "floating PHI boundary render must not recover semantics from stale text");
+
   expect_valid_family(lir::LirTypeRef("<4 x i32>"),
                       lir::LirPhiBoundaryValueKind::Vector,
                       "vector PHI should attach vector boundary authority");
@@ -10026,6 +10061,19 @@ void test_lir_phi_restricted_boundary_value_type_authority() {
   try {
     (void)lir::print_llvm(stale_text);
     fail("PHI printer must reject stale type_str instead of rendering through stale text");
+  } catch (const lir::LirVerifyError&) {
+  }
+
+  lir::LirModule stale_floating_text =
+      make_module(lir::LirTypeRef(lir::LirBuiltinType::Double));
+  auto& stale_floating_phi = require_phi(stale_floating_text);
+  stale_floating_phi.type_str = lir::LirTypeRef(lir::LirBuiltinType::Float);
+  expect_identity_verification_rejected(
+      stale_floating_text,
+      "stale floating LirPhiOp.type_str must not override PHI boundary authority");
+  try {
+    (void)lir::print_llvm(stale_floating_text);
+    fail("PHI printer must reject stale floating type_str instead of rendering through stale text");
   } catch (const lir::LirVerifyError&) {
   }
 }

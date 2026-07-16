@@ -9,22 +9,21 @@ Current Step Title: Decide Next 846 Packet Or 847 Handoff
 ## Just Finished
 
 Completed `plan.md` Step 5 selected consumer migration for
-`LirCastOp.from_type` / `LirCastOp.to_type` native scalar cast endpoints.
+`LirPhiOp.boundary_value_type` native scalar integer/floating PHI boundary
+carriers.
 
-- Added a verifier endpoint helper that routes integer endpoints through
-  `render_integer_type_ref` and floating endpoints through
-  `render_floating_type_ref`, while preserving the existing generic
-  `require_module_type_ref` path for pointer, aggregate, vector, void,
-  compatibility, and other non-scalar endpoints.
-- Updated `verify_cast_op_authority` floating endpoint exactness and width
-  checks to use native floating builtin authority rather than mutable display
-  text, without weakening the existing cast-kind and direction checks.
-- Updated the cast printer to render native integer and floating scalar
-  endpoints from structured authority while leaving non-scalar endpoints on the
-  generic renderer.
-- Added focused stale-display coverage for an integer cast endpoint and a
-  floating cast endpoint in
-  `tests/frontend/frontend_lir_call_type_ref_test.cpp`.
+- Added a PHI boundary verifier helper that routes scalar integer carriers
+  through `render_integer_type_ref` and scalar floating carriers through
+  `render_floating_type_ref`.
+- Preserved generic `require_module_type_ref` behavior for vector, aggregate,
+  pointer, function, void, runtime text, opaque, and other non-selected PHI
+  boundary families.
+- Updated PHI printing to render selected scalar integer/floating boundary
+  carriers from native width/builtin authority after the existing
+  `boundary_value_type->type` / `op.type_str` mirror check.
+- Added focused PHI stale-display coverage proving integer and floating scalar
+  boundary printing uses native carrier authority and still rejects stale
+  mirror text.
 
 ## Suggested Next
 
@@ -35,12 +34,14 @@ if no bounded 846 consumer remains.
 ## Watchouts
 
 This packet intentionally did not touch universal model deletion, Raw-BIR,
-734/797 surfaces, or unrelated LIR consumers. Cast pointer and non-scalar
-endpoints still rely on the existing generic verifier/printer paths.
+734/797 surfaces, LirSwitch selector surfaces, PHI incoming authority, or
+unrelated LIR consumers. PHI vector, aggregate, pointer, function, void,
+runtime text, opaque, and other non-selected boundary families still rely on
+the existing generic verifier/printer paths.
 
 ## Proof
 
-Completed cast endpoint packet proof:
+Completed PHI boundary scalar packet proof:
 
 - `cmake --build build`
 - `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`

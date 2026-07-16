@@ -224,6 +224,22 @@ void require_module_cast_endpoint_type_ref(const LirModule& mod,
   require_module_type_ref(mod, type, field);
 }
 
+void require_module_phi_boundary_value_type_ref(const LirModule& mod,
+                                                const LirPhiBoundaryValueType& boundary_type,
+                                                std::string_view field) {
+  if (boundary_type.kind == LirPhiBoundaryValueKind::Scalar) {
+    if (boundary_type.type.kind() == LirTypeKind::Integer) {
+      (void)render_integer_type_ref(boundary_type.type, field);
+      return;
+    }
+    if (boundary_type.type.kind() == LirTypeKind::Floating) {
+      (void)render_floating_type_ref(boundary_type.type, field);
+      return;
+    }
+  }
+  require_module_type_ref(mod, boundary_type.type, field);
+}
+
 StructNameId find_declared_struct_name_id(const LirModule& mod,
                                           std::string_view rendered_name) {
   const StructNameId struct_name_id = mod.struct_names.find(rendered_name);
@@ -2225,8 +2241,8 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
     verify_result_operand(op->result, "LirPhiOp.result");
     const LirPhiBoundaryValueType& boundary_type =
         phi_boundary_value_type(*op, "LirPhiOp.boundary_value_type");
-    require_module_type_ref(mod, boundary_type.type,
-                            "LirPhiOp.boundary_value_type");
+    require_module_phi_boundary_value_type_ref(
+        mod, boundary_type, "LirPhiOp.boundary_value_type");
     if (op->incoming.empty()) {
       fail_verify("LirPhiOp.incoming", "must not be empty");
     }
