@@ -241,9 +241,6 @@ class LirTypeRef {
   }
   [[nodiscard]] bool empty() const { return text_.empty(); }
 
-  operator const std::string&() const { return text_; }
-  operator std::string_view() const { return text_; }
-
   [[nodiscard]] friend bool operator==(const LirTypeRef& lhs,
                                        const LirTypeRef& rhs) {
     if (lhs.has_array_shape() && rhs.has_array_shape()) {
