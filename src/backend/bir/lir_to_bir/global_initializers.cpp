@@ -21,13 +21,12 @@ BackendAggregateLayoutLookup lookup_global_initializer_layout_result(
     std::string_view type_text,
     const TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable* structured_layouts) {
-  // Step 4 no-id compatibility bridge: global initializer lowering owns
-  // aggregate zero-fill, recursive field descent, and raw GEP initializer
-  // offsets. These recursive carriers still pass rendered type text from the
-  // LIR initializer and computed layout fields rather than a LirTypeRef or
-  // StructNameId for each subobject. Remove this bridge when aggregate
-  // initializer recursion threads structured type identity through array,
-  // field, and GEP initializer paths.
+  // Step 4 no-id compatibility bridge: this recursive helper is limited to
+  // initializer subobjects that no longer have their original root LirTypeRef
+  // carrier. Metadata-bearing aggregate globals enter through
+  // lower_aggregate_initializer_for_type_ref() at the root; recursive array,
+  // field, and GEP initializer paths still carry rendered subobject text as the
+  // explicit no-id fallback.
   if (structured_layouts != nullptr) {
     return lookup_backend_aggregate_type_layout_result(type_text, type_decls, *structured_layouts);
   }

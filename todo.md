@@ -8,25 +8,25 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed the Step 4 call ABI residual classification packet.
+Completed the Step 4 globals/global-initializer residual classification packet.
 
-`call_abi.cpp` now documents the remaining raw signature aggregate return/byval
-layout paths as explicit no-id or target-policy compatibility. Metadata-bearing
-AArch64 signature paths pass enforced `LirTypeRef` facts and fail closed through
-the structured lookup; legacy `function.params` and raw parsed signature byval
-routes are reached only after structured signature params/type refs have been
-ruled out.
+Global storage lowering now documents rendered aggregate type layout as a
+legacy no-id fallback only: metadata-bearing globals use `llvm_type_ref` and
+fail closed through `lookup_structured_global_layout_result(...)` before
+reaching that path. Global initializer recursion now documents rendered
+subobject text as the no-id fallback after metadata-bearing aggregate globals
+enter through the structured root initializer path.
 
 ## Suggested Next
 
 Suggested Next: continue Step 4 residual classification with one non-call-ABI
-family, likely memory/provenance, memory/addressing/local GEP, globals/global
-initializers, or raw `TypeDeclMap` lookup. Do not mix families in one packet.
+family, likely memory/provenance, memory/addressing/local GEP, local slots, or
+raw `TypeDeclMap` lookup. Do not mix families in one packet.
 
 ## Watchouts
 
 - Keep this packet narrow. Memory/provenance, addressing, intrinsics,
-  `local_gep`, globals, local slots, global initializers, and raw `TypeDeclMap`
+  `local_gep`, local slots, and raw `TypeDeclMap`
   residuals are not cleared by this decision; they remain later Step 4
   classification/repair candidates unless evidence proves them no-id only or
   separately owned.
