@@ -8,24 +8,25 @@ Current Step Title: Record closure trace and exact downstream routing
 
 ## Just Finished
 
-- Completed plan.md Step 4: generated the ordered A1/F1/V1/S1/U1/P1/G1/R1/C1/T1
-  source ideas 838--847 and `successor_queue.md`. Every M1--M16 row has one
-  first owner; A1 is first, T1 terminally hands valid-LIR disposition to 797,
-  and 836's three residual groups and 831 Step 4 return remain distinct.
+- Completed plan.md Step 5: recorded `closure_trace.md` with the evidence
+  revisions, all handoff documents, one-owner M1--M16 routing, generated
+  838--847 order, deletion gates, parked 836 -> 831 Step 4 return, 797
+  terminal handoff, and 812 then 813 sequencing. No bounded executor packet
+  remains.
 
 ## Suggested Next
 
-- Execute Step 5 only: create the closure trace and request explicit
-  plan-owner close/switch judgment; do not activate or implement a successor.
+- Plan-owner must make the explicit close/switch judgment for the exhausted
+  837 runbook. Preserve Step 5 metadata; do not activate 838 in this packet.
 
 ## Watchouts
 
-- Do not infer type-family capability completion from successor creation. Keep
-  836 parked and distinct, and run 812 refresh then 813 non-type routing only
-  after accepted type-family capabilities.
+- Do not infer type-family capability completion from the documents or
+  successor creation. Keep 836 parked with its 831 Step 4 return; 812 refresh
+  precedes 813 residual non-type routing after accepted capabilities.
 
 ## Proof
 
-- Documentation proof required: `git diff --check -- ideas/open
-  docs/lir_nominal_type_family_architecture/successor_queue.md todo.md`.
+- Passed documentation proof: `git diff --check --
+  docs/lir_nominal_type_family_architecture/closure_trace.md todo.md`.
   No build or broad test is required for this docs-only packet.
