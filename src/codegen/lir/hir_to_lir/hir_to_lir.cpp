@@ -1904,6 +1904,18 @@ struct LirGlobalRefs {
   std::unordered_set<std::string> names;
 };
 
+static void collect_operand_ref(const LirOperand& operand, LirGlobalRefs& refs) {
+  if (const auto id = operand.link_name_id();
+      id != nullptr && *id != kInvalidLinkName) {
+    refs.link_name_ids.insert(*id);
+    return;
+  }
+  collect_lir_global_symbol_refs_from_text(
+      operand.str(), [&](std::string_view ref) {
+        refs.names.insert(std::string(ref));
+      });
+}
+
 // Collect all global symbol references from a single LIR instruction.
 // Prefer structured direct-call identities and scan legacy final-spelling or
 // compatibility string operands only where LIR still has no semantic symbol
@@ -1918,11 +1930,17 @@ static void collect_inst_refs(const LirInst& inst, LirGlobalRefs& refs) {
     if constexpr (std::is_same_v<T, LirCallOp>) {
       if (op.direct_callee_link_name_id != kInvalidLinkName) {
         refs.link_name_ids.insert(op.direct_callee_link_name_id);
-        collect_lir_global_symbol_refs_from_call_args(
-            op.args_str,
-            [&](std::string_view ref) {
-              refs.names.insert(std::string(ref));
-            });
+        if (lir_call_has_complete_structured_arg_authority(op)) {
+          for (const LirCallArg& arg : op.structured_args) {
+            collect_operand_ref(arg.operand, refs);
+          }
+        } else {
+          collect_lir_global_symbol_refs_from_call_args(
+              op.args_str,
+              [&](std::string_view ref) {
+                refs.names.insert(std::string(ref));
+              });
+        }
       } else {
         collect_lir_global_symbol_refs_from_call(
             op,
@@ -1985,15 +2003,38 @@ static void collect_inst_refs(const LirInst& inst, LirGlobalRefs& refs) {
   std::visit(visitor, inst);
 }
 
+static void collect_function_signature_refs(const LirModule& mod,
+                                            const LirFunction& fn,
+                                            LirGlobalRefs& refs) {
+  const LirFunctionSignatureStoreEntry* signature =
+      mod.find_function_signature(fn.function_signature_ref);
+  if (!signature) return;
+
+  // Function-signature family refs currently carry type-family facts, not
+  // callable symbol references. Walking them here marks the collector's
+  // authority boundary explicitly and keeps retained signature_text out of
+  // reachability once the nominal store owns the signature.
+  auto visit_type_ref = [](const LirTypeRef&) {};
+  if (signature->return_type_ref.has_value()) {
+    visit_type_ref(*signature->return_type_ref);
+  }
+  for (const LirTypeRef& param_type : signature->fixed_param_type_refs) {
+    visit_type_ref(param_type);
+  }
+  (void)refs;
+}
+
 // Collect all global references from a function's body.
-static LirGlobalRefs collect_fn_refs(const LirFunction& fn) {
+static LirGlobalRefs collect_fn_refs(const LirModule& mod, const LirFunction& fn) {
   LirGlobalRefs refs;
-  // Unresolved producer-carrier boundary: signature_text is final LLVM header
-  // spelling plus template-comment compatibility payload. Type mirrors exist,
-  // but there is currently no structured carrier for function references that
-  // may be embedded in attributes/metadata, so this scan remains a classified
-  // compatibility fallback rather than semantic lookup authority.
-  scan_refs(fn.signature_text, refs.names);
+  if (fn.function_signature_ref.valid()) {
+    collect_function_signature_refs(mod, fn, refs);
+  } else {
+    // Unresolved producer-carrier boundary: signature_text is final LLVM header
+    // spelling plus template-comment compatibility payload. This remains only
+    // for legacy functions that have no nominal function-signature ref.
+    scan_refs(fn.signature_text, refs.names);
+  }
   // Scan hoisted allocas.
   for (const auto& inst : fn.alloca_insts) collect_inst_refs(inst, refs);
   // Scan block instructions.
@@ -2022,7 +2063,7 @@ void eliminate_dead_internals(LirModule& mod) {
   // Build per-function reference sets.
   std::vector<LirGlobalRefs> fn_refs(mod.functions.size());
   for (size_t i = 0; i < mod.functions.size(); ++i) {
-    fn_refs[i] = collect_fn_refs(mod.functions[i]);
+    fn_refs[i] = collect_fn_refs(mod, mod.functions[i]);
   }
 
   std::vector<bool> reachable(mod.functions.size(), false);

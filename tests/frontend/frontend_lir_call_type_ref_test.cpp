@@ -9597,6 +9597,16 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   stale_retained_signature_text_call.callee_signature->fixed_param_types[0] =
       "rendered-retained-parameter-text-is-not-authority";
   c4c::codegen::lir::verify_module(stale_retained_signature_text);
+  const std::string stale_retained_signature_text_ir =
+      c4c::codegen::lir::print_llvm(stale_retained_signature_text);
+  expect_true(stale_retained_signature_text_ir.find(
+                  "call %struct.Pair (%struct.Pair) @make_pair(%struct.Pair ") !=
+                  std::string::npos,
+              "direct-call printer should prefer callee_signature_ref store facts over retained signature text");
+  expect_true(stale_retained_signature_text_ir.find(
+                  "rendered-retained-parameter-text-is-not-authority") ==
+                  std::string::npos,
+              "direct-call printer should not display retained signature text as authority");
 
   c4c::codegen::lir::LirModule missing_direct_signature_ref = lir_module;
   c4c::codegen::lir::LirCallOp& missing_direct_signature_ref_call =

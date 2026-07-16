@@ -1256,6 +1256,27 @@ int defined_void_params(void) {
                   std::string::npos,
               "definition printer should ignore stale signature_text once a store ref exists");
 
+  c4c::codegen::lir::LirModule stale_variadic_rendered_text = lir_module;
+  require_mutable_function(stale_variadic_rendered_text, "declared_variadic", true)
+      .signature_text = "declare void @declared_variadic(void)";
+  require_mutable_function(stale_variadic_rendered_text, "defined_variadic", false)
+      .signature_text = "define void @defined_variadic(void) {";
+  c4c::codegen::lir::verify_module(stale_variadic_rendered_text);
+  const std::string stale_variadic_ir =
+      c4c::codegen::lir::print_llvm(stale_variadic_rendered_text);
+  expect_true(stale_variadic_ir.find("declare i32 @declared_variadic(i32, ...)") !=
+                  std::string::npos,
+              "declaration printer should render variadic state from the signature store");
+  expect_true(stale_variadic_ir.find("define i32 @defined_variadic(i32 %p.fixed, ...)") !=
+                  std::string::npos,
+              "definition printer should render variadic state from the signature store");
+  expect_true(stale_variadic_ir.find("declare void @declared_variadic(void)") ==
+                  std::string::npos,
+              "declaration printer should not use stale variadic signature_text");
+  expect_true(stale_variadic_ir.find("define void @defined_variadic(void)") ==
+                  std::string::npos,
+              "definition printer should not use stale variadic signature_text");
+
   c4c::codegen::lir::LirModule missing_return_name = lir_module;
   require_mutable_function(missing_return_name, "declared_pair", true)
       .signature_return_type_ref = c4c::codegen::lir::LirTypeRef("%struct.Pair");

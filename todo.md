@@ -8,23 +8,21 @@ Current Step Title: Migrate printer and reference collectors
 
 ## Just Finished
 
-- Repaired Step 3 completed through accepted Step 3A, 3B, and 3C commits:
-  variadic declaration admission reaches the signature-store path, raw extern
-  direct-call compatibility now has a named one-way signature-store adapter,
-  and fixed aggregate/byval direct-call composition now uses
-  module `LirFunctionSignatureRef` store facts for parameter authority while
-  retained ABI-shaped byval metadata remains only a verifier/import
-  compatibility check for existing argument/layout handling. Backend LIR
-  coverage proves store-backed byval calls import with and without retained
-  `callee_signature`, while retained/store disagreement, store/call parameter
-  mismatch, and wrong aggregate alternatives fail closed.
+- Completed Step 4 printer/reference slice: LIR reachability collection now
+  treats `LirFunctionSignatureRef` as the nominal function-signature authority
+  and avoids scanning retained `signature_text` when a store ref is present;
+  direct calls with complete structured argument authority collect operand
+  references from `LirCallArg` facts instead of reparsing `args_str`. Focused
+  printer coverage now proves declaration/definition variadic state and direct
+  call signature suffixes render from stored signature facts despite stale
+  retained text mirrors.
 
 ## Suggested Next
 
-- Execute Step 4: migrate printer/debug output and reference collectors to
-  observe nominal function-signature facts directly, covering declaration and
-  call cases with aggregate refs, variadic state, and malformed stale mirrors
-  without restoring rendered signature text as semantic authority.
+- Execute Step 5: delete migrated semantic mirrors only where every named
+  declaration, call, verifier, printer, and collector consumer has already
+  moved to stored signature/value facts, preserving raw compatibility adapters
+  that are still required.
 
 ## Watchouts
 
@@ -62,6 +60,10 @@ Current Step Title: Migrate printer and reference collectors
   argument routes and declaration/import signature composition; aggregate
   producer migration, body parameter authority, and unrestricted value carrier
   work remain out of scope.
+- Step 4 did not delete `signature_text`, `args_str`, parsed call construction,
+  or duplicate `arg_type_refs`; those remain Step 5 deletion gates. Collector
+  fallback scans still exist for legacy functions/calls without nominal store
+  refs or complete structured argument facts.
 
 ## Proof
 
