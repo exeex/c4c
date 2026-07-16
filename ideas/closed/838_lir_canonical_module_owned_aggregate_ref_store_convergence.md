@@ -1,6 +1,6 @@
 # LIR Canonical Module-Owned Aggregate Ref/Store Convergence
 
-Status: Open
+Status: Closed
 Type: first-owner nominal aggregate identity, store, and lowering convergence
 Matrix Rows: M4, M5, M6
 Dependencies: accepted 834/835 relation; evidence from 754, 798, 801, 803, and 832--836
@@ -48,7 +48,36 @@ reference and intern it once into its owning LIR module's aggregate store.
 - Reject operation-local aggregate metadata retained as competing authority,
   testcase-shaped fixes, weakened owner rejection, or broad family migration.
 
-## Resumption Record: canonical HIR aggregate-occurrence ref return
+## Closure Record
+
+- Disposition: capability complete for the bounded A1 M4--M6 aggregate
+  convergence route.
+- Accepted implementation: Step 1 established the canonical HIR aggregate
+  ref/store seam in `69ffa299f` and `a50d35d4e`; Step 2 declaration/store fact
+  capture was accepted in `8eca000c9`; the bounded `lir_owned_type_spec`
+  function-signature occurrence migration was accepted through `88ccf591d`;
+  Step 3 store-backed declaration, field, call, verifier, printer, and receiver
+  consumers were accepted through `9497d5980`.
+- Accepted proof: the rejected baseline expansion was repaired, then the
+  supervisor accepted a fresh full-suite baseline review at `53a1a8515` with
+  3038/3038 tests passing. Step 4 assessment was accepted through
+  `1ff60849f`.
+- Completion judgment: 838's acceptance criteria are satisfied for aggregate
+  references interned once into the owning LIR module aggregate store, including
+  focused coverage for nested recursion, repeated interning,
+  registration-before-use, named aggregate forms, and fail-closed rejection for
+  invalid refs while preserving accepted 754/798/801/803 seams.
+- Remaining work is intentionally not absorbed by 838: `StructNameId` mirrors,
+  aggregate compatibility helpers, runtime-text factories, raw call/signature
+  parsing, extern/global text mirrors, GEP/local-memory compatibility bridges,
+  and direct HIR construction text paths remain deletion gates for F1, V1, S1,
+  U1, P1, G1, R1, C1, T1, 836/831, 812/813, and 797.
+- Non-goals preserved: this closure does not close or resume 836/831 and does
+  not claim function, vector, scalar, union, generic verifier/printer,
+  collector, global, or universal-model migration beyond the bounded
+  aggregate-store consumers named above.
+
+## Historical Resumption Record: canonical HIR aggregate-occurrence ref return
 
 - Last accepted progress: Step 1 established the canonical aggregate-ref/store
   seam in commits `69ffa299f` and `a50d35d4e`. Step 2's declaration/store fact
