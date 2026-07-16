@@ -3430,16 +3430,6 @@ void verify_function_value_ownership(const LirModule& mod,
           fail_verify("LirExtractElementOp.vec_type",
                       "must mirror the direct vector index vector store fact");
         }
-        if (authority.result_shape.lane_count != vector->lane_count ||
-            authority.result_shape.element_type != vector->element_type ||
-            authority.result_shape.element_type.str() != vector->element_type.str() ||
-            !authority.first_vector_shape ||
-            authority.first_vector_shape->lane_count != vector->lane_count ||
-            authority.first_vector_shape->element_type != vector->element_type ||
-            authority.first_vector_shape->element_type.str() != vector->element_type.str()) {
-          fail_verify("LirExtractElementOp.native_vector_authority.vector_ref",
-                      "must agree with the compatibility vector shape mirrors");
-        }
       };
   const auto verify_required_shuffle_vector_store =
       [&](const LirShuffleVectorOp& op, const LirNativeVectorAuthority& authority) {
@@ -3527,7 +3517,9 @@ void verify_function_value_ownership(const LirModule& mod,
         fail_verify("LirExtractElementOp.index_type",
                     "must be the direct vector IndexExpr i32 index type");
       }
-      verify_vector_authority(*op, "LirExtractElementOp", op->vec, nullptr, nullptr, &op->index, &op->index_type, op->vec_type);
+      verify_vector_authority(*op, "LirExtractElementOp", op->vec, nullptr, nullptr,
+                              &op->index, &op->index_type, op->vec_type,
+                              false);
       verify_extract_vector_store(*op, *op->native_vector_authority);
     } else if (const auto* op = std::get_if<LirShuffleVectorOp>(&inst)) {
       if (op->requires_native_vector_authority && !op->native_vector_authority) {

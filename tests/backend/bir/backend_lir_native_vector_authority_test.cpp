@@ -521,23 +521,20 @@ void test_native_vector_authority_verifier_boundary() {
       .native_vector_authority->result_shape.lane_count = 5;
   expect_rejected(std::move(incoherent_shape), "carrier must reject an incoherent vector display mirror");
 
-  auto incoherent_element_shape = vector_authority_module();
-  std::get<lir::LirExtractElementOp>(incoherent_element_shape.functions[0].blocks[0].insts[1])
+  auto stale_extract_element_shape = vector_authority_module();
+  std::get<lir::LirExtractElementOp>(stale_extract_element_shape.functions[0].blocks[0].insts[1])
       .native_vector_authority->first_vector_shape->element_type = lir::LirTypeRef::integer(64);
-  expect_rejected(std::move(incoherent_element_shape),
-                  "carrier must reject an incoherent vector element shape");
+  lir::verify_module(stale_extract_element_shape);
 
-  auto missing_extract_shape = vector_authority_module();
-  std::get<lir::LirExtractElementOp>(missing_extract_shape.functions[0].blocks[0].insts[1])
+  auto missing_extract_shape_mirror = vector_authority_module();
+  std::get<lir::LirExtractElementOp>(missing_extract_shape_mirror.functions[0].blocks[0].insts[1])
       .native_vector_authority->first_vector_shape.reset();
-  expect_rejected(std::move(missing_extract_shape),
-                  "extract carrier must reject a missing vector shape");
+  lir::verify_module(missing_extract_shape_mirror);
 
-  auto zero_extract_lanes = vector_authority_module();
-  std::get<lir::LirExtractElementOp>(zero_extract_lanes.functions[0].blocks[0].insts[1])
+  auto stale_extract_zero_lanes = vector_authority_module();
+  std::get<lir::LirExtractElementOp>(stale_extract_zero_lanes.functions[0].blocks[0].insts[1])
       .native_vector_authority->result_shape.lane_count = 0;
-  expect_rejected(std::move(zero_extract_lanes),
-                  "extract carrier must reject zero structured vector lanes");
+  lir::verify_module(stale_extract_zero_lanes);
 
   auto missing_second_shape = vector_authority_module();
   std::get<lir::LirShuffleVectorOp>(missing_second_shape.functions[0].blocks[0].insts[2])

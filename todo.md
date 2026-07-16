@@ -8,19 +8,19 @@ Current Step Title: Retire Duplicate Vector Mirrors For Migrated Consumers
 
 ## Just Finished
 
-Completed the first bounded `plan.md` Step 4 packet. Required
-scalar-to-vector `LirInsertElementOp` no longer treats row-local
-`result_shape` / `first_vector_shape` mirrors as semantic authority; it reads
-the module-owned vector store for lane and element facts and still checks
-`vec_type` / `elem_type` as compatibility mirrors. Nearby verifier coverage now
-accepts a stale insert shape mirror when the vector-store fact and operation
-mirrors remain coherent.
+Completed the second bounded `plan.md` Step 4 packet. Direct vector-index
+`LirExtractElementOp` no longer treats row-local `result_shape` /
+`first_vector_shape` mirrors as semantic authority; it reads the module-owned
+vector store for lane and element facts and still checks `vec_type` as a
+compatibility mirror. Nearby verifier coverage now accepts stale, missing, or
+zeroed extract shape mirrors when the vector-store fact and operation mirror
+remain coherent.
 
 ## Suggested Next
 
 Select the next Step 4 retirement gate only after supervisor review. Likely
-bounded candidates are row-local shape mirror demotion for direct
-`LirExtractElementOp` or required scalar-splat `LirShuffleVectorOp`.
+bounded candidate: row-local shape mirror demotion for required scalar-splat
+`LirShuffleVectorOp`.
 
 ## Watchouts
 
@@ -35,6 +35,8 @@ bounded candidates are row-local shape mirror demotion for direct
 - Required `LirInsertElementOp` row-local shape mirrors are now demoted; do not
   reintroduce rejection based on those mirrors while vector-store facts remain
   coherent.
+- Direct `LirExtractElementOp` row-local shape mirrors are now demoted; keep
+  malformed lane/element rejection on the vector-store entry itself.
 - Aggregate vector elements now fail closed unless their typed element ref is
   backed by an accepted aggregate-store fact from the 838 route; do not add a
   separate aggregate owner for vector work.
