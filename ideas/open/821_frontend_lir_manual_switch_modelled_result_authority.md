@@ -64,3 +64,34 @@ modelled-result-authority defect, not a DirectScalar producer/verifier change.
   selector authority, including a default integer classification.
 - Reject a broad value-authority or generic switch redesign when the selected
   manual fixture/modelled-result seam can be corrected locally.
+
+## Resumption Record
+
+Status: parked by the active DirectScalar proof-boundary switch to
+`ideas/open/820_lir_directscalar_parameter_producer_verifier_publication.md`.
+
+- Last accepted progress: Step 1 completed the diagnosis of the selected
+  manual `make_switch()` fixture/modelled-result seam. No implementation slice
+  from this idea has accepted focused proof or an acceptance commit.
+- Completed runbook steps: Step 1 only. Step 2 has a pending, unaccepted local
+  implementation slice in `tests/frontend/frontend_lir_call_type_ref_test.cpp`:
+  `make_switch()` changes `LirBinOp.type_str` from display text `"i32"` to
+  `LirTypeRef::integer(32)`, with a positive structured-authority assertion and
+  a missing-type-authority rejection. Preserve this local patch; do not claim
+  it accepted, discard it, or attach a commit reference.
+- Interrupted step: Step 3 — Prove the blocker and return to 820.
+- Blocker: after the local fixture slice, the focused
+  `ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'`
+  no longer stops at `LirSwitch.selector`; the pending Idea 822 lowering route
+  carries it to the later DirectScalar abort. Both local patches remain
+  unaccepted. The new abort is Idea 820 scope, so it is the active route before
+  this idea can prove its own Step 3.
+- Exact return action: after Idea 820 completes its Step 3 boundary proof,
+  resume this idea at Step 3; retain the pending fixture patch and the pending
+  Idea 822 lowering patch, rerun the same focused test, then perform this
+  idea's required proof. Do not claim either patch accepted merely because the
+  selector abort advanced.
+- Proof and commit status: a fresh `cmake --build --preset default` passed for
+  the pending local slice. The exact focused CTest is red before and after the
+  slice (0/1 failed both times), so regression comparison is non-accepting;
+  there is no accepted commit.
