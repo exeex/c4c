@@ -2683,3 +2683,53 @@ authority, receive `va_end`, `va_copy`, `va_arg`, memcpy, memset, local-object
 or VLA rows, prepared-BIR helper-home publication, target backend lowering, or
 any row derived from operand spelling, printer output, LLVM text, intrinsic
 names, rendered names, or testcase identity.
+
+## Runbook Exhaustion Decision: post-Step 7.52 direct-local va_start receipt
+
+Close rejected. Commit `a680b50e8` receives exactly closed 867's selected
+direct-local `LirVaStartOp` destination `va_list` pointer authority into typed
+Raw BIR. The accepted receiver preserves the handed-off source
+`ap_ptr.value_id()` plus `pointer_definition`, `object`, `owner`,
+`pointer_type`, `pointee_type`, and `live`, requires `ap_ptr.value_id()` to
+equal the authority pointer definition, and verifies the node against the
+matching live current-function alloca authority. LIR producer authority remains
+owned by closed 867 and was not edited.
+
+The supervisor accepted the fresh matching focused before/after proof
+`{ cmake --build build && ctest --test-dir build -R '^backend_lir_to_bir_interface$|^backend_lir_selected_pointer_authority$' --output-on-failure; } > test_before.log/test_after.log 2>&1`
+with 2/2 tests passing before and after, `git diff --check`, and the
+non-decreasing regression guard over those logs.
+
+This bounded receiver row does not satisfy the source completion gate. The
+checked no-omission coverage matrix and its per-row typed authority,
+destination, importer, verifier, and proof disposition remain incomplete;
+lossless verified receipt of every valid current-LIR semantic fact, complete
+explicit dispatcher and neighboring coverage, whole-module transactional
+proof, documentation convergence, and source-wide focused/broader proof are
+still unmet. Valid unreceived families include global policy/symbol identity,
+intrinsic binding evidence, CFG/PHI residuals, typed reference carrier
+migration, verifier dispatch/printer overloads, string escape-hatch deletion,
+final coverage convergence, and any other current-LIR semantic facts not yet
+covered by accepted typed Raw-BIR receiver dispositions. They remain fail
+closed; no receiver may recover authority from text, names, rendered operands,
+signatures, compatibility mirrors, `monostate`, or unclassified values.
+
+Classification: `separate-blocker`. The next ordered open successor from the
+accepted 866 triage is
+`ideas/open/848_lir_global_policy_identity_evidence.md`, which owns global
+policy and symbol-identity evidence before any 734 receiver return. It must
+not edit Raw-BIR/importer code or claim 734 receipt; it may return to 734 only
+by naming one exact evidence-backed typed handoff after its field trace is
+complete.
+
+Resumption record: Steps 1 through 7.52 remain accepted historical work, most
+recently receiver commit `a680b50e8` with the fresh focused before/after
+proof, regression guard, and `git diff --check` stated above. Interrupted
+point: source completion reassessment after Step 7.52; no further 734 receiver
+row is authorized. After 848 closes, reactivate 734 only if it names an exact
+accepted handoff and matching Raw-BIR receiver return row; otherwise follow
+the successor ordering recorded by 848/866. Do not repeat Step 7.52 or receive
+another memory/VA row, global policy row, intrinsic row, CFG/PHI row, typed
+reference row, module/type/global/metadata row, residual
+instruction/terminator, inline-assembly, generic residual sweep, or any other
+form without its separately scoped first-owner handoff.

@@ -1,122 +1,137 @@
-# LIR-To-New-BIR Direct-Local VaStart Receiver Runbook
+# LIR Global Policy And Symbol-Identity Evidence Runbook
 
-Status: Exhausted - Pending Plan-Owner Decision
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Activated from: docs/lir_memory_va_object_lifetime_authority/handoff_to_734.md
+Status: Active
+Source Idea: ideas/open/848_lir_global_policy_identity_evidence.md
+Activated after: ideas/open/734_lir_to_new_bir_container_completeness.md post-Step 7.52 close rejection
 
 ## Purpose
 
-Resume idea 734 for exactly one accepted receiver row from closed idea 867:
-selected direct-local `LirVaStartOp` destination `va_list` authority.
+Produce the documentation evidence required before 734 or 797 can consume or
+converge global linkage, visibility, qualifier-policy, and symbol-identity
+facts.
 
 ## Goal
 
-Receive the handed-off native `LirVaStartOp.ap_authority` tuple into typed Raw
-BIR without display-text recovery.
+Trace every in-scope `LirGlobal` policy and identity field from producer
+through verifier boundary to any new-BIR receiver disposition without using
+rendered declaration text as authority.
 
 ## Core Rule
 
-Implement one Raw-BIR receiver packet only. The authority is the structured
-LIR tuple named by the 867 handoff, never `ap_ptr` spelling, printer output,
-LLVM text, intrinsic names, rendered names, prepared-BIR helper state, Raw-BIR
-importer guesses, or testcase identity.
+This is research and architecture documentation only. Do not edit
+implementation files, tests, expectations, unsupported markers, allowlists,
+runtime behavior, or lifecycle history beyond this active plan.
 
 ## Read First
 
+- `ideas/open/848_lir_global_policy_identity_evidence.md`
+- `docs/lir_string_authority_remaining_routes/handoff_to_813.md`
+- `docs/lir_string_semantic_authority_completion/input_validation.md`
+- `ideas/closed/844_lir_global_extern_initializer_family_facts.md`
 - `ideas/open/734_lir_to_new_bir_container_completeness.md`
-- `docs/lir_memory_va_object_lifetime_authority/handoff_to_734.md`
-- Existing Raw-BIR container, importer, and verifier code for received memory,
-  local-object, VLA, and VA-related rows.
-- `src/codegen/lir/verify.cpp` only as the accepted LIR verifier boundary;
-  do not edit producer authority in this receiver packet.
+- `ideas/open/797_lir_to_new_bir_final_coverage_convergence.md`
 
 ## Current Scope
 
-- Receive only selected direct-local `LirVaStartOp` destination `va_list`
-  pointer authority.
-- Preserve these handed-off fields: source `ap_ptr.value_id()`,
-  `pointer_definition`, `object`, `owner`, `pointer_type`, `pointee_type`, and
-  `live`.
-- Require `ap_ptr.value_id()` to equal
-  `ap_authority.local_pointer.pointer_definition`.
-- Add only the minimum typed Raw-BIR destination, importer dispatch,
-  reachable verifier path, and transactional positive/negative coverage for
-  this row.
+- Native global linkage, visibility, qualifier-policy, and symbol-identity
+  facts.
+- Producer, verifier, and new-BIR receiver traces for each field.
+- Positive evidence and applicable malformed, foreign, or mismatch evidence
+  expectations.
+- A return relation naming what 844 can reuse, what 734 may receive only after
+  an exact handoff, and what 797 must await.
 
 ## Non-Goals
 
-- No LIR producer/schema/verifier edits for the selected authority.
-- No `va_end`, `va_copy`, `va_arg`, memcpy, memset, local-object, VLA,
-  prepared-BIR helper-home, target backend lowering, or MIR work.
-- No aggregate/vector, function-body parameter, module/type/global/metadata,
-  CFG/PHI, residual instruction/terminator, inline-assembly, or generic
-  residual sweep.
-- No receipt from operand spelling, printer output, LLVM text, intrinsic
-  names, rendered names, `monostate`, compatibility mirrors, or testcase
-  identity.
-- No repeat of accepted idea 734 Steps 1 through 7.51.
+- No C++ implementation changes.
+- No test contract changes or proof expectation downgrades.
+- No `llvm_type`/declaration-shadow rows, absent-metadata compatibility,
+  initializer scans, or global/extern type facts already owned by 844.
+- No inference from declaration rendering, display spelling, or link-name
+  presentation.
+- No direct 734 receiver or 797 convergence claim unless the evidence names an
+  exact accepted handoff.
 
 ## Working Model
 
-Closed idea 867 proves the producer/verifier side only. This runbook consumes
-that already accepted authority at the Raw-BIR boundary and leaves all other
-memory/VA/object/lifetime rows fail closed until their own handoff is accepted.
+848 is the next ordered first-owner successor after 734 consumed the 867
+`va_start` handoff. It may produce evidence and, if justified, a precise return
+condition for later receiver work. It does not implement that receiver work.
 
 ## Execution Rules
 
-- Keep the implementation packet bounded to Step 7.52.
-- Reject malformed selected `va_start` before any partial Raw-BIR publication.
-- Preserve the existing LIR verifier boundary and treat its checks as
-  prerequisite authority, not receiver implementation.
-- Add same-feature positive and malformed receiver coverage near the existing
-  Raw-BIR importer/interface tests.
-- Run a fresh build plus focused backend receiver proof. Escalate to broader
-  backend proof if shared Raw-BIR container, verifier, or importer helpers are
-  touched.
+- Create exactly the required documentation directory and files:
+  `docs/lir_global_policy_identity_evidence/index.md` and
+  `docs/lir_global_policy_identity_evidence/01_global_policy_identity_route.md`.
+- The numbered answer file must contain the field-by-field evidence; the index
+  only summarizes and links it.
+- Use source locations and concrete traces instead of broad statements.
+- Report missing evidence explicitly.
+- Keep lifecycle proof to documentation/file checks unless the source is
+  revised by a later supervisor decision.
 
 ## Ordered Steps
 
-### Step 7.52 - Receive selected direct-local LirVaStartOp destination va_list authority
+### Step 1 - Inventory Global Policy And Identity Fields
 
-Status: Complete
-
-Goal: consume the 867 `LirVaStartOp.ap_authority` handoff in typed Raw BIR.
-
-Primary targets:
-- Raw-BIR typed destination, builder/view, importer dispatch, reachable
-  verifier, and nearby backend receiver tests for the selected `va_start` row.
+Goal: identify the exact in-scope `LirGlobal` fields and their producer-facing
+definitions.
 
 Actions:
-- Add the minimum typed Raw-BIR representation for the selected direct-local
-  `va_start` destination pointer authority.
-- Import only selected `LirVaStartOp` rows whose `ap_authority` is present and
-  whose `ap_ptr.value_id()` equals
-  `ap_authority.local_pointer.pointer_definition`.
-- Verify current-function ownership, live local object authority, pointer and
-  pointee type agreement, canonical local pointer fact agreement, and
-  fail-closed rejection for selected malformed rows.
-- Reject authority fields on unselected `va_start` rows.
-- Add transactional positive and negative receiver coverage for missing or
-  invalid `ap_authority`, invalid or mismatched `ap_ptr` value id, foreign
-  owner, dead local object, pointer or pointee type mismatch, canonical local
-  pointer disagreement, and unselected `va_start` authority fields.
+- Inspect the LIR global data structures, producer sites, verifier checks, and
+  new-BIR import surfaces.
+- Record every linkage, visibility, qualifier-policy, and symbol-identity field
+  relevant to the routing key.
+- Exclude 844-owned type and initializer facts explicitly.
 
 Completion check:
-- The selected direct-local `LirVaStartOp` row imports into verified Raw BIR
-  using only the handed-off structured tuple.
-- Every malformed selected or unselected boundary above rejects before partial
-  publication.
-- Fresh build, focused backend receiver proof, `git diff --check`, and any
-  supervisor-selected broader backend proof pass.
+- The evidence file contains a complete in-scope field inventory with source
+  locations and explicit exclusions.
 
-Result:
-- Added `VaStartAuthority` Raw-BIR opcode/payload/spec/view support.
-- Added importer validation and dispatch for only selected direct-local
-  `LirVaStartOp` rows whose `ap_ptr.value_id()` matches the authority pointer
-  definition.
-- Added FoundationVerifier checks requiring a matching live alloca authority
-  with exact owner, object, pointer type, pointee type, and liveness.
-- Added focused positive and malformed receiver coverage in
-  `backend_lir_to_bir_interface`.
-- Proof passed with the focused receiver/producer command, `git diff --check`,
-  and monotonic regression guard.
+### Step 2 - Trace Producer, Verifier, And Receiver Routes
+
+Goal: answer the required diagnostic question for each field.
+
+Actions:
+- For each field, trace producer assignment, verifier or consistency boundary,
+  importer/new-BIR receiver disposition, and any known test evidence.
+- Separate proven native coverage from missing evidence.
+- State malformed, foreign, or mismatch evidence expectations where the field
+  has identity or consistency semantics.
+
+Completion check:
+- `01_global_policy_identity_route.md` contains a field-by-field route table or
+  equivalent structured sections covering producer, verifier, receiver, and
+  evidence status.
+
+### Step 3 - Write Return And Dependency Conclusions
+
+Goal: define how the evidence affects 844, 734, and 797 without changing their
+scope.
+
+Actions:
+- State what 844 can reuse as global-family context.
+- State whether 734 has no handoff, one exact receiver handoff, or a missing
+  prerequisite.
+- State what 797 must await before final convergence.
+- Make declaration-rendering non-authority explicit.
+
+Completion check:
+- The numbered answer and index agree on the dependency/return relation and do
+  not claim implementation progress.
+
+### Step 4 - Validate Documentation Shape
+
+Goal: prove the research deliverable is complete and bounded.
+
+Actions:
+- Check that `docs/lir_global_policy_identity_evidence/` contains exactly
+  `index.md` and `01_global_policy_identity_route.md`.
+- Run `git diff --check`.
+- Run any lightweight text/link checks the repository already provides if a
+  matching docs command exists.
+
+Completion check:
+- Required files exist with the required shape, no extra files are present in
+  the directory, `git diff --check` passes, and no implementation files are
+  modified.
