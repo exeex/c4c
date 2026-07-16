@@ -401,6 +401,19 @@ union Slot slot_global = {.int_value = 3};
   identity_pair.llvm_type_ref->str() = "%struct.StaleMirrorText";
   c4c::codegen::lir::verify_module(structured_identity);
 
+  c4c::codegen::lir::LirModule printer_identity = lir_module;
+  c4c::codegen::lir::LirGlobal& printer_pair =
+      require_global(printer_identity, "pair_global");
+  printer_pair.llvm_type = "%struct.StaleGlobalText";
+  printer_pair.llvm_type_ref->str() = "%struct.StaleMirrorText";
+  const std::string identity_ir = c4c::codegen::lir::print_llvm(printer_identity);
+  expect_true(identity_ir.find("@pair_global = global %struct.Pair ") !=
+                  std::string::npos,
+              "printer should render aggregate globals from StructNameId authority");
+  expect_true(identity_ir.find("%struct.StaleGlobalText") == std::string::npos &&
+                  identity_ir.find("%struct.StaleMirrorText") == std::string::npos,
+              "printer should not recover aggregate global type authority from stale text");
+
   c4c::codegen::lir::LirModule text_fallback = lir_module;
   c4c::codegen::lir::LirGlobal& fallback_slot =
       require_global(text_fallback, "slot_global");

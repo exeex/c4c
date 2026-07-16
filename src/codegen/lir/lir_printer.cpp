@@ -56,6 +56,16 @@ std::string render_type_ref_for_signature(const LirTypeRef& type) {
   return type.str();
 }
 
+std::string render_global_type(const LirModule& mod, const LirGlobal& global) {
+  if (!global.llvm_type_ref.has_value()) return global.llvm_type;
+  const LirTypeRef& type = *global.llvm_type_ref;
+  if (type.has_struct_name_id()) {
+    const std::string_view name = mod.struct_names.spelling(type.struct_name_id());
+    if (!name.empty()) return std::string(name);
+  }
+  return type.render_llvm();
+}
+
 const LirTypeRef& require_phi_boundary_render_type(const LirPhiOp& op) {
   if (!op.boundary_value_type) {
     throw LirVerifyError(LirVerifyErrorKind::Malformed,
@@ -808,7 +818,7 @@ std::string print_llvm(const LirModule& mod) {
     const std::string_view resolved_name = resolve_link_name(mod.link_names, g.link_name_id);
     out << llvm_global_sym(resolved_name.empty() ? g.name : std::string(resolved_name))
         << " = " << g.linkage_vis << g.qualifier
-        << g.llvm_type;
+        << render_global_type(mod, g);
     if (!g.is_extern_decl) out << " " << g.init_text;
     if (g.align_bytes > 1) out << ", align " << g.align_bytes;
     out << "\n";

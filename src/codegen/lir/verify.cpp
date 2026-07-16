@@ -4619,12 +4619,7 @@ void verify_global_type_ref_shadows(const LirModule& mod) {
         }
         continue;
       }
-
-      if (const auto mismatch =
-              type_ref_struct_name_mismatch_detail(mod.struct_names, mirror);
-          mismatch.has_value()) {
-        fail_verify("LirGlobal.llvm_type_ref", *mismatch);
-      }
+      continue;
     }
 
     if (shadow != global.llvm_type) {
