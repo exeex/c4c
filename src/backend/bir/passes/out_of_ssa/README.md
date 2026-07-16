@@ -29,7 +29,9 @@ stage, or hide copies/scratch in analysis-only products.
 ## Inputs
 
 Initial: exact D4 `PseudoBir`, current projection, CFG/dominance/SSA/value-flow,
-and complete phi edge identities. Subordinate closure: exact stable post-E3
+complete phi edge identities, and the preserved exact-occurrence lineage of
+any asm-goto snapshot that supplied an incoming value. Subordinate closure:
+exact stable post-E3
 candidate plus current projection, E1 liveness/interference, E2 assignments,
 E3 spill state, scratch assignments, and unchanged D5 plan lineage.
 
@@ -76,7 +78,9 @@ alias-unit products for the same stable candidate; no recomputed compatible home
 Phi identities retire; former join-result allocation identities remain exact
 destinations only through total mappings. Every transfer/scratch/copy gets a
 fresh ID keyed to exact edge occurrence and role. Assigned home equality never
-merges semantic identity.
+merges semantic identity. For asm-goto-derived inputs, D5 consumes the live
+post-normalization `EdgeKey`; label spelling, destination block equality, and
+source-occurrence provenance cannot merge or retarget duplicate occurrences.
 
 ## Outputs
 

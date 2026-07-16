@@ -76,18 +76,60 @@ block. Instead it applies these closed rules while planning SSA construction:
 These prospective record/diagnostic names are documentation vocabulary, not
 claims of landed APIs or `NodeKind` entries.
 
+### `asm goto` instruction-point snapshots
+
+For every registered `asm goto` instruction/terminator pair, B4 derives exactly
+one immutable `AsmGotoSsaSnapshot`. Its complete key is the exact B3 module and
+function revision, function identity, instruction identity, paired terminator
+identity, and exact CFG/dominance/publication dependency fingerprints. It
+contains the definition stack visible immediately before the asm instruction;
+the instruction's ordinary input uses, output definitions, and ordered clobber
+facts; one entry for every exact post-B3 successor `EdgeKey`, classified as a
+goto-label or the explicitly present fallthrough occurrence; and the exact
+edge-visible definition chosen for every semantic value identity.
+
+The definition stack is captured at the instruction point, not at block end.
+Every goto-label occurrence sees only definitions available before the asm; it
+cannot see an asm output or any later definition. An explicit fallthrough
+occurrence sees the pre-asm stack updated by the asm's declared output
+definitions, and then ordinary later instructions according to their actual
+instruction order. If fallthrough is absent, no fallthrough visibility is
+invented. Clobbers are recorded for later allocation consumers but are neither
+SSA definitions nor permission to erase an input or output role.
+
+Zero, one, and multiple goto-label occurrences use the same schema. Duplicate
+same-destination labels retain different `EdgeKey` entries even when their
+visible definition maps are equal. Destination block, predecessor block, label
+spelling, rendered block name, layout position, and vector position are never
+occurrence identity. A terminator with no successor is invalid at B3 and cannot
+acquire a B4 snapshot.
+
+Phi construction queries the snapshot by exact incoming occurrence. A label
+incoming selects only its pre-asm-visible definition; a fallthrough incoming
+selects the explicit fallthrough-visible definition. After B3 critical-edge
+normalization, only the rewritten exact occurrence is authoritative; split
+provenance may trace the source but cannot substitute for the live `EdgeKey`.
+D5 later consumes that same exact phi-occurrence identity for edge-local copies.
+
+These prospective product and diagnostic names are documentation vocabulary,
+not claims of landed APIs or `NodeKind` entries.
+
 ## Ordered Behavior
 
 1. Validate B3 capability and all exact analysis keys.
 2. Inventory every eligible definition/use and compute dominance frontiers in
    stable block/edge/value order.
-3. Assign every node one matrix row; reject non-eligible ordinary SSA use.
+3. Derive exactly one `AsmGotoSsaSnapshot` for each registered pair from the
+   immutable B3 instruction point and exact successor occurrences; assign every
+   node one matrix row and reject non-eligible ordinary SSA use.
 4. Build one private candidate, insert/normalize phis, rename definitions and
    uses, and delete redundant phis only through total typed mappings.
 5. Recompute CFG/dominance/value-flow on the candidate, prove whole-graph SSA,
    and atomically advance B4 or discard it.
 6. Derive and validate every `NonLocalSsaBoundary` against the final candidate;
    publish it only with the same exact B4 revision and SSA proof.
+7. Re-derive every asm-goto snapshot against the final candidate and publish it
+   only with that same exact B4 revision and whole-graph SSA proof.
 
 ## NodeKind/Tag Lowering Matrix
 
@@ -127,13 +169,23 @@ For every registered non-local checkpoint it additionally proves unique
 instruction-point coverage, exact continuation order, no post-checkpoint-only
 definition visible after non-local return, no forbidden register-only promotion,
 and no ordinary CFG or phi fact fabricated from the boundary record.
+For every registered asm-goto pair it proves exactly one current snapshot, one
+entry per exact successor occurrence including duplicates, exact optional
+fallthrough classification, complete output/input/clobber coverage, label-edge
+exclusion of outputs and later definitions, explicit fallthrough output
+visibility, and phi incoming equality with the keyed occurrence. Missing,
+duplicate, stale, incomplete, block-end-derived, or topology-changing snapshot
+data rejects the whole B4 candidate.
 
 ## Analysis Preservation and Invalidation
 
 Definition/use/phi/operand/order changes invalidate value-flow, dominance
 consumers, provenance, memory effects that observe values, liveness, and all
-dependents. CFG may be preserved only after exact topology equality validation;
-fresh B4 products use the new key.
+dependents. Any asm instruction/terminator pairing, successor occurrence,
+fallthrough classification, output/input/clobber, or instruction-order change
+invalidates every asm-goto snapshot and its dependents. CFG may be preserved
+only after exact topology equality validation; fresh B4 products use the new
+key.
 
 ## Failure and Diagnostics
 
@@ -162,6 +214,12 @@ the distinction between static eligibility and dynamic proof.
 Also prove returns-twice ordinary versus non-local continuation visibility,
 volatile/address-escaped retention, indeterminate-value rejection, missing or
 duplicate boundary coverage, stale keys, and absence of fabricated CFG edges.
+Prove asm-goto zero/one/multiple label targets, explicit fallthrough
+presence/absence, outputs and clobbers in every legal combination, duplicate
+same-destination occurrences, critical-edge normalization, exact phi inputs,
+label-edge rejection of post-asm/later definitions, fallthrough output
+visibility, stale/missing/duplicate snapshots, and absence of name/text/block
+identity.
 
 ## Open Questions
 

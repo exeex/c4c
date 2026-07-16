@@ -64,9 +64,9 @@ to invent behavior:
    define exact non-local visibility and retained-memory facts, while E1-E4
    close clobber, residency, explicit rewrite, and frame-home realization
    without adding exceptional CFG authority.
-2. B3 and B4 do not yet define an `asm goto` instruction-point snapshot product,
-   output visibility split, or verifier diagnostics for missing/wrong snapshots.
-   Step 3 must keep occurrence identity and topology in B3.
+2. Resolved by [Step 3](step3_asm_goto_instruction_point_snapshots.md): B3 owns
+   explicit optional-fallthrough and label occurrence topology, while B4 owns
+   one exact instruction-point snapshot and edge-qualified phi visibility.
 3. B4 currently requires complete SSA but has no versioned promotion budget,
    checked metric, or selected fail-closed versus deterministic-partial policy.
    Step 4 owns that choice; this baseline does not preselect it.

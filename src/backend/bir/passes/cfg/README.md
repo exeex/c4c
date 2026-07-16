@@ -39,13 +39,37 @@ One exact-B2 `Cfg` product built only from terminators and stable block IDs.
 The pass may independently validate its proposed successor relation; cached
 predecessor maps or layout adjacency are not authority.
 
+### `asm goto` topology
+
+An `asm goto` is represented by one structured inline-assembly instruction
+immediately followed by its owning terminator. B3 alone canonicalizes the
+terminator's ordered successor occurrences:
+
+- zero, one, or multiple ordered goto-label slots are valid;
+- one typed fallthrough slot is either explicitly present or explicitly
+  absent; block layout never supplies an implicit fallthrough;
+- two label slots that name the same destination remain different occurrences;
+- output and clobber roles belong to the paired instruction and never create,
+  remove, or identify a successor; and
+- a form with neither a label occurrence nor fallthrough is rejected rather
+  than reinterpreted as ordinary inline assembly.
+
+Each live occurrence is identified only by its terminator-derived `EdgeKey`.
+When B3 splits or otherwise normalizes an occurrence, it records a total
+old-occurrence-to-new-occurrence provenance mapping and rewrites every existing
+edge reference in the same private candidate. Critical-edge normalization may
+insert a block and successor, but it cannot merge duplicate occurrences or
+infer value visibility. B4 consumes only the resulting exact B3 occurrences.
+
 ## Ordered Behavior
 
 1. Validate B2 capability and exact CFG key.
 2. Derive successor slots/edge multiplicity from terminators and assign every
    control member one matrix row.
-3. Plan reachability removal, terminator replacement, and required edge splits
-   in deterministic order.
+3. Validate every `asm goto` instruction/terminator pair, its explicit optional
+   fallthrough, and its zero-or-more ordered label slots; then plan reachability
+   removal, terminator replacement, and required edge splits in deterministic
+   order.
 4. Build one private candidate, rewrite phi-edge references together with CFG
    edits, and derive the mutation summary.
 5. Recompute candidate CFG, verify cumulative rules, and atomically advance B3
@@ -81,7 +105,12 @@ properties through `CfgCanonical`, and a complete mutation summary.
 The candidate verifier re-derives CFG solely from terminators; proves one
 terminator per defined block, exact successor slots/multiplicity, reachability
 policy, split-edge/phi reference coherence, stable ownership/def-use, and no
-target/later-stage vocabulary. Only a complete green candidate advances.
+target/later-stage vocabulary. For `asm goto` it additionally proves exact
+instruction/terminator pairing, explicit fallthrough presence or absence,
+ordered label-slot coverage including duplicates, a nonempty total successor
+set, and total edge-reference rewriting through normalization. It does not
+inspect an SSA snapshot or infer visibility. Only a complete green candidate
+advances.
 
 ## Analysis Preservation and Invalidation
 

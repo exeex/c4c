@@ -180,7 +180,8 @@ group and the complete P07-to-B8 handoff must account for every node.
    every retained block is reachable from the function entry after P03's
    deterministic unreachable-region removal.
 4. P04 explicit-`Phi` canonical SSA form and exact phi incoming `EdgeKey`
-   coverage, complete def-use, dominance, and alias normalization hold.
+   coverage, complete def-use, dominance, alias normalization, and exact-current
+   asm-goto instruction-point snapshot coverage hold.
 5. P05 memory, address/GEP, access, atomic, stack-state, and memory-intrinsic
    descriptors have their unique semantic forms and preserve P03/P04.
 6. P06 aggregate values, copies, paths, complex/multivalue operations, and
@@ -1084,9 +1085,11 @@ struct EdgeKey {
 - `indirect_jump`: pointer/code-address operand and a nonempty ordered list of
   possible local target slots when required for analysis;
 - `asm_goto`: references a structured `InlineAsm` instruction that is the final
-  ordinary instruction in the same block, plus one explicit fallthrough slot
-  and ordered goto-target slots. Constraint label slots match terminator slots
-  one-for-one (`AsmGotoPairInvalid`); no mid-block instruction owns hidden exits;
+  ordinary instruction in the same block, plus an explicitly present or absent
+  fallthrough slot and zero or more ordered goto-target slots. At least one
+  successor occurrence must exist. Constraint label slots match goto-target
+  slots one-for-one (`AsmGotoPairInvalid`); no mid-block instruction owns hidden
+  exits;
 - `unreachable`: no operands or successors;
 
 CFG successor authority is the ordered `SuccessorSlot` sequence derived solely
@@ -1329,6 +1332,18 @@ For every phi that does exist in Raw:
   value), not the phi instruction text position;
 - asm-goto predecessors participate exactly like other terminator predecessors;
 - critical edges and loop-carried values are legal in Raw.
+
+At B4 and every cumulative later profile, each registered asm-goto pair has
+exactly one snapshot keyed by the current function revision, instruction,
+terminator, and dependency fingerprints. Its occurrence set equals the exact
+live successor-slot multiset. Label occurrences may use only definitions
+visible before the asm; asm outputs and later definitions are forbidden there.
+The explicitly present fallthrough occurrence uses the post-output definition
+stack; absent fallthrough has no entry. Duplicate same-destination slots remain
+separate. Missing/duplicate/stale snapshots, incomplete inputs/outputs/clobbers,
+block-end leakage, occurrence mismatch, or a phi value unequal to its keyed
+snapshot entry rejects publication. Labels, rendered block names, destination
+blocks, and layout never identify snapshot entries.
 
 Non-phi use policy:
 
