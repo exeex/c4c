@@ -2286,7 +2286,14 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
   if (const auto* op = std::get_if<LirVaArgOp>(&inst)) {
     verify_result_operand(op->result, "LirVaArgOp.result");
     verify_pointer_operand(op->ap_ptr, "LirVaArgOp.ap_ptr");
-    require_module_type_ref(mod, op->type_str, "LirVaArgOp.type_str");
+    if (op->requires_native_memory_va_authority &&
+        op->result_authority.has_value() &&
+        op->result_type_authority.has_value() &&
+        op->type_str.kind() == LirTypeKind::Integer) {
+      (void)render_integer_type_ref(op->type_str, "LirVaArgOp.type_str");
+    } else {
+      require_module_type_ref(mod, op->type_str, "LirVaArgOp.type_str");
+    }
     return;
   }
   if (const auto* op = std::get_if<LirAllocaOp>(&inst)) {

@@ -785,13 +785,21 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
                                 LirOperandKind::SpecialToken})
        << "\n";
   } else if (const auto* op = std::get_if<LirVaArgOp>(&inst)) {
+    const auto type = op->requires_native_memory_va_authority &&
+                              op->result_authority.has_value() &&
+                              op->result_type_authority.has_value() &&
+                              op->type_str.kind() == LirTypeKind::Integer
+                          ? render_integer_type_ref(op->type_str,
+                                                    "LirVaArgOp.type_str")
+                          : require_type_ref(op->type_str,
+                                             "LirVaArgOp.type_str");
     os << "  "
        << require_operand_kind(op->result, "LirVaArgOp.result",
                                {LirOperandKind::SsaValue})
        << " = va_arg ptr "
        << require_operand_kind(op->ap_ptr, "LirVaArgOp.ap_ptr",
                                {LirOperandKind::SsaValue, LirOperandKind::Global})
-       << ", " << require_type_ref(op->type_str, "LirVaArgOp.type_str") << "\n";
+       << ", " << type << "\n";
   }
 }
 

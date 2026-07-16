@@ -6612,6 +6612,9 @@ int lir_vaarg_helper_result_authority_loss(int count, ...) {
               "vaarg helper result should retain its exact native ID into the later Add use");
   lir::verify_module(lowered);
 
+  lir::LirModule stale_display_type = lowered;
+  lir::LirVaArgOp* stale_va_arg = nullptr;
+  lir::LirBinOp* stale_consumer = nullptr;
   const auto require_vaarg_and_consumer = [](lir::LirModule& module,
                                               lir::LirVaArgOp*& va_arg,
                                               lir::LirBinOp*& consumer) {
@@ -6628,6 +6631,22 @@ int lir_vaarg_helper_result_authority_loss(int count, ...) {
     expect_true(va_arg && consumer,
                 "focused vaarg fixture should retain its semantic result and immediate consumer");
   };
+
+  require_vaarg_and_consumer(stale_display_type, stale_va_arg, stale_consumer);
+  expect_true(stale_va_arg->requires_native_memory_va_authority &&
+                  stale_va_arg->result_authority.has_value() &&
+                  stale_va_arg->result_type_authority.has_value(),
+              "selected integer va_arg should retain native result authority for stale type proof");
+  stale_va_arg->type_str.str() = "not-i32";
+  stale_va_arg->result_type_authority->str() = "not-i32";
+  lir::verify_module(stale_display_type);
+  const std::string stale_display_ir = lir::print_llvm(stale_display_type);
+  expect_contains(stale_display_ir, " = va_arg ptr ",
+                  "selected integer va_arg should still print a va_arg instruction");
+  expect_contains(stale_display_ir, ", i32",
+                  "selected integer va_arg should render from native width authority");
+  expect_not_contains(stale_display_ir, "not-i32",
+                      "selected integer va_arg should not render stale type text");
 
   lir::LirModule missing_result = lowered;
   lir::LirVaArgOp* missing_va_arg = nullptr;
