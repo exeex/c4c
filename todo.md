@@ -8,16 +8,19 @@ Current Step Title: Select and publish one next body-parameter authority row
 
 ## Just Finished
 
-Blocker 861 closed in commit `aebb8713c` after implementation commit
-`df0e29445`. No 860 Step 1 progress has been accepted, and no 860 runbook
-steps are complete.
+Completed 860 Step 1 for exactly one producer-side body-parameter authority
+row: DirectScalar floating binary `fsub` RHS (`double f(double x) { return
+2.0 - x; }`). LIR lowering now publishes native structured
+`LirScalarBinaryRhsParameterAuthority` for the selected RHS parameter when no
+LHS authority owns the row, the verifier accepts only the selected `fsub` RHS
+form alongside existing RHS rows, and focused positive/malformed coverage was
+added.
 
 ## Suggested Next
 
-Resume Step 1: inspect accepted body-parameter authority patterns through 734
-Step 7.48, select exactly one next valid current-LIR body-parameter-use row
-after the accepted DirectScalar rows, and implement only the LIR
-producer/schema/verifier/test handoff for that row.
+Continue 860 Step 1 by selecting exactly one next valid producer-side
+body-parameter authority row after DirectScalar floating binary RHS `fadd`,
+`fmul`, and `fsub`, then implement only that LIR producer/verifier/test handoff.
 
 ## Watchouts
 
@@ -27,6 +30,20 @@ presentation text, or absorb memory/VA, aggregate/vector,
 module/type/global/metadata, residual instruction/terminator, inline-assembly,
 ABI-expanded or aggregate parameters, or target-lowering work.
 
+The RHS malformed opcode probes now use unsupported `fdiv`; `fsub` is a valid
+selected RHS authority row and should not be used as the invalid-opcode probe
+for existing RHS rows.
+
 ## Proof
 
-No proof has run for 860 Step 1 after resumption.
+Passed:
+
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_function_signature_type_ref$'; } > test_after.log 2>&1`
+
+Supervisor also ran full suite:
+
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure; } > test_after.log 2>&1`
+
+Result: `3038/3038` passed. Focused before/after guard was not applicable
+because the focused subset was green before and after, so the checker reported
+no strict pass-count increase rather than a new failure.

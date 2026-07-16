@@ -3054,6 +3054,7 @@ void verify_function_value_ownership(const LirModule& mod,
   };
   std::size_t selected_floating_fmul_rhs_authority_count = 0;
   std::size_t selected_floating_fadd_rhs_authority_count = 0;
+  std::size_t selected_floating_fsub_rhs_authority_count = 0;
   const auto verify_scalar_binary_rhs_authority = [&](const LirBinOp& op) {
     const auto scalar_rhs_definition = std::find_if(
         function.native_body_parameter_definitions.begin(),
@@ -3065,12 +3066,14 @@ void verify_function_value_ownership(const LirModule& mod,
     const bool selected_floating_rhs_consumer =
         scalar_rhs_definition != function.native_body_parameter_definitions.end() &&
         scalar_rhs_definition->type.kind() == LirTypeKind::Floating &&
-        (opcode == LirBinaryOpcode::FAdd || opcode == LirBinaryOpcode::FMul);
+        (opcode == LirBinaryOpcode::FAdd || opcode == LirBinaryOpcode::FSub ||
+         opcode == LirBinaryOpcode::FMul);
     const bool floating_rhs_definition =
         scalar_rhs_definition != function.native_body_parameter_definitions.end() &&
         scalar_rhs_definition->type.kind() == LirTypeKind::Floating;
     const bool duplicate_selected_floating_rhs_consumer =
         (opcode == LirBinaryOpcode::FAdd && selected_floating_fadd_rhs_authority_count > 0) ||
+        (opcode == LirBinaryOpcode::FSub && selected_floating_fsub_rhs_authority_count > 0) ||
         (opcode == LirBinaryOpcode::FMul && selected_floating_fmul_rhs_authority_count > 0);
     if (!op.scalar_rhs_parameter_authority) {
       if (!op.scalar_lhs_parameter_authority &&
@@ -3099,9 +3102,10 @@ void verify_function_value_ownership(const LirModule& mod,
       fail_verify(field, "requires one native direct-scalar current-function RHS value binding");
     }
     if (authority.type.kind() == LirTypeKind::Floating) {
-      if (opcode != LirBinaryOpcode::FAdd && opcode != LirBinaryOpcode::FMul) {
+      if (opcode != LirBinaryOpcode::FAdd && opcode != LirBinaryOpcode::FSub &&
+          opcode != LirBinaryOpcode::FMul) {
         fail_verify(field,
-                    "floating RHS parameter authority is limited to selected fadd and fmul consumers");
+                    "floating RHS parameter authority is limited to selected fadd, fsub, and fmul consumers");
       }
       const bool lhs_is_direct_scalar_parameter =
           op.lhs.value_id() &&
@@ -3117,6 +3121,7 @@ void verify_function_value_ownership(const LirModule& mod,
                     "selected floating binary RHS authority requires a nonselected scalar LHS");
       }
       if (opcode == LirBinaryOpcode::FAdd) ++selected_floating_fadd_rhs_authority_count;
+      if (opcode == LirBinaryOpcode::FSub) ++selected_floating_fsub_rhs_authority_count;
       if (opcode == LirBinaryOpcode::FMul) ++selected_floating_fmul_rhs_authority_count;
     }
     const auto matches = std::count_if(
@@ -3408,6 +3413,10 @@ void verify_function_value_ownership(const LirModule& mod,
   if (selected_floating_fadd_rhs_authority_count > 1) {
     fail_verify("LirBinOp.scalar_rhs_parameter_authority",
                 "current function may publish exactly one selected floating fadd RHS authority");
+  }
+  if (selected_floating_fsub_rhs_authority_count > 1) {
+    fail_verify("LirBinOp.scalar_rhs_parameter_authority",
+                "current function may publish exactly one selected floating fsub RHS authority");
   }
   if (selected_floating_fadd_lhs_authority_count > 1) {
     fail_verify("LirBinOp.scalar_lhs_parameter_authority",

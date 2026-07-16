@@ -36,7 +36,7 @@ bool selected_floating_lhs_authority_opcode(std::string_view opcode) {
 }
 
 bool selected_floating_rhs_authority_opcode(std::string_view opcode) {
-  return opcode == "fadd" || opcode == "fmul";
+  return opcode == "fadd" || opcode == "fsub" || opcode == "fmul";
 }
 
 bool floating_lhs_authority_already_published(const FnCtx& ctx,

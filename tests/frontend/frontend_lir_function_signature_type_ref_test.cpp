@@ -1649,7 +1649,7 @@ double scalar_fmul_rhs(double x) { return 2.0 * x; }
                 c4c::codegen::lir::LirScalarBinaryParameterRole::Lhs;
           },
           "DirectScalar fmul RHS verifier must reject wrong parameter role");
-  rejects([](auto&, auto&, auto&, auto& binary) { binary.opcode = "fsub"; },
+  rejects([](auto&, auto&, auto&, auto& binary) { binary.opcode = "fdiv"; },
           "DirectScalar fmul RHS verifier must reject non-fmul consumer");
   rejects([](auto&, auto&, auto&, auto& binary) {
             binary.rhs = c4c::codegen::lir::LirOperand::ssa(
@@ -1764,7 +1764,7 @@ double scalar_fadd_rhs(double x) { return 2.0 + x; }
                 c4c::codegen::lir::LirScalarBinaryParameterRole::Lhs;
           },
           "DirectScalar fadd RHS verifier must reject wrong parameter role");
-  rejects([](auto&, auto&, auto&, auto& binary) { binary.opcode = "fsub"; },
+  rejects([](auto&, auto&, auto&, auto& binary) { binary.opcode = "fdiv"; },
           "DirectScalar fadd RHS verifier must reject non-fadd consumer");
   rejects([](auto&, auto&, auto&, auto& binary) {
             binary.rhs = c4c::codegen::lir::LirOperand::ssa(
@@ -1784,6 +1784,121 @@ double scalar_fadd_rhs(double x) { return 2.0 + x; }
             block.insts.push_back(duplicate);
           },
           "DirectScalar fadd RHS verifier must reject duplicate consumer");
+}
+
+void test_direct_scalar_fsub_rhs_authority() {
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+double scalar_fsub_rhs(double x) { return 2.0 - x; }
+)c");
+  const c4c::codegen::lir::LirModule module = c4c::codegen::lir::lower(hir_module);
+  const auto find_fsub = [](const auto& function) -> const c4c::codegen::lir::LirBinOp& {
+    for (const auto& block : function.blocks) {
+      for (const auto& inst : block.insts) {
+        if (const auto* binary = std::get_if<c4c::codegen::lir::LirBinOp>(&inst);
+            binary != nullptr &&
+            binary->opcode.typed() == c4c::codegen::lir::LirBinaryOpcode::FSub) {
+          return *binary;
+        }
+      }
+    }
+    fail("scalar floating subtract RHS fixture should lower one fsub LirBinOp");
+  };
+  const auto& function = require_function(module, "scalar_fsub_rhs", false);
+  const auto& binary = find_fsub(function);
+  expect_true(!binary.scalar_lhs_parameter_authority.has_value(),
+              "direct scalar fsub selected RHS row must leave the nonselected LHS unclaimed");
+  expect_true(binary.scalar_rhs_parameter_authority.has_value(),
+              "direct scalar fsub RHS must publish native parameter authority");
+  const auto& authority = *binary.scalar_rhs_parameter_authority;
+  const auto& definition = function.native_body_parameter_definitions.front();
+  expect_true(binary.rhs.value_id() && authority.value == *binary.rhs.value_id() &&
+                  authority.value == definition.value &&
+                  authority.parameter_index == definition.parameter_index &&
+                  authority.type == binary.type_str && authority.type == definition.type &&
+                  authority.owner == function.link_name_id && authority.owner == definition.owner &&
+                  authority.abi == c4c::codegen::lir::LirNativeBodyParameterAbi::DirectScalar &&
+                  authority.role == c4c::codegen::lir::LirScalarBinaryParameterRole::Rhs,
+              "direct scalar fsub RHS authority must mirror its current-function definition");
+  c4c::codegen::lir::verify_module(module);
+
+  const auto rejects = [&](auto mutate, const std::string& message) {
+    auto candidate = module;
+    auto& candidate_function = require_mutable_function(candidate, "scalar_fsub_rhs", false);
+    for (auto& block : candidate_function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate_binary = std::get_if<c4c::codegen::lir::LirBinOp>(&inst);
+            candidate_binary != nullptr &&
+            candidate_binary->opcode.typed() == c4c::codegen::lir::LirBinaryOpcode::FSub) {
+          mutate(candidate, candidate_function, block, *candidate_binary);
+          expect_verify_rejects(candidate, message);
+          return;
+        }
+      }
+    }
+    fail("mutable scalar fsub RHS fixture should contain one fsub LirBinOp");
+  };
+  rejects([](auto&, auto&, auto&, auto& binary) {
+            binary.scalar_rhs_parameter_authority.reset();
+          },
+          "DirectScalar fsub RHS verifier must reject omitted authority");
+  rejects([](auto&, auto& function, auto&, auto&) {
+            function.native_body_parameter_definitions.clear();
+          },
+          "DirectScalar fsub RHS verifier must reject missing parameter definition");
+  rejects([](auto&, auto&, auto&, auto& binary) {
+            binary.scalar_rhs_parameter_authority->value =
+                c4c::codegen::lir::LirValueId::invalid();
+          },
+          "DirectScalar fsub RHS verifier must reject invalid parameter identity");
+  rejects([](auto&, auto& function, auto&, auto&) {
+            function.native_body_parameter_definitions.push_back(
+                function.native_body_parameter_definitions.front());
+          },
+          "DirectScalar fsub RHS verifier must reject duplicate parameter definitions");
+  rejects([](auto& candidate, auto&, auto&, auto& binary) {
+            binary.scalar_rhs_parameter_authority->owner =
+                candidate.link_names.intern("foreign_fsub_rhs_owner");
+          },
+          "DirectScalar fsub RHS verifier must reject foreign parameter owner");
+  rejects([](auto&, auto&, auto&, auto& binary) {
+            binary.scalar_rhs_parameter_authority->parameter_index = 1;
+          },
+          "DirectScalar fsub RHS verifier must reject wrong parameter index");
+  rejects([](auto&, auto&, auto&, auto& binary) {
+            binary.scalar_rhs_parameter_authority->type =
+                c4c::codegen::lir::LirTypeRef("float");
+          },
+          "DirectScalar fsub RHS verifier must reject wrong parameter type");
+  rejects([](auto&, auto&, auto&, auto& binary) {
+            binary.scalar_rhs_parameter_authority->abi =
+                c4c::codegen::lir::LirNativeBodyParameterAbi::DirectPointer;
+          },
+          "DirectScalar fsub RHS verifier must reject wrong parameter ABI");
+  rejects([](auto&, auto&, auto&, auto& binary) {
+            binary.scalar_rhs_parameter_authority->role =
+                c4c::codegen::lir::LirScalarBinaryParameterRole::Lhs;
+          },
+          "DirectScalar fsub RHS verifier must reject wrong parameter role");
+  rejects([](auto&, auto&, auto&, auto& binary) { binary.opcode = "fdiv"; },
+          "DirectScalar fsub RHS verifier must reject non-fsub consumer");
+  rejects([](auto&, auto&, auto&, auto& binary) {
+            binary.rhs = c4c::codegen::lir::LirOperand::ssa(
+                "%foreign", c4c::codegen::lir::LirValueId{999999});
+          },
+          "DirectScalar fsub RHS verifier must reject RHS mismatch");
+  rejects([](auto&, auto&, auto&, auto& binary) {
+            binary.type_str = c4c::codegen::lir::LirTypeRef("float");
+          },
+          "DirectScalar fsub RHS verifier must reject type mismatch");
+  rejects([](auto&, auto&, auto&, auto& binary) { binary.lhs = binary.rhs; },
+          "DirectScalar fsub RHS verifier must reject selected LHS coherence");
+  rejects([](auto&, auto&, auto& block, auto& binary) {
+            auto duplicate = binary;
+            duplicate.result = c4c::codegen::lir::LirOperand::ssa(
+                "%duplicate_fsub_rhs", c4c::codegen::lir::LirValueId{999996});
+            block.insts.push_back(duplicate);
+          },
+          "DirectScalar fsub RHS verifier must reject duplicate consumer");
 }
 }  // namespace
 
@@ -1806,6 +1921,7 @@ int main() {
   test_direct_scalar_duplicate_fsub_lhs_publishes_first_authority_only();
   test_direct_scalar_fmul_rhs_authority();
   test_direct_scalar_fadd_rhs_authority();
+  test_direct_scalar_fsub_rhs_authority();
 
   c4c::hir::Module hir_module = lower_hir_module(R"c(
 struct Pair {
