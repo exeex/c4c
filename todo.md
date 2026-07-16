@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/839_lir_nominal_function_signature_call_composition.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Migrate call composition to signature refs
+Current Step ID: 3A
+Current Step Title: Repair variadic declaration admission before call migration
 
 ## Just Finished
 
@@ -20,10 +20,14 @@ Current Step Title: Migrate call composition to signature refs
 
 ## Suggested Next
 
-- Continue Step 3 with the next remaining call-composition consumer outside the
-  migrated direct void, direct integer, native floating, integer intrinsic, and
-  fixed direct-call argument-authority helpers, without touching 829/830
-  argument value identity.
+- Continue repaired Step 3 at Step 3A: inspect the monolithic `backend_lir`
+  importer path that rejects variadic function declarations before typed-call
+  verification can run, then make that declaration/callee signature shape reach
+  store-backed `callee_signature_ref` validation without making variadic text,
+  parsed calls, or retained mirrors authoritative.
+- After Step 3A, continue with Step 3B raw extern signature-store adapter
+  entries, then Step 3C fixed byval aggregate store-authority/retained-ABI
+  metadata split.
 
 ## Watchouts
 
@@ -50,6 +54,16 @@ Current Step Title: Migrate call composition to signature refs
   `src/backend/bir/lir_to_bir/calling.cpp` was removed for this slice; the
   compiled backend interface path is the monolithic importer in
   `src/backend/bir/lir_to_bir.cpp`.
+- Step 3A is declaration/callee signature admission only. Do not take on
+  variadic body-use, va_list lowering, variadic argument value identity, or
+  runtime helper work under source 839.
+- Step 3B may add a raw extern one-way adapter for function-signature facts, but
+  must not absorb the broader global/extern type-fact migration owned by later
+  work such as 844.
+- Step 3C may split store-backed signature authority from retained
+  verifier-local ABI metadata, but must return to plan-owner if it requires
+  aggregate producer migration, body parameter authority, or unrestricted value
+  carrier work.
 
 ## Proof
 

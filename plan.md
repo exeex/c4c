@@ -133,6 +133,75 @@ Completion check: fresh build plus focused call lowering/verifier proof shows
 calls compose legal signature refs, reject mismatches, and preserve raw
 compatibility only as a named one-way adapter.
 
+#### Step 3A - Repair variadic declaration admission before call migration
+
+Goal: make backend LIR variadic declaration/import admission reach the
+signature-ref call verifier path without making variadic text authoritative.
+
+Actions:
+
+- Inspect the monolithic `backend_lir` importer path that rejects variadic
+  function declarations before typed-call verification runs.
+- Route the existing variadic declaration shape through the module
+  function-signature store, including structured variadic state and return
+  extension attributes already present in the signature facts.
+- Keep unsupported variadic body-use, va_list, and variadic argument value
+  lowering outside this step; this step only admits the declaration/callee
+  signature facts needed for call composition checks.
+- Add or update nearby backend LIR coverage proving a variadic direct-call
+  fixture reaches store-backed callee-signature validation and that malformed
+  or stale variadic mirror disagreement still fails closed.
+
+Completion check: fresh build plus focused `backend_lir` proof demonstrates a
+variadic call-composition consumer resolving `callee_signature_ref` through the
+module store before any retained signature/text fallback.
+
+#### Step 3B - Add raw extern signature-store adapter entries
+
+Goal: preserve raw extern direct-call compatibility as a named one-way adapter
+that produces module function-signature facts for call verification.
+
+Actions:
+
+- Inspect raw extern declaration recording and direct-call lowering surfaces
+  that currently lack module function-signature store entries.
+- Add the narrow adapter from raw extern declaration facts to
+  `LirFunctionSignatureRef` entries needed by migrated direct-call consumers.
+- Keep global/extern initializer family migration and broad extern type-fact
+  cleanup out of scope; this step only creates function-signature facts for
+  raw extern call compatibility.
+- Prove that raw extern direct calls resolve store-backed signature refs and
+  that compatibility does not become a semantic text fallback after migration.
+
+Completion check: fresh build plus focused backend LIR proof demonstrates raw
+extern direct calls compose through signature refs while malformed or mismatched
+extern signature facts fail closed.
+
+#### Step 3C - Split byval store authority from retained ABI metadata
+
+Goal: make fixed aggregate/byval call composition consume module signature-store
+facts while preserving retained ABI-shaped metadata only for still-owned
+verifier argument checks.
+
+Actions:
+
+- Inspect the fixed byval aggregate call verifier path where the signature
+  store carries byval pointee/store facts but retained `callee_signature` still
+  supplies ABI-shaped parameter metadata.
+- Introduce the smallest explicit bridge or representation split that lets
+  store facts be authoritative for call signature composition without deleting
+  retained ABI metadata needed by existing verifier checks.
+- Do not migrate aggregate producers, body parameter authority, argument value
+  identity, or unrestricted value carriers; if that broader work becomes
+  required, stop and return to plan-owner for a separate blocker idea.
+- Prove store/retained disagreement, store/call parameter mismatch, and
+  wrong-module aggregate alternatives continue to fail closed.
+
+Completion check: fresh build plus focused backend LIR proof demonstrates a
+fixed byval aggregate call composing through the module signature store, with
+retained ABI metadata treated as verifier-local compatibility rather than
+semantic signature authority.
+
 ### Step 4 - Migrate printer and reference collectors
 
 Goal: make debug/printer/reference surfaces observe nominal signature facts
