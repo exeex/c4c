@@ -8,17 +8,18 @@ Current Step Title: Receive The One 829-Authorized Body-Parameter Argument-1 Row
 
 ## Just Finished
 
-Activated 734 after closed 829 supplied the exact next body-parameter
-authority handoff. Accepted 734 Steps 1 through 7.40 remain historical work;
-Step 7.40 receiver commit `6609d92d4` must not be repeated.
+Completed Step 7.41. Raw BIR now receives closed 829's
+`FixedDirectCallArgument1` DirectScalar body-parameter authority row, preserving
+the selected source value, owner, parameter index, argument index, scalar type,
+and direct-call argument/signature coherence through the call node. The
+receiver keeps the accepted argument-0 row and rejects malformed argument-1
+authority transactionally.
 
 ## Suggested Next
 
-Implement Step 7.41: receive only closed 829's current-function
-`DirectScalar` parameter 1 tuple, used unchanged as fixed direct-call
-argument 1 at `LirCallOp.structured_args[1]`, into typed Raw BIR with importer
-dispatch, reachable verifier coverage, and transactional malformed-authority
-tests.
+Return to the 734 source completion gate. Do not infer source completion from
+this bounded receiver row alone; reassess the no-omission matrix and identify
+the next first-owner blocker or receiver-ready row.
 
 ## Watchouts
 
@@ -33,5 +34,12 @@ tests.
 
 ## Proof
 
-Pending. Use a fresh build plus focused backend receiver proof and matching
-before/after regression guard before acceptance.
+Passed matching focused regression proof:
+
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$' ) > test_before.log 2>&1`
+
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$' ) > test_after.log 2>&1 && git diff --check`
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: before 1/1, after 1/1, no new failures; `git diff --check` passed.
