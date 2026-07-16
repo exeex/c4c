@@ -1,6 +1,6 @@
 # LIR Next Body Parameter Authority Handoff
 
-Status: Open
+Status: Closed
 Parent Return: ideas/open/734_lir_to_new_bir_container_completeness.md after accepted Step 7.44 receiver commit `e0540da75`
 Type: producer/schema/verifier handoff for one function-body parameter row
 
@@ -77,3 +77,61 @@ verify malformed forms fail closed, and record an exact handoff back to 734.
 - Reject expectation downgrades, unsupported-to-supported label changes,
   helper-only refactors, or named-case-only checks claimed as capability
   progress.
+
+## Closure Handoff
+
+Status: Closed
+Disposition: Capability complete for this bounded producer-side handoff.
+
+Selected row:
+
+- `LirBinOp.scalar_rhs_parameter_authority` for a current-function
+  `DirectScalar` floating parameter used as the RHS of binary `fmul`.
+- Producer shape: `return 2.0 * x;`.
+
+Native authority tuple:
+
+- original parameter `LirValueId`
+- current `LirFunction.link_name_id` owner
+- parameter index
+- matching floating `LirTypeRef`
+- `LirNativeBodyParameterAbi::DirectScalar`
+- explicit `LirScalarBinaryParameterRole::Rhs`
+
+Consumer relation:
+
+- `LirBinOp` opcode is `fmul`.
+- `rhs` is the same parameter SSA/value as the authority tuple.
+- `type_str` matches the authority type.
+- `lhs` is a nonselected scalar operand.
+
+Malformed coverage rejects omitted/missing, invalid, duplicate definition,
+foreign owner, wrong index, wrong type, wrong ABI, wrong role, non-`fmul`, RHS
+mismatch, type mismatch, selected-LHS incoherence, and duplicate selected
+consumer forms.
+
+Accepted proof:
+
+- Focused proof passed 1/1 with regression guard:
+  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_function_signature_type_ref$' ) > test_after.log 2>&1 && git diff --check`
+- Broader shared-verifier guard passed 7/7 before and after with matching
+  stash-based runs:
+  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_' )`
+
+Implementation commit:
+
+- `a23031c8f` (`Prove fmul rhs parameter authority`)
+
+734 return action:
+
+- Reactivate/return to
+  `ideas/open/734_lir_to_new_bir_container_completeness.md` for a future
+  bounded Raw-BIR receiver packet that receives only this selected `fmul` RHS
+  `DirectScalar` parameter-use row into typed Raw BIR.
+- Do not start Raw-BIR receiver implementation from this producer-side
+  handoff.
+
+Remaining scope:
+
+- All nonselected parameter rows and non-parameter families remain outside
+  this handoff and fail closed here.
