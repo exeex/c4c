@@ -1,47 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/855_lir_next_body_parameter_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Select The Next Body-Parameter Authority Row
+Current Step ID: 2
+Current Step Title: Publish And Verify The Selected Authority
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 1 by selecting exactly one next currently produced
-function-body parameter-use row after accepted 734 Step 7.43:
-`LirBinOp.scalar_lhs_parameter_authority` for a current-function
-`DirectScalar` floating parameter used as the LHS of a binary floating
-multiply (`fmul`). The selected authority tuple is the original parameter
-`LirValueId`, current `LirFunction.link_name_id` owner, parameter index,
-matching floating `LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`,
-and explicit `LirScalarBinaryParameterRole::Lhs`. The selected consumer
-relation is a `LirBinOp` whose opcode is `fmul`, whose `lhs` is the same
-parameter SSA/value, whose `type_str` matches the authority type, and whose
-`rhs` is a nonselected scalar operand.
+Completed `plan.md` Step 2 for the selected
+`LirBinOp.scalar_lhs_parameter_authority` row: the existing carrier/emitter
+already published the native current-function DirectScalar LHS tuple for
+floating `fmul`, and the verifier now fails closed unless that floating LHS
+authority is consumed by the selected `fmul` relation with a nonselected scalar
+RHS. Added focused frontend coverage for the positive `double x * 2.0` row and
+malformed authority/consumer cases covering omitted, invalid, duplicate,
+foreign, owner/index/type/ABI/role, non-`fmul`, LHS mismatch, type mismatch,
+and RHS consumer incoherence.
 
 ## Suggested Next
 
-Execute `plan.md` Step 2 for only the selected binary-`fmul` LHS row: publish
-or tighten the native producer/schema/verifier contract as needed and add
-focused positive plus malformed-authority coverage for the selected tuple and
-consumer relation. Do not implement the Raw-BIR receiver.
+Supervisor should choose the next packet. A coherent next slice is the
+downstream handoff for only this selected binary-`fmul` LHS row if the runbook
+intends receiver work next; otherwise keep later rows separate.
 
 ## Watchouts
 
-Accepted rows through 734 Step 7.43 remain excluded: DirectPointer GEP,
-DirectScalar binary LHS/RHS, DirectScalar return value, DirectScalar switch
-selector, DirectScalar truthiness-comparison LHS, fixed direct-call arguments
-0 and 1, DirectPointer pointer truthiness, and DirectScalar unary `fneg`.
-The selected binary-`fmul` LHS row reuses the native scalar-LHS authority shape
-but is a distinct consumer relation. Later or nonselected candidates remain
-fail closed: binary RHS for this row, other binary opcodes, comparison
-variants, additional call arguments beyond the established argument-0/1
-contracts, aggregate/vector, memory/VA, module/type/global/metadata, residual
-instruction/terminator, inline assembly, byval/non-direct ABI forms, and any
-row that would require text, names, rendered operands, signatures,
-diagnostics, compatibility mirrors, `monostate`, or testcase shape.
+`ir.hpp` and `hir_to_lir/expr/binary.cpp` were intentionally left unchanged:
+the existing scalar-LHS authority carrier and emitter already support the
+selected row. Raw-BIR receiver files, backend tests, `plan.md`, source ideas,
+and `test_before.log` remain untouched. Later or nonselected candidates remain
+out of scope for this packet.
 
 ## Proof
 
-`git diff --check`
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_function_signature_type_ref$' ) > test_after.log 2>&1 && git diff --check`
+
+Passed. Proof log: `test_after.log`.

@@ -3005,6 +3005,29 @@ void verify_function_value_ownership(const LirModule& mod,
         *op.lhs.value_id() != authority.value || op.type_str != authority.type) {
       fail_verify(field, "requires one native direct-scalar current-function LHS value binding");
     }
+    if (authority.type.kind() == LirTypeKind::Floating) {
+      const std::optional<LirBinaryOpcode> opcode = op.opcode.typed();
+      if (opcode != LirBinaryOpcode::FMul && opcode != LirBinaryOpcode::FNeg) {
+        fail_verify(field,
+                    "floating LHS parameter authority is limited to selected fmul and fneg consumers");
+      }
+      if (opcode == LirBinaryOpcode::FMul) {
+        const bool rhs_is_direct_scalar_parameter =
+            op.rhs.value_id() &&
+            std::any_of(function.native_body_parameter_definitions.begin(),
+                        function.native_body_parameter_definitions.end(),
+                        [&](const auto& definition) {
+                          return definition.value == *op.rhs.value_id() &&
+                                 definition.abi ==
+                                     LirNativeBodyParameterAbi::DirectScalar;
+                        });
+        if (op.rhs.empty() || op.scalar_rhs_parameter_authority ||
+            rhs_is_direct_scalar_parameter) {
+          fail_verify(field,
+                      "selected floating fmul LHS authority requires a nonselected scalar RHS");
+        }
+      }
+    }
     const auto matches = std::count_if(
         function.native_body_parameter_definitions.begin(),
         function.native_body_parameter_definitions.end(), [&](const auto& definition) {
