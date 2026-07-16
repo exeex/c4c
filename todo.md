@@ -1,35 +1,32 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/848_hir_aggregate_occurrence_canonical_ref_population.md
+Source Idea Path: ideas/open/849_hir_function_signature_direct_aggregate_ref_carrier.md
 Source Plan Path: plan.md
-Current Step ID: 2b
-Current Step Title: Populate canonical refs for aggregate function signatures
+Current Step ID: 1
+Current Step Title: Locate the signature semantic carrier seam
 
 ## Just Finished
 
-- Step 2a complete: ordinary and template-instantiated module-owned aggregate
-  definition construction now store their issued `HirAggregateRef` on
-  `HirStructDef`; `qtype_from` accepts only an explicit optional ref and copies
-  it only when complete and owned by its module. Focused coverage proves valid
-  direct input and missing, incomplete, and foreign inputs fail closed.
+- Lifecycle switch: 848 Steps 1 and 2a remain accepted; 848 Step 2b is parked
+  pending this distinct upstream direct semantic-construction carrier.
 
 ## Suggested Next
 
-- Step 2b should thread the stored direct `HirStructDef::aggregate_ref` into
-  function return and parameter construction call sites, without recovering
-  identity from legacy metadata.
+- Trace the return and parameter semantic construction routes and identify the
+  smallest direct definition-backed carrier/API that reaches both lowering
+  call sites without type-derived recovery.
 
 ## Watchouts
 
-- This blocker owns HIR occurrence fact production only. Do not migrate LIR or
-  recover aggregate identity from legacy owner keys, tags, text, parser
-  pointers, or a Node-to-HIR map.
-- Existing `qtype_from` callers still omit the new ref by default; Step 2b owns
-  the function-signature propagation work.
+- Do not use parser, `TypeSpec`, `record_def`, owner/structured-owner, tag,
+  text, parser-pointer, `Node*` map, or reconstructed lookup as canonical
+  identity.
+- Do not edit `qtype_from`, attach occurrence refs, or change LIR; those are
+  outside this blocker and 848 resumes Step 2b after acceptance.
 
 ## Proof
 
-- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure
-  -R '^frontend_hir_tests$' | tee test_after.log` passed; proof log:
-  `test_after.log`.
+- No blocker implementation or proof is accepted yet. Parent evidence retained
+  in 848: commit `359a9b94b`; focused `frontend_hir_tests` command passed and
+  is recorded in `test_after.log`.
