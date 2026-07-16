@@ -10331,6 +10331,60 @@ void test_direct_integer_call_receipt_and_rejections() {
          "direct integer call must ignore retained text when signature ref resolves");
   inspect(raw_stale_text.value(), "Raw BIR stale-text direct integer call");
 
+  const auto make_variadic_decl_module = [] {
+    auto module = direct_integer_call_module();
+    attach_direct_integer_function_signature_ref(module);
+    auto& target = module.functions[1];
+    target.signature_is_variadic = true;
+    auto& call =
+        std::get<lir::LirCallOp>(module.functions[0].blocks[0].insts[1]);
+    call.callee =
+        lir::LirOperand::global("@direct_integer_target",
+                                call.direct_callee_link_name_id);
+    call.callee_signature->is_variadic = true;
+    module.function_signature_store[target.function_signature_ref.value]
+        .is_variadic = true;
+    return module;
+  };
+  const auto variadic_decl_call = make_variadic_decl_module();
+  const auto raw_variadic_decl_call =
+      bir::lower_lir_to_raw_bir(variadic_decl_call);
+  expect(!raw_variadic_decl_call.has_value() &&
+             raw_variadic_decl_call.error().code ==
+                 bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+         "store-backed variadic declaration must reach direct-call signature validation");
+  const auto canonical_variadic_decl_call =
+      bir::lower_lir_to_canonical_bir(variadic_decl_call);
+  expect(!canonical_variadic_decl_call.has_value() &&
+             canonical_variadic_decl_call.error().code ==
+                 bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+         "canonical store-backed variadic declaration must reach direct-call signature validation");
+
+  auto stale_retained_variadic = make_variadic_decl_module();
+  auto& stale_retained_call = std::get<lir::LirCallOp>(
+      stale_retained_variadic.functions[0].blocks[0].insts[1]);
+  stale_retained_call.callee_signature->is_variadic = false;
+  const auto raw_stale_retained =
+      bir::lower_lir_to_raw_bir(stale_retained_variadic);
+  expect(!raw_stale_retained.has_value() &&
+             raw_stale_retained.error().code ==
+                 bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+         "retained/store variadic disagreement must reject through call validation");
+
+  auto stale_variadic_store = make_variadic_decl_module();
+  stale_variadic_store
+      .function_signature_store[stale_variadic_store.functions[1]
+                                    .function_signature_ref.value]
+      .is_variadic = false;
+  const auto raw_stale_variadic_store =
+      bir::lower_lir_to_raw_bir(stale_variadic_store);
+  expect(!raw_stale_variadic_store.has_value(),
+         "declaration/store variadic mirror disagreement must fail closed");
+  const auto canonical_stale_variadic_store =
+      bir::lower_lir_to_canonical_bir(stale_variadic_store);
+  expect(!canonical_stale_variadic_store.has_value(),
+         "canonical declaration/store variadic mirror disagreement must fail closed");
+
   const auto rejected = [](auto mutate, const std::string& message) {
     auto rejected_module = direct_integer_call_module();
     attach_direct_integer_function_signature_ref(rejected_module);

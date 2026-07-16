@@ -8,26 +8,21 @@ Current Step Title: Repair variadic declaration admission before call migration
 
 ## Just Finished
 
-- Step 3 fixed direct-call argument-authority slice completed: the compiled
-  BIR validation consumer for `fixed_direct_call_argument_parameter_authority`
-  now resolves `callee_signature_ref` through the module function signature
-  store before retained `callee_signature`, permits retained signature absence
-  when the store entry resolves, and keeps retained/store plus store/call
-  parameter mismatches fail-closed. Nearby backend coverage now proves the
-  store-backed authority path without retained `callee_signature`, a mismatched
-  call parameter ref rejection, and retained structured disagreement rejection,
-  without claiming 829/830 argument value identity.
+- Step 3A completed: backend LIR variadic declarations now pass function
+  admission only when declaration mirrors match module-owned
+  `LirFunctionSignatureRef` store facts, including structured variadic state,
+  fixed-prefix refs/byval facts, and return extension attributes. Nearby
+  backend coverage proves a variadic direct-call fixture reaches
+  store-backed `callee_signature_ref` validation, while retained/store and
+  declaration/store variadic disagreement fail closed without making retained
+  text or parsed call strings authoritative.
 
 ## Suggested Next
 
-- Continue repaired Step 3 at Step 3A: inspect the monolithic `backend_lir`
-  importer path that rejects variadic function declarations before typed-call
-  verification can run, then make that declaration/callee signature shape reach
-  store-backed `callee_signature_ref` validation without making variadic text,
-  parsed calls, or retained mirrors authoritative.
-- After Step 3A, continue with Step 3B raw extern signature-store adapter
-  entries, then Step 3C fixed byval aggregate store-authority/retained-ABI
-  metadata split.
+- Continue repaired Step 3 at Step 3B: add the narrow raw extern
+  signature-store adapter entries needed for direct-call compatibility through
+  `LirFunctionSignatureRef`, without absorbing broader extern/global type-fact
+  migration.
 
 ## Watchouts
 
@@ -54,9 +49,9 @@ Current Step Title: Repair variadic declaration admission before call migration
   `src/backend/bir/lir_to_bir/calling.cpp` was removed for this slice; the
   compiled backend interface path is the monolithic importer in
   `src/backend/bir/lir_to_bir.cpp`.
-- Step 3A is declaration/callee signature admission only. Do not take on
-  variadic body-use, va_list lowering, variadic argument value identity, or
-  runtime helper work under source 839.
+- Step 3A admitted only variadic declaration/callee signature facts. Variadic
+  body-use, va_list lowering, variadic argument value identity, and runtime
+  helper work remain out of scope under source 839.
 - Step 3B may add a raw extern one-way adapter for function-signature facts, but
   must not absorb the broader global/extern type-fact migration owned by later
   work such as 844.

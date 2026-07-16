@@ -454,6 +454,34 @@ std::optional<std::vector<Type>> lower_function_parameter_types(
   return lowered;
 }
 
+bool variadic_declaration_signature_store_matches(
+    const LirModule& module, const LirFunction& function) {
+  if (!function.is_declaration || !function.signature_is_variadic ||
+      function.signature_has_void_param_list)
+    return false;
+  const auto* stored =
+      module.find_function_signature(function.function_signature_ref);
+  if (stored == nullptr || !stored->is_variadic ||
+      stored->has_void_param_list != function.signature_has_void_param_list ||
+      stored->return_ext_attr != function.signature_return_ext_attr ||
+      stored->return_type_ref.has_value() !=
+          function.signature_return_type_ref.has_value() ||
+      (stored->return_type_ref.has_value() &&
+       *stored->return_type_ref != *function.signature_return_type_ref) ||
+      stored->fixed_param_type_refs != function.signature_param_type_refs ||
+      stored->fixed_param_is_byval.size() != function.signature_params.size())
+    return false;
+  for (std::size_t index = 0; index < function.signature_params.size();
+       ++index) {
+    if (stored->fixed_param_is_byval[index] !=
+        function.signature_params[index].is_byval)
+      return false;
+  }
+  LirFunction fixed_prefix = function;
+  fixed_prefix.signature_is_variadic = false;
+  return lower_function_parameter_types(module, fixed_prefix).has_value();
+}
+
 const codegen::lir::LirFunctionSignatureStoreEntry* resolved_call_signature(
     const LirModule& module, const LirCallOp& call) {
   if (!call.callee_signature_ref.valid()) return nullptr;
@@ -2456,10 +2484,18 @@ Result<void, ImportError> validate_function(const LirModule& module,
        (function.is_internal || function.can_elide_if_unreferenced)))
     return fail<void>(ImportErrorCode::UnsupportedFunctionMetadata, name, {},
                       "function linkage/elision metadata violates producer invariants");
-  if (function.signature_is_variadic)
+  if (function.signature_is_variadic && !function.is_declaration)
     return fail<void>(ImportErrorCode::UnsupportedVariadicFunction, name, {},
                       "variadic functions require explicit signature lowering");
-  if (!lower_function_parameter_types(module, function))
+  const bool admitted_variadic_declaration =
+      function.signature_is_variadic &&
+      variadic_declaration_signature_store_matches(module, function);
+  if (function.signature_is_variadic && !admitted_variadic_declaration)
+    return fail<void>(ImportErrorCode::UnsupportedVariadicFunction, name, {},
+                      "variadic declarations require matching module "
+                      "function-signature store facts");
+  if (!admitted_variadic_declaration &&
+      !lower_function_parameter_types(module, function))
     return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
                       "function parameters are outside exact zero, void-list, "
                       "or target-stable plain scalar receipt");
