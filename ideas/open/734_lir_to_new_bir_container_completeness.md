@@ -2323,3 +2323,43 @@ runbook only for that matching typed Raw-BIR receiver row. Do not repeat Step
 7.48 or receive another parameter, memory/VA, aggregate/vector,
 module/type/global, instruction/terminator, or inline-assembly form without
 its separately scoped first-owner handoff.
+
+## Resumption Record: DirectScalar binary-fsub-RHS parameter authority completion
+
+Closed idea 860 completed the next body-parameter producer handoff with
+accepted implementation `ed64ebcf1`. The selected row is
+`LirBinOp.scalar_rhs_parameter_authority` for a current-function
+`DirectScalar` floating parameter used as the RHS of binary `fsub`, with
+producer shape `return 2.0 - x;`.
+
+The handed-off native tuple is the original parameter `LirValueId`, current
+`LirFunction.link_name_id` owner, parameter index, matching floating
+`LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`, and explicit
+`LirScalarBinaryParameterRole::Rhs`. The selected consumer relation is a
+`LirBinOp` `fsub` whose `rhs` is the same parameter SSA/value as the authority
+tuple, whose `type_str` matches the authority type, and whose `lhs` is a
+nonselected scalar operand.
+
+The existing emitter already publishes the carrier. The verifier admits this
+selected floating `fsub` RHS authority, requires a nonselected scalar LHS, and
+rejects duplicate selected floating-`fsub` RHS consumers in the current
+function. Malformed coverage rejects absent, invalid, duplicate, foreign owner,
+owner/index/type, ABI, role, and consumer-incoherent forms for the selected
+row.
+
+Accepted proof is commit `0dd523030` closing 860 after implementation commit
+`ed64ebcf1`: focused
+`^frontend_lir_function_signature_type_ref$` producer/verifier proof, full
+suite proof with `3038/3038`, and `git diff --check`. No Raw-BIR receiver work
+landed in 860.
+
+Exact return action: reactivate 734 at Step 7.49 for one bounded Raw-BIR
+receiver packet only: receive the selected binary-`fsub` RHS DirectScalar
+parameter-use row into typed Raw BIR, preserving the handed-off parameter tuple
+and binary consumer coherence in the container, importer, reachable verifier
+path, and transactional positive/negative coverage. Do not repeat Step 7.48,
+edit LIR producer authority, receive another floating binary parameter use,
+memory/VA, aggregate/vector, module/type/global/metadata, residual
+instruction/terminator, inline-assembly, ABI-expanded or aggregate parameters,
+generic parameter sweeps, or any other family without its separately scoped
+first-owner handoff.
