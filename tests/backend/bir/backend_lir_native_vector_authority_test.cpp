@@ -348,6 +348,33 @@ void test_native_vector_authority_verifier_boundary() {
   expect_rejected(std::move(selected_shuffle_store_element_mismatch),
                   "selected splat shuffle must reject vector-store element mismatch");
 
+  auto selected_shuffle_mask_lane_count_mismatch = selected_scalar_to_vector_splat_module();
+  auto& mask_lane_count_shuffle = std::get<lir::LirShuffleVectorOp>(
+      selected_shuffle_mask_lane_count_mismatch.functions[0].blocks[0].insts[1]);
+  mask_lane_count_shuffle.native_vector_authority->vector_ref =
+      selected_shuffle_mask_lane_count_mismatch.register_vector({5, lir::LirTypeRef::integer(32)});
+  mask_lane_count_shuffle.vec_type = lir::LirTypeRef("<5 x i32>");
+  mask_lane_count_shuffle.native_vector_authority->result_shape.lane_count = 5;
+  mask_lane_count_shuffle.native_vector_authority->first_vector_shape->lane_count = 5;
+  mask_lane_count_shuffle.mask_type = lir::LirTypeRef("<5 x i32>");
+  expect_rejected(std::move(selected_shuffle_mask_lane_count_mismatch),
+                  "selected splat shuffle mask lanes must mirror vector-store lane count");
+
+  auto selected_shuffle_mask_type_mismatch = selected_scalar_to_vector_splat_module();
+  auto& mask_type_shuffle = std::get<lir::LirShuffleVectorOp>(
+      selected_shuffle_mask_type_mismatch.functions[0].blocks[0].insts[1]);
+  mask_type_shuffle.native_vector_authority->vector_ref =
+      selected_shuffle_mask_type_mismatch.register_vector({5, lir::LirTypeRef::integer(32)});
+  mask_type_shuffle.vec_type = lir::LirTypeRef("<5 x i32>");
+  mask_type_shuffle.native_vector_authority->result_shape.lane_count = 5;
+  mask_type_shuffle.native_vector_authority->first_vector_shape->lane_count = 5;
+  mask_type_shuffle.native_vector_authority->mask_lanes.push_back({
+      .kind = lir::LirShuffleMaskLane::Kind::Selected,
+      .selected_lane = 0,
+  });
+  expect_rejected(std::move(selected_shuffle_mask_type_mismatch),
+                  "selected splat shuffle mask type must mirror vector-store lane count");
+
   auto missing_owner = vector_authority_module();
   std::get<lir::LirInsertElementOp>(missing_owner.functions[0].blocks[0].insts[0])
       .native_vector_authority->owner = c4c::kInvalidLinkName;

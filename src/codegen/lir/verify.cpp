@@ -3437,6 +3437,11 @@ void verify_function_value_ownership(const LirModule& mod,
           fail_verify("LirShuffleVectorOp.vec_type",
                       "must mirror the scalar-to-vector splat vector store fact");
         }
+        if (authority.mask_lanes.size() != vector->lane_count ||
+            op.mask_type.str() != "<" + std::to_string(vector->lane_count) + " x i32>") {
+          fail_verify("LirShuffleVectorOp.native_vector_authority.mask_lanes",
+                      "must mirror the scalar-to-vector splat vector store lane count");
+        }
         if (authority.result_shape.lane_count != vector->lane_count ||
             authority.result_shape.element_type != vector->element_type ||
             authority.result_shape.element_type.str() != vector->element_type.str() ||
@@ -3488,8 +3493,9 @@ void verify_function_value_ownership(const LirModule& mod,
       }
       verify_vector_authority(*op, "LirShuffleVectorOp", op->vec1, &op->vec2, nullptr, nullptr, nullptr, op->vec_type);
       if (op->native_vector_authority &&
-          (op->native_vector_authority->mask_lanes.size() != op->native_vector_authority->result_shape.lane_count ||
-           op->mask_type.str() != "<" + std::to_string(op->native_vector_authority->result_shape.lane_count) + " x i32>" ||
+          ((!op->requires_native_vector_authority &&
+            (op->native_vector_authority->mask_lanes.size() != op->native_vector_authority->result_shape.lane_count ||
+             op->mask_type.str() != "<" + std::to_string(op->native_vector_authority->result_shape.lane_count) + " x i32>")) ||
            !op->mask.special_token() || *op->mask.special_token() != LirSpecialToken::ZeroInitializer ||
            std::any_of(op->native_vector_authority->mask_lanes.begin(),
                        op->native_vector_authority->mask_lanes.end(),
