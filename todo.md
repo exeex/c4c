@@ -1,36 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/866_lir_remaining_authority_owner_triage.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify remaining families by first owner
+Current Step ID: 3
+Current Step Title: Generate ordered follow-up ideas and close the umbrella
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 by creating
-`docs/lir_remaining_authority_owner_triage/current_evidence.md`. The evidence
-records that 734 is accepted through Step 7.51 at `750b6b3ba`, that 865
-produced no handoff, that `LirAbsOp` selected-global/i32 is already received
-by `0c44e810ad`, and that accepted/stale rows must not be reopened.
+Completed Step 2 by creating
+`docs/lir_remaining_authority_owner_triage/classification.md`. The
+classification separates documentation/research, LIR producer/schema, LIR
+verifier, collector/import-preparation, Raw-BIR receiver, and terminal policy
+ownership; rejects generic residual sweeps as current successors; and
+reconciles stale overlapping open ideas against post-Step-7.51 734 state.
 
 ## Suggested Next
 
-Execute Step 2 by classifying CFG/PHI residuals, memory/VA,
-aggregate/vector, module/type/global/metadata, residual
-instruction/terminator, inline-assembly, generic residual sweeps, and stale
-overlapping open ideas by first owning layer.
+Execute Step 3 by generating or repairing ordered follow-up ideas under
+`ideas/open/` from the classification, then ask plan-owner to close or
+otherwise disposition the umbrella.
 
 ## Watchouts
 
-Do not implement code or tests in this umbrella. Do not reopen the accepted
-`LirAbsOp` selected-global/i32 receipt, direct-call argument 0/1 receipts,
-body-parameter receipts, local-object/VLA receipts, or accepted call-result
-rows. Stale open ideas need reconciliation before they can become current 734
-successors.
+Do not implement code or tests in this umbrella. Keep each generated follow-up
+single-owner and single-layer unless the source explicitly requires a bounded
+handoff/return pairing. Do not route 734 Raw-BIR receiver work before a typed
+LIR handoff exists, and do not reopen accepted `LirAbsOp`, direct-call
+argument 0/1, body-parameter, local-object/VLA, or call-result rows.
 
 ## Proof
 
-Docs-only Step 1 proof: `git diff --check`. No `test_after.log` was written
+Docs-only Step 2 proof: `git diff --check`. No `test_after.log` was written
 because the delegated proof command is documentation-only and produces no
 test log.
