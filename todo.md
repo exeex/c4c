@@ -10,34 +10,55 @@ Current Step Title: Select and publish one next body-parameter authority row
 
 ## Just Finished
 
-Lifecycle switch from 734 after accepted Step 7.46. The 734 source completion
-gate remains unmet, and no further Raw-BIR receiver row is authorized without
-a separately scoped producer handoff.
+Completed `plan.md` Step 1 by selecting and proving exactly one next
+producer-side body-parameter row: `LirBinOp.scalar_rhs_parameter_authority`
+for a current-function `DirectScalar` floating parameter used as the RHS of
+binary floating add `fadd`, with producer shape equivalent to
+`return 2.0 + x;`.
+
+The existing emitter already publishes the native RHS carrier. The verifier now
+admits that tuple only for selected floating `fadd` or `fmul` RHS authority,
+requires a nonselected scalar LHS, and rejects duplicate selected
+floating-`fadd` RHS consumers in the current function.
+
+Focused coverage asserts the positive producer tuple: original parameter
+`LirValueId`, current `LirFunction.link_name_id` owner, parameter index,
+matching floating `LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`, and
+explicit `LirScalarBinaryParameterRole::Rhs`. Malformed coverage rejects
+omitted/missing, invalid, duplicate definition, foreign owner, wrong index,
+wrong type, wrong ABI, wrong role, non-`fadd`, RHS mismatch, type mismatch,
+selected-LHS incoherence, and duplicate selected consumer forms. Neighboring
+`fmul` RHS malformed coverage now uses nonselected `fsub` as the rejected
+opcode because `fadd` RHS is the newly selected row.
 
 ## Suggested Next
 
-Execute `plan.md` Step 1 for `ideas/open/858_lir_next_body_parameter_authority_handoff.md`:
-select and publish exactly one next valid function-body parameter-use authority
-row, then hand it back to 734 for a later receiver packet.
+Record and close the producer handoff for 858, then return to 734 for a future
+bounded Raw-BIR receiver packet that receives only the selected binary-`fadd`
+RHS DirectScalar parameter-use row into typed Raw BIR. Do not start Raw-BIR
+receiver implementation from this producer packet.
 
 ## Watchouts
 
 Do not edit Raw-BIR/importer receiver code in this successor. Do not repeat or
-reopen accepted 734 body-parameter receiver rows through Step 7.46. Do not
-select from presentation fields, generic parameter sweeps, ABI-expanded or
-aggregate parameter families, memory/VA, aggregate/vector,
-module/type/global/metadata, residual instruction/terminator, inline-assembly,
-or any other family.
+reopen accepted 734 body-parameter receiver rows through Step 7.46. Floating
+binary-`fsub`/`fdiv` rows, other floating binary parameter uses, presentation
+fields, generic parameter sweeps, ABI-expanded or aggregate parameter
+families, memory/VA, aggregate/vector, module/type/global/metadata, residual
+instruction/terminator, inline-assembly, and any other family remain
+nonselected and fail closed here.
 
 ## Proof
 
-Required proof for the successor implementation:
+Focused proof and broader frontend-LIR guard:
 
 ```
-cmake --build --preset default
-ctest --test-dir build -j --output-on-failure -R '<focused producer/verifier executable selected by supervisor>'
-git diff --check
+( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_function_signature_type_ref$' ) > test_after.log 2>&1 && git diff --check
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+
+( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_' ) > test_before.log 2>&1
+( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_' ) > test_after.log 2>&1 && git diff --check
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
 ```
 
-Escalate to a matching broader before/after guard if shared LIR producer or
-verifier code is touched.
+Both matching before/after guards passed with no new or unresolved failures.
