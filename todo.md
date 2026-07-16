@@ -8,36 +8,35 @@ Current Step Title: Retire selected parameter legacy mirrors only with parity
 
 ## Just Finished
 
-Completed plan.md Step 3 for the selected link-backed extern fixed aggregate
-byval parameter form. The extern declaration printer now renders the selected
-fixed aggregate byval parameter list from `LirExternDecl.function_signature_ref`
-and the nominal `LirFunctionSignatureStoreEntry` carrier when present, while
-legacy extern declarations without the selected structured carrier keep the
-existing `(...)` compatibility output.
+Completed plan.md Step 4 for the selected link-backed extern fixed aggregate
+byval parameter form as a bounded no-code retirement conclusion. No selected
+semantic authority remains in final declaration text, `callee_type_suffix`, or
+`args_str` when the valid extern signature-store carrier is present, but those
+text mirrors still serve compatibility/output and fallback roles for
+unselected declaration forms, nonaggregate parameters, retained call signature
+parity, and legacy typed-call parsing.
 
 ## Suggested Next
 
-Execute plan.md Step 4 for the selected extern aggregate byval parameter form:
-retire or demote only selected parameter text mirrors if all named verifier,
-printer, and backend consumers have migrated. If final declaration text,
-`callee_type_suffix`, `args_str`, or retained signature text remains required
-as compatibility/output text for unselected forms, record a bounded no-code
-retirement conclusion instead of deleting it.
+Send the exhausted repaired runbook to plan-owner for semantic disposition of
+idea 844: close if the selected global aggregate, extern aggregate return, and
+extern aggregate byval parameter slices satisfy the durable source criteria, or
+repair/switch if another in-scope global/extern type-fact target remains.
 
 ## Watchouts
 
-The corrected proof route for this build is the three-test interface/frontend
-subset below; the old `ctest -R backend_lir_to_bir_notes_test` route matches
-zero tests and must not be treated as proof. Step 3 deliberately did not add
-direct `LirExternDecl` parameter fields. Keep Step 4 inside the same selected
-extern aggregate byval parameter form and do not widen into return facts,
-initializer text, collector-only receiver work, Raw-BIR import work, varargs
-policy, nonaggregate declaration rendering, or non-type string routing.
+Keep lifecycle disposition inside idea 844 global/extern type facts. Do not
+reopen initializer payload semantics, global policy identity, collector-only
+receiver work, Raw-BIR import work, varargs policy, nonaggregate declaration
+rendering, or non-type string routing. The old
+`ctest -R backend_lir_to_bir_notes_test` route matches zero tests and must not
+be treated as proof.
 
 ## Proof
 
-Ran corrected after command:
+Step 4 was no-code. Prior Step 3 corrected proof remains the relevant accepted
+code proof:
 `{ cmake --build build && ctest --test-dir build -R '^backend_lir_to_bir_interface$|^frontend_lir_extern_decl_type_ref$|^frontend_lir_global_label_address_initializer$' --output-on-failure; } > test_after.log 2>&1`
 
 Result: passed; `test_after.log` contains a successful build and 3/3 passing
-tests. Also ran `git diff --check`; passed.
+tests. For this no-code conclusion, run `git diff --check` before handoff.
