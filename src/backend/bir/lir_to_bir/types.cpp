@@ -11,6 +11,8 @@ std::optional<bir::TypeKind> lower_integer_type(std::string_view text);
 namespace {
 
 using c4c::codegen::lir::LirStructDecl;
+using c4c::codegen::lir::LirAggregateLayoutKind;
+using c4c::codegen::lir::LirAggregateStoreEntry;
 
 std::optional<std::pair<std::size_t, std::string_view>> parse_integer_array_layer(
     std::string_view text) {
@@ -89,6 +91,30 @@ bool aggregate_layouts_match(const AggregateTypeLayout& lhs,
     }
   }
   return true;
+}
+
+bool aggregate_fields_match(const std::vector<c4c::codegen::lir::LirStructField>& lhs,
+                            const std::vector<c4c::codegen::lir::LirStructField>& rhs) {
+  if (lhs.size() != rhs.size()) {
+    return false;
+  }
+  for (std::size_t index = 0; index < lhs.size(); ++index) {
+    if (lhs[index].type.str() != rhs[index].type.str()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool aggregate_store_entry_matches_decl(const LirAggregateStoreEntry& entry,
+                                        const LirStructDecl& decl) {
+  if (entry.name_id != decl.name_id || entry.is_packed != decl.is_packed ||
+      entry.is_opaque != decl.is_opaque ||
+      !aggregate_fields_match(entry.fields, decl.fields)) {
+    return false;
+  }
+  return entry.layout_kind == LirAggregateLayoutKind::Union ? entry.is_union
+                                                            : !entry.is_union;
 }
 
 std::string layout_field_summary(const AggregateTypeLayout& layout) {
@@ -244,24 +270,52 @@ TypeDeclMap build_type_decl_map(const std::vector<std::string>& type_decls) {
   return lowered;
 }
 
-BackendStructuredLayoutTable build_backend_structured_layout_table(
+std::optional<BackendStructuredLayoutTable> build_backend_structured_layout_table(
     const std::vector<c4c::codegen::lir::LirStructDecl>& struct_decls,
+    const std::vector<c4c::codegen::lir::LirAggregateStoreEntry>& aggregate_store,
     const c4c::StructNameTable& struct_names,
     const TypeDeclMap& legacy_type_decls) {
   // Structured declaration spellings are final type names used only to bridge
   // LIR's StructNameId table with legacy textual type declarations.
   std::unordered_map<std::string, const LirStructDecl*> structured_decls;
   structured_decls.reserve(struct_decls.size());
+  std::unordered_map<c4c::StructNameId, const LirStructDecl*> decls_by_id;
+  decls_by_id.reserve(struct_decls.size());
   for (const auto& decl : struct_decls) {
     const std::string_view name = struct_names.spelling(decl.name_id);
     if (!name.empty()) {
       structured_decls.emplace(std::string(name), &decl);
+      decls_by_id.emplace(decl.name_id, &decl);
+    }
+  }
+
+  std::vector<const LirStructDecl*> authority_decls;
+  if (!aggregate_store.empty()) {
+    authority_decls.reserve(aggregate_store.size());
+    for (const auto& entry : aggregate_store) {
+      const auto decl_it = decls_by_id.find(entry.name_id);
+      if (decl_it == decls_by_id.end() ||
+          !aggregate_store_entry_matches_decl(entry, *decl_it->second) ||
+          struct_names.spelling(entry.name_id).empty()) {
+        return std::nullopt;
+      }
+      authority_decls.push_back(decl_it->second);
+    }
+  } else {
+    authority_decls.reserve(structured_decls.size());
+    for (const auto& [name, decl] : structured_decls) {
+      (void)name;
+      authority_decls.push_back(decl);
     }
   }
 
   BackendStructuredLayoutTable table;
-  table.reserve(structured_decls.size());
-  for (const auto& [name, decl] : structured_decls) {
+  table.reserve(authority_decls.size());
+  for (const auto* decl : authority_decls) {
+    const std::string name(struct_names.spelling(decl->name_id));
+    if (name.empty()) {
+      return std::nullopt;
+    }
     std::unordered_set<std::string> active;
     active.insert(name);
 
@@ -290,23 +344,52 @@ BackendStructuredLayoutTable build_backend_structured_layout_table(
   return table;
 }
 
-bir::StructuredTypeSpellingContext build_bir_structured_type_spelling_context(
+std::optional<bir::StructuredTypeSpellingContext> build_bir_structured_type_spelling_context(
     const std::vector<c4c::codegen::lir::LirStructDecl>& struct_decls,
+    const std::vector<c4c::codegen::lir::LirAggregateStoreEntry>& aggregate_store,
     const c4c::StructNameTable& struct_names) {
-  bir::StructuredTypeSpellingContext context;
-  context.declarations.reserve(struct_decls.size());
+  std::unordered_map<c4c::StructNameId, const LirStructDecl*> decls_by_id;
+  decls_by_id.reserve(struct_decls.size());
   for (const auto& decl : struct_decls) {
     const std::string_view name = struct_names.spelling(decl.name_id);
+    if (!name.empty()) {
+      decls_by_id.emplace(decl.name_id, &decl);
+    }
+  }
+
+  std::vector<const LirStructDecl*> authority_decls;
+  if (!aggregate_store.empty()) {
+    authority_decls.reserve(aggregate_store.size());
+    for (const auto& entry : aggregate_store) {
+      const auto decl_it = decls_by_id.find(entry.name_id);
+      if (decl_it == decls_by_id.end() ||
+          !aggregate_store_entry_matches_decl(entry, *decl_it->second) ||
+          struct_names.spelling(entry.name_id).empty()) {
+        return std::nullopt;
+      }
+      authority_decls.push_back(decl_it->second);
+    }
+  } else {
+    authority_decls.reserve(struct_decls.size());
+    for (const auto& decl : struct_decls) {
+      authority_decls.push_back(&decl);
+    }
+  }
+
+  bir::StructuredTypeSpellingContext context;
+  context.declarations.reserve(authority_decls.size());
+  for (const auto* decl : authority_decls) {
+    const std::string_view name = struct_names.spelling(decl->name_id);
     if (name.empty()) {
-      continue;
+      return std::nullopt;
     }
 
     bir::StructuredTypeDeclSpelling lowered_decl;
     lowered_decl.name = std::string(name);
-    lowered_decl.fields.reserve(decl.fields.size());
-    lowered_decl.is_packed = decl.is_packed;
-    lowered_decl.is_opaque = decl.is_opaque;
-    for (const auto& field : decl.fields) {
+    lowered_decl.fields.reserve(decl->fields.size());
+    lowered_decl.is_packed = decl->is_packed;
+    lowered_decl.is_opaque = decl->is_opaque;
+    for (const auto& field : decl->fields) {
       lowered_decl.fields.push_back(bir::StructuredTypeFieldSpelling{
           .type_name = std::string(c4c::codegen::lir::trim_lir_arg_text(field.type.str())),
       });

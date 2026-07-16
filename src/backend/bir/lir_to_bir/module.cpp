@@ -1859,18 +1859,33 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     function_symbols.insert_function(*function_name, function.link_name_id);
   }
   const auto type_decls = build_type_decl_map(context.lir_module.type_decls);
-  module.structured_types = build_bir_structured_type_spelling_context(
+  auto structured_type_context = build_bir_structured_type_spelling_context(
       context.lir_module.struct_decls,
+      context.lir_module.aggregate_store,
       context.lir_module.struct_names);
+  if (!structured_type_context.has_value()) {
+    context.note(
+        "module",
+        "canonical aggregate store facts must match structured declaration facts before BIR import");
+    return std::nullopt;
+  }
+  module.structured_types = std::move(*structured_type_context);
   const auto structured_layouts = build_backend_structured_layout_table(
       context.lir_module.struct_decls,
+      context.lir_module.aggregate_store,
       context.lir_module.struct_names,
       type_decls);
-  report_backend_structured_layout_parity_notes(context, structured_layouts);
+  if (!structured_layouts.has_value()) {
+    context.note(
+        "module",
+        "canonical aggregate store layout facts must match structured declarations before BIR import");
+    return std::nullopt;
+  }
+  report_backend_structured_layout_parity_notes(context, *structured_layouts);
   for (const auto& global : context.lir_module.globals) {
     GlobalInfo info;
     auto lowered_global =
-        lower_minimal_global(global, type_decls, context.target_profile, structured_layouts, &info);
+        lower_minimal_global(global, type_decls, context.target_profile, *structured_layouts, &info);
     if (!lowered_global.has_value()) {
       context.note(
           "module",

@@ -44,6 +44,7 @@ using codegen::lir::LirMemcpyOp;
 using codegen::lir::LirPhiOp;
 using codegen::lir::LirRet;
 using codegen::lir::LirSelectOp;
+using codegen::lir::LirStructDecl;
 using codegen::lir::LirStoreOp;
 using codegen::lir::LirSwitch;
 using codegen::lir::LirUnreachable;
@@ -81,6 +82,53 @@ Result<T, ImportError> fail(ImportErrorCode code, std::string function = {},
                             std::string block = {}, std::string detail = {}) {
   return Result<T, ImportError>::failure(
       {code, std::move(function), std::move(block), std::move(detail)});
+}
+
+bool aggregate_fields_match(
+    const std::vector<codegen::lir::LirStructField>& lhs,
+    const std::vector<codegen::lir::LirStructField>& rhs) {
+  if (lhs.size() != rhs.size()) return false;
+  for (std::size_t index = 0; index < lhs.size(); ++index) {
+    if (lhs[index].type.str() != rhs[index].type.str()) return false;
+  }
+  return true;
+}
+
+bool aggregate_store_entry_matches_decl(
+    const codegen::lir::LirAggregateStoreEntry& entry,
+    const LirStructDecl& decl) {
+  if (entry.name_id != decl.name_id || entry.is_packed != decl.is_packed ||
+      entry.is_opaque != decl.is_opaque ||
+      !aggregate_fields_match(entry.fields, decl.fields)) {
+    return false;
+  }
+  return entry.layout_kind == codegen::lir::LirAggregateLayoutKind::Union
+             ? entry.is_union
+             : !entry.is_union;
+}
+
+std::optional<std::vector<const LirStructDecl*>>
+authoritative_struct_decls(const LirModule& module) {
+  std::vector<const LirStructDecl*> declarations;
+  if (module.aggregate_store.empty()) {
+    declarations.reserve(module.struct_decls.size());
+    for (const auto& declaration : module.struct_decls) {
+      declarations.push_back(&declaration);
+    }
+    return declarations;
+  }
+
+  declarations.reserve(module.aggregate_store.size());
+  for (const auto& entry : module.aggregate_store) {
+    const LirStructDecl* declaration = module.find_struct_decl(entry.name_id);
+    if (declaration == nullptr ||
+        module.struct_names.spelling(entry.name_id).empty() ||
+        !aggregate_store_entry_matches_decl(entry, *declaration)) {
+      return std::nullopt;
+    }
+    declarations.push_back(declaration);
+  }
+  return declarations;
 }
 
 std::string function_link_name(const LirModule& module,
@@ -4126,14 +4174,20 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
       return Result<RawBir, ImportError>::failure(builder_failure(
           {}, {}, "import struct-name table", added.error()));
   }
-  for (const auto& declaration : module.struct_decls) {
+  const auto struct_declarations = authoritative_struct_decls(module);
+  if (!struct_declarations.has_value()) {
+    return fail<RawBir>(
+        ImportErrorCode::UnsupportedGlobals, {}, {},
+        "canonical aggregate store facts must match structured declaration facts");
+  }
+  for (const auto* declaration : *struct_declarations) {
     std::vector<StructField> fields;
-    fields.reserve(declaration.fields.size());
-    for (const auto& field : declaration.fields)
+    fields.reserve(declaration->fields.size());
+    for (const auto& field : declaration->fields)
       fields.push_back(StructField{*lower_lir_type(module, field.type)});
     auto added = builder.add_struct_declaration(
-        declaration.name_id, std::move(fields), declaration.is_packed,
-        declaration.is_opaque);
+        declaration->name_id, std::move(fields), declaration->is_packed,
+        declaration->is_opaque);
     if (!added)
       return Result<RawBir, ImportError>::failure(builder_failure(
           {}, {}, "import struct declaration", added.error()));

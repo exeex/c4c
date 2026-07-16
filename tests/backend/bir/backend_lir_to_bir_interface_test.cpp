@@ -8627,6 +8627,107 @@ void test_named_aggregate_global_receipt_and_rejections() {
       "array aggregate extern shapes must remain closed transactionally");
 }
 
+void test_aggregate_store_backed_structured_receiver() {
+  const auto valid_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+
+    const auto pair_id =
+        module.struct_names.intern("%struct.StoreBackedPair");
+    lir::LirStructDecl pair_decl;
+    pair_decl.name_id = pair_id;
+    pair_decl.fields = {{lir::LirTypeRef::integer(32)},
+                        {lir::LirTypeRef("double")}};
+    module.record_struct_decl(pair_decl);
+
+    lir::LirAggregateStoreEntry pair_entry;
+    pair_entry.name_id = pair_id;
+    pair_entry.fields = pair_decl.fields;
+    pair_entry.is_packed = pair_decl.is_packed;
+    pair_entry.is_opaque = pair_decl.is_opaque;
+    pair_entry.layout_kind = lir::LirAggregateLayoutKind::Direct;
+    module.aggregate_store.push_back(std::move(pair_entry));
+
+    const auto stale_id =
+        module.struct_names.intern("%struct.DeclarationOnlyShadow");
+    module.record_struct_decl(lir::LirStructDecl{
+        stale_id,
+        {{lir::LirTypeRef::integer(64)}}});
+
+    const auto pair_link = module.link_names.intern("store_backed_pair");
+    lir::LirGlobal pair;
+    pair.name = "store_backed_pair";
+    pair.link_name_id = pair_link;
+    pair.type = scalar_type(c4c::TB_STRUCT);
+    pair.type.inner_rank = -1;
+    pair.linkage_vis = "protected ";
+    pair.qualifier = "global ";
+    pair.llvm_type = "%struct.StoreBackedPair";
+    pair.llvm_type_ref = lir::LirTypeRef::struct_type(pair.llvm_type, pair_id);
+    pair.init_text = "{ i32 13, double 4.5 }";
+    pair.align_bytes = 8;
+    module.globals.push_back(std::move(pair));
+    return module;
+  };
+
+  auto module = valid_module();
+  const auto imported = bir::lower_lir_to_raw_bir(module);
+  expect(imported.has_value(),
+         "store-backed aggregate receiver must import valid canonical store facts");
+  const auto view = imported.value().view();
+  const auto struct_names = view.struct_names();
+  const auto struct_decls = view.struct_declarations();
+  expect(struct_decls.size() == 1,
+         "populated aggregate store must publish one structured declaration");
+  const auto pair_decl = view.struct_declaration(struct_decls[0]).value();
+  expect(view.spelling(pair_decl.name).value() ==
+                 "%struct.StoreBackedPair",
+         "populated aggregate store must be the BIR structured declaration authority");
+  expect(pair_decl.name == struct_names[0] && !pair_decl.is_packed &&
+             !pair_decl.is_opaque && pair_decl.fields.size() == 2 &&
+             pair_decl.fields[0].type == bir::Type{bir::TypeKind::I32} &&
+             pair_decl.fields[1].type == bir::Type{bir::TypeKind::F64},
+         "BIR receiver must spell layout from canonical aggregate store declaration facts");
+  const auto globals = view.global_objects();
+  expect(globals.size() == 1 &&
+             view.global_object(globals[0]).value().object_type.struct_name_id ==
+                 module.aggregate_store[0].name_id,
+         "store-backed global import must preserve the canonical struct identity");
+  expect(bir::lower_lir_to_canonical_bir(module).has_value(),
+         "valid store-backed aggregate receipt must canonicalize");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = valid_module();
+    mutate(candidate);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value(),
+           message + " (Raw rollback)");
+    expect(!bir::lower_lir_to_canonical_bir(candidate).has_value(),
+           message + " (Canonical rollback)");
+  };
+  rejected(
+      [](lir::LirModule& m) {
+        m.aggregate_store[0].name_id =
+            m.struct_names.intern("%struct.MissingStoreDecl");
+      },
+      "store-backed receiver rejects missing declaration facts before fallback");
+  rejected(
+      [](lir::LirModule& m) {
+        m.aggregate_store[0].fields = {{lir::LirTypeRef::integer(64)}};
+      },
+      "store-backed receiver rejects incoherent recorded field facts");
+  rejected(
+      [](lir::LirModule& m) { m.aggregate_store[0].is_packed = true; },
+      "store-backed receiver rejects incoherent packed facts");
+  rejected(
+      [](lir::LirModule& m) {
+        m.aggregate_store[0].is_union = true;
+        m.aggregate_store[0].layout_kind = lir::LirAggregateLayoutKind::Direct;
+      },
+      "store-backed receiver rejects incoherent aggregate kind facts");
+}
+
 void test_flexible_member_literal_struct_global_receipt_and_rejections() {
   const auto valid_module = [] {
     lir::LirModule module;
@@ -13233,6 +13334,7 @@ int main() {
   test_function_pointer_global_receipt_and_rejections();
   test_va_list_global_receipt_and_rejections();
   test_named_aggregate_global_receipt_and_rejections();
+  test_aggregate_store_backed_structured_receiver();
   test_flexible_member_literal_struct_global_receipt_and_rejections();
   test_global_object_rejections_and_transactionality();
   test_specialization_metadata_receipt_and_rejections();

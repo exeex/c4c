@@ -8,18 +8,19 @@ Current Step Title: Enforce module ownership and migrate bounded consumers
 
 ## Just Finished
 
-- Step 3 printer consumer packet completed. `print_llvm` now renders
-  structured aggregate declarations from canonical `LirModule::aggregate_store`
-  entries when store facts are present, while preserving the explicit no-owner
-  structured-declaration compatibility path when the store is empty. Focused
-  coverage proves valid output parity, canonical store-order authority, and
-  rejection before printer fallback when matching store facts are missing.
+- Step 3 receiver consumer packet completed. The LIR-to-BIR structured
+  spelling/layout receiver now traverses canonical
+  `LirModule::aggregate_store` entries when the store is populated, validates
+  each recorded declaration fact against the matching structured declaration,
+  and rejects missing or incoherent store facts before falling back to
+  declaration-only authority. Empty aggregate-store modules retain the existing
+  no-owner compatibility path.
 
 ## Suggested Next
 
-- Continue Step 3 with one bounded receiver consumer that can read canonical
-  LIR aggregate store facts directly, with focused valid/invalid proof and no
-  expansion into backend or broad nominal-family cleanup.
+- Continue Step 3 with one bounded remaining consumer that still reads aggregate
+  identity from legacy declaration/text authority, or move to Step 4 if
+  supervisor review finds the named Step 3 consumer set exhausted.
 
 ## Watchouts
 
@@ -43,11 +44,13 @@ Current Step Title: Enforce module ownership and migrate bounded consumers
   reconstruction path: missing, stale, or incoherent store facts should reject
   through verification rather than recovering identity from `struct_decls`,
   rendered text, or declaration order.
+- The public backend interface proof exercises the consolidated
+  `src/backend/bir/lir_to_bir.cpp` importer in addition to the split
+  `lir_to_bir/types.cpp` and `module.cpp` receiver seam. Keep any follow-up
+  receiver packets aligned across both import paths until one path is retired.
 
 ## Proof
 
 - Passed:
-  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_function_signature_type_ref|frontend_hir_tests)$' ) > test_after.log 2>&1`
-- Supervisor checkpoint passed:
-  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' ) > /tmp/c4c_backend_after.log 2>&1`
+  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_interface|frontend_lir_function_signature_type_ref|frontend_hir_tests)$' ) > test_after.log 2>&1`
 - Proof log: `test_after.log`.

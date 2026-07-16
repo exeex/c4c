@@ -167,12 +167,14 @@ struct IntegerArrayType {
 };
 
 TypeDeclMap build_type_decl_map(const std::vector<std::string>& type_decls);
-BackendStructuredLayoutTable build_backend_structured_layout_table(
+std::optional<BackendStructuredLayoutTable> build_backend_structured_layout_table(
     const std::vector<c4c::codegen::lir::LirStructDecl>& struct_decls,
+    const std::vector<c4c::codegen::lir::LirAggregateStoreEntry>& aggregate_store,
     const c4c::StructNameTable& struct_names,
     const TypeDeclMap& legacy_type_decls);
-bir::StructuredTypeSpellingContext build_bir_structured_type_spelling_context(
+std::optional<bir::StructuredTypeSpellingContext> build_bir_structured_type_spelling_context(
     const std::vector<c4c::codegen::lir::LirStructDecl>& struct_decls,
+    const std::vector<c4c::codegen::lir::LirAggregateStoreEntry>& aggregate_store,
     const c4c::StructNameTable& struct_names);
 void report_backend_structured_layout_parity_notes(
     BirLoweringContext& context,
