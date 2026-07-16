@@ -14,6 +14,7 @@ using BackendAggregateLayoutLookup = lir_to_bir_detail::BackendAggregateLayoutLo
 using BackendStructuredLayoutTable = lir_to_bir_detail::BackendStructuredLayoutTable;
 using lir_to_bir_detail::is_known_function_global_address;
 using lir_to_bir_detail::lookup_backend_aggregate_type_layout_result;
+using lir_to_bir_detail::lookup_backend_aggregate_type_ref_layout_result;
 using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::parse_i64;
 using lir_to_bir_detail::parse_typed_operand;
@@ -52,6 +53,42 @@ BirFunctionLowerer::AggregateTypeLayout lookup_scalar_byte_offset_layout(
     const BirFunctionLowerer::TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable* structured_layouts) {
   return lookup_scalar_byte_offset_layout_result(type_text, type_decls, structured_layouts).layout;
+}
+
+std::optional<BirFunctionLowerer::AggregateTypeLayout> local_memory_aggregate_layout(
+    const c4c::codegen::lir::LirTypeRef& type_ref,
+    std::string_view type_text,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts) {
+  if (type_ref.has_struct_name_id()) {
+    const auto lookup = lookup_backend_aggregate_type_ref_layout_result(type_ref,
+                                                                        type_decls,
+                                                                        structured_layouts);
+    const auto& layout = lookup.layout;
+    if (!lookup.used_structured_layout ||
+        (layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Struct &&
+         layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Array) ||
+        layout.size_bytes == 0 || layout.align_bytes == 0) {
+      return std::nullopt;
+    }
+    return layout;
+  }
+  return BirFunctionLowerer::lower_byval_aggregate_layout(type_text, type_decls, &structured_layouts);
+}
+
+std::optional<BirFunctionLowerer::AggregateTypeLayout> local_memory_aggregate_layout(
+    const LocalAggregateSlots& aggregate_slots,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable& structured_layouts) {
+  if (aggregate_slots.type_ref.has_value()) {
+    return local_memory_aggregate_layout(*aggregate_slots.type_ref,
+                                         aggregate_slots.type_text,
+                                         type_decls,
+                                         structured_layouts);
+  }
+  return BirFunctionLowerer::lower_byval_aggregate_layout(aggregate_slots.type_text,
+                                                          type_decls,
+                                                          &structured_layouts);
 }
 
 bool collect_homogeneous_fp_aggregate_facts(
@@ -975,14 +1012,10 @@ bool BirFunctionLowerer::lower_memory_store_inst(
     }
   }
   if (!value_type.has_value()) {
-    // Step 4 no-id compatibility bridge: local aggregate store lowering owns
-    // LirStoreOp::type_str rendered text for aggregate stores. The limitation
-    // is that the store instruction does not expose a StructNameId-bearing
-    // LirTypeRef at this boundary, so layout selection delegates to the shared
-    // aggregate.cpp no-id fence. Remove this once aggregate memory store ops
-    // carry structured type identity.
-    const auto aggregate_layout =
-        lower_byval_aggregate_layout(store.type_str.str(), type_decls_, &structured_layouts_);
+    const auto aggregate_layout = local_memory_aggregate_layout(store.type_str,
+                                                                store.type_str.str(),
+                                                                type_decls_,
+                                                                structured_layouts_);
     if (!aggregate_layout.has_value() ||
         (store.ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue &&
          store.ptr.kind() != c4c::codegen::lir::LirOperandKind::Global) ||
@@ -995,9 +1028,7 @@ bool BirFunctionLowerer::lower_memory_store_inst(
             const DynamicLocalAggregateArrayAccess& access,
             std::string_view temp_prefix) -> bool {
       const auto source_layout =
-          lower_byval_aggregate_layout(source_slots.type_text,
-                                       type_decls_,
-                                       &structured_layouts_);
+          local_memory_aggregate_layout(source_slots, type_decls_, structured_layouts_);
       const auto element_layout =
           lower_byval_aggregate_layout(access.element_type_text,
                                        type_decls_,
@@ -1098,9 +1129,9 @@ bool BirFunctionLowerer::lower_memory_store_inst(
       }
       if (source_aggregate_it != local_aggregate_slots_.end()) {
         const auto source_layout =
-            lower_byval_aggregate_layout(source_aggregate_it->second.type_text,
-                                         type_decls_,
-                                         &structured_layouts_);
+            local_memory_aggregate_layout(source_aggregate_it->second,
+                                          type_decls_,
+                                          structured_layouts_);
         if (!source_layout.has_value() ||
             source_layout->size_bytes != aggregate_layout->size_bytes) {
           return false;
@@ -1148,9 +1179,9 @@ bool BirFunctionLowerer::lower_memory_store_inst(
         return false;
       }
       const auto source_layout =
-          lower_byval_aggregate_layout(source_aggregate_it->second.type_text,
-                                       type_decls_,
-                                       &structured_layouts_);
+          local_memory_aggregate_layout(source_aggregate_it->second,
+                                        type_decls_,
+                                        structured_layouts_);
       if (!source_layout.has_value() ||
           source_layout->size_bytes != aggregate_layout->size_bytes) {
         return false;

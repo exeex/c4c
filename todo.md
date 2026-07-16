@@ -8,20 +8,21 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed a Step 4 residual bridge classification after the aggregate-slot
-adapter cleanup series.
+Completed a Step 4 local aggregate store bridge repair.
 
-The remaining aggregate.cpp shared rendered-text layout helpers are now
-documented as no-id fallbacks only. Their comments no longer claim local slot,
-byval parameter, or aggregate copy paths are waiting on structured refs; those
-metadata-bearing paths now route through type-ref lookup and fail closed before
-reaching the raw-text fallback.
+Local aggregate store lowering now resolves `LirStoreOp::type_str` through
+structured type-ref lookup when it carries `StructNameId`, and source aggregate
+layout validation uses `LocalAggregateSlots::type_ref` when present. Metadata-
+bearing store/source layouts fail closed on structured misses; no-id store and
+source paths retain the rendered-text fallback. The stale store bridge comment
+claiming aggregate memory stores lacked `LirTypeRef` metadata was removed.
 
 Unmet Step 4 criteria:
 - Residual no-id bridge comments remain outside the direct aggregate-slot
   declaration packet, including memory/provenance, memory/addressing,
   memory/intrinsics, `local_gep`, globals, call ABI raw signature/byval routes,
-  type raw lookup, and global initializers.
+  local-slot scalar byte-offset helpers, type raw lookup, and global
+  initializers.
 - These are still potentially within 847's compile-time separation and expired
   adapter deletion scope until classified with evidence as already safe,
   deleted, or owned by a separate source idea.
