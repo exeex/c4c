@@ -94,6 +94,56 @@ LirExtAttr rv64_integer_ext_attr_for_abi_type(const c4c::hir::Module& mod,
   return is_signed_int(ts.base) ? LirExtAttr::SignExt : LirExtAttr::ZeroExt;
 }
 
+bool integer_immediate_representable_by_type(const LirOperand& operand,
+                                             const LirTypeRef& type) {
+  const LirIntegerImmediate* immediate = operand.integer_immediate();
+  if (!immediate || type.kind() != LirTypeKind::Integer) return true;
+  const std::optional<unsigned> width = type.integer_bit_width();
+  if (!width || *width == 0) return false;
+  if (*width >= 64) return true;
+  if (immediate->value < 0) {
+    const long long minimum = -(1LL << (*width - 1));
+    return immediate->value >= minimum;
+  }
+  const unsigned long long maximum = (1ULL << *width) - 1ULL;
+  return static_cast<unsigned long long>(immediate->value) <= maximum;
+}
+
+bool current_function_direct_scalar_source(const FnCtx& ctx,
+                                           const LirOperand& source,
+                                           const LirTypeRef& type) {
+  if (!source.value_id() || ctx.lir_function == nullptr) return false;
+  return std::any_of(
+      ctx.lir_function->native_body_parameter_definitions.begin(),
+      ctx.lir_function->native_body_parameter_definitions.end(),
+      [&](const auto& definition) {
+        return definition.value == *source.value_id() &&
+               definition.type == type &&
+               definition.abi == LirNativeBodyParameterAbi::DirectScalar;
+      });
+}
+
+LirOperand preserve_call_argument_operand(const c4c::hir::Module& mod,
+                                          const LirOperand& source,
+                                          const TypeSpec& source_type,
+                                          const std::string& normalized,
+                                          const LirTypeRef& type,
+                                          bool allow_current_function_value) {
+  if (!source.has_authority()) return LirOperand(normalized);
+  if (source.value_id() != nullptr) {
+    return allow_current_function_value && LirTypeRef(llvm_value_ty(mod, source_type)) == type
+               ? source
+               : LirOperand(normalized);
+  }
+  if (source.integer_immediate() != nullptr) {
+    return allow_current_function_value &&
+                   integer_immediate_representable_by_type(source, type)
+               ? source
+               : LirOperand(normalized);
+  }
+  return LirOperand(normalized);
+}
+
 }  // namespace
 
 bool StmtEmitter::callee_needs_va_list_by_value_copy(const CallTargetInfo& call_target,
@@ -371,14 +421,9 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
   }
 
   const std::string out_llvm_ty = llvm_value_ty(mod_, out_arg_ts);
-  const bool current_function_direct_scalar_source =
-      source_operand.value_id() && ctx.lir_function &&
-      std::any_of(ctx.lir_function->native_body_parameter_definitions.begin(),
-                  ctx.lir_function->native_body_parameter_definitions.end(),
-                  [&](const auto& definition) {
-                    return definition.value == *source_operand.value_id() &&
-                           definition.abi == LirNativeBodyParameterAbi::DirectScalar;
-                  });
+  const LirTypeRef out_lir_type(out_llvm_ty);
+  const bool direct_scalar_source =
+      current_function_direct_scalar_source(ctx, source_operand, out_lir_type);
   const bool authoritative_fixed_integer_path =
       call_target.ret_ty == "void" &&
       call_target.callee_link_name_id != kInvalidLinkName && target_fn &&
@@ -391,22 +436,21 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
       call_target.callee_link_name_id != kInvalidLinkName && target_fn &&
       !target_fn->attrs.variadic && target_fn->params.size() == 2 &&
       arg_index == 1 && fixed_param_ts && !is_variadic_arg &&
-      current_function_direct_scalar_source && arg == source_operand.str();
-  const bool authoritative_current_function_value = source_operand.value_id() != nullptr;
+      direct_scalar_source && llvm_value_ty(mod_, arg_ts) == out_llvm_ty;
+  const bool authoritative_native_value = source_operand.value_id() != nullptr;
   const bool authoritative_fixed_integer_argument =
       authoritative_fixed_integer_path &&
-      (source_operand.integer_immediate() || authoritative_current_function_value);
+      (source_operand.integer_immediate() || authoritative_native_value);
   const bool preserve_native_argument =
       authoritative_fixed_integer_argument || structural_argument1_identity_path;
-  LirOperand call_operand = preserve_native_argument
-                                ? source_operand
-                                : LirOperand(arg);
-  if (call_operand.str() != arg) call_operand = LirOperand(arg);
+  LirOperand call_operand =
+      preserve_call_argument_operand(mod_, source_operand, arg_ts, arg, out_lir_type,
+                                     preserve_native_argument);
   PreparedCallArg out_arg{
       {{.type = out_llvm_ty,
         .operand = std::move(call_operand),
         .type_ref = preserve_native_argument
-                        ? LirTypeRef(out_llvm_ty)
+                        ? out_lir_type
                         : lir_call_type_ref(out_llvm_ty, module_, mod_, out_arg_ts),
         .ext_attr = is_variadic_arg ? rv64_integer_ext_attr_for_abi_type(mod_, out_arg_ts)
                                     : LirExtAttr::None}},

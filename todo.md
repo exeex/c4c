@@ -8,23 +8,37 @@ Current Step Title: Delete semantic string escape hatches
 
 ## Just Finished
 
-Completed Step 3 packet to delete scalar arithmetic operand preservation that
-used direct `source.str() != normalized` display-text equality as semantic
-authority in `src/codegen/lir/hir_to_lir/expr/binary.cpp`.
+Completed Step 3 packet to delete call-argument native preservation that used
+direct `arg == source_operand.str()` / `call_operand.str() != arg`
+display-text equality as semantic authority in
+`src/codegen/lir/hir_to_lir/call/args.cpp`.
 
-`preserve_exact_binary_operand(...)` now keeps native SSA authority only when
-the source `TypeSpec` matches the LIR operation type, keeps integer immediate
-authority only when representable by that operation type, and reconstructs the
-normalized operand for all other cases.
+Call argument preservation now keeps native value/immediate authority only on
+the selected fixed-integer or current-function direct-scalar paths when typed
+facts match the emitted call argument type. Other normalized argument text is
+rebuilt as display-only operand text without promoting the spelling to native
+authority.
 
 ## Suggested Next
 
-Supervisor should review and commit this Step 3 scalar arithmetic preservation
-slice if accepted, then select the next remaining Step 3 semantic string escape
-hatch candidate. Do not widen the next packet into Step 4 adapter removal.
+Supervisor should review and commit this Step 3 call-argument preservation slice
+if accepted, then select the next remaining Step 3 semantic string escape hatch
+candidate. Do not widen the next packet into Step 4 adapter removal.
 
 ## Watchouts
 
+- `src/codegen/lir/hir_to_lir/call/args.cpp` no longer contains direct
+  `arg == source_operand.str()` or `call_operand.str() != arg` authority
+  checks. Do not reintroduce display-text equality as semantic authority for
+  call argument preservation.
+- The display-only fallback intentionally uses `LirOperand(arg)` rather than
+  native factories, so integer-looking compatibility text can remain classified
+  as an immediate spelling without receiving `LirIntegerImmediate` authority.
+- Fixed direct integer calls may preserve native SSA/immediate argument
+  authority only after the fixed integer path and typed call argument type agree.
+- The two-argument structural/current-function path remains restricted to
+  `LirNativeBodyParameterAbi::DirectScalar` definitions with matching typed
+  argument facts.
 - Scalar arithmetic preservation now depends on source TypeSpec snapshots taken
   before usual arithmetic conversion. Preserve that distinction if later
   packets refactor the conversion flow.
