@@ -210,6 +210,20 @@ const std::string& require_module_type_ref(const LirModule& mod,
   return rendered;
 }
 
+void require_module_cast_endpoint_type_ref(const LirModule& mod,
+                                           const LirTypeRef& type,
+                                           std::string_view field) {
+  if (type.kind() == LirTypeKind::Integer) {
+    (void)render_integer_type_ref(type, field);
+    return;
+  }
+  if (type.kind() == LirTypeKind::Floating) {
+    (void)render_floating_type_ref(type, field);
+    return;
+  }
+  require_module_type_ref(mod, type, field);
+}
+
 StructNameId find_declared_struct_name_id(const LirModule& mod,
                                           std::string_view rendered_name) {
   const StructNameId struct_name_id = mod.struct_names.find(rendered_name);
@@ -1032,6 +1046,17 @@ void verify_cast_op_authority(const LirCastOp& op) {
   if (!op.result.value_id()) {
     return;
   }
+  const auto floating_width = [](const LirTypeRef& type)
+      -> std::optional<unsigned> {
+    switch (type.builtin_type().value_or(LirBuiltinType::Void)) {
+      case LirBuiltinType::Half: return 16;
+      case LirBuiltinType::Float: return 32;
+      case LirBuiltinType::Double: return 64;
+      case LirBuiltinType::X86Fp80: return 80;
+      case LirBuiltinType::Fp128: return 128;
+      default: return std::nullopt;
+    }
+  };
   if (op.kind == LirCastKind::FPToSI || op.kind == LirCastKind::FPToUI) {
     if (op.from_type.kind() != LirTypeKind::Floating ||
         op.to_type.kind() != LirTypeKind::Integer) {
@@ -1039,10 +1064,7 @@ void verify_cast_op_authority(const LirCastOp& op) {
           "LirCastOp.from_type",
           "authoritative floating-to-integer cast requires floating-to-integer endpoint type refs");
     }
-    const std::string_view from_type = op.from_type.str();
-    if (from_type != "half" && from_type != "float" &&
-        from_type != "double" && from_type != "x86_fp80" &&
-        from_type != "fp128") {
+    if (!floating_width(op.from_type)) {
       fail_verify("LirCastOp.from_type",
                   "authoritative floating-to-integer cast requires an exact floating source type");
     }
@@ -1064,9 +1086,7 @@ void verify_cast_op_authority(const LirCastOp& op) {
       fail_verify("LirCastOp.from_type",
                   "authoritative integer-to-floating cast requires an exact integer source type");
     }
-    const std::string_view to_type = op.to_type.str();
-    if (to_type != "half" && to_type != "float" && to_type != "double" &&
-        to_type != "x86_fp80" && to_type != "fp128") {
+    if (!floating_width(op.to_type)) {
       fail_verify(
           "LirCastOp.to_type",
           "authoritative integer-to-floating cast requires an exact floating destination type");
@@ -1079,15 +1099,6 @@ void verify_cast_op_authority(const LirCastOp& op) {
       fail_verify("LirCastOp.from_type",
                   "authoritative floating cast requires floating endpoint type refs");
     }
-    const auto floating_width = [](const LirTypeRef& type)
-        -> std::optional<unsigned> {
-      if (type.str() == "half") return 16;
-      if (type.str() == "float") return 32;
-      if (type.str() == "double") return 64;
-      if (type.str() == "x86_fp80") return 80;
-      if (type.str() == "fp128") return 128;
-      return std::nullopt;
-    };
     const std::optional<unsigned> from_width = floating_width(op.from_type);
     const std::optional<unsigned> to_width = floating_width(op.to_type);
     if (!from_width || !to_width) {
@@ -2074,9 +2085,11 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
   }
   if (const auto* op = std::get_if<LirCastOp>(&inst)) {
     verify_result_operand(op->result, "LirCastOp.result");
-    require_module_type_ref(mod, op->from_type, "LirCastOp.from_type");
+    require_module_cast_endpoint_type_ref(mod, op->from_type,
+                                          "LirCastOp.from_type");
     verify_value_operand(op->operand, "LirCastOp.operand");
-    require_module_type_ref(mod, op->to_type, "LirCastOp.to_type");
+    require_module_cast_endpoint_type_ref(mod, op->to_type,
+                                          "LirCastOp.to_type");
     verify_cast_op_authority(*op);
     return;
   }

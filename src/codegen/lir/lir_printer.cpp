@@ -142,6 +142,17 @@ const LirTypeRef& require_phi_boundary_render_type(const LirPhiOp& op) {
   return op.type_str;
 }
 
+std::string render_cast_endpoint_type_ref(const LirTypeRef& type,
+                                          std::string_view field) {
+  if (type.kind() == LirTypeKind::Integer) {
+    return render_integer_type_ref(type, field);
+  }
+  if (type.kind() == LirTypeKind::Floating) {
+    return render_floating_type_ref(type, field);
+  }
+  return require_type_ref(type, field);
+}
+
 std::string_view signature_header_line(const LirFunction& function) {
   std::string_view signature = function.signature_text;
   while (!signature.empty()) {
@@ -525,13 +536,16 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
        << require_operand_kind(op->result, "LirCastOp.result",
                                {LirOperandKind::SsaValue})
        << " = " << opname << " "
-       << require_type_ref(op->from_type, "LirCastOp.from_type") << " "
+       << render_cast_endpoint_type_ref(op->from_type, "LirCastOp.from_type")
+       << " "
        << require_operand_kind(op->operand, "LirCastOp.operand",
                                {LirOperandKind::SsaValue,
                                 LirOperandKind::Global,
                                 LirOperandKind::Immediate,
                                 LirOperandKind::SpecialToken})
-       << " to " << require_type_ref(op->to_type, "LirCastOp.to_type") << "\n";
+       << " to "
+       << render_cast_endpoint_type_ref(op->to_type, "LirCastOp.to_type")
+       << "\n";
   } else if (const auto* op = std::get_if<LirGepOp>(&inst)) {
     const std::string direct = resolve_direct_label_address(function, op->ptr,
                                                             link_names);

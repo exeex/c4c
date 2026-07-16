@@ -5732,6 +5732,26 @@ long long lir_scalar_cast_result_use_identity(void) {
   misleading_use.lhs.str() = "7";
   lir::verify_module(misleading);
 
+  lir::LirModule stale_display_endpoint = misleading;
+  auto [stale_cast, stale_use] = require_focused_cast(stale_display_endpoint);
+  (void)stale_use;
+  stale_cast.from_type.str() = "double";
+  stale_cast.to_type.str() = "i16";
+  lir::verify_module(stale_display_endpoint);
+  const std::string stale_display_endpoint_ir =
+      lir::print_llvm(stale_display_endpoint);
+  expect_contains(stale_display_endpoint_ir, "@rendered-not-cast-result = sext i32 ",
+                  "integer cast printer should render native endpoint width authority");
+  expect_contains(stale_display_endpoint_ir, " to i64",
+                  "integer cast printer should render native destination width authority");
+  expect_not_contains(
+      stale_display_endpoint_ir,
+      " = sext double ",
+      "integer cast printer must not recover endpoint semantics from stale display text");
+  expect_not_contains(
+      stale_display_endpoint_ir, " to i16",
+      "integer cast printer must not recover destination semantics from stale display text");
+
   lir::LirModule invalid_result = lowered;
   require_focused_cast(invalid_result).first.result =
       lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
@@ -6870,6 +6890,22 @@ double lir_scalar_fpext_result_use_identity(void) {
   misleading_cast.result.str() = "7";
   misleading_use.lhs.str() = "@rendered-not-fpext-result";
   lir::verify_module(misleading);
+
+  lir::LirModule stale_display_endpoint = misleading;
+  auto [stale_cast, stale_use] = require_focused_cast(stale_display_endpoint);
+  (void)stale_use;
+  stale_cast.from_type.str() = "double";
+  stale_cast.to_type.str() = "float";
+  lir::verify_module(stale_display_endpoint);
+  const std::string stale_display_endpoint_ir =
+      lir::print_llvm(stale_display_endpoint);
+  expect_contains(stale_display_endpoint_ir,
+                  " = fpext float @rendered-not-fpext-source to double",
+                  "floating cast printer should render native endpoint builtin authority");
+  expect_not_contains(
+      stale_display_endpoint_ir,
+      " = fpext double @rendered-not-fpext-source to float",
+      "floating cast printer must not recover endpoint semantics from stale display text");
 
   lir::LirModule invalid_result = lowered;
   require_focused_cast(invalid_result).first.result =
