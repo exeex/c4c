@@ -3,7 +3,7 @@
 Status: Active
 Source Idea: ideas/open/845_lir_typed_reference_carriers_collector_migration.md
 Activated after: ideas/closed/850_lir_cfg_phi_raw_bindings_evidence.md
-Repaired after: accepted one-field migration packets through `LirInsertValueOp.elem`; closure rejected because durable in-scope aggregate/vector collector migration remains.
+Repaired after: accepted one-field migration packets through `LirShuffleVectorOp.vec1`; closure rejected because durable in-scope aggregate/vector collector migration remains.
 
 ## Purpose
 
@@ -39,15 +39,16 @@ spurious references versus compatibility.
 - One exact producer-published semantic callee, argument, signature, or global
   reference carrier per packet.
 - Compatibility parity for the replaced source field.
-- Current repair target: `collect_inst_refs` migration for `LirShuffleVectorOp.vec1`
-  from raw `S(op.vec1)` scanning to `collect_operand_ref(op.vec1, refs)`.
+- Current repair target: `collect_inst_refs` migration for `LirShuffleVectorOp.vec2`
+  from raw `S(op.vec2)` scanning to `collect_operand_ref(op.vec2, refs)`.
 - Already accepted under this route: `LirStoreOp.val`, `LirStoreOp.ptr`,
   `LirLoadOp.ptr`, `LirGepOp.ptr`, `LirPhiOp.incoming[].value`, and
   `LirCastOp.operand`, `LirBinOp.lhs`, `LirBinOp.rhs`, `LirCmpOp.lhs`,
   `LirCmpOp.rhs`, `LirSelectOp.cond`, `LirSelectOp.true_val`, and
   `LirSelectOp.false_val`, `LirExtractValueOp.agg`, `LirExtractElementOp.vec`,
   `LirInsertElementOp.elem`, `LirInsertElementOp.vec`, and
-  `LirInsertValueOp.agg`, and `LirInsertValueOp.elem`.
+  `LirInsertValueOp.agg`, `LirInsertValueOp.elem`, and
+  `LirShuffleVectorOp.vec1`.
 
 ## Non-Goals
 
@@ -84,13 +85,13 @@ carrier and an existing raw scanner/collector consumer.
 Actions:
 - Inspect named call/global collector and LIR-to-BIR preparation code.
 - Trace candidate source fields to their producer-published semantic carriers.
-- Select `LirShuffleVectorOp.vec1` only unless inspection disproves its carrier
+- Select `LirShuffleVectorOp.vec2` only unless inspection disproves its carrier
   readiness.
 - Record the selected field, scanner consumer, proof target, and non-goals in
   `todo.md`.
 
 Completion check:
-- `todo.md` confirms `LirShuffleVectorOp.vec1` and `collect_inst_refs` as the
+- `todo.md` confirms `LirShuffleVectorOp.vec2` and `collect_inst_refs` as the
   one-field packet, or records a lifecycle blocker/no-ready-field decision with
   evidence.
 
@@ -100,10 +101,10 @@ Goal: replace scanner recovery for the selected field with its semantic
 carrier in the named collector/preparation consumer.
 
 Actions:
-- Change only the selected consumer path: replace `S(op.vec1)` in the
-  `LirShuffleVectorOp` arm with `collect_operand_ref(op.vec1, refs)`.
+- Change only the selected consumer path: replace `S(op.vec2)` in the
+  `LirShuffleVectorOp` arm with `collect_operand_ref(op.vec2, refs)`.
 - Preserve compatibility fallback where unselected fields still require it.
-- Leave `LirShuffleVectorOp.vec2`, `LirShuffleVectorOp.mask`, inline asm, and
+- Leave `LirShuffleVectorOp.mask`, inline asm, and
   residual raw/global text on their current scanner paths.
 - Avoid changing producer semantics unless Step 1 proves the source field
   already exists but is wired incorrectly.

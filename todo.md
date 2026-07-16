@@ -8,24 +8,27 @@ Current Step Title: Select One Carrier-Backed Collector Seam
 
 ## Just Finished
 
-Completed Step 1 packet for `LirShuffleVectorOp.vec1`: migrated only the
-`collect_inst_refs` shuffle `vec1` field from raw `S(op.vec1)` scanning to
-`collect_operand_ref(op.vec1, refs)`. `LirShuffleVectorOp.vec2` remains on the
-raw scanner path.
+Completed the accepted `LirShuffleVectorOp.vec1` repair packet in commit
+`75100a96f`: migrated only the `collect_inst_refs` shuffle `vec1` field from
+raw `S(op.vec1)` scanning to `collect_operand_ref(op.vec1, refs)`.
+`LirShuffleVectorOp.vec2` remains on the raw scanner path.
 
 ## Suggested Next
 
-Execute the next bounded collector packet: confirm `LirShuffleVectorOp.vec2`
-has an acceptable semantic carrier, then migrate only that field from raw
-`S(op.vec2)` scanning if selected by the supervisor.
+Execute Step 1 for the repaired route: select exactly `LirShuffleVectorOp.vec2`
+in `collect_inst_refs` as the next one-field packet, then migrate only that
+field from raw `S(op.vec2)` scanning to `collect_operand_ref(op.vec2, refs)`.
 
 ## Watchouts
 
 Do not perform a broad collector sweep. Leave `LirShuffleVectorOp.vec2`,
 `LirShuffleVectorOp.mask`, inline asm, and residual raw/global text on their
-current scanner paths. Do not reconstruct references from rendered names or
-text. Do not change producers, verifier semantics, or BIR lowering unless
-`LirShuffleVectorOp.vec1` is disproven during executor inspection.
+current scanner paths until the selected `vec2` packet edits that one field.
+Leave `LirShuffleVectorOp.mask`, inline asm, and residual raw/global text on
+their current scanner paths after the packet. Do not reconstruct references
+from rendered names or text. Do not change producers, verifier semantics, or
+BIR lowering unless `LirShuffleVectorOp.vec2` is disproven during executor
+inspection.
 
 ## Proof
 
@@ -37,3 +40,10 @@ git diff --check
 ```
 
 Proof log: `test_after.log`.
+
+Required next proof after the `vec2` packet:
+
+```
+{ cmake --build build && ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure; } > test_after.log 2>&1
+git diff --check
+```
