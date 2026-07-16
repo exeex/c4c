@@ -1,72 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/844_lir_global_extern_initializer_family_facts.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add or require the selected parameter family-ref carrier
+Current Step ID: 3
+Current Step Title: Migrate selected parameter verifier/printer consumers
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan.md Step 1 inventory for extern fixed parameter type facts.
-`record_extern_decl` and `ExternDeclInfo` currently own extern identity,
-return text/ref, return extension, and an optional `function_signature_ref`;
-fixed parameter facts live in `LirFunctionSignatureStoreEntry` as
-`fixed_param_type_refs`, `fixed_param_is_byval`, `is_variadic`, and
-`has_void_param_list`. The signature store is the selected producer-owned
-structured carrier for the first Step 2 slice; no minimal direct
-`LirExternDecl` parameter field is justified yet.
+Completed plan.md Step 2 for the selected link-backed extern fixed aggregate
+byval parameter family-ref carrier. `register_extern_function_signature` now
+publishes extern fixed parameter byval bits into the nominal signature store;
+direct extern calls whose `callee_signature_ref` resolves through
+`extern_decl_link_name_map[LinkNameId].function_signature_ref` now require
+matching structured aggregate `fixed_param_type_refs[index]` plus
+`fixed_param_is_byval[index] == true`; retained-signature-free lowering can use
+the store instead of stale rendered call/declaration text.
 
 ## Suggested Next
 
-Execute plan.md Step 2 target: require/publish a link-backed extern fixed
-aggregate byval parameter family ref through the nominal signature store.
-Bound the slice to direct extern calls whose `callee_signature_ref` resolves to
-`extern_decl_link_name_map[LinkNameId].function_signature_ref`, with one fixed
-parameter whose `fixed_param_type_refs[index]` carries the matching
-`StructNameId` and whose `fixed_param_is_byval[index]` is true.
-
-Accepted authority inputs for this target are the extern LinkNameId, the
-signature-store ref on `ExternDeclInfo`/`LirExternDecl`, the store entry's
-fixed parameter type refs and byval bits, and matching structured declarations
-plus aggregate-store facts for the selected `StructNameId`. Rejected authority
-inputs/non-goals are `return_type`/`return_type_str`, symbol spelling alone,
-varargs metadata, final declaration text, initializer payload text,
-collector-only receiver observations, Raw-BIR import work, non-type string
-routing, and recovery from stale `callee_type_suffix` or `args_str`.
-
-Required proof needs for the next code packet:
-positive link-backed extern byval parameter with matching `StructNameId`;
-malformed store entry with missing/size-mismatched byval facts; stale-text case
-where rendered call/declaration text names a different parameter family but the
-store wins or fails closed; missing-carrier case with no valid extern
-`function_signature_ref`; wrong-family case with mismatched parameter
-`StructNameId`; compatibility case proving nonaggregate extern fixed
-parameters and existing extern return/initializer output remain supported.
-
-Exact proof command for the next code packet:
-`cmake --build build && ctest --test-dir build -R backend_lir_to_bir_notes_test --output-on-failure`.
+Execute plan.md Step 3 for the selected extern aggregate byval parameter form:
+migrate the selected verifier/printer declaration consumer path to render or
+check extern fixed parameter facts from the structured signature-store carrier
+while preserving existing declaration output compatibility. Keep the next
+packet bounded to the already-selected extern aggregate byval parameter form
+and do not widen into returns, initializer text, collector-only receiver work,
+Raw-BIR import work, varargs policy, or non-type string routing.
 
 ## Watchouts
 
-Current carriers are split: `record_extern_decl` does not accept parameter
-facts; `register_extern_function_signature` can attach a nominal
-`function_signature_ref` to an existing extern map entry; `LirExternDecl`
-snapshots only that ref for printer/BIR adapter parity; the printer can render
-function/call parameter lists from the store but extern declarations still only
-render return/name; verifier call checks already require a callee signature ref
-to match the resolved module function or extern declaration. The missing
-evidence is a focused externally declared aggregate-byval parameter test proving
-the extern store ref, not final text, is the semantic family carrier.
-
-Keep fixed parameter facts separate from return facts, symbol identity, varargs
-policy, final declaration text, initializer payload text, collector-only
-receiver work, Raw-BIR import work, and non-type string routing. Do not add a
-direct `LirExternDecl` parameter API unless the selected signature-store packet
-fails because an actual consumer needs declaration-local parameter ownership
-that the nominal store cannot provide.
+The corrected proof route for this build is the three-test interface/frontend
+subset below; the old `ctest -R backend_lir_to_bir_notes_test` route matches
+zero tests and must not be treated as proof. Step 2 deliberately did not add
+direct `LirExternDecl` parameter fields; the nominal signature store served as
+the selected carrier. Next work should preserve the same scope boundary and
+avoid treating final declaration text, `callee_type_suffix`, or `args_str` as
+semantic authority.
 
 ## Proof
 
-Inventory-only packet. Ran `git diff --check`; no build/test proof was required
-for Step 1 and no `test_after.log` was produced.
+Ran corrected after command:
+`{ cmake --build build && ctest --test-dir build -R '^backend_lir_to_bir_interface$|^frontend_lir_extern_decl_type_ref$|^frontend_lir_global_label_address_initializer$' --output-on-failure; } > test_after.log 2>&1`
+
+Result: passed; `test_after.log` contains a successful build and 3/3 passing
+tests. Also ran `git diff --check`; passed.

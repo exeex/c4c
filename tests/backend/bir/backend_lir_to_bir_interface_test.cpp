@@ -9938,6 +9938,145 @@ void test_raw_extern_direct_integer_call_signature_adapter() {
            "raw extern declaration missing adapter ref must reject");
 }
 
+void test_extern_byval_aggregate_signature_store_receipt_and_rejections() {
+  const auto make_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    module.struct_names.attach_text_table(module.link_name_texts.get());
+    const auto caller_link =
+        module.link_names.intern("extern_byval_aggregate_caller");
+    const auto extern_link =
+        module.link_names.intern("extern_byval_aggregate_target");
+    const auto big_id = module.struct_names.intern("%struct.ExternByvalBig");
+    const auto other_id = module.struct_names.intern("%struct.ExternByvalOther");
+
+    lir::LirStructDecl big_decl;
+    big_decl.name_id = big_id;
+    big_decl.fields = {{lir::LirTypeRef::integer(64)},
+                       {lir::LirTypeRef::integer(64)}};
+    module.record_struct_decl(std::move(big_decl));
+    lir::LirStructDecl other_decl;
+    other_decl.name_id = other_id;
+    other_decl.fields = {{lir::LirTypeRef::integer(32)}};
+    module.record_struct_decl(std::move(other_decl));
+    const auto big_type =
+        lir::LirTypeRef::struct_type("%struct.ExternByvalBig", big_id);
+
+    lir::LirFunction caller = void_definition(
+        "extern_byval_aggregate_caller", {return_block(0, "entry")});
+    caller.link_name_id = caller_link;
+    caller.return_type = scalar_type(c4c::TB_INT);
+    caller.signature_return_type_ref = lir::LirTypeRef::integer(32);
+    lir::LirFunctionSignatureStoreEntry caller_entry;
+    caller_entry.return_type_ref = lir::LirTypeRef::integer(32);
+    caller.function_signature_ref =
+        module.register_function_signature(std::move(caller_entry));
+    caller.alloca_insts.push_back(lir::LirAllocaOp{
+        lir::LirOperand::ssa("%extern.byval.aggregate", lir::LirValueId{51}),
+        big_type, {}, 0,
+        lir::LirCurrentFunctionLocalObjectPointer{
+            lir::LirValueId{51}, lir::LirObjectId{11}, caller_link,
+            lir::LirTypeRef(lir::LirBuiltinType::Pointer), big_type, true}});
+
+    module.record_extern_decl("extern_byval_aggregate_target", "i32",
+                              extern_link);
+    lir::LirCallSignature signature;
+    signature.return_type_ref = lir::LirTypeRef::integer(32);
+    signature.fixed_param_types = {
+        "ptr byval(%struct.ExternByvalBig) align 8"};
+    signature.fixed_param_type_refs = {big_type};
+    const lir::LirFunctionSignatureRef extern_ref =
+        module.register_extern_function_signature(
+            "extern_byval_aggregate_target", extern_link, signature);
+    module.extern_decls.push_back(lir::LirExternDecl{
+        .name = "extern_byval_aggregate_target",
+        .return_type_str = "i32",
+        .return_type = lir::LirTypeRef::integer(32),
+        .link_name_id = extern_link,
+        .function_signature_ref = extern_ref,
+    });
+
+    lir::LirCallOp call;
+    call.result = lir::LirOperand::ssa("%extern.byval.result", lir::LirValueId{52});
+    call.return_type = lir::LirTypeRef::integer(32);
+    call.callee =
+        lir::LirOperand::global("@extern_byval_aggregate_target", extern_link);
+    call.direct_callee_link_name_id = extern_link;
+    call.callee_type_suffix = "(ptr byval(%struct.StaleTextOnly) align 1)";
+    call.args_str =
+        "ptr byval(%struct.StaleTextOnly) align 1 %extern.byval.aggregate";
+    call.callee_signature = signature;
+    call.callee_signature_ref = extern_ref;
+    call.arg_type_refs = {big_type};
+    call.structured_args.push_back(
+        {"%struct.ExternByvalBig",
+         lir::LirOperand::ssa("%extern.byval.aggregate", lir::LirValueId{51}),
+         big_type});
+    caller.blocks[0].insts.push_back(std::move(call));
+    caller.blocks[0].terminator = lir::LirRet{
+        lir::LirOperand::ssa("%extern.byval.result", lir::LirValueId{52}),
+        lir::LirTypeRef::integer(32)};
+    module.functions.push_back(std::move(caller));
+    return module;
+  };
+
+  const auto module = make_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "extern byval aggregate call must publish verified Raw BIR from the signature store: " +
+             (raw.has_value() ? std::string("foundation verifier rejected it")
+                              : raw.error().detail));
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(),
+         "extern byval aggregate call should canonicalize");
+
+  auto stale_text_store_wins = make_module();
+  auto& stale_call =
+      std::get<lir::LirCallOp>(stale_text_store_wins.functions[0].blocks[0].insts[0]);
+  stale_call.callee_signature.reset();
+  const auto raw_stale = bir::lower_lir_to_raw_bir(stale_text_store_wins);
+  expect(raw_stale.has_value() &&
+             bir::FoundationVerifier::verify(raw_stale.value()).ok(),
+         "extern byval aggregate call must ignore stale rendered parameter text when the store ref resolves");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = make_module();
+    auto& call =
+        std::get<lir::LirCallOp>(candidate.functions[0].blocks[0].insts[0]);
+    call.callee_signature.reset();
+    mutate(candidate, call);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value(),
+           message + " (Raw rollback)");
+    expect(!bir::lower_lir_to_canonical_bir(candidate).has_value(),
+           message + " (Canonical rollback)");
+  };
+  rejected([](auto& candidate, auto& call) {
+             candidate.function_signature_store[call.callee_signature_ref.value]
+                 .fixed_param_is_byval.clear();
+           },
+           "extern byval aggregate missing byval fact must reject");
+  rejected([](auto& candidate, auto& call) {
+             candidate.function_signature_store[call.callee_signature_ref.value]
+                 .fixed_param_is_byval[0] = false;
+           },
+           "extern aggregate parameter without byval fact must reject");
+  rejected([](auto& candidate, auto& call) {
+             candidate.extern_decl_link_name_map[call.direct_callee_link_name_id]
+                 .function_signature_ref = lir::LirFunctionSignatureRef::invalid();
+           },
+           "extern byval aggregate missing declaration signature ref must reject");
+  rejected([](auto& candidate, auto& call) {
+             const c4c::StructNameId other_id =
+                 candidate.struct_names.find("%struct.ExternByvalOther");
+             candidate.function_signature_store[call.callee_signature_ref.value]
+                 .fixed_param_type_refs[0] =
+                     lir::LirTypeRef::struct_type("%struct.ExternByvalOther",
+                                                  other_id);
+           },
+           "extern byval aggregate wrong parameter family must reject");
+}
+
 void test_direct_zero_argument_void_call_builder_contract() {
   bir::ModuleBuilder builder;
   const bir::FunctionSignature void_signature{bir::Type{bir::TypeKind::Void},
@@ -15181,6 +15320,7 @@ int main() {
   test_inline_asm_shape_rejection();
   test_direct_zero_argument_void_call_receipt();
   test_raw_extern_direct_integer_call_signature_adapter();
+  test_extern_byval_aggregate_signature_store_receipt_and_rejections();
   test_direct_zero_argument_void_call_builder_contract();
   test_native_floating_call_result_builder_contract();
   test_direct_zero_argument_void_call_rejections();

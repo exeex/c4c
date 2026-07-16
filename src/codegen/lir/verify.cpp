@@ -799,6 +799,7 @@ void verify_call_callee_signature_ref(const LirModule& mod,
          *retained.return_type_ref != *signature->return_type_ref) ||
         retained.return_ext_attr != signature->return_ext_attr ||
         retained.fixed_param_type_refs != signature->fixed_param_type_refs ||
+        retained.fixed_param_types.size() != signature->fixed_param_is_byval.size() ||
         retained.is_variadic != signature->is_variadic ||
         retained.has_void_param_list != signature->has_void_param_list ||
         retained.has_unspecified_params) {
@@ -807,12 +808,48 @@ void verify_call_callee_signature_ref(const LirModule& mod,
              << " for callee '" << call.callee.str() << "'";
       fail_verify(field, detail.str());
     }
+    for (std::size_t index = 0; index < retained.fixed_param_types.size();
+         ++index) {
+      const bool retained_spells_byval =
+          retained.fixed_param_types[index].find("byval(") != std::string::npos;
+      if (retained_spells_byval != signature->fixed_param_is_byval[index]) {
+        fail_verify(field,
+                    "callee signature ref byval facts disagree with retained structured call signature");
+      }
+    }
   }
 
   if (*signature->return_type_ref != call.return_type ||
       call.return_ext_attr != signature->return_ext_attr) {
     fail_verify(field,
                 "callee signature ref return facts must match call-site return facts");
+  }
+
+  if (extern_decl) {
+    if (signature->fixed_param_is_byval.size() !=
+        signature->fixed_param_type_refs.size()) {
+      fail_verify(field,
+                  "extern callee signature ref byval facts must match fixed parameter refs");
+    }
+    for (std::size_t index = 0;
+         index < signature->fixed_param_type_refs.size() &&
+         index < call.structured_args.size();
+         ++index) {
+      const LirTypeRef& parameter_type = signature->fixed_param_type_refs[index];
+      if (!parameter_type.has_struct_name_id()) {
+        continue;
+      }
+      if (!signature->fixed_param_is_byval[index]) {
+        fail_verify(field,
+                    "extern aggregate fixed parameter requires a byval signature-store fact");
+      }
+      const LirTypeRef& argument_type = call.structured_args[index].type_ref;
+      if (!argument_type.empty() &&
+          argument_type.struct_name_id() != parameter_type.struct_name_id()) {
+        fail_verify(field,
+                    "extern aggregate fixed parameter family must match the structured argument family");
+      }
+    }
   }
 }
 

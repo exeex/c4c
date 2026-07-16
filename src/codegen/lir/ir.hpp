@@ -1567,7 +1567,11 @@ struct LirModule {
     entry.return_type_ref = signature.return_type_ref;
     entry.return_ext_attr = signature.return_ext_attr;
     entry.fixed_param_type_refs = signature.fixed_param_type_refs;
-    entry.fixed_param_is_byval.assign(entry.fixed_param_type_refs.size(), false);
+    entry.fixed_param_is_byval.reserve(entry.fixed_param_type_refs.size());
+    for (const std::string& param_type : signature.fixed_param_types) {
+      entry.fixed_param_is_byval.push_back(
+          param_type.find("byval(") != std::string::npos);
+    }
     entry.is_variadic = signature.is_variadic;
     entry.has_void_param_list = signature.has_void_param_list;
     const LirFunctionSignatureRef ref =

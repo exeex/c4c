@@ -987,6 +987,14 @@ bool call_param_spells_byval_pointer(std::string_view type_text) {
          type_text.substr(0, kByvalPointerPrefix.size()) == kByvalPointerPrefix;
 }
 
+std::string store_signature_param_type_text(
+    const c4c::codegen::lir::LirTypeRef& type_ref, bool is_byval) {
+  if (!is_byval) {
+    return type_ref.str();
+  }
+  return "ptr byval(" + type_ref.str() + ")";
+}
+
 bool is_v16i8_type(std::string_view type_text) {
   return c4c::codegen::lir::trim_lir_arg_text(type_text) == "<16 x i8>";
 }
@@ -1087,6 +1095,45 @@ std::optional<BirFunctionLowerer::ParsedTypedCall> BirFunctionLowerer::parse_typ
         if (!call.callee_signature->is_variadic &&
             !call.callee_signature->has_unspecified_params) {
           return std::nullopt;
+        }
+        push_param_type(call.structured_args[index].type);
+      }
+      return parsed;
+    }
+
+    if (call.callee_signature_ref.valid()) {
+      const auto* store_signature =
+          context_.lir_module.find_function_signature(call.callee_signature_ref);
+      if (store_signature == nullptr ||
+          !store_signature->return_type_ref.has_value() ||
+          store_signature->has_void_param_list ||
+          store_signature->fixed_param_is_byval.size() !=
+              store_signature->fixed_param_type_refs.size()) {
+        return std::nullopt;
+      }
+      const std::size_t fixed_param_count =
+          store_signature->fixed_param_type_refs.size();
+      if (call.structured_args.size() < fixed_param_count) {
+        return std::nullopt;
+      }
+      if (!store_signature->is_variadic &&
+          call.structured_args.size() != fixed_param_count) {
+        return std::nullopt;
+      }
+      parsed.is_variadic = store_signature->is_variadic;
+      parsed.owned_param_types.reserve(call.structured_args.size());
+      parsed.param_types.reserve(call.structured_args.size());
+      for (std::size_t index = 0; index < call.structured_args.size(); ++index) {
+        if (index < fixed_param_count) {
+          const std::string expected_type = store_signature_param_type_text(
+              store_signature->fixed_param_type_refs[index],
+              store_signature->fixed_param_is_byval[index]);
+          if (!fixed_param_accepts_arg(expected_type,
+                                       call.structured_args[index].type)) {
+            return std::nullopt;
+          }
+          push_param_type(expected_type);
+          continue;
         }
         push_param_type(call.structured_args[index].type);
       }
