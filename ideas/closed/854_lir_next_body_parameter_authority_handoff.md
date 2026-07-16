@@ -1,6 +1,6 @@
 # LIR Next Body-Parameter Authority Handoff
 
-Status: Open
+Status: Closed
 Type: bounded LIR producer/schema/verifier authority publication
 Predecessor: `ideas/open/734_lir_to_new_bir_container_completeness.md` post-Step 7.42
 Consumer: `ideas/open/734_lir_to_new_bir_container_completeness.md`
@@ -66,3 +66,37 @@ owner must identify one native row before a receiver can proceed.
   rendered-operand-derived identity, type, role, or consumer coherence.
 - Reject retaining the exact missing authority behind a renamed carrier, or
   accepting a row without malformed/foreign/duplicate rejection coverage.
+
+## Closure Disposition
+
+Closed as capability complete for this bounded producer/schema/verifier route.
+The implemented handoff is exactly one native LIR body-parameter authority row:
+a current-function `DirectScalar` parameter used as the unary floating `fneg`
+operand, carried on `LirBinOp.scalar_lhs_parameter_authority` with explicit
+`Lhs` role.
+
+Receiver tuple for `ideas/open/734_lir_to_new_bir_container_completeness.md`:
+original parameter `LirValueId`, current-function owner, parameter index,
+matching `LirTypeRef`, `DirectScalar` ABI, and explicit `Lhs` role. The
+consumer relation is unary `LirBinOp` opcode `fneg`, with the parameter
+SSA/value as `lhs` and empty `rhs`.
+
+Accepted producer/verifier proof:
+
+- Step 2 commit `51c6f3751` (`Prove unary fneg parameter authority`).
+- Focused proof:
+  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_function_signature_type_ref$' ) > test_after.log 2>&1 && git diff --check`
+- Matching regression guard passed with before 1/1, after 1/1, and no new
+  failures.
+
+Focused malformed coverage rejects omitted authority, missing parameter
+definition, invalid value, duplicate definition, foreign owner, wrong index,
+wrong type, wrong ABI, wrong role, non-`fneg` consumer, `lhs` mismatch, and
+populated `rhs`. Existing carrier/emitter/verifier code already published and
+enforced the row; the accepted implementation added focused malformed
+coverage only.
+
+Return action: hand this exact one-row producer fact back to
+`ideas/open/734_lir_to_new_bir_container_completeness.md` for a future typed
+Raw-BIR receiver packet. Raw-BIR receipt remains separate and was not
+implemented or claimed in 854.

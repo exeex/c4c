@@ -1773,3 +1773,33 @@ runbook only for that matching typed Raw-BIR receiver row. Do not repeat Step
 7.42 or receive another parameter, memory/VA, aggregate/vector,
 module/type/global, instruction/terminator, or inline-assembly form without
 its separately scoped first-owner handoff.
+
+## Resumption Record: unary fneg parameter authority completion
+
+Closed idea 854 completed the next body-parameter producer prerequisite with
+accepted implementation `51c6f3751`. The exact handed-off row is a native
+current-function `DirectScalar` parameter used as a unary floating `fneg`
+operand. The LIR authority is carried on
+`LirBinOp.scalar_lhs_parameter_authority` and includes the original parameter
+`LirValueId`, current-function owner, parameter index, matching `LirTypeRef`,
+`DirectScalar` ABI, and explicit `Lhs` role. The consumer relation is the
+unary `LirBinOp` opcode `fneg`, with the parameter SSA/value as `lhs` and
+empty `rhs`.
+
+The accepted producer proof is the fresh build plus focused
+`^frontend_lir_function_signature_type_ref$` result recorded in
+`test_after.log`, followed by `git diff --check`; the matching regression
+guard passed with before 1/1, after 1/1, and no new failures. Focused
+malformed coverage rejects omitted authority, missing parameter definition,
+invalid value, duplicate definition, foreign owner, wrong index, wrong type,
+wrong ABI, wrong role, non-`fneg` consumer, `lhs` mismatch, and populated
+`rhs`.
+
+Exact return action: repair and execute one bounded Step 7.43 Raw-BIR
+receiver packet. Consume only the handed-off `DirectScalar` unary-`fneg`
+parameter authority row; preserve the parameter tuple and unary consumer
+coherence in a typed Raw-BIR destination, importer path, reachable verifier,
+and transactional positive/negative coverage. Do not repeat Step 7.42, claim
+Raw-BIR receipt from 854, receive another body-parameter row, or absorb
+memory/VA, aggregate/vector, module/type/global, instruction/terminator, or
+inline-assembly forms.
