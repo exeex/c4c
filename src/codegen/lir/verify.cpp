@@ -4576,8 +4576,12 @@ void verify_global_type_ref_shadows(const LirModule& mod) {
   for (const auto& global : mod.globals) {
     const StructNameId global_struct_name_id =
         find_declared_struct_name_id(mod, global.llvm_type);
+    const bool selected_direct_aggregate_global =
+        (global.type.base == TB_STRUCT || global.type.base == TB_UNION) &&
+        global.type.ptr_level == 0 && global.type.array_rank == 0;
     if (!global.llvm_type_ref.has_value()) {
-      if (global_struct_name_id != kInvalidStructName) {
+      if (selected_direct_aggregate_global &&
+          global_struct_name_id != kInvalidStructName) {
         fail_verify("LirGlobal.llvm_type_ref",
                     "known aggregate global type must carry matching StructNameId");
       }
