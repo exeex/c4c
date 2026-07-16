@@ -9,16 +9,17 @@ Current Step Title: Delete mutable LIR type text escape hatches in small packets
 ## Just Finished
 
 Completed Step 2 packet to delete the local deprecated helper
-`no_module_va_list_tag_type_text` in
-`src/codegen/lir/hir_to_lir/call/vaarg.cpp`. Removed the helper and replaced
-its only direct callsite with explicit `LirTypeRef(kVaListTagType)`
-construction in the generic vaarg path.
+`no_module_amd64_va_list_tag_type_text` in
+`src/codegen/lir/hir_to_lir/call/vaarg_amd64.cpp`. Removed the helper and
+replaced its only direct callsite with explicit `LirTypeRef(kVaListTagType)`
+construction in the AMD64 vaarg path.
 
 ## Suggested Next
 
-Continue Step 2 with one remaining named deprecated compatibility factory
-family in a separate narrow packet, selected by the supervisor from the current
-warning inventory.
+Continue Step 2 with the AArch64 vector ABI source type-text factory family in
+a separate narrow packet, likely starting with
+`hir_rendered_aarch64_vector_abi_source_type_text` or the adjacent call
+argument ABI source helper from the current warning inventory.
 
 ## Watchouts
 
@@ -43,6 +44,8 @@ warning inventory.
 - `rg -n "parsed_typed_call_argument_text" src tests/frontend tests/backend`
   is now clean.
 - `rg -n "no_module_va_list_tag_type_text" src tests/frontend tests/backend`
+  is now clean.
+- `rg -n "no_module_amd64_va_list_tag_type_text" src tests/frontend tests/backend`
   is now clean.
 - Required scalar-to-vector splat shuffles now reject incoherent native
   `mask_type` mirrors against vector-store lane count; do not weaken that
