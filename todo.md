@@ -8,18 +8,18 @@ Current Step Title: Migrate declarations to signature refs
 
 ## Just Finished
 
-- Step 2 declaration consumer migration started: declaration header rendering
-  now consumes `LirFunctionSignatureRef`/store facts for return type, return
-  extension ABI, ordered fixed params, variadic state, and void-list state.
-  `signature_text` remains a compatibility field, but stale declaration
-  `signature_text` no longer controls printed declaration output when a valid
-  store ref exists.
+- Step 2 verifier slice completed: declaration and definition verification now
+  explicitly requires a valid `LirFunctionSignatureRef` whenever the module has
+  signature-store facts, then compares return type, return extension ABI,
+  ordered fixed params, byval facts, variadic state, and void-list state
+  against the module-owned store entry. Nearby coverage now rejects stale and
+  missing declaration/definition signature refs plus wrong-store facts.
 
 ## Suggested Next
 
-- Continue Step 2 with the next bounded declaration/definition verifier or
-  header-consumer migration through `LirFunctionSignatureRef`; do not move into
-  call composition yet.
+- Continue Step 2 with the next bounded declaration/definition producer or
+  remaining declaration consumer migration through `LirFunctionSignatureRef`;
+  do not move into call composition yet.
 
 ## Watchouts
 

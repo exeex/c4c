@@ -1356,6 +1356,32 @@ int defined_void_params(void) {
       stale_signature_ref,
       "verifier should reject a stale function signature ref");
 
+  c4c::codegen::lir::LirModule stale_definition_signature_ref = lir_module;
+  require_mutable_function(stale_definition_signature_ref, "defined_pair", false)
+      .function_signature_ref =
+      c4c::codegen::lir::LirFunctionSignatureRef{
+          static_cast<uint32_t>(
+              stale_definition_signature_ref.function_signature_store.size())};
+  expect_verify_rejects(
+      stale_definition_signature_ref,
+      "verifier should reject a stale definition function signature ref");
+
+  c4c::codegen::lir::LirModule missing_declaration_signature_ref = lir_module;
+  require_mutable_function(missing_declaration_signature_ref, "declared_pair", true)
+      .function_signature_ref =
+      c4c::codegen::lir::LirFunctionSignatureRef::invalid();
+  expect_verify_rejects(
+      missing_declaration_signature_ref,
+      "verifier should reject a declaration missing its function signature ref");
+
+  c4c::codegen::lir::LirModule missing_definition_signature_ref = lir_module;
+  require_mutable_function(missing_definition_signature_ref, "defined_pair", false)
+      .function_signature_ref =
+      c4c::codegen::lir::LirFunctionSignatureRef::invalid();
+  expect_verify_rejects(
+      missing_definition_signature_ref,
+      "verifier should reject a definition missing its function signature ref");
+
   c4c::codegen::lir::LirModule wrong_store_signature = lir_module;
   auto& wrong_store_decl =
       require_mutable_function(wrong_store_signature, "declared_pair", true);
@@ -1365,6 +1391,16 @@ int defined_void_params(void) {
   expect_verify_rejects(
       wrong_store_signature,
       "verifier should reject wrong-module function signature store facts");
+
+  c4c::codegen::lir::LirModule wrong_store_definition_signature = lir_module;
+  auto& wrong_store_def = require_mutable_function(wrong_store_definition_signature,
+                                                  "defined_pair", false);
+  wrong_store_definition_signature
+      .function_signature_store[wrong_store_def.function_signature_ref.value]
+      .has_void_param_list = true;
+  expect_verify_rejects(
+      wrong_store_definition_signature,
+      "verifier should reject wrong-module definition function signature store facts");
 
   c4c::codegen::lir::LirModule byval_text_fallback = lir_module;
   require_mutable_function(byval_text_fallback, "declared_big", true)

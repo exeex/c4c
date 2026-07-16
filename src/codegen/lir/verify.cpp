@@ -4448,16 +4448,24 @@ bool same_signature_store_type_facts(const std::vector<LirTypeRef>& lhs,
 
 void verify_function_signature_store_ref(const LirModule& mod,
                                          const LirFunction& fn) {
-  if (mod.function_signature_store.empty() &&
-      !fn.function_signature_ref.valid()) {
-    return;
+  constexpr std::string_view field = "LirFunction.function_signature_ref";
+  if (!fn.function_signature_ref.valid()) {
+    if (mod.function_signature_store.empty()) return;
+    std::ostringstream detail;
+    detail << (fn.is_declaration ? "declaration" : "definition")
+           << " function '" << fn.name
+           << "' must reference a module-owned function signature";
+    fail_verify(field, detail.str());
   }
 
-  constexpr std::string_view field = "LirFunction.function_signature_ref";
   const LirFunctionSignatureStoreEntry* entry =
       mod.find_function_signature(fn.function_signature_ref);
   if (!entry) {
-    fail_verify(field, "must reference a module-owned function signature");
+    std::ostringstream detail;
+    detail << (fn.is_declaration ? "declaration" : "definition")
+           << " function '" << fn.name
+           << "' must reference a module-owned function signature";
+    fail_verify(field, detail.str());
   }
 
   if (!same_signature_store_type_fact(entry->return_type_ref,
