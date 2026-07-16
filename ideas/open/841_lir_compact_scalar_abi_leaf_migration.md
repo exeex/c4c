@@ -30,6 +30,13 @@ aggregate, and function refs are compile-time invalid there.
   only after every named op/verifier/printer/receiver accepts `LirScalarRef`;
   retire each opaque factory after its named consumer migrates.
 
+## 866 Reconciliation And 734 Return
+
+Idea 866 selects this as the first ordered executable successor for compact
+scalar and ABI-leaf producer/schema ownership. Return to 734 only when this
+idea accepts an exact typed scalar or ABI-leaf handoff naming one bounded
+Raw-BIR receiver row; otherwise downstream receiver work remains deferred.
+
 ## Reviewer Reject Signals
 
 - Reject implicit cross-family conversion, text classification, opaque-policy

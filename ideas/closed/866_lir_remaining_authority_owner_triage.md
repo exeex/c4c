@@ -1,6 +1,6 @@
 # LIR Remaining Authority Owner Triage
 
-Status: Open
+Status: Closed - intentionally concluded with ordered successors
 Type: Umbrella triage and follow-up idea generator
 Parent: `ideas/open/734_lir_to_new_bir_container_completeness.md`
 Predecessor: `ideas/closed/865_lir_next_non_body_parameter_authority_handoff.md`
@@ -117,3 +117,41 @@ what remains intentionally deferred.
   downgrades, allowlist filtering, or weaker runtime checks as progress.
 - Reject reopening `LirAbsOp` selected-global/i32, direct-call argument 0/1,
   body-parameter, local-object, VLA, or accepted call-result receiver rows.
+
+## Closure Note
+
+Close accepted as lifecycle-only/documentation-only triage. The umbrella did
+not implement capability work and did not produce a direct 734 receiver
+handoff.
+
+Evidence used:
+
+- `docs/lir_remaining_authority_owner_triage/current_evidence.md`
+- `docs/lir_remaining_authority_owner_triage/classification.md`
+- `docs/lir_remaining_authority_owner_triage/ordering_and_closure.md`
+
+Generated or reused successors, in dependency order:
+
+1. `ideas/open/841_lir_compact_scalar_abi_leaf_migration.md`
+2. `ideas/open/842_lir_restricted_first_class_value_unions.md`
+3. `ideas/open/843_lir_direct_hir_family_construction_array_composition.md`
+4. `ideas/open/844_lir_global_extern_initializer_family_facts.md`
+5. `ideas/open/867_lir_memory_va_object_lifetime_authority.md`
+6. `ideas/open/848_lir_global_policy_identity_evidence.md`
+7. `ideas/open/849_lir_intrinsic_binding_evidence.md`
+8. `ideas/open/850_lir_cfg_phi_raw_bindings_evidence.md`
+9. `ideas/open/845_lir_typed_reference_carriers_collector_migration.md`
+10. `ideas/open/846_lir_family_overloaded_verifier_dispatch_printer.md`
+11. `ideas/open/847_lir_universal_model_string_escape_hatch_deletion.md`
+12. `ideas/open/797_lir_to_new_bir_final_coverage_convergence.md`
+
+Rejected current successors: direct Raw-BIR receiver work for 734, generic
+residual sweeps, stale open idea return records that do not reconcile to
+post-Step-7.51 734, and `LirAbsOp` selected-global/i32 because commit
+`0c44e810ad` already receives it.
+
+Deferred work: 734 remains paused after `750b6b3ba` until one listed
+first-owner successor accepts an exact typed handoff. Raw-BIR receiver work
+must consume one handoff at a time and must not precede producer/schema,
+verifier, or documentation evidence where those are the classified first
+owners.

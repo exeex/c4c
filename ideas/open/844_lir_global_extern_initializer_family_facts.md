@@ -28,6 +28,13 @@ mirrors to family refs while leaving initializer-text semantics separately owned
   extern consumers use family refs; retain final output and initializer scanner
   until named migration proves deletion.
 
+## 866 Reconciliation And 734 Return
+
+Idea 866 keeps this as the ordered producer/schema successor for global and
+extern type facts. Return to 734 only after one exact typed global or extern
+handoff is accepted; initializer-text semantics and non-type global policy stay
+outside this return and remain delegated to separate evidence routes.
+
 ## Reviewer Reject Signals
 
 - Reject treating final rendering or initializer text as type authority,

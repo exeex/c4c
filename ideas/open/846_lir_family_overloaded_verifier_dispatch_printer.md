@@ -30,6 +30,13 @@ one-way printer overloads by family.
   `LirTypeRef(type.str())` classification only after every named caller uses an
   overload and mirrors are check-only, never parsed.
 
+## 866 Reconciliation And 734 Return
+
+Idea 866 orders this after family producers and carriers exist. It may enable a
+later 734 receiver only by accepting verifier/dispatch proof for one already
+published native fact; it must not create producer state or treat printer
+parity as semantic authority.
+
 ## Reviewer Reject Signals
 
 - Reject generic kind switches or text reclassification behind overload names,

@@ -100,6 +100,13 @@ must not replace the required answer file.
 - No implementation files, test expectations, unsupported markers, allowlists,
   runtime behavior, active plan state, or lifecycle history are changed.
 
+## 866 Reconciliation And 734 Return
+
+Idea 866 reuses this as the ordered documentation successor for global policy
+and symbol identity evidence. It may return to 734 only by naming one exact
+evidence-backed typed handoff after the field trace is complete; otherwise 734
+and 797 remain downstream and deferred.
+
 ## Reviewer Reject Signals
 
 - Reject any implementation, test-contract, or lifecycle change presented as

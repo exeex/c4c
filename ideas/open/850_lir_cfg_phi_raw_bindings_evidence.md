@@ -101,6 +101,13 @@ must not replace the required answer file.
 - No implementation files, test expectations, unsupported markers, allowlists,
   runtime behavior, active plan state, or lifecycle history are changed.
 
+## 866 Reconciliation And 734 Return
+
+Idea 866 reuses this as the ordered documentation successor for CFG/PHI and
+terminator raw-binding seams. It may return to 734 only after it proves an exact
+typed handoff or identifies a separately scoped producer successor; accepted
+734 CFG/PHI rows must not be reopened.
+
 ## Reviewer Reject Signals
 
 - Reject any omitted `LirPhi` or terminator form, or a family-wide conclusion

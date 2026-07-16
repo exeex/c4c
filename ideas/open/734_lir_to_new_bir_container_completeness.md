@@ -401,6 +401,22 @@ printer output, or rendered text; do not repeat Step 7.23 or absorb PHI,
 local/object, memory/va, aggregate/vector, body-parameter, or any other
 family.
 
+## Resumption Record: remaining-authority triage conclusion
+
+Closed idea 866 completed lifecycle-only remaining-authority triage with no
+direct 734 handoff. Its evidence documents are
+`docs/lir_remaining_authority_owner_triage/current_evidence.md`,
+`docs/lir_remaining_authority_owner_triage/classification.md`, and
+`docs/lir_remaining_authority_owner_triage/ordering_and_closure.md`.
+
+The next executable route is not a Raw-BIR receiver packet. Ordered first-owner
+successors begin with `ideas/open/841_lir_compact_scalar_abi_leaf_migration.md`
+and continue through the successor list recorded in closed idea 866. Reactivate
+734 only after one successor accepts an exact typed handoff, then repair 734 for
+one bounded receiver row from that handoff. Do not reopen `LirAbsOp`
+selected-global/i32 because `0c44e810ad` already receives it, and do not route
+generic residual sweeps or stale return records as current authority.
+
 ## Why This Exists
 
 The landed importer proves only a bounded structured inline-assembly path. It

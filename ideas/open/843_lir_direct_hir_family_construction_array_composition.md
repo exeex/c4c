@@ -30,6 +30,13 @@ and signature facts; retain arrays as recursive typed composition.
   exact producer emits a family ref; retain parser/extern/asm adapters by
   named consumer.
 
+## 866 Reconciliation And 734 Return
+
+Idea 866 keeps this as the ordered producer successor for direct HIR family
+construction and recursive array composition. Return to 734 only after an exact
+family construction handoff identifies one typed aggregate/vector/array row
+that Raw BIR can receive without rendered-text recovery.
+
 ## Reviewer Reject Signals
 
 - Reject `llvm_ty()`/printer text as authority, flattened recursive children,

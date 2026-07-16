@@ -1,36 +1,29 @@
 Status: Active
-Source Idea Path: ideas/open/866_lir_remaining_authority_owner_triage.md
+Source Idea Path: ideas/open/841_lir_compact_scalar_abi_leaf_migration.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Generate ordered follow-up ideas and close the umbrella
+Current Step ID: 1
+Current Step Title: Inventory scalar and ABI-leaf authority users
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 by creating
-`docs/lir_remaining_authority_owner_triage/classification.md`. The
-classification separates documentation/research, LIR producer/schema, LIR
-verifier, collector/import-preparation, Raw-BIR receiver, and terminal policy
-ownership; rejects generic residual sweeps as current successors; and
-reconciles stale overlapping open ideas against post-Step-7.51 734 state.
+Closed idea 866 as lifecycle-only remaining-authority triage and activated the
+first ordered executable successor, idea 841.
 
 ## Suggested Next
 
-Execute Step 3 by generating or repairing ordered follow-up ideas under
-`ideas/open/` from the classification, then ask plan-owner to close or
-otherwise disposition the umbrella.
+Execute Step 1 by inventorying scalar and ABI-leaf authority users, separating
+true scalar rows from vector, aggregate, function, opaque, pointer, and void
+ABI-leaf cases, and selecting the first bounded migration target.
 
 ## Watchouts
 
-Do not implement code or tests in this umbrella. Keep each generated follow-up
-single-owner and single-layer unless the source explicitly requires a bounded
-handoff/return pairing. Do not route 734 Raw-BIR receiver work before a typed
-LIR handoff exists, and do not reopen accepted `LirAbsOp`, direct-call
-argument 0/1, body-parameter, local-object/VLA, or call-result rows.
+Do not implement 734 Raw-BIR receiver work in this idea. Do not assume opaque is
+scalar, do not parse rendered text as scalar authority, and do not reopen
+accepted receiver rows such as `LirAbsOp` selected-global/i32.
 
 ## Proof
 
-Docs-only Step 2 proof: `git diff --check`. No `test_after.log` was written
-because the delegated proof command is documentation-only and produces no
-test log.
+Lifecycle activation proof: `git diff --check`. Step 1 may remain
+documentation/inventory-only unless it selects and delegates a code slice.

@@ -27,6 +27,13 @@ semantic callee, argument, signature, or global reference carrier.
 - Delete a scanner only after its exact source field has a semantic carrier;
   queue residual non-type text to 812 then 813.
 
+## 866 Reconciliation And 734 Return
+
+Idea 866 orders this after producer/schema routes publish exact semantic
+carriers. It is not first owner for missing facts. Return to 734 only when a
+carrier migration accepts an exact field that a bounded Raw-BIR receiver row can
+consume without scanner or rendered-text recovery.
+
 ## Reviewer Reject Signals
 
 - Reject rendered-text/name scans renamed as carriers, broad collector sweeps,

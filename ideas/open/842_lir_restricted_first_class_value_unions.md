@@ -29,6 +29,13 @@ select, and return rather than retaining a universal type carrier.
 - Delete boundary `LirTypeRef` fields only after all named boundaries use
   exhaustive checked alternatives.
 
+## 866 Reconciliation And 734 Return
+
+Idea 866 keeps this as the ordered producer/schema successor for restricted
+first-class boundary alternatives. Return to 734 only after a named boundary
+union accepts one exact typed handoff for call, PHI, select, or return receipt;
+unbounded value carriers and generic receiver work remain deferred.
+
 ## Reviewer Reject Signals
 
 - Reject unbounded alternatives, RTTI/vtables, missing enum cases, generic

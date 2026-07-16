@@ -31,6 +31,12 @@ disposition to 797.
 - Deliver the complete valid-LIR disposition to 797, not a claim that 797 is
   complete.
 
+## 866 Reconciliation And 734 Return
+
+Idea 866 orders this as terminal deletion after M1-M15 replacements and all
+needed 734 receipts have accepted dispositions. It does not return directly to
+734; its return is a final valid-LIR disposition handoff to 797.
+
 ## Reviewer Reject Signals
 
 - Reject deletion before any named M1--M15 consumer/adaptor gate is met.

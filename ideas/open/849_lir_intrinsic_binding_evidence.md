@@ -101,6 +101,13 @@ must not replace the required answer file.
 - No implementation files, test expectations, unsupported markers, allowlists,
   runtime behavior, active plan state, or lifecycle history are changed.
 
+## 866 Reconciliation And 734 Return
+
+Idea 866 reuses this as the ordered documentation successor for intrinsic and
+inline-assembly binding evidence. It may not return directly to 734 until an
+exact 796 or 846 handoff is accepted; templates and constraints remain opaque
+and unparsed.
+
 ## Reviewer Reject Signals
 
 - Reject template/constraint parsing, text-derived binding recovery, or an

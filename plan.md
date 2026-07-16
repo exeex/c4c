@@ -1,126 +1,140 @@
-# LIR Remaining Authority Owner Triage Runbook
+# LIR Compact Scalar and ABI-Leaf Migration Runbook
 
 Status: Active
-Source Idea: ideas/open/866_lir_remaining_authority_owner_triage.md
-Switched From: ideas/closed/865_lir_next_non_body_parameter_authority_handoff.md
-after no-change conclusion; parent 734 remains paused after receiver commit
-`750b6b3ba`
+Source Idea: ideas/open/841_lir_compact_scalar_abi_leaf_migration.md
+Activated From: closed 866 remaining-authority triage ordering
 
 ## Purpose
 
-Classify the remaining post-Step-7.51 current-LIR authority space before any
-new producer or Raw-BIR receiver implementation route is selected.
+Execute the first ordered producer/schema successor from idea 866 by moving
+compact scalar and ABI-leaf authority away from universal type/text handling.
 
 ## Goal
 
-Produce a current evidence bundle, owner classification, and ordered follow-up
-ideas for the next executable first-owner routes that can eventually return to
-734.
+Introduce a compact scalar family and migrate scalar-only schemas so vector,
+aggregate, and function refs are compile-time invalid there, while preserving
+only evidenced pointer/void ABI-leaf compatibility.
 
 ## Core Rule
 
-Do not implement fixes, edit tests, or reopen accepted receiver rows. This
-umbrella only classifies first ownership and creates ordered follow-up ideas.
+This is first-owner LIR producer/schema work. Do not implement 734 Raw-BIR
+receiver packets, generic residual sweeps, or terminal deletion before the
+named scalar/ABI-leaf gates are accepted.
 
 ## Read First
 
-- `ideas/open/866_lir_remaining_authority_owner_triage.md`
-- `ideas/open/734_lir_to_new_bir_container_completeness.md`
-- `ideas/closed/865_lir_next_non_body_parameter_authority_handoff.md`
-- Accepted receiver commits `750b6b3ba` and `0c44e810ad`
-- Relevant stale open ideas only when their scope overlaps the current
-  post-Step-7.51 734 blocker
+- `ideas/open/841_lir_compact_scalar_abi_leaf_migration.md`
+- `docs/lir_remaining_authority_owner_triage/current_evidence.md`
+- `docs/lir_remaining_authority_owner_triage/classification.md`
+- `docs/lir_remaining_authority_owner_triage/ordering_and_closure.md`
+- Existing scalar lowering, verifier, printer, and receiver tests discovered
+  during Step 1
 
 ## Current Targets And Scope
 
-- Create or refresh docs under `docs/lir_remaining_authority_owner_triage/`.
-- Record why 865 produced no handoff and why `LirAbsOp`
-  selected-global/i32 is not selectable.
-- Classify remaining families by first owning layer and dependency order.
-- Generate or repair ordered follow-up ideas under `ideas/open/`.
-- Keep 734 paused until a later follow-up produces an exact accepted handoff.
+- Compact scalar store/ref and scalar operation schemas.
+- Separately evidenced pointer/void ABI-leaf compatibility boundaries.
+- Removal of scalar text classification/comparison and scalar `LirTypeRef`
+  fields only after named consumers accept `LirScalarRef`.
+- Opaque semantics only as an evidence-needed subroute.
 
 ## Non-Goals
 
-- Do not edit implementation files, tests, expectations, unsupported markers,
-  allowlists, runtime behavior, Raw-BIR receiver code, importer code, or
-  verifier behavior.
-- Do not publish LIR producer/schema/verifier authority inside this umbrella.
-- Do not select a one-row implementation packet directly from this runbook.
-- Do not treat stale open idea return records as current 734 authority without
-  reconciliation.
-- Do not reopen `LirAbsOp` selected-global/i32, direct-call argument 0/1,
-  body-parameter, local-object, VLA, accepted call-result, or other accepted
-  receiver rows.
+- Do not assume opaque is scalar.
+- Do not migrate aggregate, vector, or function families under this idea.
+- Do not remove external compatibility before a native consumer exists.
+- Do not reopen accepted 734 receiver rows, including `LirAbsOp`
+  selected-global/i32 from `0c44e810ad`.
+- Do not parse rendered text, printer output, or testcase names as scalar
+  authority.
 
 ## Execution Rules
 
-- Preserve evidence at the documentation layer first.
-- Keep every follow-up idea single-owner and single-layer unless the source
-  explicitly requires a bounded handoff/return pairing.
-- Every generated follow-up must include concrete reject signals and an exact
-  734 return condition when applicable.
-- Use `git diff --check` as the minimum proof for lifecycle/docs-only slices.
+- Work in bounded packets with a fresh build plus focused proof for each code
+  slice.
+- Keep producer/schema, verifier/printer, and receiver compatibility evidence
+  separated in the runbook and in tests.
+- Retire each opaque factory or compatibility adapter only after the exact
+  named consumer has migrated.
+- Any eventual 734 return requires an accepted exact typed scalar or ABI-leaf
+  handoff naming one bounded Raw-BIR receiver row.
 
 ## Steps
 
-### Step 1 - Build the current evidence bundle
+### Step 1 - Inventory scalar and ABI-leaf authority users
 
-Goal: create the triage documentation directory and record the authoritative
-post-Step-7.51 evidence.
-
-Actions:
-
-- Create `docs/lir_remaining_authority_owner_triage/`.
-- Write a current-evidence document naming accepted commits `750b6b3ba` and
-  `0c44e810ad`, the rejected 865 row, and the accepted/stale rows that must
-  not be reopened.
-- List the broad remaining families from the 865 blocker without assigning
-  implementation yet.
-
-Completion check:
-
-- The evidence document states that 865 produced no handoff.
-- The evidence document states that `LirAbsOp` selected-global/i32 is already
-  received by `0c44e810ad`.
-- No implementation or test file is edited.
-
-### Step 2 - Classify remaining families by first owner
-
-Goal: decide which first owning layer must move before each remaining family
-can return to 734.
+Goal: identify the concrete scalar-only schemas, helpers, verifier/printer
+paths, and receiver compatibility points this idea may own.
 
 Actions:
 
-- Classify CFG/PHI residuals, memory/VA, aggregate/vector,
-  module/type/global/metadata, residual instruction/terminator, inline-asm,
-  and stale overlapping open ideas.
-- For each family, identify whether the first owner is LIR producer/schema,
-  LIR verifier, Raw-BIR receiver, importer, documentation, or broader policy.
-- Mark families that are not currently executable and explain the blocker.
+- Trace current scalar type/ref construction and consumption through lowering,
+  operation schemas, verifier, printer, and Raw-BIR receiver compatibility.
+- Separate true scalar rows from vector, aggregate, function, opaque, pointer,
+  and void ABI-leaf cases.
+- Record the first bounded migration target and the tests that prove current
+  behavior before editing implementation files.
 
 Completion check:
 
-- The classification document separates first owners and does not mix producer
-  repair with Raw-BIR receipt.
-- Stale open ideas are either reconciled or rejected as current successors.
+- `todo.md` records the selected bounded target, excluded families, proof
+  command, and any missing evidence.
+- No implementation change is required for this step.
 
-### Step 3 - Generate ordered follow-up ideas and close the umbrella
+### Step 2 - Add the compact scalar authority carrier
 
-Goal: create the next executable source ideas and record their order.
+Goal: introduce the minimal native scalar carrier/store/ref needed by the
+selected bounded target.
 
 Actions:
 
-- Create or repair follow-up ideas under `ideas/open/` for the selected ordered
-  first-owner routes.
-- Ensure each follow-up has goal, scope, non-goals, acceptance criteria, exact
-  734 return condition where relevant, and reviewer reject signals.
-- Update the umbrella source with a closure note naming docs, generated ideas,
-  ordering, and deferred work.
-- Send the completed route to plan-owner for close.
+- Add the compact scalar representation and checked access used by the selected
+  scalar-only schemas.
+- Preserve pointer/void ABI-leaf compatibility only where Step 1 found named
+  evidenced consumers.
+- Keep old universal fields available only as compatibility mirrors until all
+  named consumers migrate.
 
 Completion check:
 
-- Follow-up ideas exist or are explicitly rejected with evidence.
-- The umbrella closure note names the current evidence and ordered successors.
-- `git diff --check` passes.
+- Fresh build passes.
+- Focused scalar positive and wrong-family coverage proves vector, aggregate,
+  and function refs cannot silently enter the scalar-only path.
+
+### Step 3 - Migrate named scalar producers and consumers
+
+Goal: move the selected scalar lowering, operation verifier/printer, and
+receiver compatibility path to the compact scalar authority.
+
+Actions:
+
+- Migrate one bounded producer/consumer group at a time.
+- Update verifier/printer checks to use native scalar authority and treat
+  rendering as parity only.
+- Keep compatibility adapters for named unmigrated consumers.
+
+Completion check:
+
+- Fresh build and focused tests cover migrated scalar lowering, verifier,
+  printer, receiver compatibility, pointer/void ABI compatibility where
+  selected, and wrong-family rejection.
+
+### Step 4 - Retire accepted scalar text escape hatches
+
+Goal: remove scalar text classification/comparison and scalar `LirTypeRef`
+fields only where every named consumer has migrated.
+
+Actions:
+
+- Delete only the scalar text helpers, factories, fields, or conversions whose
+  named consumers are proven migrated.
+- Retain opaque/external/inline-asm compatibility until a native consumer
+  accepts its own route.
+- Document any exact typed handoff that can later return to 734.
+
+Completion check:
+
+- Fresh build and focused regression prove no remaining named scalar consumer
+  depends on text classification or the retired scalar `LirTypeRef` fields.
+- Any 734 return condition names one exact typed scalar or ABI-leaf row and
+  excludes all other families.
