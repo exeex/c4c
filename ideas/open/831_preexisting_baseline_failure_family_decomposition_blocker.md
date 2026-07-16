@@ -173,3 +173,19 @@ Status: parked by lifecycle switch to
   return 830**. Run 831's supervisor-owned comparable full-suite gate; only an
   accepted gate may return 830 unchanged at Step 3. Do not return directly to
   830 or to any earlier 831 step.
+
+## Resumption Update: closed 834; Step 4 comparable-baseline gate active
+
+- 834 is capability-complete and archived at
+  `ideas/closed/834_lir_owned_type_spec_module_owner_canonicalization_blocker.md`.
+  Its Step 1 diagnosis and accepted bounded repair/proof restore the native
+  aggregate key-to-module-owner relation without reopening 832/833.
+- The only implementation attributed to the 834/835 return route is
+  `932c3339b` (`hir: retain canonical aggregate owner identity`). 834's exact
+  focused proof is 4/4; matching `test_before.log` and `test_after.log` are
+  both 4/4, and the regression guard passed with allow-non-decreasing.
+- Exact resumed return point: Step 4 — **Obtain comparable baseline proof and
+  return 830**. Run the unchanged supervisor-owned full-suite/comparable
+  baseline gate against the accepted 3038/3038 baseline. Only accepted
+  comparable evidence may reactivate 830 at unchanged Step 3; do not infer
+  baseline clearance from 834's focused proof.

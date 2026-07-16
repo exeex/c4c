@@ -1,6 +1,6 @@
 # LIR Aggregate-Owner Module-Owner Canonicalization Blocker
 
-Status: Open
+Status: Closed
 Type: bounded native LIR aggregate-owner provenance repair
 Blocked Parent: `ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md`, Step 4 comparable full-suite proof
 
@@ -122,3 +122,22 @@ Status: resumed after accepted prerequisite
 - Exact return point: resume 834 at Step 2. Implement the LIR lookup against
   835's durable carrier, then execute Step 3 focused C/C++ proof plus the
   malformed guard. Do not return to 831 or claim baseline clearance first.
+
+## Completion Record
+
+Disposition: capability complete; closed after accepted supervisor evidence.
+
+- Step 1 established the native `lir_owned_type_spec` aggregate
+  key-to-module-owner ownership mismatch without a testcase-shaped route.
+- Steps 2 and 3 are accepted through the single bounded implementation commit
+  `932c3339b` (`hir: retain canonical aggregate owner identity`). Its durable
+  HIR carrier is consumed by `lir_owned_type_spec` before sanitizing the
+  LIR-owned `TypeSpec`; no additional implementation commit is attributed to
+  834.
+- Accepted focused proof is 4/4, with matching `test_before.log` 4/4 and
+  `test_after.log` 4/4; the regression guard passed with
+  allow-non-decreasing. This proves only the focused native relation and
+  preserves malformed/foreign/wrong-namespace/ownerless rejection.
+- Return path: resume parent 831 at Step 4 — **Obtain comparable baseline
+  proof and return 830**. 831 alone owns the supervisor full-suite comparison;
+  this closure does not claim baseline clearance or return 830.

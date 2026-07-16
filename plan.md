@@ -1,84 +1,61 @@
-# LIR Aggregate-Owner Module-Owner Canonicalization Blocker Runbook
+# Pre-existing Baseline Failure-Family Decomposition Blocker Runbook
 
 Status: Active
-Source Idea: ideas/open/834_lir_owned_type_spec_module_owner_canonicalization_blocker.md
-Resumed from: accepted 835 durable-owner carrier prerequisite
+Source Idea: ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md
+Resumed from: closed 834 aggregate-owner canonicalization blocker
 
 ## Purpose
 
-Repair the native LIR aggregate key-to-module-owner lookup contract that
-causes the shared 516-test diagnostic, without widening into closed 832/833
-routes or accepting baseline state.
+Use the accepted independent repair evidence to establish comparable full-suite
+baseline status before returning 830 to its unchanged acceptance gate.
 
 ## Core Rule
 
-Consume 835's durable HIR-owned canonical identity to repair the owner
-relation, not individual tests or diagnostic text. Focused repair proof is not
-comparable full-suite clearance.
+Focused successor proof is not comparable full-suite or baseline clearance.
+Keep the HIR aggregate-owner and truthiness-LHS authority families distinct.
 
 ## Read First
 
-- `ideas/open/834_lir_owned_type_spec_module_owner_canonicalization_blocker.md`
-- `ideas/closed/835_hir_durable_aggregate_owner_identity_carrier_prerequisite.md`
 - `ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md`
-- `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`
+- `ideas/closed/832_hir_aggregate_owner_function_parameter_crash_repair.md`
+- `ideas/closed/833_lir_truthiness_lhs_parameter_authority_completion.md`
+- `ideas/closed/834_lir_owned_type_spec_module_owner_canonicalization_blocker.md`
 
 ## Non-Goals
 
-- Reopening closed 832 or 833, or changing 830/829 work.
-- Test filtering, unsupported markers, expectation weakening, or harness work.
-- Declaring a new full-suite baseline or returning 830.
+- Any 830 direct-call, 829 authority, Raw-BIR, generic-call, test-contract, or
+  harness change.
+- Claiming baseline clearance from focused successor proof.
 
 ## Ordered Steps
 
-### Step 1 - Diagnose the aggregate key/module-tag ownership mismatch (complete)
+### Step 1 - Establish first-owner decomposition from exact reproductions (complete)
 
-Accepted result: cleanup-before-owner lookup loses parser-backed declaration
-and namespace canonicalization, while pre-cleanup lookup can dereference stale
-parser storage. The durable HIR carrier required for the safe repair is now
-accepted in 835 commit `932c3339b`.
+Completion record: `ba7958ee4` established separate first-owner seams and the
+ordered repair routes. No shared implementation seam exists.
 
-Completion check: complete; do not repeat the diagnosis.
+### Step 2 - Collect accepted successor evidence and confirm family boundaries (complete)
 
-### Step 2 - Repair the native owner canonicalization relation
+Completion record: closed 832 and 833 focused evidence, their distinct
+ownership boundaries, and residual aggregate-owner evidence are recorded in
+the source resumption updates.
 
-Goal: make valid LIR aggregate keys resolve their matching module tag using
-835's HIR-owned durable identity.
+### Step 3 - Classify the rejected comparable full-suite gate (complete)
 
-Actions:
+Completion record: the rejected delta first owned at the aggregate
+key-to-module-owner relation; closed 834 accepted its bounded repair and 4/4
+focused proof. No full-suite baseline outcome was claimed.
 
-- Implement the smallest ownership/provenance correction at the diagnosed
-  `lir_owned_type_spec` lookup relation.
-- Consume the durable carrier rather than parser-backed record/qualifier data.
-- Preserve legitimate missing-owner rejection and avoid broad metadata or HIR
-  rewrites.
+### Step 4 - Obtain comparable baseline proof and return 830
 
-Completion check: a fresh build succeeds and the native relation, not a
-testcase-shaped exception, owns the repair.
-
-### Step 3 - Prove representative same-feature behavior
-
-Goal: verify repaired aggregate owner lookup across affected paths.
+Goal: clear the rejected 3038/3038 baseline gate with supervisor-owned,
+comparable full-suite evidence.
 
 Actions:
 
-- Run focused coverage from at least two affected suite categories and the
-  selected malformed/missing-owner guard.
-- Confirm no expectation, filtering, or diagnostic-text workaround hides the
-  previous failure.
+- Run the unchanged supervisor-selected comparable full suite against the
+  accepted 3038/3038 baseline.
+- If accepted, record the result and reactivate 830 at unchanged Step 3 only.
 
-Completion check: fresh build plus focused multi-suite and negative-contract
-proof are accepted by the supervisor.
-
-### Step 4 - Hand evidence back to 831
-
-Goal: preserve the bounded acceptance record and resume the parent correctly.
-
-Actions:
-
-- Record accepted implementation/proof references in the source resumption
-  record.
-- Switch back to 831 Step 4 only; 831 owns the comparable full-suite gate.
-
-Completion check: lifecycle state unambiguously points to 831 Step 4, with no
-baseline-clearance or 830-return claim in this blocker.
+Completion check: accepted comparable proof shows no new baseline problem; no
+capability work is attributed to 830 by this blocker.

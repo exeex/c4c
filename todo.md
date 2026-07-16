@@ -1,32 +1,33 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/834_lir_owned_type_spec_module_owner_canonicalization_blocker.md
+Source Idea Path: ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair the native owner canonicalization relation
+Current Step ID: 4
+Current Step Title: Obtain comparable baseline proof and return 830
 
 ## Just Finished
 
-- Lifecycle return complete: prerequisite 835 closed as capability complete
-  after implementation commit `932c3339b` and its accepted Step 3 focused
-  proof. 834 Step 1 remains accepted and is not reset.
+- Lifecycle return complete: 834 is closed as capability complete. Its Step 1
+  diagnosis and Steps 2-3 accepted bounded repair/proof use only commit
+  `932c3339b`; focused logs are 4/4 before and 4/4 after, with an
+  allow-non-decreasing guard pass.
 
 ## Suggested Next
 
-- Execute Step 2 only: consume 835's durable HIR-owned aggregate owner
-  identity at the LIR owner lookup relation; retain the existing rejection
-  contract before proceeding to Step 3 proof.
+- Execute Step 4 only: run the unchanged supervisor-owned comparable full
+  suite against the accepted 3038/3038 baseline and decide whether 830 can
+  resume at its unchanged Step 3.
 
 ## Watchouts
 
-- Do not read parser-backed record or qualifier storage after HIR
-  materialization. Do not add tag fallbacks, testcase-shaped exceptions,
-  expectation changes, filtering, or baseline claims.
+- Do not claim baseline clearance from the focused 834 proof. Do not reopen
+  832/833, merge ownership families, alter tests/harnesses, or return directly
+  to 830 before comparable evidence is accepted.
 
 ## Proof
 
-- Prerequisite evidence accepted: `932c3339b`; matching guard 39/42 before,
-  42/42 after, no new failures; fresh named 835 Step 3 command passed.
-- No 834 Step 2 implementation or proof has been performed in this lifecycle
-  operation.
+- 834 focused proof accepted: `test_before.log` 4/4, `test_after.log` 4/4,
+  regression guard pass with allow-non-decreasing.
+- The remaining required proof is 831 Step 4's supervisor-owned comparable
+  full-suite gate.
