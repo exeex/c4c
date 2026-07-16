@@ -2077,6 +2077,50 @@ loop:
                       scalar_store->local_object_authority->pointer_definition &&
                   scalar_store->type_str == scalar_store->local_object_authority->pointee_type,
               "selected local scalar declaration store should retain native immediate and matching local authority");
+  lir::LirModule stale_alloca_type_display = module;
+  lir::LirAllocaOp* stale_type_alloca = selected_alloca(stale_alloca_type_display);
+  expect_true(stale_type_alloca != nullptr && stale_type_alloca->local_object_authority &&
+                  stale_type_alloca->type_str.kind() == lir::LirTypeKind::Integer,
+              "selected local scalar alloca should remain mutable for stale type proof");
+  const lir::LirValueId stale_alloca_pointer =
+      stale_type_alloca->local_object_authority->pointer_definition;
+  stale_type_alloca->type_str.str() = "not-i32";
+  stale_type_alloca->local_object_authority->pointee_type.str() = "not-i32";
+  for (auto& function : stale_alloca_type_display.functions) {
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* op = std::get_if<lir::LirStoreOp>(&inst);
+            op && op->local_object_authority &&
+            op->local_object_authority->pointer_definition == stale_alloca_pointer) {
+          op->local_object_authority.reset();
+        }
+        if (auto* op = std::get_if<lir::LirLoadOp>(&inst);
+            op && op->local_object_authority &&
+            op->local_object_authority->pointer_definition == stale_alloca_pointer) {
+          op->local_object_authority.reset();
+        }
+        if (auto* op = std::get_if<lir::LirGepOp>(&inst);
+            op && op->local_object_authority &&
+            op->local_object_authority->pointer_definition == stale_alloca_pointer) {
+          op->local_object_authority.reset();
+        }
+      }
+    }
+  }
+  lir::verify_module(stale_alloca_type_display);
+  const std::string stale_alloca_ir = lir::print_llvm(stale_alloca_type_display);
+  const std::size_t stale_alloca_pos = stale_alloca_ir.find(" = alloca ");
+  expect_true(stale_alloca_pos != std::string::npos,
+              "selected integer alloca proof should print an alloca instruction");
+  const std::size_t stale_alloca_end = stale_alloca_ir.find('\n', stale_alloca_pos);
+  const std::string stale_alloca_line = stale_alloca_ir.substr(
+      stale_alloca_pos, stale_alloca_end == std::string::npos
+                            ? std::string::npos
+                            : stale_alloca_end - stale_alloca_pos);
+  expect_contains(stale_alloca_line, "alloca i32",
+                  "selected integer alloca should render native type width");
+  expect_not_contains(stale_alloca_line, "not-i32",
+                      "selected integer alloca should not render stale type text");
   lir::LirModule stale_store_type_display = module;
   lir::LirStoreOp* stale_type_store =
       selected_local_scalar_store(stale_store_type_display);

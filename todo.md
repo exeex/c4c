@@ -232,6 +232,32 @@ packet:
   store renders from native integer width authority rather than mutable display
   text.
 
+Started the Step 5 selected native integer local allocation packet. 846 still
+owns selected native integer local allocation `LirAllocaOp.type_str`
+verifier/printer rendering:
+
+- `src/codegen/lir/verify.cpp` still verifies `LirAllocaOp.type_str` with
+  `require_module_type_ref(mod, op->type_str, "LirAllocaOp.type_str")`.
+- `src/codegen/lir/lir_printer.cpp` still renders allocas with
+  `require_type_ref(op->type_str, "LirAllocaOp.type_str")`.
+- `LirAllocaOp.local_object_authority` already ties the result pointer and
+  pointee type facts to the selected local object allocation.
+- The packet must migrate only selected native integer local allocas and
+  preserve raw compatibility allocas, non-integer/pointer/aggregate allocas,
+  load, store, cast, gep, phi, call, return, vector, va_arg, switch, and
+  universal API behavior.
+
+Completed the selected native integer local allocation `LirAllocaOp.type_str`
+packet:
+
+- Reused `render_integer_type_ref` for only authority-bearing integer local
+  allocation verifier and printer branches.
+- Preserved raw compatibility allocas and non-integer allocation types on the
+  existing generic paths.
+- Added focused stale-display coverage proving a selected native integer
+  alloca renders from native integer width authority rather than mutable
+  display text.
+
 ## Suggested Next
 
 Execute `plan.md` Step 5: inventory remaining universal classifier, renderer,
@@ -353,6 +379,16 @@ Proof log: `test_after.log`.
 
 Step 5 trace selected the native integer scalar `LirStoreOp.type_str` verifier
 and printer branch for the next bounded packet. Completed store packet proof:
+
+- `cmake --build build`
+- `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
+- `git diff --check`
+
+Proof log: `test_after.log`.
+
+Step 5 trace selected the native integer local allocation
+`LirAllocaOp.type_str` verifier and printer branch for the next bounded
+packet. Completed alloca packet proof:
 
 - `cmake --build build`
 - `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`

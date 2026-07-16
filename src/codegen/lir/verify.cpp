@@ -2260,7 +2260,12 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
   }
   if (const auto* op = std::get_if<LirAllocaOp>(&inst)) {
     verify_result_operand(op->result, "LirAllocaOp.result");
-    require_module_type_ref(mod, op->type_str, "LirAllocaOp.type_str");
+    if (op->local_object_authority &&
+        op->type_str.kind() == LirTypeKind::Integer) {
+      (void)render_integer_type_ref(op->type_str, "LirAllocaOp.type_str");
+    } else {
+      require_module_type_ref(mod, op->type_str, "LirAllocaOp.type_str");
+    }
     verify_optional_count_operand(op->count, "LirAllocaOp.count");
     return;
   }

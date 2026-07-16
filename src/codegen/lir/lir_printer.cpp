@@ -319,7 +319,12 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
     const auto& result =
         require_operand_kind(op->result, "LirAllocaOp.result",
                              {LirOperandKind::SsaValue});
-    const auto& type = require_type_ref(op->type_str, "LirAllocaOp.type_str");
+    const auto type = op->local_object_authority &&
+                              op->type_str.kind() == LirTypeKind::Integer
+                          ? render_integer_type_ref(op->type_str,
+                                                    "LirAllocaOp.type_str")
+                          : require_type_ref(op->type_str,
+                                             "LirAllocaOp.type_str");
     os << "  " << result << " = alloca " << type;
     if (!op->count.empty()) {
       os << ", i64 "
