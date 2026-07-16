@@ -8,32 +8,29 @@ Current Step Title: Select One Carrier-Backed Collector Seam
 
 ## Just Finished
 
-Completed Step 2/Step 3 for the selected one-field packet: migrated only
-`LirInsertValueOp.elem` in `collect_inst_refs` from raw `S(op.elem)` scanning
-to `collect_operand_ref(op.elem, refs)`, preserving all unselected scanner
-paths.
+Plan-owner repaired the exhausted one-field runbook after accepted commit
+`a067e8cc5` completed the prior `LirInsertValueOp.elem` target.
 
 ## Suggested Next
 
-After this packet, supervisor should select the next exact carrier-backed
-collector field or route lifecycle repair if no ready field remains.
+Execute Step 1 for the next bounded packet: confirm `LirShuffleVectorOp.vec1`
+in `collect_inst_refs` is the selected carrier-backed field, then migrate only
+that field from raw `S(op.vec1)` scanning to
+`collect_operand_ref(op.vec1, refs)`.
 
 ## Watchouts
 
-Do not perform a broad collector sweep. Leave `LirInsertValueOp.agg` on
-`collect_operand_ref`, and leave `LirShuffleVectorOp.vec1`,
-`LirShuffleVectorOp.vec2`, inline asm, and residual raw/global text on their
+Do not perform a broad collector sweep. Leave `LirShuffleVectorOp.vec2`,
+`LirShuffleVectorOp.mask`, inline asm, and residual raw/global text on their
 current scanner paths. Do not reconstruct references from rendered names or
 text. Do not change producers, verifier semantics, or BIR lowering unless
-`LirInsertValueOp.elem` is disproven during executor inspection.
+`LirShuffleVectorOp.vec1` is disproven during executor inspection.
 
 ## Proof
 
-Passed:
+Required after implementation:
 
 ```
 { cmake --build build && ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure; } > test_after.log 2>&1
 git diff --check
 ```
-
-Proof log: `test_after.log`.
