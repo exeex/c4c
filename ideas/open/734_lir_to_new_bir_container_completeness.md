@@ -1,8 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (paused after accepted Step 7.49 DirectScalar binary-`fsub` RHS
-receipt; active blocker 863 owns the next producer-side non-body-parameter
-handoff after 862 concluded no-change)
+Status: Open (active again at Step 7.50 after closed 863 direct floating
+call-result authority handoff)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -2449,3 +2448,34 @@ and repair its runbook only for that matching typed Raw-BIR receiver row. Do
 not repeat Step 7.49 or receive another parameter, memory/VA, aggregate/vector,
 module/type/global, instruction/terminator, inline-assembly, or any other form
 without its separately scoped first-owner handoff.
+
+## Resumption Record: direct floating call-result authority completion
+
+Closed idea 863 completed the next non-body-parameter producer handoff with
+accepted implementation `36f860ea3` and closure commit `d12113b18`. The
+selected row is direct zero-argument scalar floating `LirCallOp` result
+authority for the selected result consumed as the LHS of a downstream floating
+binary operation.
+
+The handed-off native tuple is the result `LirValueId`, current-function owner
+`LinkNameId`, direct callee `LinkNameId`, exact floating `LirTypeRef`, and
+role `ResultIntoFloatingBinaryLhs`. The producer carrier is
+`LirDirectZeroArgScalarFloatingCallAuthority`.
+
+The verifier and focused producer coverage reject malformed authority before
+downstream use, including absent authority, stale result, foreign owner,
+callee incoherence, type incoherence, role incoherence, and consumer
+incoherence. Accepted proof is the focused producer/verifier proof
+`^frontend_lir_(function_signature_type_ref|extern_decl_type_ref|global_type_ref|call_type_ref)$`,
+full suite proof with `3038/3038`, and `git diff --check`. No Raw-BIR receiver
+work landed in 863.
+
+Exact return action: reactivate 734 at Step 7.50 for one bounded Raw-BIR
+receiver packet only: receive the direct zero-argument scalar floating call-
+result authority consumed as a downstream floating binary LHS, preserving only
+the structured result/owner/callee/return-type/role tuple and consumer
+coherence. Keep nonselected rows fail-closed. Do not repeat Step 7.49, edit
+LIR producer authority, receive another call-result row, parameter-use row,
+memory/VA, aggregate/vector, module/type/global/metadata, CFG/PHI, residual
+instruction/terminator, inline-assembly, generic residual sweep, or any other
+family without its separately scoped first-owner handoff.
