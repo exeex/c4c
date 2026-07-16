@@ -189,3 +189,24 @@ Status: parked by lifecycle switch to
   baseline gate against the accepted 3038/3038 baseline. Only accepted
   comparable evidence may reactivate 830 at unchanged Step 3; do not infer
   baseline clearance from 834's focused proof.
+
+## Resumption Update: Step 4 rejected; remaining LIR owner-rejection blocker active
+
+- Step 4 comparable gate is rejected: accepted `test_baseline.log` is
+  3038/3038; fresh `test_baseline.new.log` is 3026/3038, with 12 failed tests.
+  The regression guard reports 10 new classified failures and a decreased pass
+  count. No baseline replacement, clearance, or return to 830 occurred.
+- Boundary evidence: the candidate contains remaining LIR aggregate-owner
+  failures at both `LIR-owned aggregate function type requires a structured
+  owner key` and `... requires a matching module owner`, plus the
+  `frontend_lir_global_type_ref` no-owner compatibility assertion. This is not
+  evidence that closed 832/833 regressions reopened, and it exceeds closed
+  834's accepted focused relation.
+- Active successor: `ideas/open/836_lir_remaining_aggregate_owner_rejection_decomposition_blocker.md`
+  owns first-owner decomposition of these remaining structured-key,
+  matching-owner, and no-owner-compatibility contracts and only the smallest
+  separately scoped repair route evidence that follows.
+- Exact return point: after 836 accepts its bounded route and focused proof,
+  reactivate 831 at Step 4 and rerun the unchanged comparable full-suite gate.
+  Do not return directly to 830 or claim baseline clearance before that gate is
+  accepted.
