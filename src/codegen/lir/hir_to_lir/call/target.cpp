@@ -10,16 +10,6 @@ using namespace stmt_emitter_detail;
 
 namespace {
 
-// Call-target type text is rendered from resolved HIR TypeSpecs. It can
-// legitimately retain aggregate, vector, pointer, or function spellings, so
-// keep each fallback through this local, auditable runtime-text boundary.
-[[nodiscard, deprecated(
-                  "HIR-rendered call-target type text: audit this runtime-text "
-                  "compatibility boundary")]]
-LirTypeRef hir_rendered_call_target_type_text(std::string rendered_text) {
-  return LirTypeRef(std::move(rendered_text));
-}
-
 StructNameId call_target_aggregate_structured_name_id(const c4c::hir::Module& mod,
                                                       const lir::LirModule* module,
                                                       const std::string& rendered_text,
@@ -54,10 +44,10 @@ LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_mo
   }
   if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
       type.array_rank > 0 || !lir_module) {
-    return hir_rendered_call_target_type_text(rendered_text);
+    return LirTypeRef(rendered_text);
   }
   if (typespec_aggregate_complete_owner_key_missed(type, mod)) {
-    return hir_rendered_call_target_type_text(rendered_text);
+    return LirTypeRef(rendered_text);
   }
 
   StructNameId name_id =
@@ -78,7 +68,7 @@ LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_mo
         lir_module, rendered_text, lir_module->struct_names.find(rendered_text), true);
   }
   if (name_id == kInvalidStructName) {
-    return hir_rendered_call_target_type_text(rendered_text);
+    return LirTypeRef(rendered_text);
   }
   bool is_union = type.base == TB_UNION;
   for (const LirAggregateStoreEntry& entry : lir_module->aggregate_store) {
@@ -134,8 +124,7 @@ void append_call_signature_param(LirCallSignature& out,
       hfa.has_value()) {
     for (int lane_index = 0; lane_index < hfa->elem_count; ++lane_index) {
       out.fixed_param_types.push_back(hfa->elem_ty);
-      out.fixed_param_type_refs.push_back(
-          hir_rendered_call_target_type_text(hfa->elem_ty));
+      out.fixed_param_type_refs.push_back(LirTypeRef(hfa->elem_ty));
     }
     return;
   }
