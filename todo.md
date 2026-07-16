@@ -18,6 +18,12 @@ Current Step Title: Enforce module ownership and migrate bounded consumers
   populated HIR aggregate refs still resolve through
   `LirModule::find_aggregate_ref` / `find_aggregate` and corrupted refs still
   fail closed.
+- Baseline repair continuation then fixed the remaining representative
+  aggregate owner/signature failures from the fresh full-suite candidate:
+  namespace aggregates, nested template aggregate signature mirrors, anonymous
+  GCC torture aggregates, and quoted EASTL template-specialization names now
+  resolve through bounded declaration-backed compatibility without making
+  tag/text lookup durable authority.
 
 ## Suggested Next
 
@@ -74,6 +80,10 @@ Current Step Title: Enforce module ownership and migrate bounded consumers
 - Passed delegated repair proof:
   `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(positive_sema_ok_call_variadic_aggregate_runtime_c|cpp_positive_sema_template_inline_method_member_context_frontend_cpp|llvm_gcc_c_torture_src_va_arg_13_c|frontend_lir_function_signature_type_ref|frontend_lir_call_type_ref|backend_lir_to_bir_interface|frontend_hir_tests)$' ) > test_after.log 2>&1`
 - Supervisor checkpoint passed:
+  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' ) > /tmp/c4c_backend_after.log 2>&1`
+- Passed baseline-continuation proof:
+  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_positive_sema_namespace_struct_runtime_cpp|cpp_positive_sema_template_struct_nested_cpp|llvm_gcc_c_torture_src_20071029_1_c|eastl_cpp_external_utility_frontend_basic_cpp|frontend_lir_function_signature_type_ref|frontend_lir_call_type_ref|frontend_hir_tests)$' ) > test_after.log 2>&1`
+- Refreshed backend checkpoint passed:
   `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' ) > /tmp/c4c_backend_after.log 2>&1`
 - Proof log: `test_after.log`.
 - Still required before normal Step 3/Step 4 progress: supervisor fresh

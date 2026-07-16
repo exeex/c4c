@@ -151,6 +151,71 @@ std::optional<std::string> unique_template_specialization_decl_ty(
   return c4c::codegen::llvm_helpers::llvm_struct_type_str(*match);
 }
 
+std::optional<std::string> unique_decl_ty_for_tag_text(const c4c::hir::Module& mod,
+                                                       const TypeSpec& ts) {
+  if ((ts.base != TB_STRUCT && ts.base != TB_UNION) ||
+      ts.tag_text_id == kInvalidText || !mod.link_name_texts) {
+    return std::nullopt;
+  }
+  const std::string_view tag_text = mod.link_name_texts->lookup(ts.tag_text_id);
+  if (tag_text.empty()) return std::nullopt;
+  const std::string prefix = std::string(tag_text) + "_T";
+  const std::string* match = nullptr;
+  for (const auto& [tag, def] : mod.struct_defs) {
+    if (ts.namespace_context_id >= 0 &&
+        def.ns_qual.context_id != ts.namespace_context_id) {
+      continue;
+    }
+    std::string_view unqualified = tag;
+    const size_t scope_pos = unqualified.rfind("::");
+    if (scope_pos != std::string_view::npos) {
+      unqualified.remove_prefix(scope_pos + 2);
+    }
+    if (unqualified != tag_text && unqualified.rfind(prefix, 0) != 0) continue;
+    if (match) return std::nullopt;
+    match = &tag;
+  }
+  if (!match) return std::nullopt;
+  if (ts.base == TB_UNION) return "%union." + *match;
+  return c4c::codegen::llvm_helpers::llvm_struct_type_str(*match);
+}
+
+std::optional<std::string> tag_from_structured_lir_name(std::string_view name,
+                                                        bool is_union) {
+  (void)is_union;
+  for (const std::string_view plain_prefix : {"%struct.", "%union."}) {
+    if (name.rfind(plain_prefix, 0) == 0) {
+      return std::string(name.substr(plain_prefix.size()));
+    }
+  }
+
+  for (const std::string_view quoted_prefix : {"%\"struct.", "%\"union."}) {
+    if (name.rfind(quoted_prefix, 0) == 0 &&
+        name.size() >= quoted_prefix.size() + 1 && name.back() == '"') {
+      return std::string(name.substr(quoted_prefix.size(),
+                                     name.size() - quoted_prefix.size() - 1));
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> direct_owned_aggregate_type_text(
+    const c4c::hir::Module& mod, const TypeSpec& type) {
+  if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
+      type.array_rank > 0 || type.tag_text_id == kInvalidText ||
+      !mod.link_name_texts) {
+    return std::nullopt;
+  }
+  const std::string_view tag = mod.link_name_texts->lookup(type.tag_text_id);
+  if (tag.empty()) return std::nullopt;
+  if (tag.rfind("%struct.", 0) == 0 || tag.rfind("%\"struct.", 0) == 0 ||
+      tag.rfind("%union.", 0) == 0 || tag.rfind("%\"union.", 0) == 0) {
+    return std::string(tag);
+  }
+  if (type.base == TB_UNION) return "%union." + std::string(tag);
+  return c4c::codegen::llvm_helpers::llvm_struct_type_str(std::string(tag));
+}
+
 TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, const QualType& hir_type,
                              LirModule* lir_module) {
   TypeSpec type = hir_type.spec;
@@ -183,16 +248,9 @@ TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, const QualType& hir_ty
     }
     const std::string_view name =
         lir_module->struct_names.spelling(aggregate->name_id);
-    constexpr std::string_view struct_prefix = "%struct.";
-    constexpr std::string_view union_prefix = "%union.";
-    if (type.base == TB_STRUCT && name.rfind(struct_prefix, 0) == 0) {
-      type.tag_text_id =
-          lir_module->link_name_texts->intern(std::string(name.substr(struct_prefix.size())));
-      return type;
-    }
-    if (type.base == TB_UNION && name.rfind(union_prefix, 0) == 0) {
-      type.tag_text_id =
-          lir_module->link_name_texts->intern(std::string(name.substr(union_prefix.size())));
+    if (std::optional<std::string> tag =
+            tag_from_structured_lir_name(name, type.base == TB_UNION)) {
+      type.tag_text_id = lir_module->link_name_texts->intern(*tag);
       return type;
     }
     throw std::runtime_error(
@@ -222,21 +280,22 @@ TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, const QualType& hir_ty
       }
     }
   }
-  if (!tag && type.base == TB_STRUCT) {
+  if (!tag && (type.base == TB_STRUCT || type.base == TB_UNION)) {
     std::optional<std::string> structured_type =
         unique_template_instance_aggregate_ty(mod, hir_type.spec);
     if (!structured_type) {
       structured_type = unique_template_specialization_decl_ty(mod, hir_type.spec);
+    }
+    if (!structured_type) {
+      structured_type = unique_decl_ty_for_tag_text(mod, hir_type.spec);
     }
     if (structured_type) {
       const c4c::StructNameId name_id =
           lir_module->struct_names.find(*structured_type);
       if (name_id != c4c::kInvalidStructName &&
           lir_module->find_struct_decl(name_id)) {
-        constexpr std::string_view struct_prefix = "%struct.";
-        if (structured_type->rfind(struct_prefix, 0) == 0) {
-          tag = structured_type->substr(struct_prefix.size());
-        }
+        tag = tag_from_structured_lir_name(*structured_type,
+                                           type.base == TB_UNION);
       }
     }
   }
@@ -312,18 +371,18 @@ StructNameId lir_aggregate_structured_name_id(const c4c::hir::Module& mod,
 
   if (const std::optional<HirRecordOwnerKey> owner_key =
           typespec_aggregate_owner_key(type, mod)) {
-    const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
-    if (structured_tag && !structured_tag->empty()) {
-      const std::string name = llvm_struct_type_str(*structured_tag);
-      if (name == rendered_text || rendered_text_is_aggregate_name()) {
-        return lir_module->struct_names.intern(name);
-      }
-    }
     if (!type.record_def && rendered_text_is_aggregate_name()) {
       const StructNameId declared_id = lir_module->struct_names.find(rendered_text);
       if (declared_id != kInvalidStructName &&
           lir_module->find_struct_decl(declared_id)) {
         return declared_id;
+      }
+    }
+    const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
+    if (structured_tag && !structured_tag->empty()) {
+      const std::string name = llvm_struct_type_str(*structured_tag);
+      if (name == rendered_text || rendered_text_is_aggregate_name()) {
+        return lir_module->struct_names.intern(name);
       }
     }
     return kInvalidStructName;
@@ -481,9 +540,13 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
   lir_fn.signature_is_variadic = fn.attrs.variadic;
   lir_fn.signature_params.clear();
   lir_fn.signature_param_type_refs.clear();
+  const TypeSpec return_ts =
+      lir_owned_type_spec(mod, fn.return_type, lir_module);
+  const std::string return_type_text =
+      direct_owned_aggregate_type_text(mod, return_ts)
+          .value_or(rendered_signature_return_type(mod, return_ts));
   lir_fn.signature_return_type_ref =
-      lir_signature_type_ref(rendered_signature_return_type(mod, fn.return_type.spec),
-                             lir_module, mod, fn.return_type.spec);
+      lir_signature_type_ref(return_type_text, lir_module, mod, return_ts);
 
   const bool void_param_list =
       fn.params.size() == 1 &&
@@ -504,11 +567,15 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
     const bool is_byval_signature_param =
         llvm_target_is_amd64_sysv(mod.target_profile) &&
         llvm_cc::amd64_fixed_aggregate_passed_byval(param.type.spec, mod);
+    const std::string param_type_text =
+        !is_byval_signature_param
+            ? direct_owned_aggregate_type_text(mod, param_ts)
+                  .value_or(rendered_signature_param_type(mod, lir_module, param_ts))
+            : rendered_signature_param_type(mod, lir_module, param_ts);
     lir_fn.signature_params.push_back(
         {pname, param_ts, is_byval_signature_param});
     lir_fn.signature_param_type_refs.push_back(lir_signature_type_ref(
-        rendered_signature_param_type(mod, lir_module, param.type.spec), lir_module,
-        mod, param.type.spec));
+        param_type_text, lir_module, mod, param_ts));
   }
 }
 
