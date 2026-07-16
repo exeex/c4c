@@ -359,7 +359,7 @@ inline std::vector<OwnedLirTypedCallArg> own_lir_typed_call_args(
          .operand = LirOperand(std::string(arg.operand)),
          // Parsed type spelling is re-owned for compatibility with dynamic
          // aggregate/vector/struct/function call argument text.
-         .type_ref = LirTypeRef::parsed_typed_call_argument_text(std::string(arg.type))});
+         .type_ref = LirTypeRef(std::string(arg.type))});
   }
   return owned_args;
 }

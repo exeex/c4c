@@ -90,16 +90,6 @@ class LirTypeRef {
     return LirTypeRef("i" + std::to_string(bit_width), LirTypeKind::Integer, bit_width);
   }
 
-  // Parsed LIR call argument types are compatibility text re-owned from input,
-  // not a closed set of builtins. Keep this deprecated boundary local so builds
-  // inventory the remaining parser/runtime-text constructions without warning
-  // on unrelated LirTypeRef users.
-  [[nodiscard, deprecated(
-      "parsed/re-owned LIR typed-call argument text: audit this compatibility boundary")]]
-  static LirTypeRef parsed_typed_call_argument_text(std::string text) {
-    return LirTypeRef(std::move(text));
-  }
-
   // Parsed LIR call return types are re-owned runtime text from input, not a
   // closed set of builtins. Dynamic aggregate, vector, struct, and function
   // spellings must remain supported through this local compatibility boundary.

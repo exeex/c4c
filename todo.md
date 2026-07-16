@@ -8,16 +8,16 @@ Current Step Title: Delete mutable LIR type text escape hatches in small packets
 
 ## Just Finished
 
-Completed Step 2 packet to delete the single named deprecated factory
-`LirTypeRef::stored_extern_declaration_return_text`. Updated the direct
-`LirModule::extern_return_type_ref` fallback callsite to construct
-`LirTypeRef(ret_ty)` after the existing struct-name-aware branch.
+Completed Step 2 packet to delete the single named deprecated factory family
+`LirTypeRef::parsed_typed_call_argument_text`. Updated both direct typed-call
+argument callsites to use explicit `LirTypeRef(...)` construction from the
+existing parsed argument type text.
 
 ## Suggested Next
 
 Continue Step 2 with one remaining named deprecated compatibility factory
-family in a separate narrow packet. Keep the packet limited to that factory and
-its direct callsites.
+family in a separate narrow packet. `parsed_typed_call_return_text` is the next
+small typed-call family, with a single direct callsite in `call_args_ops.hpp`.
 
 ## Watchouts
 
@@ -33,7 +33,7 @@ its direct callsites.
 - Do not delete const `str()`, additional named compatibility factories,
   non-`LirTypeRef` wrapper conversions, or equality/classification helpers in
   the same packet.
-- `rg -n "stored_extern_declaration_return_text" src tests/frontend tests/backend`
+- `rg -n "parsed_typed_call_argument_text" src tests/frontend tests/backend`
   is now clean.
 - Required scalar-to-vector splat shuffles now reject incoherent native
   `mask_type` mirrors against vector-store lane count; do not weaken that
@@ -52,7 +52,7 @@ its direct callsites.
 
 Proof run passed:
 `cmake --build build && ctest --test-dir build -R
-'^frontend_lir_extern_decl_type_ref$' --output-on-failure > test_after.log
+'^frontend_lir_call_type_ref$' --output-on-failure > test_after.log
 2>&1`.
 `test_after.log` contains the focused CTest subset output with 1/1 tests
 passing. The supervisor-selected proof was sufficient for this packet.

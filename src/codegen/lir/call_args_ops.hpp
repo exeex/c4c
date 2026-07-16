@@ -58,9 +58,7 @@ inline std::vector<LirTypeRef> lir_call_arg_type_refs(
   for (const auto& arg : args) {
     // The fallback reconstructs the same parsed/re-owned call type text when
     // an older caller supplied only the compatibility string mirror.
-    refs.push_back(arg.type_ref.empty()
-                       ? LirTypeRef::parsed_typed_call_argument_text(arg.type)
-                       : arg.type_ref);
+    refs.push_back(arg.type_ref.empty() ? LirTypeRef(arg.type) : arg.type_ref);
   }
   return refs;
 }
