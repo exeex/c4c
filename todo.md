@@ -8,45 +8,23 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed additional Step 4 residual repairs and classification.
+Completed the Step 4 call ABI residual classification packet.
 
-Since the previous Step 4 repair decision, aggregate copy layout validation,
-copy-to-pointer/global leaf discovery, call aggregate-value alias layout, and
-local aggregate store/source layout validation now use structured LIR type-ref
-facts when metadata is present. Metadata-bearing paths fail closed on structured
-misses; no-id aggregate fallbacks remain explicit. The aggregate.cpp rendered-
-text helper and aggregate-parameter comments were classified as deliberate no-id
-fallback documentation rather than selected valid-LIR authority.
-
-Step 4 is not complete yet. The residual inventory still includes call ABI
-bridges where raw legacy signature text or legacy `function.params` can select
-aggregate return/byval layout without `signature_param_type_ref` or equivalent
-structured metadata. Those paths are 847-owned because they are expired adapter
-or dispatcher fallback surfaces that can re-enter semantic layout selection
-after the universal model/string escape-hatch deletion.
+`call_abi.cpp` now documents the remaining raw signature aggregate return/byval
+layout paths as explicit no-id or target-policy compatibility. Metadata-bearing
+AArch64 signature paths pass enforced `LirTypeRef` facts and fail closed through
+the structured lookup; legacy `function.params` and raw parsed signature byval
+routes are reached only after structured signature params/type refs have been
+ruled out.
 
 ## Suggested Next
 
-Suggested Next: execute a bounded Step 4 call ABI residual packet.
-
-Classify and repair only the call ABI no-id bridge family:
-- `call_abi.cpp` legacy aggregate return/byval layout when `type_ref == nullptr`
-- the legacy `function.params` route that lacks `signature_param_type_ref`
-- the raw parsed call-signature byval route that still treats rendered byval
-  text as the semantic carrier for aggregate ABI layout
-
-For this packet, either route each metadata-bearing call ABI aggregate return or
-byval parameter through structured/native type-ref facts and fail closed on
-structured misses, or prove and document that a remaining branch is a deliberate
-no-id fallback with no valid-LIR semantic authority. Do not include memory,
-globals, local GEP, local slots, provenance, global initializer, or raw
-TypeDeclMap residuals in the same packet; they can be classified after the call
-ABI authority surface is resolved.
+Suggested Next: continue Step 4 residual classification with one non-call-ABI
+family, likely memory/provenance, memory/addressing/local GEP, globals/global
+initializers, or raw `TypeDeclMap` lookup. Do not mix families in one packet.
 
 ## Watchouts
 
-- Do not advance to Step 5 while call ABI aggregate return/byval layout can
-  select valid-LIR layout authority from raw signature text.
 - Keep this packet narrow. Memory/provenance, addressing, intrinsics,
   `local_gep`, globals, local slots, global initializers, and raw `TypeDeclMap`
   residuals are not cleared by this decision; they remain later Step 4

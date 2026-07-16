@@ -251,14 +251,11 @@ std::optional<BirFunctionLowerer::AggregateTypeLayout> lower_signature_aggregate
     const c4c::codegen::lir::LirTypeRef* type_ref) {
   const std::string normalized_type = normalize_signature_aggregate_type(type_text);
   if (type_ref == nullptr) {
-    // Step 4 no-id compatibility bridge: call ABI lowering owns legacy
-    // signature aggregate return and byval parameter layout when the caller has
-    // no LirTypeRef/StructNameId carrier, or when the target ABI intentionally
-    // does not enforce structured aggregate signature identity yet. This branch
-    // is limited to normalized rendered signature text, including byval pointee
-    // text parsed from final LIR spelling. Remove it when all call-signature
-    // aggregate ABI paths thread structured type refs and the non-enforced
-    // compatibility targets no longer need raw signature parsing.
+    // Step 4 no-id compatibility bridge: this branch is limited to legacy
+    // signature aggregate return/byval layout when no enforced LirTypeRef is
+    // available. Metadata-bearing AArch64 signature paths pass a type_ref and
+    // fail closed below; non-enforced targets and hand-built no-id signatures
+    // retain normalized rendered signature text as an explicit fallback.
     const auto layout =
         structured_layouts != nullptr
             ? lir_to_bir_detail::lookup_backend_aggregate_type_layout_result(normalized_type,
@@ -806,11 +803,10 @@ bool BirFunctionLowerer::lower_function_params_with_layouts(
       if (!parsed_params.has_value() || index >= parsed_params->size()) {
         return false;
       }
-      // Step 4 no-id compatibility bridge: this legacy function.params route
-      // lacks a signature_param_type_ref for the byval aggregate, so call ABI
-      // lowering must use the aggregate.cpp selected-layout fence by rendered
-      // byval text. Remove when legacy parameter lists are replaced by
-      // structured signature params/type refs at this boundary.
+      // Step 4 no-id compatibility bridge: this route only runs when the
+      // function lacks structured signature params/type refs. The legacy
+      // function.params spelling is therefore the remaining no-id byval layout
+      // carrier for hand-built LIR.
       const auto layout =
           lower_byval_aggregate_layout((*parsed_params)[index].type, type_decls, structured_layouts);
       if (!layout.has_value() || param.first.empty()) {
@@ -878,9 +874,9 @@ bool BirFunctionLowerer::lower_function_params_with_layouts(
       continue;
     }
     // Step 4 no-id compatibility bridge: raw parsed call-signature byval
-    // parameters without signature_param_type_ref metadata still lower through
-    // the aggregate.cpp selected-layout fence. Remove when parsed signature text
-    // is no longer a semantic carrier for aggregate ABI layout.
+    // parameters reach this branch only after structured signature params/type
+    // refs and legacy function.params have been ruled out. Treat the rendered
+    // byval text as an explicit no-id compatibility carrier.
     const auto layout = lower_byval_aggregate_layout(param.type, type_decls, structured_layouts);
     if (!layout.has_value() || param.operand.empty()) {
       return false;
