@@ -257,6 +257,42 @@ void verify_declared_struct_type_ref_mirror(const LirModule& mod,
   }
 }
 
+void verify_call_aggregate_type_ref_store_entry(const LirModule& mod,
+                                                const LirTypeRef& mirror,
+                                                std::string_view field) {
+  if (!mirror.has_struct_name_id() || mod.aggregate_store.empty()) return;
+
+  const LirAggregateStoreEntry* found = nullptr;
+  for (const LirAggregateStoreEntry& entry : mod.aggregate_store) {
+    if (entry.name_id == mirror.struct_name_id()) {
+      found = &entry;
+      break;
+    }
+  }
+  if (!found) {
+    fail_verify(field,
+                "call aggregate mirror requires matching canonical LIR aggregate store entry");
+  }
+
+  const bool layout_is_union =
+      found->layout_kind == LirAggregateLayoutKind::Union;
+  if (found->is_union != layout_is_union) {
+    fail_verify(field,
+                "call aggregate mirror disagrees with canonical aggregate store kind");
+  }
+
+  const LirStructDecl* decl = mod.find_struct_decl(mirror.struct_name_id());
+  if (!decl) {
+    fail_verify(field,
+                "call aggregate mirror requires matching structured declaration facts");
+  }
+  if (decl->name_id != found->name_id || decl->fields.size() != found->fields.size() ||
+      decl->is_packed != found->is_packed || decl->is_opaque != found->is_opaque) {
+    fail_verify(field,
+                "call aggregate mirror disagrees with canonical aggregate store facts");
+  }
+}
+
 bool call_arg_type_matches_byval_pointee(std::string_view formatted_type,
                                          std::string_view pointee_type) {
   const std::string byval_fragment = "byval(" + std::string(pointee_type) + ")";
@@ -272,6 +308,8 @@ void verify_call_return_type_ref_mirror(const LirModule& mod,
 
   if (mirror.has_struct_name_id()) {
     verify_declared_struct_type_ref_mirror(mod, mirror, "LirCallOp.return_type");
+    verify_call_aggregate_type_ref_store_entry(mod, mirror,
+                                               "LirCallOp.return_type");
     if (formatted_struct_name_id != kInvalidStructName) {
       if (mirror.struct_name_id() != formatted_struct_name_id) {
         fail_verify("LirCallOp.return_type",
@@ -302,6 +340,8 @@ void verify_call_arg_type_ref_mirror(const LirModule& mod,
 
   if (mirror.has_struct_name_id()) {
     verify_declared_struct_type_ref_mirror(mod, mirror, "LirCallOp.arg_type_refs");
+    verify_call_aggregate_type_ref_store_entry(mod, mirror,
+                                               "LirCallOp.arg_type_refs");
     const std::string_view rendered_name =
         mod.struct_names.spelling(mirror.struct_name_id());
     if (formatted_struct_name_id != kInvalidStructName) {
@@ -1624,6 +1664,10 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     verify_call_return_type_ref_mirror(mod, op->return_type);
     verify_pointer_operand(op->callee, "LirCallOp.callee");
     verify_call_callee_signature(mod, *op, structured_authority_complete);
+    for (const LirTypeRef& arg_type_ref : op->arg_type_refs) {
+      verify_call_aggregate_type_ref_store_entry(
+          mod, arg_type_ref, "LirCallOp.arg_type_refs");
+    }
     if (!op->arg_type_refs.empty() && !structured_authority_complete) {
       auto parsed = parse_lir_typed_call_or_infer_params(*op);
       if (!parsed.has_value()) {

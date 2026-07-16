@@ -8,19 +8,18 @@ Current Step Title: Enforce module ownership and migrate bounded consumers
 
 ## Just Finished
 
-- Step 3 receiver consumer packet completed. The LIR-to-BIR structured
-  spelling/layout receiver now traverses canonical
-  `LirModule::aggregate_store` entries when the store is populated, validates
-  each recorded declaration fact against the matching structured declaration,
-  and rejects missing or incoherent store facts before falling back to
-  declaration-only authority. Empty aggregate-store modules retain the existing
-  no-owner compatibility path.
+- Step 3 call verifier consumer packet completed. `LirCallOp` aggregate return
+  and argument type-ref mirrors that carry `StructNameId` now require matching
+  canonical `LirModule::aggregate_store` facts when the store is populated.
+  Missing or incoherent store entries fail closed before declaration/text
+  authority can accept the mirror. Empty-store and explicitly no-owner
+  compatibility fixtures remain on their legacy path.
 
 ## Suggested Next
 
-- Continue Step 3 with one bounded remaining consumer that still reads aggregate
-  identity from legacy declaration/text authority, or move to Step 4 if
-  supervisor review finds the named Step 3 consumer set exhausted.
+- Continue Step 3 with one remaining bounded consumer that still accepts
+  aggregate identity from legacy declaration/text authority, or move to Step 4
+  if supervisor review finds the named Step 3 consumer set exhausted.
 
 ## Watchouts
 
@@ -48,9 +47,16 @@ Current Step Title: Enforce module ownership and migrate bounded consumers
   `src/backend/bir/lir_to_bir.cpp` importer in addition to the split
   `lir_to_bir/types.cpp` and `module.cpp` receiver seam. Keep any follow-up
   receiver packets aligned across both import paths until one path is retired.
+- Call argument mirrors with complete structured call authority skip rendered
+  argument parsing, so their aggregate-store validation must stay independent
+  of the text-parsing branch. The owned call test also repairs stale fixture
+  metadata so populated aggregate refs fail closed while explicit no-owner
+  compatibility clears those refs before lowering.
 
 ## Proof
 
 - Passed:
-  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_interface|frontend_lir_function_signature_type_ref|frontend_hir_tests)$' ) > test_after.log 2>&1`
+  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_call_type_ref|frontend_lir_function_signature_type_ref|frontend_hir_tests)$' ) > test_after.log 2>&1`
+- Supervisor checkpoint passed:
+  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' ) > /tmp/c4c_backend_after.log 2>&1`
 - Proof log: `test_after.log`.

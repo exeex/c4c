@@ -262,6 +262,50 @@ void expect_type_ref_structured_equality_uses_name_id(
               "call legacy no-id type refs should still compare by rendered text");
 }
 
+void remove_aggregate_store_entry_by_name(
+    c4c::codegen::lir::LirModule& module,
+    c4c::StructNameId name_id) {
+  std::vector<c4c::hir::HirAggregateRef> removed_hir_refs;
+  for (const auto& entry : module.aggregate_store) {
+    if (entry.name_id == name_id) {
+      removed_hir_refs.push_back(entry.hir_ref);
+    }
+  }
+  module.aggregate_store.erase(
+      std::remove_if(module.aggregate_store.begin(), module.aggregate_store.end(),
+                     [&](const c4c::codegen::lir::LirAggregateStoreEntry& entry) {
+                       return entry.name_id == name_id;
+                     }),
+      module.aggregate_store.end());
+  module.aggregate_ref_by_hir_ref.clear();
+  for (std::size_t index = 0; index < module.aggregate_store.size(); ++index) {
+    const auto& entry = module.aggregate_store[index];
+    const auto removed = std::find_if(
+        removed_hir_refs.begin(), removed_hir_refs.end(),
+        [&](const c4c::hir::HirAggregateRef& ref) {
+          return ref.module.value == entry.hir_ref.module.value &&
+                 ref.aggregate.value == entry.hir_ref.aggregate.value;
+        });
+    if (removed != removed_hir_refs.end()) continue;
+    module.aggregate_ref_by_hir_ref.emplace(
+        c4c::codegen::lir::LirModule::aggregate_store_key(entry.hir_ref),
+        c4c::codegen::lir::LirAggregateRef{static_cast<uint32_t>(index)});
+  }
+}
+
+c4c::codegen::lir::LirAggregateStoreEntry& require_aggregate_store_entry_by_name(
+    c4c::codegen::lir::LirModule& module,
+    c4c::StructNameId name_id,
+    const std::string& msg) {
+  const auto it = std::find_if(
+      module.aggregate_store.begin(), module.aggregate_store.end(),
+      [&](const c4c::codegen::lir::LirAggregateStoreEntry& entry) {
+        return entry.name_id == name_id;
+      });
+  expect_true(it != module.aggregate_store.end(), msg);
+  return *it;
+}
+
 void test_lir_type_ref_builtin_enum_authority() {
   using c4c::codegen::lir::LirBuiltinType;
   using c4c::codegen::lir::LirTypeKind;
@@ -329,6 +373,7 @@ void append_compat_only_stale_member_layout(c4c::hir::Module& module) {
   stale_field.size_bytes = 4;
   stale_field.align_bytes = 4;
   stale_def.fields.push_back(stale_field);
+  stale_def.aggregate_ref = module.issue_aggregate_ref();
   module.struct_defs[stale_def.tag] = stale_def;
 }
 
@@ -488,33 +533,15 @@ struct StaleCallCompat call_stale(struct StaleCallCompat value) {
   make_stale.return_type.spec = make_missing_owner_type();
   make_stale.params[0].type.spec = make_missing_owner_type();
 
-  c4c::codegen::lir::LirModule lir_module =
-      c4c::codegen::lir::lower(hir_module);
-  c4c::codegen::lir::LirCallOp& call =
-      require_call_to(require_function(lir_module, "call_stale"), "@make_stale");
-
-  expect_eq(call.return_type.str(), "%struct.StaleCallCompat",
-            "owner-key miss should keep rendered call return text");
-  expect_true(!call.return_type.has_struct_name_id(),
-              "complete owner-key miss must not produce a stale return StructNameId");
-  expect_true(call.callee_signature.has_value(),
-              "metadata-rich direct call should still carry callee signature facts");
-  expect_true(call.callee_signature->return_type_ref.has_value(),
-              "callee signature should keep raw return type text after owner miss");
-  expect_true(!call.callee_signature->return_type_ref->has_struct_name_id(),
-              "complete owner-key miss must not produce a stale callee return StructNameId");
-  expect_eq(std::to_string(call.callee_signature->fixed_param_type_refs.size()), "1",
-            "callee signature should keep one fixed parameter type ref");
-  expect_true(!call.callee_signature->fixed_param_type_refs[0].has_struct_name_id(),
-              "complete owner-key miss must not produce a stale parameter StructNameId");
-  expect_true(call.arg_type_refs.empty(),
-              "call argument mirrors should fail closed after a complete owner-key miss");
-  expect_eq(std::to_string(call.structured_args.size()), "1",
-            "call should retain raw structured argument facts");
-  expect_eq(call.structured_args[0].type, "%struct.StaleCallCompat",
-            "call argument should keep rendered text after owner miss");
-  expect_true(!call.structured_args[0].type_ref.has_struct_name_id(),
-              "complete owner-key miss must not produce a stale argument StructNameId");
+  try {
+    (void)c4c::codegen::lir::lower(hir_module);
+    fail("complete owner-key miss must not lower through stale rendered call compatibility");
+  } catch (const std::runtime_error& err) {
+    expect_true(std::string(err.what()).find(
+                    "LIR-owned aggregate function type requires coherent HIR owner metadata") !=
+                    std::string::npos,
+                "complete owner-key miss should stop before stale call type refs");
+  }
 }
 
 void test_call_type_ref_preserves_no_owner_compatibility_name_id() {
@@ -546,7 +573,11 @@ struct StaleNoOwnerCallCompat call_no_owner(struct StaleNoOwnerCallCompat value)
   c4c::hir::Function& no_owner_make =
       require_hir_function(hir_module, "no_owner_make", false);
   no_owner_make.return_type.spec = no_owner_type;
+  no_owner_make.return_type.aggregate_ref.reset();
+  no_owner_make.return_type.aggregate_owner_identity.reset();
   no_owner_make.params[0].type.spec = no_owner_type;
+  no_owner_make.params[0].type.aggregate_ref.reset();
+  no_owner_make.params[0].type.aggregate_owner_identity.reset();
 
   c4c::codegen::lir::LirModule lir_module =
       c4c::codegen::lir::lower(hir_module);
@@ -9257,8 +9288,56 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
 
   const c4c::StructNameId pair_id = direct_call.return_type.struct_name_id();
   const c4c::StructNameId slot_id = lir_module.struct_names.find("%struct.Slot");
+  const c4c::StructNameId big_id = byval_call.arg_type_refs[0].struct_name_id();
   expect_true(slot_id != c4c::kInvalidStructName,
               "fixture should declare a second struct for mismatch checks");
+  expect_true(big_id != c4c::kInvalidStructName,
+              "fixture should declare Big for byval argument store checks");
+  require_aggregate_store_entry_by_name(
+      lir_module, pair_id,
+      "call return/argument aggregate ref should be backed by the aggregate store");
+  require_aggregate_store_entry_by_name(
+      lir_module, big_id,
+      "byval call argument aggregate ref should be backed by the aggregate store");
+
+  c4c::codegen::lir::LirModule missing_return_store = lir_module;
+  remove_aggregate_store_entry_by_name(missing_return_store, pair_id);
+  try {
+    c4c::codegen::lir::verify_module(missing_return_store);
+    fail("verifier should reject a call return with a missing aggregate store entry");
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
+
+  c4c::codegen::lir::LirModule wrong_return_store = lir_module;
+  auto& wrong_return_entry = require_aggregate_store_entry_by_name(
+      wrong_return_store, pair_id,
+      "fixture should keep Pair store facts for corrupted return check");
+  wrong_return_entry.layout_kind =
+      c4c::codegen::lir::LirAggregateLayoutKind::Union;
+  try {
+    c4c::codegen::lir::verify_module(wrong_return_store);
+    fail("verifier should reject a call return with incoherent aggregate store kind");
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
+
+  c4c::codegen::lir::LirModule missing_arg_store = lir_module;
+  remove_aggregate_store_entry_by_name(missing_arg_store, big_id);
+  try {
+    c4c::codegen::lir::verify_module(missing_arg_store);
+    fail("verifier should reject a call argument with a missing aggregate store entry");
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
+
+  c4c::codegen::lir::LirModule wrong_arg_store = lir_module;
+  auto& wrong_arg_entry = require_aggregate_store_entry_by_name(
+      wrong_arg_store, big_id,
+      "fixture should keep Big store facts for corrupted argument check");
+  wrong_arg_entry.layout_kind = c4c::codegen::lir::LirAggregateLayoutKind::Union;
+  try {
+    c4c::codegen::lir::verify_module(wrong_arg_store);
+    fail("verifier should reject a call argument with incoherent aggregate store kind");
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
 
   c4c::codegen::lir::LirModule incoherent_native_arg = lir_module;
   c4c::codegen::lir::LirCallOp& incoherent_native_arg_call =
