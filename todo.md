@@ -8,39 +8,35 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed the Step 4 aggregate-slot adapter cleanup series, but Step 4 is not
-complete enough to hand off to Step 5 yet.
+Completed the first Step 4 residual bridge repair after the aggregate-slot
+adapter cleanup series.
 
-Accepted progress in this series:
-- PHI aggregate slot declarations now carry
-  `PhiLoweringPlan::boundary_type_ref`.
-- `LocalAggregateSlots` has optional `LirTypeRef` identity.
-- `declare_local_aggregate_slots(...)` has structured-ref overloads;
-  metadata-bearing refs prefer structured layout/fail closed, and absent/no-id
-  paths retain the explicit text fallback.
-- Aggregate alloca, aggregate load result, variadic aggregate `va_arg`,
-  aggregate parameter alias, and call-return sret slot declarations now pass
-  available structured refs into local aggregate slot state.
-- Matching backend before/after guards passed for each code slice.
+Aggregate copy lowering now uses `LocalAggregateSlots::type_ref` when present:
+copy-size validation resolves source/target slot layouts through structured
+type-ref lookup for metadata-bearing slots, and copy-to-pointer/global leaf
+discovery calls `collect_sorted_leaf_slots(source_slots)` so metadata-bearing
+sources fail closed through the shared slot-state lookup. No-id slots retain the
+existing rendered-text fallback. The stale aggregate-copy bridge comments that
+claimed `LocalAggregateSlots` only retained rendered type text were removed.
 
 Unmet Step 4 criteria:
 - Residual no-id bridge comments remain outside the direct aggregate-slot
   declaration packet, including memory/provenance, memory/addressing,
   memory/intrinsics, `local_gep`, globals, call ABI raw signature/byval routes,
-  aggregate helper/copy layout, type raw lookup, and global initializers.
+  aggregate helper layout, type raw lookup, and global initializers.
 - These are still potentially within 847's compile-time separation and expired
   adapter deletion scope until classified with evidence as already safe,
   deleted, or owned by a separate source idea.
 
 ## Suggested Next
 
-Suggested Next: bounded Step 4 repair packet.
+Suggested Next: continue the bounded Step 4 repair/classification packet.
 
-Classify the residual no-id bridge inventory by valid-LIR authority risk, then
-delete or structurally route one tight family of remaining in-scope adapters.
-Start with whichever family has direct valid-LIR authority impact and nearby
-proof available, likely memory/provenance or call ABI raw signature/byval
-routes. For each residual bridge touched, prove one of:
+Classify the remaining residual no-id bridge inventory by valid-LIR authority
+risk, then delete or structurally route one tight family of remaining in-scope
+adapters. Start with whichever remaining family has direct valid-LIR authority
+impact and nearby proof available, likely memory/provenance or call ABI raw
+signature/byval routes. For each residual bridge touched, prove one of:
 - structured/native facts now replace the bridge and the adapter can be deleted;
 - the path is a deliberate no-id fallback with no semantic authority and should
   be documented in `todo.md` only;
@@ -59,7 +55,12 @@ routes. For each residual bridge touched, prove one of:
 
 ## Proof
 
-Latest supplemental proof after the aggregate-slot series:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_|frontend_lir_|verify_tests_)'; } > test_after.log 2>&1`
+Ran exactly:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
 
-Result: passed, 18/18.
+Result: passed. `test_after.log` contains `100% tests passed, 0 tests failed
+out of 6`.
+
+Supervisor regression guard:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+reported before 6/6, after 6/6, result PASS.
