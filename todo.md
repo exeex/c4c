@@ -8,15 +8,25 @@ Current Step Title: Decompose The Remaining Aggregate-Owner Rejection Families
 
 ## Just Finished
 
-Activated the resumed 836 route after the closed 837 architecture initiative.
-No 836 implementation or proof is accepted yet.
+Completed Step 1 current-evidence decomposition after the closed 837
+architecture initiative. The historical residual aggregate-owner subset no
+longer reproduces: the fresh build plus focused reproduction covering
+`frontend_hir_tests`, `frontend_lir_global_type_ref`, and the 13 historical
+`llvm_gcc_c_torture` cases passed 15/15.
+
+No structured-key, matching-module-owner, or no-owner compatibility residual
+group is currently visible on the representative evidence. Because the source
+resume condition required fresh current evidence to reproduce an independently
+owned residual family before further repair, there is no Step 2 code packet to
+execute inside 836.
 
 ## Suggested Next
 
-Execute Step 1: reproduce current aggregate-owner residual evidence, classify
-the structured-key, matching-module-owner, and no-owner compatibility groups by
-first owner, and decide whether Step 2 is one bounded native-relation repair or
-an ordered successor split.
+Send the exhausted/no-current-failure runbook to lifecycle review. The
+appropriate disposition is an intentional conclusion, not a capability repair:
+close 836 with the current 15/15 reproduction evidence and return
+`ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md`
+to unchanged Step 4 for its comparable full-suite gate.
 
 ## Watchouts
 
@@ -30,4 +40,9 @@ an ordered successor split.
 
 ## Proof
 
-No 836 proof has run for this resumed activation.
+Passed current focused reproduction:
+
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_lir_global_type_ref|llvm_gcc_c_torture_src_(20090113_2|930719_1|931012_1|950512_1|961112_1|comp_goto_1|pr23604|pr28289|pr37780|pr43385|pr46909_2|pr51323|pr88714)_c)$' ) > test_after.log 2>&1`
+
+Result: 15/15 tests passed. No old `LIR-owned aggregate function type
+requires ...` diagnostic appears in `test_after.log`.
