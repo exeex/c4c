@@ -1135,6 +1135,9 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         const bool direct_scalar_floating_fmul =
             binary->opcode == BinaryOpcode::FMul && floating_type(binary->type) &&
             binary->direct_scalar_lhs.has_value();
+        const bool direct_scalar_floating_fadd =
+            binary->opcode == BinaryOpcode::FAdd && floating_type(binary->type) &&
+            binary->direct_scalar_lhs.has_value();
         const bool direct_scalar_rhs_floating_fmul =
             binary->opcode == BinaryOpcode::FMul && floating_type(binary->type) &&
             binary->direct_scalar_rhs.has_value();
@@ -1143,7 +1146,8 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         const bool add = binary->opcode == BinaryOpcode::Add && binary->type == i32;
         const bool sext_add = binary->opcode == BinaryOpcode::Add && binary->type == i64;
         const bool mul = binary->opcode == BinaryOpcode::Mul && binary->type == i32;
-        bool exact = (fadd || fmul || float_fmul || direct_scalar_floating_fmul ||
+        bool exact = (fadd || fmul || float_fmul || direct_scalar_floating_fadd ||
+                      direct_scalar_floating_fmul ||
                       direct_scalar_rhs_floating_fmul || add || sext_add || mul)
             ? instruction.operands.size() == 2 && instruction.results.size() == 1
             : fneg && instruction.operands.size() == 1 &&
@@ -1173,6 +1177,14 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
             module.link_names_[direct_scalar->owner.slot].spelling == function.link_name_ &&
             direct_scalar->parameter_index < function.parameters_.size() &&
             instruction.operands[0] == function.parameters_[direct_scalar->parameter_index];
+        const bool direct_scalar_fadd = exact && direct_scalar_floating_fadd &&
+            direct_scalar && direct_scalar->source_value_id != 0 &&
+            direct_scalar->scalar_type == binary->type &&
+            direct_scalar->owner.valid() && direct_scalar->owner.epoch == module.epoch_ &&
+            direct_scalar->owner.slot < module.link_names_.size() &&
+            module.link_names_[direct_scalar->owner.slot].spelling == function.link_name_ &&
+            direct_scalar->parameter_index < function.parameters_.size() &&
+            instruction.operands[0] == function.parameters_[direct_scalar->parameter_index];
         const bool direct_scalar_rhs_add = exact && add && direct_scalar_rhs &&
             direct_scalar_rhs->source_value_id != 0 && direct_scalar_rhs->scalar_type == i32 &&
             direct_scalar_rhs->owner.valid() && direct_scalar_rhs->owner.epoch == module.epoch_ &&
@@ -1190,6 +1202,7 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
             direct_scalar_rhs->parameter_index < function.parameters_.size() &&
             instruction.operands[1] == function.parameters_[direct_scalar_rhs->parameter_index];
         if (exact && !direct_scalar_add && !direct_scalar_fneg &&
+            !direct_scalar_fadd &&
             !direct_scalar_fmul &&
             !direct_scalar_rhs_add && !direct_scalar_rhs_fmul) {
           for (const auto operand_id : instruction.operands) {
@@ -1199,6 +1212,7 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
           }
         }
         if (exact && !direct_scalar_add && !direct_scalar_fneg &&
+            !direct_scalar_fadd &&
             !direct_scalar_fmul &&
             !direct_scalar_rhs_add && !direct_scalar_rhs_fmul) {
           const auto lhs = function.values_.get(function_id, instruction.operands[0]);
