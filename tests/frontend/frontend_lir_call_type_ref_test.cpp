@@ -4532,7 +4532,7 @@ void test_native_direct_scalar_truthiness_comparison_lhs_authority() {
   lir::LirModule lowered = lower_lir_module_for_target(R"c(
 int truthiness_comparison_helper(int value) { return value; }
 int truthiness_comparison_native(int value) {
-  if (value) return 11;
+  if (value != 0) return 11;
   return 22;
 }
 )c", "x86_64-linux-gnu");

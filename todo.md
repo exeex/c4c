@@ -3,51 +3,45 @@
 Status: Active
 Source Idea Path: ideas/open/833_lir_truthiness_lhs_parameter_authority_completion.md
 Source Plan Path: plan.md
-Current Step ID: 2a
-Current Step Title: Trace the actual compare construction producer
+Current Step ID: 2b
+Current Step Title: Produce and verify the evidenced authority relation
 
 ## Just Finished
 
-- Step 1 established the native truthiness contract. A selected integer
-  `LirCmpOp` (`ne`, integer type, SSA LHS, immediate zero RHS) whose LHS is a
-  current-function `DirectScalar` definition must carry
-  `truthiness_lhs_parameter_authority` copied from that definition: exact
-  `LirValueId`, function `LinkNameId` owner, parameter index, `LirTypeRef`,
-  `DirectScalar` ABI, and `TruthinessComparisonLhs` role. The verifier already
-  requires one exact matching definition and rejects missing, foreign,
-  owner-incoherent, parameter-incoherent, type-incoherent, ABI, role,
-  predicate, RHS, and duplicate-definition variants.
-- The `UnaryOp::Not` / string-only `to_bool` hypothesis is disproven for this
-  torture family. Temporarily routing it through `to_bool_operand` built and
-  preserved the tuple, but the matching in-scope ten-case guard remained
-  10/10 failing (nine missing-authority cases plus `pr88714`'s separate 832
-  aggregate-owner failure). The temporary code and tests were reverted.
+- Step 2b populated `LirCmpOp.truthiness_lhs_parameter_authority` at only the
+  evidenced `emit_binary_rval_operand` integer `BinaryOp::Ne` producer. It
+  requires preserved SSA LHS, immediate integer zero RHS, and one exact
+  current-function `DirectScalar` native definition with matching value,
+  `LirTypeRef`, and owner; it copies that definition's value, parameter index,
+  type, owner, ABI, and the `TruthinessComparisonLhs` role.
+- Updated the nearby generated-path fixture to use `if (value != 0)`, so its
+  existing positive and missing/foreign/owner/type/ABI/role/predicate/RHS/
+  duplicate malformed checks now exercise this binary producer rather than the
+  already-covered `to_bool_operand` route.
+- Fresh build succeeded. The exact 13-case proof now passes 9/13, including
+  `930719-1`; none fail at the missing truthiness-authority verifier relation.
+  The remaining four failures are visible aggregate-owner errors in
+  `20090113-2`, `comp-goto-1`, `pr51323`, and `pr88714`.
 
 ## Suggested Next
 
-- Step 2a is evidence-only: trace representative in-scope direct-scalar cases
-  backward from the selected `LirCmpOp` to the actual compare construction
-  site. Do not make another producer patch until native evidence shows that
-  site receives the exact direct-scalar operand and can carry identity, owner,
-  parameter, and type facts without recovery.
-- If that discriminating condition is absent, record the failed route and the
-  next bounded diagnostic action; do not resurrect the disproven `UnaryOp::Not`
-  or string-only `to_bool` packet.
+- Supervisor: evaluate Step 2b proof and route Step 3 only if the remaining
+  aggregate-owner failures are accepted as out of scope for this relation.
 
 ## Watchouts
 
-- Do not use rendered text, signatures, diagnostics, default classification,
-  named-case exceptions, filters, unsupported markers, or weaker contracts.
-  Return only to 831 Step 2 after accepted focused proof.
-- The current focused truthiness test already exercises verifier rejection for
-  missing, foreign, owner/parameter/type-incoherent, ABI/role, predicate/RHS,
-  and duplicate-definition authority. Step 2 must add producer-path coverage,
-  not duplicate a verifier-only fixture.
+- Do not re-open the disproven `UnaryOp::Not` or string-only `to_bool` route,
+  and do not absorb the four aggregate-owner failures. The nearest whole
+  frontend LIR test aborts before completion at the same pre-existing
+  `LIR-owned aggregate function type requires a matching module owner` error;
+  its selected generated-path coverage is compiled but cannot report green
+  until that separate route is repaired.
 
 ## Proof
 
-- Evidence predecessor: 831's exact subset retains the truthiness failures at
-  the unchanged missing `LirCmpOp.truthiness_lhs_parameter_authority` verifier
-  relation. Canonical `test_before.log` and `test_after.log` use the exact
-  same matching ten-case command and show no improvement from the reverted
-  UnaryOp hypothesis (10/10 failures in both).
+- `cmake --build --preset default` — passed (existing deprecation warnings).
+- `ctest --test-dir build --output-on-failure -R '^frontend_lir_call_type_ref$'`
+  — failed before completion at the pre-existing aggregate-owner runtime error.
+- `ctest --test-dir build -j --output-on-failure -R '^(llvm_gcc_c_torture_src_(20090113_2|930719_1|931012_1|950512_1|961112_1|comp_goto_1|pr23604|pr28289|pr37780|pr43385|pr46909_2|pr51323|pr88714)_c)$' > test_after.log`
+  — 9 passed / 4 failed only at the aggregate-owner error; canonical log:
+  `test_after.log`.

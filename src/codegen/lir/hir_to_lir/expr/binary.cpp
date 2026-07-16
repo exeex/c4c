@@ -662,9 +662,36 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
                                        LirTypeRef(op_ty), lhs, rhs});
       } else {
         const LirCmpPredicate pred = ls ? row.is : row.iu;
+        const LirTypeRef comparison_type(op_ty);
+        std::optional<lir::LirTruthinessComparisonLhsParameterAuthority>
+            truthiness_lhs_authority;
+        if (pred == LirCmpPredicate::Ne && comparison_type.kind() == LirTypeKind::Integer &&
+            lhs.value_id() != nullptr && rhs.integer_immediate() != nullptr &&
+            rhs.integer_immediate()->value == 0 && ctx.lir_function != nullptr) {
+          const auto definition = std::find_if(
+              ctx.lir_function->native_body_parameter_definitions.begin(),
+              ctx.lir_function->native_body_parameter_definitions.end(),
+              [&](const auto& candidate) {
+                return candidate.value == *lhs.value_id() &&
+                       candidate.type == comparison_type &&
+                       candidate.owner == ctx.lir_function->link_name_id &&
+                       candidate.abi == lir::LirNativeBodyParameterAbi::DirectScalar;
+              });
+          if (definition != ctx.lir_function->native_body_parameter_definitions.end()) {
+            truthiness_lhs_authority = lir::LirTruthinessComparisonLhsParameterAuthority{
+                .value = definition->value,
+                .parameter_index = definition->parameter_index,
+                .type = definition->type,
+                .owner = definition->owner,
+                .abi = definition->abi,
+                .role = lir::LirTruthinessComparisonLhsParameterRole::TruthinessComparisonLhs,
+            };
+          }
+        }
         emit_lir_op(ctx, lir::LirCmpOp{cmp_result, false,
                                        LirCmpPredicateRef(pred),
-                                       LirTypeRef(op_ty), lhs, rhs});
+                                       comparison_type, lhs, rhs,
+                                       truthiness_lhs_authority});
       }
       const std::string tmp = fresh_tmp(ctx);
       emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::ZExt,
