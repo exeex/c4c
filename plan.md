@@ -84,12 +84,24 @@ Actions:
   by 837.
 - Create `evidence_baseline.md` and
   `historical_blocker_root_model_map.md` under the handoff directory.
+- Distinguish the HIR aggregate model that already exists (`HirStructDef`,
+  aggregate field/layout facts, and the module owner index) from the missing
+  occurrence-to-definition contract: every aggregate-bearing `QualType` must
+  resolve through a stable reference to its canonical module-owned aggregate
+  definition rather than through a reconstructed lookup key.
+- Record the current twelve residual cases as three separate handoff-contract
+  evidence groups, without claiming repair: incomplete `structured owner key`
+  cases (50, 52, 510, 661, 688, 692, and 3038), present-but-unmatched
+  `matching module owner` cases (201, 202, 217, and 1529), and the legitimate
+  no-owner rendered-compatibility case (46).
 - Record accepted capabilities, bounded exclusions, current open dependencies,
   and the parked 836 return obligation.
 - Do not create successor ideas or edit implementation/tests.
 
 Completion check: both documents cite one tree revision and every required
-historical wall has a root responsibility, preservation rule, and owner status.
+historical wall has a root responsibility, preservation rule, and owner status;
+the HIR occurrence-to-canonical-definition seam and all three residual evidence
+groups are explicit rather than being collapsed into a generic LIR failure.
 
 ### Step 2 - Build the responsibility matrix and nominal boundary decisions
 
@@ -103,12 +115,23 @@ Actions:
   existing owners, future first owners, adapters, and deletion conditions.
 - Create `nominal_family_boundary_decisions.md` for scalar, vector, canonical
   module-owned aggregate, function signature, and exact polymorphic unions.
+- Require the aggregate boundary and matrix to define a canonical typed
+  ref/store graph: type occurrences refer to one module-owned definition and
+  nested aggregates retain recursive typed child refs. Normalize ownership and
+  representation during HIR-to-LIR lowering; do not flatten away field
+  hierarchy, nested aggregate identity, or recursive semantic structure.
+- Explicitly assess a stable `HirAggregateId`/`HirAggregateRef` as the HIR
+  occurrence-to-definition carrier. If a different design is selected, record
+  evidence that it provides the same stable, unique, module-owned reference
+  contract without reconstructing identity from tags, rendered text, or parser
+  pointers.
 - Require compile-time separation targets, C++20 enum-kind traits/custom checked
   access, family overloads, one-way rendering, and fail-closed foreign/wrong-
   family behavior in future contracts.
 
 Completion check: every current responsibility has one destination/disposition;
-no generic runtime-text bucket, unrestricted union, or duplicate owner remains.
+no generic runtime-text bucket, unrestricted union, or duplicate owner remains;
+the chosen HIR carrier and recursive aggregate graph semantics are explicit.
 
 ### Step 3 - Define dependency order and one-first-owner successor scopes
 
@@ -120,6 +143,16 @@ Actions:
 - Create `dependency_ordering.md`.
 - Put canonical module-owned aggregate ref/store convergence first, consuming
   754/801/832-836 evidence without claiming 836 completion.
+- Define that first aggregate successor around an explicit HIR canonical-store
+  to LIR aggregate-store intern/mapping contract, including stable identity,
+  mapping lifetime, and module ownership at the lowering boundary.
+- Require its scope and proof contract to cover nested, local, template,
+  anonymous, and typedef/alias aggregate occurrences; define registration
+  ordering plus fail-closed foreign- and wrong-module behavior.
+- Name deletion gates for parser `record_def` dependence, tag/rendered-text
+  reconstruction or compatibility fallbacks, and duplicate owner/identity/
+  layout metadata. Retain each adapter only until its named consumers have
+  migrated and parity is evidenced.
 - Order function-signature/call composition next where dependent; order vector,
   scalar, restricted-union, direct-construction, and overloaded-consumer routes
   from first-owner evidence.
@@ -129,7 +162,9 @@ Actions:
 
 Completion check: every unresolved matrix row belongs to one coherent proposed
 successor scope with dependencies, proof, deletion conditions, and no duplicate
-open ownership.
+open ownership; the first aggregate successor fully specifies HIR-to-LIR
+mapping, aggregate-form coverage, module rejection behavior, and legacy
+metadata/fallback retirement.
 
 ### Step 4 - Generate ordered successor ideas and handoff documents
 
