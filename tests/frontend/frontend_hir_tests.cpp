@@ -2587,6 +2587,43 @@ int main() {
               "object helper lowering should not trust a corrupted raw decl-ref name");
 }
 
+void test_hir_to_lir_function_aggregate_param_owner_rejects_incoherent_metadata() {
+  const auto lower_with = [](const auto& mutate) {
+    c4c::hir::Module module = lower_hir_module(R"cpp(
+struct Box { int value; };
+void accept(Box* value) {}
+)cpp");
+    const auto it = module.fn_index.find("accept");
+    expect_true(it != module.fn_index.end(), "aggregate parameter fixture should define accept");
+    c4c::hir::Function* fn = module.find_function(it->second);
+    expect_true(fn != nullptr && fn->params.size() == 1,
+                "aggregate parameter fixture should expose one parameter");
+    mutate(module, fn->params[0].type.spec);
+
+    bool rejected = false;
+    try {
+      (void)c4c::codegen::lir::lower(module);
+    } catch (const std::runtime_error&) {
+      rejected = true;
+    }
+    expect_true(rejected,
+                "LIR-owned aggregate parameter lowering should fail closed on incoherent owner metadata");
+  };
+
+  lower_with([](auto&, c4c::TypeSpec& type) {
+    type.tag_text_id = c4c::kInvalidText;
+    type.record_def = nullptr;
+  });
+  lower_with([](auto& module, c4c::TypeSpec& type) {
+    type.tag_text_id = module.link_name_texts->intern("ForeignBox");
+    type.record_def = nullptr;
+  });
+  lower_with([](auto&, c4c::TypeSpec& type) {
+    type.namespace_context_id = 99;
+    type.record_def = nullptr;
+  });
+}
+
 void test_hir_to_lir_template_call_helper_callees_prefer_carrier_link_name_ids() {
   c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 template<typename T>
@@ -8173,6 +8210,7 @@ int main() {
   test_hir_to_lir_decl_backed_function_designator_rvalues_prefer_link_name_ids();
   test_hir_to_lir_decl_backed_call_result_inference_prefers_link_name_ids();
   test_hir_to_lir_object_helper_callees_prefer_link_name_ids();
+  test_hir_to_lir_function_aggregate_param_owner_rejects_incoherent_metadata();
   test_hir_to_lir_template_call_helper_callees_prefer_carrier_link_name_ids();
   test_hir_direct_call_builtin_alias_fallback_keeps_invalid_link_name_ids();
   test_hir_template_arg_materialization_prefers_structured_value_payload();

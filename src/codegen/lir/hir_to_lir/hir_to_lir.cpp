@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <functional>
 #include <sstream>
+#include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
@@ -90,16 +91,23 @@ TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, TypeSpec type,
                              LirModule* lir_module) {
   if (!lir_module) return type;
   if (type.base != TB_STRUCT && type.base != TB_UNION) return type;
-  std::optional<std::string> tag;
-  if (const HirStructDef* layout =
-          c4c::codegen::llvm_helpers::find_typespec_aggregate_layout(mod,
-                                                                      type)) {
-    tag = layout->tag;
+  // LIR owns this copy. `record_def` and qualifier arrays point into parser
+  // storage, so they cannot participate in aggregate ownership after the HIR
+  // function is materialized. Resolve only the retained structured key.
+  type.record_def = nullptr;
+  type.qualifier_segments = nullptr;
+  type.qualifier_text_ids = nullptr;
+  type.n_qualifier_segments = 0;
+  const std::optional<HirRecordOwnerKey> owner_key =
+      c4c::codegen::llvm_helpers::typespec_aggregate_owner_key(type, mod);
+  if (!owner_key) {
+    throw std::runtime_error("LIR-owned aggregate function type requires a structured owner key");
   }
-  if (!tag && !c4c::codegen::llvm_helpers::typespec_aggregate_owner_key(type, mod)) {
-    tag = c4c::codegen::llvm_helpers::typespec_aggregate_compatibility_tag(
-        mod, type);
+  const SymbolName* owner_tag = mod.find_struct_def_tag_by_owner(*owner_key);
+  if (!owner_tag || owner_tag->empty()) {
+    throw std::runtime_error("LIR-owned aggregate function type requires a matching module owner");
   }
+  std::optional<std::string> tag = std::string(*owner_tag);
   const std::optional<std::string> source_tag =
       tag ? tag : c4c::codegen::llvm_helpers::typespec_aggregate_compatibility_tag(
                 mod, type);
@@ -120,10 +128,6 @@ TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, TypeSpec type,
   if (tag && lir_module->link_name_texts) {
     type.tag_text_id = lir_module->link_name_texts->intern(*tag);
   }
-  type.record_def = nullptr;
-  type.qualifier_segments = nullptr;
-  type.qualifier_text_ids = nullptr;
-  type.n_qualifier_segments = 0;
   return type;
 }
 
