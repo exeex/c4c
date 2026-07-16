@@ -9765,6 +9765,26 @@ float extract_sum_real(__complex__ float lhs, __complex__ float rhs) {
   }
   lir::verify_module(stale_terminal_display);
 
+  lir::LirModule stale_terminal_type_display = direct_complex_binary;
+  lir::LirInsertValueOp& stale_type_insert =
+      selected_terminal_insert(stale_terminal_type_display);
+  stale_type_insert.agg_type.str() = "{ i777, i777 }";
+  stale_type_insert.elem_type.str() = "double";
+  lir::verify_module(stale_terminal_type_display);
+  const std::string stale_terminal_type_ir =
+      lir::print_llvm(stale_terminal_type_display);
+  expect_contains(stale_terminal_type_ir,
+                  "insertvalue { float, float } ",
+                  "selected insertvalue printer should render native aggregate fields");
+  expect_contains(stale_terminal_type_ir, ", float ",
+                  "selected insertvalue printer should render native selected element field");
+  expect_not_contains(
+      stale_terminal_type_ir, "{ i777, i777 }",
+      "selected insertvalue printer must not render stale aggregate display text");
+  expect_not_contains(
+      stale_terminal_type_ir, ", double ",
+      "selected insertvalue printer must not render stale element display text");
+
   const auto make_module = [&](bool terminal_insert) {
     lir::LirModule module;
     lir::LirFunction function;

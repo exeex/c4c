@@ -2032,12 +2032,12 @@ void verify_insert_value_authority(const LirInsertValueOp& op) {
   if (!op.requires_native_result_authority) return;
   if (op.result.kind() != LirOperandKind::SsaValue || !op.result.value_id() ||
       !op.result.value_id()->valid() || !op.aggregate_result_type ||
-      *op.aggregate_result_type != op.agg_type) {
+      !same_native_type_fact(*op.aggregate_result_type, op.agg_type)) {
     fail_verify("LirInsertValueOp.result",
                 "native insertvalue aggregate producer requires matching result and type authority");
   }
   const std::vector<LirTypeRef>* fields = op.aggregate_result_type->anonymous_struct_field_types();
-  if (!fields) {
+  if (!fields || fields->empty()) {
     fail_verify("LirInsertValueOp.aggregate_result_type",
                 "native insertvalue aggregate producer requires ordered native field types");
   }
@@ -2045,7 +2045,7 @@ void verify_insert_value_authority(const LirInsertValueOp& op) {
     fail_verify("LirInsertValueOp.index",
                 "native insertvalue field index must select an aggregate field");
   }
-  if (op.elem_type != (*fields)[static_cast<size_t>(op.index)]) {
+  if (!same_native_type_fact(op.elem_type, (*fields)[static_cast<size_t>(op.index)])) {
     fail_verify("LirInsertValueOp.elem_type",
                 "native insertvalue element type must match its selected aggregate field");
   }
@@ -2123,9 +2123,21 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
   }
   if (const auto* op = std::get_if<LirInsertValueOp>(&inst)) {
     verify_result_operand(op->result, "LirInsertValueOp.result");
-    require_module_type_ref(mod, op->agg_type, "LirInsertValueOp.agg_type");
+    if (op->requires_native_result_authority) {
+      if (op->aggregate_result_type) {
+        const std::vector<LirTypeRef>& fields =
+            require_native_anonymous_struct_fields(
+                mod, *op->aggregate_result_type,
+                "LirInsertValueOp.aggregate_result_type");
+        (void)fields;
+      }
+    } else {
+      require_module_type_ref(mod, op->agg_type, "LirInsertValueOp.agg_type");
+    }
     verify_value_operand(op->agg, "LirInsertValueOp.agg");
-    require_module_type_ref(mod, op->elem_type, "LirInsertValueOp.elem_type");
+    if (!op->requires_native_result_authority) {
+      require_module_type_ref(mod, op->elem_type, "LirInsertValueOp.elem_type");
+    }
     verify_value_operand(op->elem, "LirInsertValueOp.elem");
     verify_insert_value_authority(*op);
     return;

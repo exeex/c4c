@@ -240,6 +240,32 @@ std::string render_extract_value_aggregate_type(const LirExtractValueOp& op) {
   return op.agg_type.render_llvm();
 }
 
+std::pair<std::string, std::string> render_insert_value_native_types(
+    const LirInsertValueOp& op) {
+  if (!op.requires_native_result_authority) {
+    return {require_type_ref(op.agg_type, "LirInsertValueOp.agg_type"),
+            require_type_ref(op.elem_type, "LirInsertValueOp.elem_type")};
+  }
+  if (!op.aggregate_result_type) {
+    throw LirVerifyError(
+        LirVerifyErrorKind::Malformed,
+        "LirInsertValueOp.aggregate_result_type requires native aggregate authority for native aggregate rendering");
+  }
+  const auto* fields = op.aggregate_result_type->anonymous_struct_field_types();
+  if (!fields || fields->empty()) {
+    throw LirVerifyError(
+        LirVerifyErrorKind::Malformed,
+        "LirInsertValueOp.aggregate_result_type requires ordered native field types for native aggregate rendering");
+  }
+  if (op.index < 0 || static_cast<std::size_t>(op.index) >= fields->size()) {
+    throw LirVerifyError(
+        LirVerifyErrorKind::Malformed,
+        "LirInsertValueOp.index must select an aggregate field for native aggregate rendering");
+  }
+  return {op.aggregate_result_type->render_llvm(),
+          (*fields)[static_cast<std::size_t>(op.index)].render_llvm()};
+}
+
 std::string_view signature_header_line(const LirFunction& function) {
   std::string_view signature = function.signature_text;
   while (!signature.empty()) {
@@ -549,18 +575,18 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
                                 LirOperandKind::SpecialToken})
        << ", " << op->index << "\n";
   } else if (const auto* op = std::get_if<LirInsertValueOp>(&inst)) {
+    const auto [agg_type, elem_type] = render_insert_value_native_types(*op);
     os << "  "
        << require_operand_kind(op->result, "LirInsertValueOp.result",
                                {LirOperandKind::SsaValue})
        << " = insertvalue "
-       << require_type_ref(op->agg_type, "LirInsertValueOp.agg_type") << " "
+       << agg_type << " "
        << require_operand_kind(op->agg, "LirInsertValueOp.agg",
                                {LirOperandKind::SsaValue,
                                 LirOperandKind::Global,
                                 LirOperandKind::Immediate,
                                 LirOperandKind::SpecialToken})
-       << ", " << require_type_ref(op->elem_type, "LirInsertValueOp.elem_type")
-       << " "
+       << ", " << elem_type << " "
        << require_operand_kind(op->elem, "LirInsertValueOp.elem",
                                {LirOperandKind::SsaValue,
                                 LirOperandKind::Global,
