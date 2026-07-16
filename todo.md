@@ -8,30 +8,29 @@ Current Step Title: Migrate Bounded Vector Operation Consumers
 
 ## Just Finished
 
-Completed `plan.md` Step 2 for the selected scalar-to-vector splat insert seam
-in commit `65406cab0`. Added a module-owned
-`LirVectorRef`/`LirVectorStoreEntry`, populated it from scalar splat insert
-producers, and migrated the required `LirInsertElementOp` verifier path to
-validate result/first-vector lane and element coherence from the vector store
-while keeping legacy row fields as compatibility mirrors.
+Completed the first bounded `plan.md` Step 3 packet for the selected
+scalar-to-vector splat shuffle seam. The required `LirShuffleVectorOp`
+verifier path now consumes the accepted `LirVectorRef` fact for
+first-vector/result lane and element shape while keeping the legacy row fields
+as compatibility mirrors. Nearby verifier coverage now rejects missing,
+out-of-range, zero-lane, empty-element, lane-mismatched, and element-mismatched
+shuffle vector-store facts.
 
 ## Suggested Next
 
-Execute the first bounded `plan.md` Step 3 packet: migrate the adjacent
-`LirShuffleVectorOp` scalar-splat consumer to read the accepted `LirVectorRef`
-fact for first-vector/result lane and element shape.
+Select the next bounded Step 3 packet only after supervisor review. A likely
+candidate is one adjacent shuffle-vector mirror migration for mask, poison, or
+second-vector shape, but those remain separate from this packet.
 
 ## Watchouts
 
 - `LirNativeVectorShape`, `vec_type`, `elem_type`, `mask_type`, `mask`,
   `second_vector_shape`, and `mask_lanes` remain compatibility mirrors for
   unmigrated paths.
-- Store-backed checks currently apply only to `LirInsertElementOp` when
-  `requires_native_vector_authority` is set. ExtractElement, ShuffleVector
-  mask/poison/second-shape, and nonselected producers are intentionally
-  unchanged.
-- In this first Step 3 packet, leave mask, poison, and second-vector shape
-  migration out unless the supervisor later selects them.
+- Store-backed checks now apply only to required `LirInsertElementOp` and the
+  required scalar-splat `LirShuffleVectorOp` first-vector/result shape path.
+  ExtractElement, ShuffleVector mask/poison/second-shape, and nonselected
+  producers are intentionally unchanged.
 - Aggregate vector elements now fail closed unless their typed element ref is
   backed by an accepted aggregate-store fact from the 838 route; do not add a
   separate aggregate owner for vector work.

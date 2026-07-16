@@ -135,6 +135,7 @@ lir::LirModule selected_scalar_to_vector_splat_module() {
   shuffle.vec2 = lir::LirOperand::special_token(lir::LirSpecialToken::Poison);
   shuffle.native_vector_authority->first_vector_use = lir::LirValueId{5};
   shuffle.native_vector_authority->second_vector_use.reset();
+  shuffle.native_vector_authority->vector_ref = insert.native_vector_authority->vector_ref;
   shuffle.requires_native_vector_authority = true;
   std::swap(module.functions[0].blocks[0].insts[1], module.functions[0].blocks[0].insts[2]);
   return module;
@@ -296,6 +297,56 @@ void test_native_vector_authority_verifier_boundary() {
   nonpreceding_shuffle.native_vector_authority->first_vector_use = lir::LirValueId{1};
   expect_rejected(std::move(nonpreceding_insert),
                   "selected scalar-to-vector splat must use the preceding native insert result");
+
+  auto selected_shuffle_missing_vector_ref = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirShuffleVectorOp>(
+      selected_shuffle_missing_vector_ref.functions[0].blocks[0].insts[1])
+      .native_vector_authority->vector_ref.reset();
+  expect_rejected(std::move(selected_shuffle_missing_vector_ref),
+                  "selected splat shuffle must reject a missing vector store ref");
+
+  auto selected_shuffle_foreign_vector_ref = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirShuffleVectorOp>(
+      selected_shuffle_foreign_vector_ref.functions[0].blocks[0].insts[1])
+      .native_vector_authority->vector_ref = lir::LirVectorRef{999};
+  expect_rejected(std::move(selected_shuffle_foreign_vector_ref),
+                  "selected splat shuffle must reject a non-vector-store ref");
+
+  auto selected_shuffle_zero_store_lanes = selected_scalar_to_vector_splat_module();
+  auto& zero_store_shuffle = std::get<lir::LirShuffleVectorOp>(
+      selected_shuffle_zero_store_lanes.functions[0].blocks[0].insts[1]);
+  selected_shuffle_zero_store_lanes
+      .vector_store[zero_store_shuffle.native_vector_authority->vector_ref->value]
+      .lane_count = 0;
+  expect_rejected(std::move(selected_shuffle_zero_store_lanes),
+                  "selected splat shuffle must reject malformed zero vector-store lanes");
+
+  auto selected_shuffle_empty_store_element = selected_scalar_to_vector_splat_module();
+  auto& empty_store_shuffle = std::get<lir::LirShuffleVectorOp>(
+      selected_shuffle_empty_store_element.functions[0].blocks[0].insts[1]);
+  selected_shuffle_empty_store_element
+      .vector_store[empty_store_shuffle.native_vector_authority->vector_ref->value]
+      .element_type = lir::LirTypeRef{};
+  expect_rejected(std::move(selected_shuffle_empty_store_element),
+                  "selected splat shuffle must reject malformed empty vector-store element type");
+
+  auto selected_shuffle_store_lane_mismatch = selected_scalar_to_vector_splat_module();
+  auto& lane_store_shuffle = std::get<lir::LirShuffleVectorOp>(
+      selected_shuffle_store_lane_mismatch.functions[0].blocks[0].insts[1]);
+  selected_shuffle_store_lane_mismatch
+      .vector_store[lane_store_shuffle.native_vector_authority->vector_ref->value]
+      .lane_count = 5;
+  expect_rejected(std::move(selected_shuffle_store_lane_mismatch),
+                  "selected splat shuffle must reject vector-store lane mismatch");
+
+  auto selected_shuffle_store_element_mismatch = selected_scalar_to_vector_splat_module();
+  auto& element_store_shuffle = std::get<lir::LirShuffleVectorOp>(
+      selected_shuffle_store_element_mismatch.functions[0].blocks[0].insts[1]);
+  selected_shuffle_store_element_mismatch
+      .vector_store[element_store_shuffle.native_vector_authority->vector_ref->value]
+      .element_type = lir::LirTypeRef::integer(64);
+  expect_rejected(std::move(selected_shuffle_store_element_mismatch),
+                  "selected splat shuffle must reject vector-store element mismatch");
 
   auto missing_owner = vector_authority_module();
   std::get<lir::LirInsertElementOp>(missing_owner.functions[0].blocks[0].insts[0])

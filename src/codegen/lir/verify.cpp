@@ -3413,6 +3413,41 @@ void verify_function_value_ownership(const LirModule& mod,
                       "must agree with the compatibility vector shape mirrors");
         }
       };
+  const auto verify_required_shuffle_vector_store =
+      [&](const LirShuffleVectorOp& op, const LirNativeVectorAuthority& authority) {
+        if (!authority.vector_ref) {
+          fail_verify("LirShuffleVectorOp.native_vector_authority.vector_ref",
+                      "must name the scalar-to-vector splat's native vector store fact");
+        }
+        const LirVectorStoreEntry* vector = mod.find_vector(*authority.vector_ref);
+        if (!vector) {
+          fail_verify("LirShuffleVectorOp.native_vector_authority.vector_ref",
+                      "must reference a module-owned vector store fact");
+        }
+        if (vector->lane_count == 0 || vector->element_type.empty()) {
+          fail_verify("LirShuffleVectorOp.native_vector_authority.vector_ref",
+                      "must reference a complete vector store fact");
+        }
+        if (!vector_element_has_accepted_aggregate_fact(vector->element_type)) {
+          fail_verify("LirShuffleVectorOp.native_vector_authority.vector_ref",
+                      "aggregate element vectors must consume an accepted aggregate store fact");
+        }
+        if (op.vec_type.str() != "<" + std::to_string(vector->lane_count) + " x " +
+                                 vector->element_type.str() + ">") {
+          fail_verify("LirShuffleVectorOp.vec_type",
+                      "must mirror the scalar-to-vector splat vector store fact");
+        }
+        if (authority.result_shape.lane_count != vector->lane_count ||
+            authority.result_shape.element_type != vector->element_type ||
+            authority.result_shape.element_type.str() != vector->element_type.str() ||
+            !authority.first_vector_shape ||
+            authority.first_vector_shape->lane_count != vector->lane_count ||
+            authority.first_vector_shape->element_type != vector->element_type ||
+            authority.first_vector_shape->element_type.str() != vector->element_type.str()) {
+          fail_verify("LirShuffleVectorOp.native_vector_authority.vector_ref",
+                      "must agree with the compatibility vector shape mirrors");
+        }
+      };
   const auto verify_vector_inst = [&](const LirInst& inst, const LirInst* preceding) {
     if (const auto* op = std::get_if<LirInsertElementOp>(&inst)) {
       const LirTypeRef index_type = LirTypeRef::integer(64);
@@ -3470,6 +3505,7 @@ void verify_function_value_ownership(const LirModule& mod,
           fail_verify("LirShuffleVectorOp.native_vector_authority.first_vector_use",
                       "must equal the preceding native insert result");
         }
+        verify_required_shuffle_vector_store(*op, *op->native_vector_authority);
       }
     }
   };
