@@ -1000,6 +1000,77 @@ struct Forward *take_forward(struct Forward *value);
               "missing registered aggregate definition should leave parameter ref unset");
 }
 
+void test_hir_function_signature_materializes_supported_complex_aggregate_refs() {
+  const c4c::hir::Module module = lower_hir_module(R"cpp(
+struct Leaf {
+  int value;
+};
+
+struct Wrapper {
+  Leaf child;
+};
+
+typedef Wrapper WrapperAlias;
+
+template<typename T>
+struct Box {
+  T value;
+};
+
+Wrapper take_wrapper_alias(WrapperAlias value);
+Box<Leaf> take_box_leaf(Box<Leaf> value);
+)cpp");
+
+  const auto leaf_it = module.struct_defs.find("Leaf");
+  expect_true(leaf_it != module.struct_defs.end() &&
+                  leaf_it->second.aggregate_ref.has_value() &&
+                  module.owns_aggregate_ref(*leaf_it->second.aggregate_ref),
+              "Leaf definition should have a module-owned aggregate ref");
+  const c4c::hir::HirAggregateRef leaf_ref = *leaf_it->second.aggregate_ref;
+
+  const auto wrapper_it = module.struct_defs.find("Wrapper");
+  expect_true(wrapper_it != module.struct_defs.end() &&
+                  wrapper_it->second.aggregate_ref.has_value() &&
+                  module.owns_aggregate_ref(*wrapper_it->second.aggregate_ref),
+              "Wrapper definition should have a module-owned aggregate ref");
+  const c4c::hir::HirAggregateRef wrapper_ref = *wrapper_it->second.aggregate_ref;
+  expect_true(wrapper_it->second.fields.size() == 1,
+              "nested aggregate fixture should preserve Wrapper.child");
+  expect_true(wrapper_it->second.fields.front().elem_type.base == c4c::TB_STRUCT &&
+                  wrapper_it->second.fields.front().elem_type.record_def != nullptr,
+              "nested aggregate field should retain a typed child record relation");
+
+  const auto box_it = std::find_if(module.struct_defs.begin(), module.struct_defs.end(),
+                                   [](const auto& entry) {
+                                     return entry.first != "Box" &&
+                                            entry.first.find("Box") != std::string::npos &&
+                                            entry.second.aggregate_ref.has_value();
+                                   });
+  expect_true(box_it != module.struct_defs.end() &&
+                  module.owns_aggregate_ref(*box_it->second.aggregate_ref),
+              "Box<Leaf> template instantiation should have a module-owned aggregate ref");
+  const c4c::hir::HirAggregateRef box_ref = *box_it->second.aggregate_ref;
+
+  const auto expect_signature_ref =
+      [&](const char* name, c4c::hir::HirAggregateRef expected_ref,
+          const std::string& message) {
+        const auto fn_it = module.fn_index.find(name);
+        expect_true(fn_it != module.fn_index.end(), message + " should be indexed");
+        const c4c::hir::Function* fn = module.find_function(fn_it->second);
+        expect_true(fn != nullptr && fn->params.size() == 1,
+                    message + " should lower one explicit parameter");
+        expect_true(fn->return_type.aggregate_ref == expected_ref,
+                    message + " return should carry the registered HIR aggregate ref");
+        expect_true(fn->params[0].type.aggregate_ref == expected_ref,
+                    message + " parameter should carry the registered HIR aggregate ref");
+      };
+
+  expect_signature_ref("take_wrapper_alias", wrapper_ref,
+                       "typedef alias of a named nested aggregate");
+  expect_signature_ref("take_box_leaf", box_ref,
+                       "template aggregate instantiation");
+}
+
 void test_hir_ref_overload_grouping_prefers_record_def_over_stale_tag() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -8311,6 +8382,7 @@ int main() {
   test_hir_qtype_aggregate_ref_accepts_only_direct_owned_input();
   test_hir_function_signature_materializes_canonical_aggregate_refs();
   test_hir_function_signature_missing_registered_aggregate_ref_fails_closed();
+  test_hir_function_signature_materializes_supported_complex_aggregate_refs();
   test_hir_ref_overload_grouping_prefers_record_def_over_stale_tag();
   test_hir_ref_overload_grouping_rejects_stale_tag_after_record_def_mismatch();
   test_hir_ref_overload_grouping_rejects_partial_metadata_rendered_fallback();
