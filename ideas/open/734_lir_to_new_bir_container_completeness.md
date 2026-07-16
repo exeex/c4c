@@ -2529,3 +2529,38 @@ runbook only for that matching typed Raw-BIR receiver row. Do not repeat Step
 aggregate/vector, module/type/global/metadata, CFG/PHI, residual
 instruction/terminator, inline-assembly, generic residual sweep, or any other
 form without its separately scoped first-owner handoff.
+
+## Resumption Record: direct one-double-argument call-result authority completion
+
+Closed idea 864 completed the next non-body-parameter producer handoff with
+accepted implementation `874499489`. The selected row is
+`LirCallOp.direct_one_double_arg_scalar_floating_call_authority` for exactly a
+direct, nonvariadic `double(double)` call result.
+
+The handed-off native tuple is the result `LirValueId`, current-function owner
+`LinkNameId`, direct callee `LinkNameId`, exact `double(double)` type tuple,
+and role `DirectCallResult`. Downstream consumer coherence is deliberately not
+part of this row; the producer publishes the carrier for direct nonvariadic
+`double(double)` call results even when the result has no selected floating
+binary LHS consumer.
+
+The verifier and focused producer coverage reject malformed authority before
+downstream use, including absent authority, invalid or stale result IDs,
+duplicate result IDs, foreign owner or callee, signature/type mismatch,
+argument-type mismatch, invalid role, misleading presentation strings, and
+producer presence with no selected downstream floating binary LHS consumer.
+Accepted proof is the focused before/after producer/verifier proof
+`^frontend_lir_call_type_ref$` with 1/1 passing before and after, broader
+`^frontend_` proof with 13/13 passing, and `git diff --check`. No Raw-BIR
+receiver work landed in 864.
+
+Exact return action: reactivate 734 at Step 7.51 for one bounded Raw-BIR
+receiver packet only: receive
+`LirCallOp.direct_one_double_arg_scalar_floating_call_authority` for the direct
+nonvariadic `double(double)` call-result row, preserving only the native
+result/owner/callee/`double(double)`/`DirectCallResult` tuple. Do not require
+or infer selected downstream floating binary LHS consumer coherence for this
+row. Do not repeat Step 7.50, reopen fixed direct-call arguments 0/1, receive
+any body-parameter row, or generalize to other call-result, memory/VA,
+aggregate/vector, module/type/global/metadata, CFG/PHI, inline-assembly, or
+instruction/terminator families.

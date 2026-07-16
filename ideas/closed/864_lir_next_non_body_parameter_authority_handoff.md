@@ -1,6 +1,6 @@
 # LIR Next Non-Body-Parameter Authority Handoff
 
-Status: Open
+Status: Closed
 Type: producer/schema/verifier handoff for one next non-body-parameter LIR row
 Parent Source: ideas/open/734_lir_to_new_bir_container_completeness.md
 
@@ -149,3 +149,21 @@ Do not repeat Step 7.50, reopen fixed direct-call arguments 0/1, receive any
 body-parameter row, or generalize to other call-result, memory/VA,
 aggregate/vector, module/type/global/metadata, CFG/PHI, inline-assembly, or
 instruction/terminator families.
+
+## Closure
+
+Close accepted as capability complete for this bounded handoff. Implementation
+commit `874499489` selected and published exactly one native producer-side
+authority row,
+`LirCallOp.direct_one_double_arg_scalar_floating_call_authority`, for direct
+nonvariadic `double(double)` call results. The accepted focused before/after
+proof
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'; } > test_before.log/test_after.log 2>&1`
+passed 1/1 before and after, `git diff --check` passed, and the broader
+frontend proof
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_'; } > /tmp/c4c_frontend_after_864.log 2>&1`
+passed 13/13.
+
+No Raw-BIR receiver work landed in this idea. The successor is parent idea 734,
+reactivated for exactly one receiver packet for the selected `double(double)`
+direct call-result authority row.
