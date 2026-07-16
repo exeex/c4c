@@ -1,53 +1,50 @@
-# Idea 644 Step 3 Route Review
+# Review A: Idea 839 Step 3 Function-Signature/Call-Composition Route
 
-Active source idea: `ideas/open/644_rv64_object_route_stack_parameter_abi_residual.md`
+Active source idea: `ideas/open/839_lir_nominal_function_signature_call_composition.md`
 
-Chosen base commit: `49b472411` (`[plan] [plan+todo_only] Activate RV64 object route stack parameter ABI residual`)
+Review base: `eae6db334` (`[plan] Activate function signature composition idea`). This is the active-idea activation checkpoint for idea 839; later lifecycle commit `1bb07681b` only advances `todo.md` to Step 3 and does not reset or materially change the source idea.
 
-Why this base: this is the lifecycle activation commit for the current active source idea and creates the active `plan.md`/`todo.md` pair for idea 644. The later lifecycle commits `9bc2a9919` and `a8e326a4c` record Step 1/2 todo evidence and classification; they do not reset, replace, or reviewer-checkpoint the active source idea. No later `plan.md` source-idea reset was found.
+Commits reviewed: 11 commits from `eae6db334..HEAD`.
 
-Commit count since base: 7
-
-Reviewed range: `49b472411..8a1ed1685`
+Worktree note: `todo.md` has one unstaged hook/reminder line. I did not treat that as committed lifecycle evidence.
 
 ## Findings
 
-### High: RV64 consumer reconstructs stack-passed formal incoming offsets from ABI/formal order instead of consuming explicit prepared authority
+### Medium: template-origin compatibility repair uses retained signature text as a verifier escape hatch
 
-The active idea's core rule says the object route must not reconstruct parameter placement from source syntax, stack offsets, or final assembly, and must consume explicit prepared ABI/home facts. The closed stack-passed parameter-home idea is even more direct: RV64 must not infer stack argument homes from argument index or ABI folklore.
+The route mostly moves declaration/call authority into `LirFunctionSignatureRef` and the module signature store, but the recent compatibility repair lets `fn.signature_text.find("; template-origin:")` bypass mismatched aggregate signature mirror checks in `verify_function_signature_return_type_ref_mirror` and `verify_function_signature_param_type_ref_mirror` (`src/codegen/lir/verify.cpp:4190`, `src/codegen/lir/verify.cpp:4267`). This is not call-signature construction from spelling, and it appears intended as a named compatibility repair for templated aggregate ABI baselines. Still, it is a real debt marker because retained output text now controls a verifier leniency branch.
 
-The new callee-side load paths compute `incoming_offset` by iterating `function.params`, applying local ABI alignment/size formulas, then returning `stack_frame_bytes + incoming_offset`:
+Impact: this does not require a route reset, but the next packet should not broaden this pattern. If template-origin compatibility remains necessary, it should be kept as a narrow named adapter or moved behind a structured fact before Step 5 deletion claims.
 
-- `src/backend/mir/riscv/codegen/prepared_local_memory_emit.cpp:1396` computes the incoming offset from parameter ABI order and alignment, and `src/backend/mir/riscv/codegen/prepared_local_memory_emit.cpp:1476` uses `stack_frame_bytes + incoming_offset` as the load offset.
-- `src/backend/mir/riscv/codegen/object_emission.cpp:3663` repeats the same incoming-offset computation for value-to-register materialization, and `src/backend/mir/riscv/codegen/object_emission.cpp:3721` returns `stack_frame_bytes + incoming_offset`.
+### Low: direct-call signature refs are intentionally partial, so Step 3 is not ready to close broadly
 
-Both helpers do validate that the formal has a coherent prepared stack-slot home and `regalloc.spill_slot` object, which is good fail-closed scaffolding. But those facts describe the callee's local spill-slot home; they do not explicitly publish the incoming caller-stack ABI offset being loaded after the frame is set up. The load offset is still derived inside the RV64 consumer from the formal sequence and ABI formula. This is an unsafe ABI inference under idea 644 and a regression against idea 512's closed contract.
+`direct_callee_signature_ref` only publishes a ref for resolved, non-extern, non-variadic, non-unspecified direct callees and also rejects byval signature entries (`src/codegen/lir/hir_to_lir/call/target.cpp:222`). That is consistent with the source idea's compatibility boundaries and with avoiding 829/830 argument identity claims, but it leaves byval, raw extern, no-prototype, variadic, and indirect call paths on retained compatibility structures.
 
-The focused positive test codifies that inference rather than proving a prepared incoming-offset fact. `tests/backend/mir/backend_riscv_object_emission_test.cpp:18330` expects a load from `sp + 64`, which comes from frame size plus recomputed incoming offset. There is negative coverage for malformed local homes, but not for missing/ambiguous explicit incoming-stack-offset authority because no such authority is required by the new path.
+Impact: safe to continue, but the next packet should name exactly one remaining consumer/shape. Do not mark Step 3 complete until fixed, variadic, aggregate parameter/return, malformed, and raw-call compatibility cases are covered as the runbook requires.
 
-Impact: the current Step 3 path can make the present residual advance by teaching RV64 how to rediscover incoming stack layout. That is not named `src/20001017-1.c` overfit, and it is not an expectation downgrade, but it is route drift from the source idea's prepared-facts-only boundary.
+## Alignment Evidence
 
-Recommended correction: do not build the next callee-side fix on these helpers as written. Require an explicit prepared incoming stack-parameter/home fact, or route the current residual back to producer/prealloc publication if that fact is missing. Keep the existing local-home coherence checks, but make the incoming caller-stack address an explicit prepared authority rather than an RV64-side derivation.
-
-## Non-Blocking Notes
-
-- The RV64 independent GPR/FPR lane work in `src/backend/bir/lir_to_bir/module.cpp`, `src/backend/prealloc/regalloc/call_return_abi.cpp`, and `src/backend/prealloc/regalloc/value_homes.cpp` appears semantically aligned with the source idea. It separates register-lane accounting rather than special-casing the representative row, and `tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp:3930` adds mixed scalar lane coverage plus a missing-stack-ABI fail-closed check.
-- I did not find expectation, unsupported-marker, allowlist, timeout, runtime-comparison, or pass/fail accounting changes in the reviewed diff.
-- I did not find named handling for `src/20001017-1.c`; the concern is ABI-authority inference, not testcase-name overfit.
-- `todo.md` is dirty in the working tree before this review. I did not inspect that as a reviewer-owned edit or modify lifecycle state.
+- `LirFunctionSignatureRef` and `LirCallOp.callee_signature_ref` are module refs, not rendered strings (`src/codegen/lir/ir.hpp:486`, `src/codegen/lir/ir.hpp:572`).
+- The module store interns return refs, return extension attributes, parameter refs, byval facts, variadic state, and void-list state (`src/codegen/lir/ir.hpp:1424`).
+- Lowering registers function signature refs from structured signature fields (`src/codegen/lir/hir_to_lir/hir_to_lir.cpp:673`) and publishes direct-call `callee_signature_ref` from the resolved callee's store entry only after retained structured facts agree (`src/codegen/lir/hir_to_lir/call/target.cpp:247`).
+- The verifier rejects stale direct-call refs and requires agreement with the resolved callee store entry and call-site return facts (`src/codegen/lir/verify.cpp:554`).
+- The printer renders function signatures and migrated direct-call suffixes from the store when refs are present, falling back to legacy text only when no ref is available (`src/codegen/lir/lir_printer.cpp:102`, `src/codegen/lir/lir_printer.cpp:162`, `src/codegen/lir/lir_printer.cpp:473`, `src/codegen/lir/lir_printer.cpp:670`).
+- Tests cover store-backed direct-call refs, stale suffix ignoring, stale call ref rejection, missing-ref compatibility, raw direct construction compatibility, and signature-text printer drift for declarations/definitions (`tests/frontend/frontend_lir_call_type_ref_test.cpp:9238`, `tests/frontend/frontend_lir_call_type_ref_test.cpp:9463`, `tests/frontend/frontend_lir_call_type_ref_test.cpp:9473`, `tests/frontend/frontend_lir_function_signature_type_ref_test.cpp:1231`, `tests/frontend/frontend_lir_function_signature_type_ref_test.cpp:1358`).
 
 ## Judgments
 
-Idea-alignment judgment: `drifting from source idea`
+Idea-alignment judgment: matches source idea.
 
-Runbook-transcription judgment: `plan matches idea`
+Runbook-transcription judgment: plan matches idea.
 
-Route-alignment judgment: `drifting`
+Route-alignment judgment: on track.
 
-Technical-debt judgment: `action needed`
+Technical-debt judgment: watch.
 
-Validation sufficiency: `needs broader proof`
+Validation sufficiency: needs broader proof for Step 3 or later acceptance; current `test_after.log` is sufficient for the just-finished focused direct-call printer/ref slice plus shared backend checkpoint, but not for declaring the whole Step 3/idea acceptance complete.
 
-Reviewer recommendation: `rewrite plan/todo before more execution`
+Reviewer recommendation: narrow next packet.
 
-Rationale: the source idea and plan are still the right contract, but the current implementation path needs to be redirected before the next packet. The rewrite can stay at `todo.md` or `plan.md` level; the source idea itself does not need to change. The next packet should either replace the RV64-side incoming-offset reconstruction with explicit prepared incoming-stack authority, or classify the missing authority as a producer/prealloc gap.
+## Recommendation
+
+Continue the current route without plan/todo rewrite first. The next packet should be explicitly narrow: either migrate one remaining supported direct-call shape/consumer to `callee_signature_ref`, or contain the template-origin compatibility exception behind a better named/structured boundary. Do not expand the source idea, do not claim 829/830 argument value identity, and do not treat raw/byval/extern/no-prototype/variadic compatibility as completed merely because the fixed direct aggregate case is now store-backed.
