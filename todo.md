@@ -8,12 +8,11 @@ Current Step Title: Delete mutable LIR type text escape hatches in small packets
 
 ## Just Finished
 
-Completed Step 2 packet to delete the single named deprecated factory family
-`LirTypeRef::hir_rendered_aggregate_field_signature_type_text`. Removed the
-factory declaration from `src/codegen/lir/types.hpp` and updated the five direct
-aggregate/field/signature lowering callsites in
-`src/codegen/lir/hir_to_lir/hir_to_lir.cpp` to use explicit `LirTypeRef(...)`
-construction from the existing rendered or field type text expressions.
+Completed Step 2 packet to delete the local deprecated helper
+`no_module_va_list_tag_type_text` in
+`src/codegen/lir/hir_to_lir/call/vaarg.cpp`. Removed the helper and replaced
+its only direct callsite with explicit `LirTypeRef(kVaListTagType)`
+construction in the generic vaarg path.
 
 ## Suggested Next
 
@@ -43,6 +42,8 @@ warning inventory.
   is now clean.
 - `rg -n "parsed_typed_call_argument_text" src tests/frontend tests/backend`
   is now clean.
+- `rg -n "no_module_va_list_tag_type_text" src tests/frontend tests/backend`
+  is now clean.
 - Required scalar-to-vector splat shuffles now reject incoherent native
   `mask_type` mirrors against vector-store lane count; do not weaken that
   baseline repair.
@@ -60,8 +61,8 @@ warning inventory.
 
 Proof run passed:
 `cmake --build build && ctest --test-dir build -R
-'^frontend_lir_(global_type_ref|function_signature_type_ref)$'
+'^frontend_lir_call_type_ref$'
 --output-on-failure > test_after.log
 2>&1`.
-`test_after.log` contains the focused CTest subset output with 2/2 tests
+`test_after.log` contains the focused CTest subset output with 1/1 test
 passing. The supervisor-selected proof was sufficient for this packet.

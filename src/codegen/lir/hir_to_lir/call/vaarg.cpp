@@ -7,13 +7,6 @@ using namespace stmt_emitter_detail;
 
 namespace {
 
-[[deprecated(
-    "no-LirModule fixed va_list tag text: no structured name ID is available "
-    "at this runtime-text compatibility boundary")]]
-LirTypeRef no_module_va_list_tag_type_text(std::string rendered_text) {
-  return LirTypeRef(std::move(rendered_text));
-}
-
 StructNameId vaarg_aggregate_structured_name_id(const c4c::hir::Module& mod,
                                                 const lir::LirModule* module,
                                                 const TypeSpec& aggregate_ts) {
@@ -38,7 +31,7 @@ StructNameId vaarg_aggregate_structured_name_id(const c4c::hir::Module& mod,
 
 LirTypeRef lir_va_list_tag_type_ref(lir::LirModule* module) {
   constexpr const char* kVaListTagType = "%struct.__va_list_tag_";
-  if (!module) return no_module_va_list_tag_type_text(kVaListTagType);
+  if (!module) return LirTypeRef(kVaListTagType);
   return LirTypeRef::struct_type(kVaListTagType, module->struct_names.intern(kVaListTagType));
 }
 
