@@ -8,18 +8,21 @@ Current Step Title: Delete semantic string escape hatches
 
 ## Just Finished
 
-Completed Step 3 packet to remove the verifier inline-asm ordinary binding type
-comparison's rendered-text equality dependency in
-`src/codegen/lir/verify.cpp`.
+Completed Step 3 packet to remove selected direct scalar floating-call
+classification's rendered-text dependency in
+`src/codegen/lir/hir_to_lir/call/target.cpp`.
 
-Deleted `same_inline_asm_type(...)`, which treated `LirTypeRef::str()` equality
-as semantic authority for read/write inline-asm input/result agreement. The
-ordinary result verifier now compares `matching_input->type` and `result.type`
-with `same_native_type_fact(...)`.
+Replaced the zero-arg route's direct `return_type.str() == "double"/"float"/
+"x86_fp80"/"fp128"` checks with a native `LirTypeRef` predicate using
+`kind()` and `builtin_type()`. Replaced the one-arg `double(double)` route's
+local `LirTypeRef("double")` semantic probes with a native double predicate for
+the return type and fixed parameter type. The route boundaries remain zero-arg
+native `float`/`double`/`x86_fp80`/`fp128` and one-arg exactly
+`double(double)`.
 
 ## Suggested Next
 
-Supervisor should review and commit this Step 3 verifier helper slice if
+Supervisor should review and commit this Step 3 call-target helper slice if
 accepted, then continue with the next remaining Step 3 string escape hatch
 candidate. Do not widen the next packet into Step 4 adapter removal.
 
@@ -54,14 +57,18 @@ candidate. Do not widen the next packet into Step 4 adapter removal.
   `aggregate_signature_param_mirror_matches_type(...)` byval fragment checks,
   and direct aggregate signature mirror checks are compatibility/output
   validation surfaces; leave them alone unless separately selected.
-- Clean-search checks for direct `type.str()`/`mirror.str()` floating spelling
-  classification and local `LirTypeRef("float"/"double"/"x86_fp80"/"fp128")`
-  probes in `verify.cpp` returned no matches.
+- The remaining `LirTypeRef("double")` hit in
+  `src/codegen/lir/hir_to_lir/call/target.cpp` is direct double-call authority
+  output construction, not the selected-route semantic test.
+- Clean-search checks in `target.cpp` found no remaining
+  `return_type.str() == "double"/"float"/"x86_fp80"/"fp128"` selected direct
+  scalar floating classification, and no remaining local `LirTypeRef("double")`
+  selected-route probes.
 
 ## Proof
 
 Proof run passed:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'; } > test_after.log 2>&1`.
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'; } > test_after.log 2>&1`.
 `test_after.log` contains the delegated build plus focused CTest output with
-`frontend_hir_tests` passing.
+`frontend_lir_call_type_ref` passing.
 The supervisor-selected proof was sufficient for this packet.

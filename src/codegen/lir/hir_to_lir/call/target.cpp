@@ -279,6 +279,24 @@ LirFunctionSignatureRef direct_callee_signature_ref(
   return LirFunctionSignatureRef::invalid();
 }
 
+bool is_selected_direct_scalar_floating_return_type(const LirTypeRef& type) {
+  if (type.kind() != LirTypeKind::Floating) return false;
+  switch (type.builtin_type().value_or(LirBuiltinType::Void)) {
+    case LirBuiltinType::Float:
+    case LirBuiltinType::Double:
+    case LirBuiltinType::Fp128:
+    case LirBuiltinType::X86Fp80:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool is_selected_direct_double_type(const LirTypeRef& type) {
+  return type.kind() == LirTypeKind::Floating &&
+         type.builtin_type() == LirBuiltinType::Double;
+}
+
 bool selected_direct_zero_arg_scalar_floating_call(
     const CallTargetInfo& call_target,
     const std::optional<LirCallSignature>& callee_signature,
@@ -286,9 +304,7 @@ bool selected_direct_zero_arg_scalar_floating_call(
     const std::vector<OwnedLirTypedCallArg>& args) {
   return call_target.callee_link_name_id != kInvalidLinkName &&
          callee_signature.has_value() &&
-         return_type.kind() == LirTypeKind::Floating &&
-         (return_type.str() == "double" || return_type.str() == "float" ||
-          return_type.str() == "x86_fp80" || return_type.str() == "fp128") &&
+         is_selected_direct_scalar_floating_return_type(return_type) &&
          !callee_signature->is_variadic &&
          !callee_signature->has_unspecified_params &&
          callee_signature->has_void_param_list &&
@@ -302,12 +318,12 @@ bool selected_direct_one_double_arg_scalar_floating_call(
     const std::vector<OwnedLirTypedCallArg>& args) {
   return call_target.callee_link_name_id != kInvalidLinkName &&
          callee_signature.has_value() &&
-         return_type == LirTypeRef("double") &&
+         is_selected_direct_double_type(return_type) &&
          !callee_signature->is_variadic &&
          !callee_signature->has_unspecified_params &&
          !callee_signature->has_void_param_list &&
          callee_signature->fixed_param_type_refs.size() == 1 &&
-         callee_signature->fixed_param_type_refs[0] == LirTypeRef("double") &&
+         is_selected_direct_double_type(callee_signature->fixed_param_type_refs[0]) &&
          args.size() == 1;
 }
 
