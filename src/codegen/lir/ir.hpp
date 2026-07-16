@@ -680,6 +680,21 @@ struct LirNativeVectorShape {
   LirTypeRef element_type;
 };
 
+struct LirVectorRef {
+  uint32_t value = std::numeric_limits<uint32_t>::max();
+  [[nodiscard]] constexpr bool valid() const {
+    return value != std::numeric_limits<uint32_t>::max();
+  }
+  [[nodiscard]] static constexpr LirVectorRef invalid() {
+    return LirVectorRef{};
+  }
+};
+
+struct LirVectorStoreEntry {
+  uint32_t lane_count = 0;
+  LirTypeRef element_type;
+};
+
 struct LirNativeVectorIndex {
   LirOperand value;
   LirTypeRef type;
@@ -701,6 +716,7 @@ struct LirNativeVectorAuthority {
   std::optional<LirNativeVectorShape> second_vector_shape;
   std::optional<LirNativeVectorIndex> index;
   std::vector<LirShuffleMaskLane> mask_lanes;
+  std::optional<LirVectorRef> vector_ref;
 };
 
 // Typed vector insert/extract/shuffle ops.
@@ -1343,6 +1359,7 @@ struct LirModule {
   std::vector<LirAggregateStoreEntry> aggregate_store;
   std::unordered_map<uint64_t, LirAggregateRef> aggregate_ref_by_hir_ref;
   std::vector<LirFunctionSignatureStoreEntry> function_signature_store;
+  std::vector<LirVectorStoreEntry> vector_store;
 
   [[nodiscard]] static uint64_t aggregate_store_key(c4c::hir::HirAggregateRef ref) {
     return (static_cast<uint64_t>(ref.module.value) << 32) | ref.aggregate.value;
@@ -1359,6 +1376,28 @@ struct LirModule {
       LirAggregateRef ref) const {
     return ref.valid() && ref.value < aggregate_store.size() ? &aggregate_store[ref.value]
                                                                : nullptr;
+  }
+
+  [[nodiscard]] const LirVectorStoreEntry* find_vector(LirVectorRef ref) const {
+    return ref.valid() && ref.value < vector_store.size() ? &vector_store[ref.value]
+                                                          : nullptr;
+  }
+
+  [[nodiscard]] LirVectorRef register_vector(LirVectorStoreEntry entry) {
+    if (entry.lane_count == 0 || entry.element_type.empty()) {
+      throw std::runtime_error("cannot register an empty LIR vector fact");
+    }
+    for (std::size_t index = 0; index < vector_store.size(); ++index) {
+      const LirVectorStoreEntry& existing = vector_store[index];
+      if (existing.lane_count == entry.lane_count &&
+          existing.element_type == entry.element_type &&
+          existing.element_type.str() == entry.element_type.str()) {
+        return LirVectorRef{static_cast<uint32_t>(index)};
+      }
+    }
+    const LirVectorRef ref{static_cast<uint32_t>(vector_store.size())};
+    vector_store.push_back(std::move(entry));
+    return ref;
   }
 
   [[nodiscard]] LirAggregateRef register_aggregate(const c4c::hir::Module& source_module,

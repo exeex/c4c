@@ -29,6 +29,12 @@ lir::LirNativeVectorShape vector_shape() {
   return {.lane_count = 4, .element_type = lir::LirTypeRef::integer(32)};
 }
 
+void attach_vector_store_ref(lir::LirModule& module, lir::LirNativeVectorAuthority& authority,
+                             uint32_t lane_count = 4,
+                             lir::LirTypeRef element_type = lir::LirTypeRef::integer(32)) {
+  authority.vector_ref = module.register_vector({lane_count, std::move(element_type)});
+}
+
 lir::LirNativeVectorAuthority authority(c4c::LinkNameId owner, lir::LirValueId result,
                                          lir::LirValueId first,
                                          std::optional<lir::LirValueId> second = std::nullopt,
@@ -122,6 +128,7 @@ lir::LirModule selected_scalar_to_vector_splat_module() {
   insert.index = lir::LirOperand::integer("selected index mirror", 0);
   insert.native_vector_authority->index = lir::LirNativeVectorIndex{
       lir::LirOperand::integer("independent zero authority", 0), lir::LirTypeRef::integer(64)};
+  attach_vector_store_ref(module, *insert.native_vector_authority);
   insert.requires_native_vector_authority = true;
   auto& shuffle = std::get<lir::LirShuffleVectorOp>(module.functions[0].blocks[0].insts[2]);
   shuffle.vec1 = lir::LirOperand::ssa("%insert", lir::LirValueId{5});
@@ -196,7 +203,64 @@ void test_native_vector_authority_verifier_boundary() {
   auto selected_bad_shape = selected_scalar_to_vector_splat_module();
   std::get<lir::LirInsertElementOp>(selected_bad_shape.functions[0].blocks[0].insts[0])
       .native_vector_authority->first_vector_shape->lane_count = 5;
-  expect_rejected(std::move(selected_bad_shape), "selected splat must reject a mismatched vector shape");
+  expect_rejected(std::move(selected_bad_shape), "selected splat must reject a store-mismatched vector shape");
+
+  auto selected_missing_vector_ref = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirInsertElementOp>(selected_missing_vector_ref.functions[0].blocks[0].insts[0])
+      .native_vector_authority->vector_ref.reset();
+  expect_rejected(std::move(selected_missing_vector_ref),
+                  "selected splat must reject a missing vector store ref");
+
+  auto selected_foreign_vector_ref = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirInsertElementOp>(selected_foreign_vector_ref.functions[0].blocks[0].insts[0])
+      .native_vector_authority->vector_ref = lir::LirVectorRef{999};
+  expect_rejected(std::move(selected_foreign_vector_ref),
+                  "selected splat must reject a non-vector-store ref");
+
+  auto selected_zero_store_lanes = selected_scalar_to_vector_splat_module();
+  auto& zero_store_insert = std::get<lir::LirInsertElementOp>(
+      selected_zero_store_lanes.functions[0].blocks[0].insts[0]);
+  selected_zero_store_lanes.vector_store[zero_store_insert.native_vector_authority->vector_ref->value]
+      .lane_count = 0;
+  expect_rejected(std::move(selected_zero_store_lanes),
+                  "selected splat must reject malformed zero vector-store lanes");
+
+  auto selected_store_lane_mismatch = selected_scalar_to_vector_splat_module();
+  auto& lane_store_insert = std::get<lir::LirInsertElementOp>(
+      selected_store_lane_mismatch.functions[0].blocks[0].insts[0]);
+  selected_store_lane_mismatch
+      .vector_store[lane_store_insert.native_vector_authority->vector_ref->value]
+      .lane_count = 5;
+  expect_rejected(std::move(selected_store_lane_mismatch),
+                  "selected splat must reject vector-store lane mismatch");
+
+  auto selected_store_element_mismatch = selected_scalar_to_vector_splat_module();
+  auto& element_store_insert = std::get<lir::LirInsertElementOp>(
+      selected_store_element_mismatch.functions[0].blocks[0].insts[0]);
+  selected_store_element_mismatch
+      .vector_store[element_store_insert.native_vector_authority->vector_ref->value]
+      .element_type = lir::LirTypeRef::integer(64);
+  expect_rejected(std::move(selected_store_element_mismatch),
+                  "selected splat must reject vector-store element mismatch");
+
+  auto selected_aggregate_without_store_fact = selected_scalar_to_vector_splat_module();
+  const c4c::StructNameId aggregate_name =
+      selected_aggregate_without_store_fact.struct_names.intern("%struct.VectorElement");
+  auto& aggregate_insert = std::get<lir::LirInsertElementOp>(
+      selected_aggregate_without_store_fact.functions[0].blocks[0].insts[0]);
+  const lir::LirTypeRef aggregate_element =
+      lir::LirTypeRef::struct_type("%struct.VectorElement", aggregate_name);
+  aggregate_insert.elem_type = aggregate_element;
+  aggregate_insert.vec_type = lir::LirTypeRef("<4 x %struct.VectorElement>");
+  aggregate_insert.native_vector_authority->result_shape.element_type = aggregate_element;
+  aggregate_insert.native_vector_authority->first_vector_shape->element_type =
+      aggregate_element;
+  selected_aggregate_without_store_fact
+      .vector_store[aggregate_insert.native_vector_authority->vector_ref->value]
+      .element_type =
+      aggregate_element;
+  expect_rejected(std::move(selected_aggregate_without_store_fact),
+                  "selected splat must reject aggregate elements without aggregate store facts");
 
   auto selected_missing_index = selected_scalar_to_vector_splat_module();
   std::get<lir::LirInsertElementOp>(selected_missing_index.functions[0].blocks[0].insts[0])
