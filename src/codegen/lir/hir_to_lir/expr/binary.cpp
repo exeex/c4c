@@ -308,7 +308,8 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
               {.kind = lir::LirShuffleMaskLane::Kind::Selected, .selected_lane = 0})};
       shuffle_authority.vector_ref = vector_ref;
       emit_lir_op(ctx, lir::LirShuffleVectorOp{
-                           shuf, vec_ty_s, ins, "poison",
+                           shuf, vec_ty_s, ins,
+                           LirOperand::special_token(lir::LirSpecialToken::Poison),
                            "<" + std::to_string(lanes) + " x i32>",
                            LirOperand::special_token(lir::LirSpecialToken::ZeroInitializer),
                            std::move(shuffle_authority), true});
@@ -433,7 +434,8 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
             static_cast<size_t>(lanes),
             {.kind = lir::LirShuffleMaskLane::Kind::Selected, .selected_lane = 0})};
     shuffle_authority.vector_ref = vector_ref;
-    emit_lir_op(ctx, lir::LirShuffleVectorOp{shuf, vec_ty, ins, "poison",
+    emit_lir_op(ctx, lir::LirShuffleVectorOp{shuf, vec_ty, ins,
+                                             LirOperand::special_token(lir::LirSpecialToken::Poison),
                                              "<" + std::to_string(lanes) + " x i32>",
                                              LirOperand::special_token(lir::LirSpecialToken::ZeroInitializer),
                                              std::move(shuffle_authority), true});

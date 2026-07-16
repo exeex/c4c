@@ -3442,6 +3442,18 @@ void verify_function_value_ownership(const LirModule& mod,
           fail_verify("LirShuffleVectorOp.native_vector_authority.mask_lanes",
                       "must mirror the scalar-to-vector splat vector store lane count");
         }
+        if (!op.vec2.special_token() || *op.vec2.special_token() != LirSpecialToken::Poison ||
+            authority.second_vector_use) {
+          fail_verify("LirShuffleVectorOp.native_vector_authority.second_vector_use",
+                      "must mirror the scalar-to-vector splat poison second vector");
+        }
+        if (!authority.second_vector_shape ||
+            authority.second_vector_shape->lane_count != vector->lane_count ||
+            authority.second_vector_shape->element_type != vector->element_type ||
+            authority.second_vector_shape->element_type.str() != vector->element_type.str()) {
+          fail_verify("LirShuffleVectorOp.native_vector_authority.second_vector_shape",
+                      "must agree with the scalar-to-vector splat vector store fact");
+        }
         if (authority.result_shape.lane_count != vector->lane_count ||
             authority.result_shape.element_type != vector->element_type ||
             authority.result_shape.element_type.str() != vector->element_type.str() ||
@@ -3491,7 +3503,10 @@ void verify_function_value_ownership(const LirModule& mod,
         fail_verify("LirShuffleVectorOp.native_vector_authority",
                     "is required for the scalar-to-vector zero-initializer splat");
       }
-      verify_vector_authority(*op, "LirShuffleVectorOp", op->vec1, &op->vec2, nullptr, nullptr, nullptr, op->vec_type);
+      const LirOperand* second_vector_mirror =
+          op->requires_native_vector_authority ? nullptr : &op->vec2;
+      verify_vector_authority(*op, "LirShuffleVectorOp", op->vec1, second_vector_mirror,
+                              nullptr, nullptr, nullptr, op->vec_type);
       if (op->native_vector_authority &&
           ((!op->requires_native_vector_authority &&
             (op->native_vector_authority->mask_lanes.size() != op->native_vector_authority->result_shape.lane_count ||

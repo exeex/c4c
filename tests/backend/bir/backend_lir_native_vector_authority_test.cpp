@@ -375,6 +375,42 @@ void test_native_vector_authority_verifier_boundary() {
   expect_rejected(std::move(selected_shuffle_mask_type_mismatch),
                   "selected splat shuffle mask type must mirror vector-store lane count");
 
+  auto selected_shuffle_non_poison_second = selected_scalar_to_vector_splat_module();
+  auto& non_poison_shuffle = std::get<lir::LirShuffleVectorOp>(
+      selected_shuffle_non_poison_second.functions[0].blocks[0].insts[1]);
+  non_poison_shuffle.vec2 = lir::LirOperand::ssa("%v2", lir::LirValueId{2});
+  non_poison_shuffle.native_vector_authority->second_vector_use = lir::LirValueId{2};
+  expect_rejected(std::move(selected_shuffle_non_poison_second),
+                  "selected splat shuffle must reject non-poison second vector");
+
+  auto selected_shuffle_second_use_with_poison = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirShuffleVectorOp>(
+      selected_shuffle_second_use_with_poison.functions[0].blocks[0].insts[1])
+      .native_vector_authority->second_vector_use = lir::LirValueId{2};
+  expect_rejected(std::move(selected_shuffle_second_use_with_poison),
+                  "selected splat shuffle poison must reject second vector use evidence");
+
+  auto selected_shuffle_missing_second_shape = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirShuffleVectorOp>(
+      selected_shuffle_missing_second_shape.functions[0].blocks[0].insts[1])
+      .native_vector_authority->second_vector_shape.reset();
+  expect_rejected(std::move(selected_shuffle_missing_second_shape),
+                  "selected splat shuffle must reject missing second vector shape");
+
+  auto selected_shuffle_second_shape_lane_mismatch = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirShuffleVectorOp>(
+      selected_shuffle_second_shape_lane_mismatch.functions[0].blocks[0].insts[1])
+      .native_vector_authority->second_vector_shape->lane_count = 5;
+  expect_rejected(std::move(selected_shuffle_second_shape_lane_mismatch),
+                  "selected splat shuffle second shape lanes must mirror vector-store lane count");
+
+  auto selected_shuffle_second_shape_element_mismatch = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirShuffleVectorOp>(
+      selected_shuffle_second_shape_element_mismatch.functions[0].blocks[0].insts[1])
+      .native_vector_authority->second_vector_shape->element_type = lir::LirTypeRef::integer(64);
+  expect_rejected(std::move(selected_shuffle_second_shape_element_mismatch),
+                  "selected splat shuffle second shape element must mirror vector-store element type");
+
   auto missing_owner = vector_authority_module();
   std::get<lir::LirInsertElementOp>(missing_owner.functions[0].blocks[0].insts[0])
       .native_vector_authority->owner = c4c::kInvalidLinkName;

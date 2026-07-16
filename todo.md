@@ -8,19 +8,21 @@ Current Step Title: Migrate Bounded Vector Operation Consumers
 
 ## Just Finished
 
-Completed a second bounded `plan.md` Step 3 packet for the selected
+Completed a third bounded `plan.md` Step 3 packet for the selected
 scalar-to-vector splat shuffle seam. The required `LirShuffleVectorOp`
-verifier path now consumes the accepted `LirVectorRef` fact for mask lane count
-and `mask_type` mirror validation, while keeping the structured
-zero-initializer mask lane content check as compatibility validation. Nearby
-verifier coverage now rejects vector-store-backed mask lane-count and
-`mask_type` mismatches for required scalar-splat shuffles.
+verifier path now consumes the accepted `LirVectorRef` fact for the poison
+second operand's vector shape compatibility mirror, while keeping the poison
+token and absent second-use evidence as structured compatibility validation.
+Nearby verifier coverage now rejects non-poison second operands, invented
+second-use evidence, missing second-vector shape, and vector-store-backed
+second-shape lane or element mismatches for required scalar-splat shuffles.
 
 ## Suggested Next
 
 Select the next bounded Step 3 packet only after supervisor review. A likely
-candidate is one adjacent shuffle-vector mirror migration for poison or
-second-vector shape, but those remain separate from this packet.
+candidate is the next vector operation family, such as bounded
+`LirExtractElementOp` vector-store consumption, but it remains separate from
+this packet.
 
 ## Watchouts
 
@@ -29,8 +31,8 @@ second-vector shape, but those remain separate from this packet.
   unmigrated paths.
 - Store-backed checks now apply only to required `LirInsertElementOp` and the
   required scalar-splat `LirShuffleVectorOp` first-vector/result shape and
-  mask lane-count/`mask_type` paths. ExtractElement, ShuffleVector poison and
-  second-shape, and nonselected producers are intentionally unchanged.
+  mask lane-count/`mask_type` and poison second-shape paths. ExtractElement and
+  nonselected producers are intentionally unchanged.
 - Aggregate vector elements now fail closed unless their typed element ref is
   backed by an accepted aggregate-store fact from the 838 route; do not add a
   separate aggregate owner for vector work.
