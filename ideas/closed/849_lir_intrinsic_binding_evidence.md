@@ -1,6 +1,6 @@
 # LIR Intrinsic and Inline-Assembly Binding Evidence
 
-Status: Open
+Status: Closed - evidence complete, no direct 734 handoff
 Type: Research and architecture documentation
 Parent: `ideas/open/813_lir_string_semantic_authority_completion_umbrella.md`
 Related:
@@ -120,3 +120,42 @@ and unparsed.
   classification-only changes claimed as evidence/capability progress.
 - Reject a claimed 734 receipt or 797 convergence before an exact accepted
   producer/verifier handoff exists.
+
+## Closure Note
+
+Close accepted as documentation/evidence complete. Commit `c8bb64bcb` created
+the required docs directory and exactly the required files:
+
+- `docs/lir_intrinsic_binding_evidence/index.md`
+- `docs/lir_intrinsic_binding_evidence/01_intrinsic_inline_asm_binding_route.md`
+
+The evidence traces `LirInlineAsmValueBinding` producers, LIR verifier checks,
+Raw-BIR inline-asm import, selected builtin/intrinsic receiver patterns, and
+the template/constraint opacity boundary.
+
+Conclusion: selected inline-assembly value bindings have a native structured
+route through producer, verifier, and Raw-BIR importer. Templates,
+constraints, and clobbers remain opaque outward payload and must not be parsed
+for binding, type, value, ABI, or dispatch facts. Several builtin/intrinsic
+families already have bounded selected receiver routes, but this evidence does
+not prove a complete binding inventory for every builtin helper form and does
+not authorize a direct 734 receiver handoff.
+
+Return relation:
+
+- Future singular residual inline-assembly or instruction binding handoffs
+  belong first to 796.
+- Verifier/dispatch/printer migration for already-published native facts
+  belongs first to 846.
+- 734 and 797 remain downstream until 796 or 846 accepts an exact handoff.
+
+Accepted proof:
+
+```sh
+find docs/lir_intrinsic_binding_evidence -maxdepth 1 -type f -printf '%f\n' | sort
+git diff --check
+```
+
+Result: PASS. The directory contained exactly
+`01_intrinsic_inline_asm_binding_route.md` and `index.md`, and no
+implementation files were modified.
