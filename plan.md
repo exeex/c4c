@@ -105,7 +105,9 @@ closed without competing operation-local authority.
 
 ### Step 3 - Enforce module ownership and migrate bounded consumers
 
-Status: Active.
+Status: Active; baseline repair focused proof passed after rejected baseline
+candidate following `97eb154af`; supervisor full-suite baseline review still
+required.
 
 Goal: make justified consumers use canonical store facts and fail closed.
 
@@ -115,9 +117,24 @@ Actions:
   consumers justified by the store seam.
 - Prove foreign, wrong-module, stale, and malformed rejection; retain only
   named adapters with explicit deletion gates.
+- Repair the rejected baseline expansion before further normal Step 3 or Step 4
+  progress. The focused repair proof now passes for both observed families:
+  variadic/`va_arg` backend failures where LLVM saw an unsized
+  `%struct.__va_list_tag_` GEP base after the store-backed printer/receiver
+  path dropped legitimate no-owner structured declarations when
+  `aggregate_store` is nonempty, and a C++ inline-method member-context
+  frontend failure where `lir_owned_type_spec` rejected a legitimate
+  legacy/no-owner aggregate function type as missing a module owner.
+- Preserve populated-ref fail-closed behavior while restoring legitimate
+  no-owner/legacy-owner compatibility only at the named bounded adapters. Do
+  not use tag/text/key lookup, rendered declarations, testcase names, or
+  expectation downgrades as acceptance.
 
 Completion check: fresh build plus focused valid/invalid proof preserves
-754/798/801/803 seams and rejects cross-module/foreign refs.
+754/798/801/803 seams and rejects cross-module/foreign refs. While the baseline
+repair blocker is active, Step 3 is not accepted until the focused repro subset,
+focused frontend/backend LIR coverage, backend checkpoint, and a fresh
+full-suite baseline review prove the baseline failure set did not expand.
 
 ### Step 4 - Assess bounded convergence and hand off remaining work
 

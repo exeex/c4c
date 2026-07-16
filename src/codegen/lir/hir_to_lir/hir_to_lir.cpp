@@ -87,6 +87,70 @@ void append_aarch64_hfa_signature_params(const c4c::hir::Module& mod,
   }
 }
 
+std::optional<std::string> unique_template_instance_aggregate_ty(
+    const c4c::hir::Module& mod, const TypeSpec& ts) {
+  std::vector<TextId> primary_text_ids;
+  auto add_primary_id = [&](TextId id) {
+    if (id == kInvalidText) return;
+    if (std::find(primary_text_ids.begin(), primary_text_ids.end(), id) ==
+        primary_text_ids.end()) {
+      primary_text_ids.push_back(id);
+    }
+  };
+  add_primary_id(ts.tpl_struct_origin_key.base_text_id);
+  if (ts.record_def) add_primary_id(ts.record_def->unqualified_text_id);
+  add_primary_id(ts.tag_text_id);
+  if (mod.link_name_texts && ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
+    std::string_view origin = ts.tpl_struct_origin;
+    const size_t scope_pos = origin.rfind("::");
+    if (scope_pos != std::string_view::npos) origin.remove_prefix(scope_pos + 2);
+    add_primary_id(mod.link_name_texts->find(origin));
+  }
+  if (primary_text_ids.empty()) return std::nullopt;
+
+  const SymbolName* match = nullptr;
+  const int wanted_context_id =
+      ts.namespace_context_id >= 0 ? ts.namespace_context_id
+                                   : ts.tpl_struct_origin_key.context_id;
+  for (const auto& [owner_key, rendered_tag] : mod.struct_def_owner_index) {
+    if (owner_key.kind != HirRecordOwnerKeyKind::TemplateInstantiation ||
+        mod.struct_defs.count(rendered_tag) == 0) {
+      continue;
+    }
+    if (std::find(primary_text_ids.begin(), primary_text_ids.end(),
+                  owner_key.declaration_text_id) == primary_text_ids.end()) {
+      continue;
+    }
+    if (wanted_context_id >= 0 &&
+        owner_key.namespace_context_id != wanted_context_id) {
+      continue;
+    }
+    if (match && *match != rendered_tag) return std::nullopt;
+    match = &rendered_tag;
+  }
+  if (!match) return std::nullopt;
+  return c4c::codegen::llvm_helpers::llvm_struct_type_str(*match);
+}
+
+std::optional<std::string> unique_template_specialization_decl_ty(
+    const c4c::hir::Module& mod, const TypeSpec& ts) {
+  if (!ts.record_def) return std::nullopt;
+  const char* record_name = ts.record_def->name && ts.record_def->name[0]
+                                ? ts.record_def->name
+                                : ts.record_def->unqualified_name;
+  if (!record_name || !record_name[0]) return std::nullopt;
+  const std::string prefix = std::string(record_name) + "_";
+  const std::string* match = nullptr;
+  for (const auto& [tag, def] : mod.struct_defs) {
+    (void)def;
+    if (tag.rfind(prefix, 0) != 0) continue;
+    if (match) return std::nullopt;
+    match = &tag;
+  }
+  if (!match) return std::nullopt;
+  return c4c::codegen::llvm_helpers::llvm_struct_type_str(*match);
+}
+
 TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, const QualType& hir_type,
                              LirModule* lir_module) {
   TypeSpec type = hir_type.spec;
@@ -140,10 +204,45 @@ TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, const QualType& hir_ty
     return type;
   }
   const SymbolName* owner_tag = mod.find_struct_def_tag_by_owner(*owner_key);
-  if (!owner_tag || owner_tag->empty()) {
+  std::optional<std::string> tag =
+      owner_tag && !owner_tag->empty() ? std::optional<std::string>(std::string(*owner_tag))
+                                       : std::nullopt;
+  if (!tag) {
+    tag = c4c::codegen::llvm_helpers::typespec_aggregate_compatibility_tag(
+        mod, type);
+    if (tag) {
+      const std::string structured_name =
+          type.base == TB_UNION ? "%union." + *tag
+                                : c4c::codegen::llvm_helpers::llvm_struct_type_str(*tag);
+      const c4c::StructNameId name_id =
+          lir_module->struct_names.find(structured_name);
+      if (name_id == c4c::kInvalidStructName ||
+          !lir_module->find_struct_decl(name_id)) {
+        tag.reset();
+      }
+    }
+  }
+  if (!tag && type.base == TB_STRUCT) {
+    std::optional<std::string> structured_type =
+        unique_template_instance_aggregate_ty(mod, hir_type.spec);
+    if (!structured_type) {
+      structured_type = unique_template_specialization_decl_ty(mod, hir_type.spec);
+    }
+    if (structured_type) {
+      const c4c::StructNameId name_id =
+          lir_module->struct_names.find(*structured_type);
+      if (name_id != c4c::kInvalidStructName &&
+          lir_module->find_struct_decl(name_id)) {
+        constexpr std::string_view struct_prefix = "%struct.";
+        if (structured_type->rfind(struct_prefix, 0) == 0) {
+          tag = structured_type->substr(struct_prefix.size());
+        }
+      }
+    }
+  }
+  if (!tag) {
     throw std::runtime_error("LIR-owned aggregate function type requires a matching module owner");
   }
-  std::optional<std::string> tag = std::string(*owner_tag);
   const std::optional<std::string> source_tag =
       tag ? tag : c4c::codegen::llvm_helpers::typespec_aggregate_compatibility_tag(
                 mod, type);

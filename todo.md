@@ -8,18 +8,23 @@ Current Step Title: Enforce module ownership and migrate bounded consumers
 
 ## Just Finished
 
-- Step 3 call verifier consumer packet completed. `LirCallOp` aggregate return
-  and argument type-ref mirrors that carry `StructNameId` now require matching
-  canonical `LirModule::aggregate_store` facts when the store is populated.
-  Missing or incoherent store entries fail closed before declaration/text
-  authority can accept the mirror. Empty-store and explicitly no-owner
-  compatibility fixtures remain on their legacy path.
+- Step 3 baseline repair packet completed after the rejected baseline candidate
+  following `97eb154af`. The repair restored legitimate non-store structured
+  declaration emission/import while preserving canonical aggregate-store
+  authority, so the variadic/`va_arg` cases no longer produce unsized
+  `%struct.__va_list_tag_` GEP bases. It also restored the bounded legacy
+  template-specialization owner bridge needed by
+  `cpp_positive_sema_template_inline_method_member_context_frontend_cpp`, while
+  populated HIR aggregate refs still resolve through
+  `LirModule::find_aggregate_ref` / `find_aggregate` and corrupted refs still
+  fail closed.
 
 ## Suggested Next
 
-- Continue Step 3 with one remaining bounded consumer that still accepts
-  aggregate identity from legacy declaration/text authority, or move to Step 4
-  if supervisor review finds the named Step 3 consumer set exhausted.
+- Supervisor should run the fresh full-suite baseline review required by
+  `plan.md` and confirm the rejected 0-to-64 failure expansion is gone. After
+  that review is accepted, resume normal Step 3 consumer migration or Step 4
+  assessment from `plan.md`.
 
 ## Watchouts
 
@@ -52,11 +57,24 @@ Current Step Title: Enforce module ownership and migrate bounded consumers
   of the text-parsing branch. The owned call test also repairs stale fixture
   metadata so populated aggregate refs fail closed while explicit no-owner
   compatibility clears those refs before lowering.
+- Baseline repair must not weaken populated-ref fail-closed behavior, revive
+  tag/text/key lookup as authority, or classify supported aggregate signatures
+  as unsupported. Preserve legitimate no-owner structured declarations when the
+  aggregate store is nonempty, and close only the bounded legacy-owner gap
+  proven by the C++ inline-method member-context failure.
+- Do not claim Step 3 acceptance from this narrow green proof alone. The
+  current blocker is explicitly the baseline expansion from 0 to 64 failures,
+  so the repair is not accepted until the fresh full-suite baseline review
+  confirms the failure set does not expand.
 
 ## Proof
 
-- Passed:
-  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_call_type_ref|frontend_lir_function_signature_type_ref|frontend_hir_tests)$' ) > test_after.log 2>&1`
+- Initial focused repro subset failed before the repair:
+  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(positive_sema_ok_call_variadic_aggregate_runtime_c|cpp_positive_sema_template_inline_method_member_context_frontend_cpp|llvm_gcc_c_torture_src_va_arg_13_c)$' ) > /tmp/c4c_baseline_reject_probe.log 2>&1`
+- Passed delegated repair proof:
+  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(positive_sema_ok_call_variadic_aggregate_runtime_c|cpp_positive_sema_template_inline_method_member_context_frontend_cpp|llvm_gcc_c_torture_src_va_arg_13_c|frontend_lir_function_signature_type_ref|frontend_lir_call_type_ref|backend_lir_to_bir_interface|frontend_hir_tests)$' ) > test_after.log 2>&1`
 - Supervisor checkpoint passed:
   `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' ) > /tmp/c4c_backend_after.log 2>&1`
 - Proof log: `test_after.log`.
+- Still required before normal Step 3/Step 4 progress: supervisor fresh
+  full-suite baseline review with no failure-set expansion.

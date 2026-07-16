@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <unordered_set>
 
 namespace c4c::backend::lir_to_bir_detail {
 
@@ -291,7 +292,9 @@ std::optional<BackendStructuredLayoutTable> build_backend_structured_layout_tabl
 
   std::vector<const LirStructDecl*> authority_decls;
   if (!aggregate_store.empty()) {
-    authority_decls.reserve(aggregate_store.size());
+    std::unordered_set<c4c::StructNameId> store_decl_ids;
+    store_decl_ids.reserve(aggregate_store.size());
+    authority_decls.reserve(struct_decls.size());
     for (const auto& entry : aggregate_store) {
       const auto decl_it = decls_by_id.find(entry.name_id);
       if (decl_it == decls_by_id.end() ||
@@ -299,7 +302,15 @@ std::optional<BackendStructuredLayoutTable> build_backend_structured_layout_tabl
           struct_names.spelling(entry.name_id).empty()) {
         return std::nullopt;
       }
+      store_decl_ids.insert(entry.name_id);
       authority_decls.push_back(decl_it->second);
+    }
+    for (const auto& decl : struct_decls) {
+      if (store_decl_ids.find(decl.name_id) != store_decl_ids.end()) continue;
+      const std::string_view name = struct_names.spelling(decl.name_id);
+      if (!name.empty() && legacy_type_decls.find(std::string(name)) != legacy_type_decls.end()) {
+        authority_decls.push_back(&decl);
+      }
     }
   } else {
     authority_decls.reserve(structured_decls.size());
@@ -347,7 +358,8 @@ std::optional<BackendStructuredLayoutTable> build_backend_structured_layout_tabl
 std::optional<bir::StructuredTypeSpellingContext> build_bir_structured_type_spelling_context(
     const std::vector<c4c::codegen::lir::LirStructDecl>& struct_decls,
     const std::vector<c4c::codegen::lir::LirAggregateStoreEntry>& aggregate_store,
-    const c4c::StructNameTable& struct_names) {
+    const c4c::StructNameTable& struct_names,
+    const TypeDeclMap& legacy_type_decls) {
   std::unordered_map<c4c::StructNameId, const LirStructDecl*> decls_by_id;
   decls_by_id.reserve(struct_decls.size());
   for (const auto& decl : struct_decls) {
@@ -359,7 +371,9 @@ std::optional<bir::StructuredTypeSpellingContext> build_bir_structured_type_spel
 
   std::vector<const LirStructDecl*> authority_decls;
   if (!aggregate_store.empty()) {
-    authority_decls.reserve(aggregate_store.size());
+    std::unordered_set<c4c::StructNameId> store_decl_ids;
+    store_decl_ids.reserve(aggregate_store.size());
+    authority_decls.reserve(struct_decls.size());
     for (const auto& entry : aggregate_store) {
       const auto decl_it = decls_by_id.find(entry.name_id);
       if (decl_it == decls_by_id.end() ||
@@ -367,7 +381,15 @@ std::optional<bir::StructuredTypeSpellingContext> build_bir_structured_type_spel
           struct_names.spelling(entry.name_id).empty()) {
         return std::nullopt;
       }
+      store_decl_ids.insert(entry.name_id);
       authority_decls.push_back(decl_it->second);
+    }
+    for (const auto& decl : struct_decls) {
+      if (store_decl_ids.find(decl.name_id) != store_decl_ids.end()) continue;
+      const std::string_view name = struct_names.spelling(decl.name_id);
+      if (!name.empty() && legacy_type_decls.find(std::string(name)) != legacy_type_decls.end()) {
+        authority_decls.push_back(&decl);
+      }
     }
   } else {
     authority_decls.reserve(struct_decls.size());

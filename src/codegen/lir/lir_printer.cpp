@@ -4,6 +4,7 @@
 
 #include <cctype>
 #include <sstream>
+#include <unordered_set>
 #include <vector>
 
 namespace c4c::codegen::lir {
@@ -607,6 +608,8 @@ std::string print_llvm(const LirModule& mod) {
   // Canonical aggregate-store facts are the printed authority once present.
   // Legacy structured declarations remain the no-owner compatibility path.
   if (!mod.aggregate_store.empty()) {
+    std::unordered_set<c4c::StructNameId> store_decl_ids;
+    store_decl_ids.reserve(mod.aggregate_store.size());
     for (const auto& entry : mod.aggregate_store) {
       const LirStructDecl* decl = mod.find_struct_decl(entry.name_id);
       if (!decl) {
@@ -614,7 +617,12 @@ std::string print_llvm(const LirModule& mod) {
             LirVerifyErrorKind::Malformed,
             "LirAggregateStoreEntry.name_id: must resolve to a structured declaration");
       }
+      store_decl_ids.insert(entry.name_id);
       out << render_struct_decl_llvm(mod, *decl) << "\n";
+    }
+    for (const auto& decl : mod.struct_decls) {
+      if (store_decl_ids.find(decl.name_id) != store_decl_ids.end()) continue;
+      out << render_struct_decl_llvm(mod, decl) << "\n";
     }
   } else {
     for (const auto& decl : mod.struct_decls) {

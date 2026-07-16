@@ -1862,7 +1862,8 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   auto structured_type_context = build_bir_structured_type_spelling_context(
       context.lir_module.struct_decls,
       context.lir_module.aggregate_store,
-      context.lir_module.struct_names);
+      context.lir_module.struct_names,
+      type_decls);
   if (!structured_type_context.has_value()) {
     context.note(
         "module",

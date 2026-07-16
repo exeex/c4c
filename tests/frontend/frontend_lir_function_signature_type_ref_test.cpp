@@ -1101,6 +1101,24 @@ int defined_void_params(void) {
       missing_printer_store,
       "printer should reject missing canonical store facts before falling back to struct_decls");
 
+  c4c::codegen::lir::LirModule populated_store_legacy_decl = lir_module;
+  const c4c::StructNameId legacy_shadow_id =
+      populated_store_legacy_decl.struct_names.intern("%struct.LegacyShadow");
+  c4c::codegen::lir::LirStructDecl legacy_shadow_decl;
+  legacy_shadow_decl.name_id = legacy_shadow_id;
+  legacy_shadow_decl.fields.push_back({c4c::codegen::lir::LirTypeRef::integer(32)});
+  populated_store_legacy_decl.type_decls.push_back(
+      "%struct.LegacyShadow = type { i32 }");
+  populated_store_legacy_decl.record_struct_decl(std::move(legacy_shadow_decl));
+  const std::string populated_store_legacy_ir =
+      c4c::codegen::lir::print_llvm(populated_store_legacy_decl);
+  expect_true(populated_store_legacy_ir.find("%struct.Pair = type { i32, i32 }") !=
+                  std::string::npos,
+              "populated-store printer should keep canonical aggregate declarations");
+  expect_true(populated_store_legacy_ir.find("%struct.LegacyShadow = type { i32 }") !=
+                  std::string::npos,
+              "populated-store printer should preserve legacy no-owner declarations");
+
   c4c::codegen::lir::LirModule no_owner_struct_decl;
   no_owner_struct_decl.link_name_texts = std::make_shared<c4c::TextTable>();
   no_owner_struct_decl.struct_names.attach_text_table(
