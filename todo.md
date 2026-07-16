@@ -182,6 +182,30 @@ Completed the selected integer native-return `LirRet.type_str` packet:
 - Added focused stale-display coverage proving integer native return rendering
   uses native integer width authority rather than mutable display text.
 
+Started the Step 5 selected native integer scalar load packet. 846 still owns
+integer native-load `LirLoadOp.type_str` verifier/printer rendering:
+
+- `src/codegen/lir/verify.cpp` still verifies `LirLoadOp.type_str` with
+  `require_module_type_ref(mod, op->type_str, "LirLoadOp.type_str", true)`.
+- `src/codegen/lir/lir_printer.cpp` still renders loads with
+  `require_type_ref(op->type_str, "LirLoadOp.type_str", true)`.
+- `LirLoadOp.requires_native_result_authority`, `LirLoadOp.result`, and
+  local/global load authority checks already publish the selected native
+  result facts.
+- The packet must migrate only selected native integer scalar loads and
+  preserve raw compatibility, pointer, aggregate, store, cast, gep, phi, call,
+  return, vector, va_arg, switch, and universal API behavior.
+
+Completed the selected native integer scalar load `LirLoadOp.type_str` packet:
+
+- Reused `render_integer_type_ref` for only authoritative integer load
+  verifier and printer branches.
+- Preserved raw compatibility loads and non-integer load types on the existing
+  generic paths.
+- Added focused stale-display coverage proving a selected native integer
+  global load renders from native integer width authority rather than mutable
+  display text.
+
 ## Suggested Next
 
 Execute `plan.md` Step 5: inventory remaining universal classifier, renderer,
@@ -291,6 +315,15 @@ printer branch for the next bounded packet. Completed return packet proof:
 - `cmake --build build`
 - `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
 - `git diff --check`
+
+Step 5 trace selected the native integer scalar `LirLoadOp.type_str` verifier
+and printer branch for the next bounded packet. Completed load packet proof:
+
+- `cmake --build build`
+- `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
+- `git diff --check`
+
+Proof log: `test_after.log`.
 
 Next Step 5 decision is trace/lifecycle state unless it selects and records
 another bounded implementation packet.

@@ -2069,7 +2069,6 @@ loop:
               "selected local scalar load should use its authority pointer definition");
   expect_true(scalar_load->type_str == scalar_load->local_object_authority->pointee_type,
               "selected local scalar load type should equal its authority pointee type");
-
   lir::LirStoreOp* scalar_store = selected_local_scalar_store(module);
   expect_true(scalar_store != nullptr && scalar_store->local_object_authority &&
                   scalar_store->val.integer_immediate() &&
@@ -2749,14 +2748,26 @@ int read_counter_again(void) { return g_counter; }
       lir::LirOperand::ssa("@misleading-result", lir::LirValueId{4}),
       lir::LirTypeRef::integer(32),
       lir::LirOperand::global("@load_display_target", authority_id)}));
+  auto& selected_global_load =
+      std::get<lir::LirLoadOp>(misleading.functions[0].blocks[0].insts[0]);
+  selected_global_load.requires_native_result_authority = true;
   lir::verify_module(misleading);
-  const auto& misleading_load = std::get<lir::LirLoadOp>(
-      misleading.functions[0].blocks[0].insts[0]);
-  expect_true(display_id != authority_id && misleading_load.result.value_id() &&
-                  misleading_load.result.value_id()->value == 4 &&
-                  misleading_load.ptr.link_name_id() &&
-                  *misleading_load.ptr.link_name_id() == authority_id,
+  expect_true(display_id != authority_id &&
+                  selected_global_load.result.value_id() &&
+                  selected_global_load.result.value_id()->value == 4 &&
+                  selected_global_load.ptr.link_name_id() &&
+                  *selected_global_load.ptr.link_name_id() == authority_id,
               "misleading load displays must not redirect native authority");
+  selected_global_load.type_str.str() = "double";
+  lir::verify_module(misleading);
+  const std::string stale_display_load_ir = lir::print_llvm(misleading);
+  expect_contains(stale_display_load_ir,
+                  "@misleading-result = load i32, ptr @load_display_target",
+                  "integer load printer should render native width authority");
+  expect_true(stale_display_load_ir.find(
+                  "@misleading-result = load double, ptr @load_display_target") ==
+                  std::string::npos,
+              "integer load printer must not recover type semantics from stale display text");
 
   lir::LirModule missing_result;
   const c4c::LinkNameId missing_result_id =

@@ -465,10 +465,16 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
                                 LirOperandKind::SpecialToken})
        << ", " << op->index << "\n";
   } else if (const auto* op = std::get_if<LirLoadOp>(&inst)) {
+    const auto type = op->requires_native_result_authority &&
+                              op->type_str.kind() == LirTypeKind::Integer
+                          ? render_integer_type_ref(op->type_str,
+                                                    "LirLoadOp.type_str")
+                          : require_type_ref(op->type_str,
+                                             "LirLoadOp.type_str", true);
     os << "  "
        << require_operand_kind(op->result, "LirLoadOp.result",
                                {LirOperandKind::SsaValue})
-       << " = load " << require_type_ref(op->type_str, "LirLoadOp.type_str", true)
+       << " = load " << type
        << ", ptr "
        << require_operand_kind(op->ptr, "LirLoadOp.ptr",
                                {LirOperandKind::SsaValue, LirOperandKind::Global})

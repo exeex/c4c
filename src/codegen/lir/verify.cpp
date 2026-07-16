@@ -2047,7 +2047,12 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
   }
   if (const auto* op = std::get_if<LirLoadOp>(&inst)) {
     verify_result_operand(op->result, "LirLoadOp.result");
-    require_module_type_ref(mod, op->type_str, "LirLoadOp.type_str", true);
+    if (op->requires_native_result_authority &&
+        op->type_str.kind() == LirTypeKind::Integer) {
+      (void)render_integer_type_ref(op->type_str, "LirLoadOp.type_str");
+    } else {
+      require_module_type_ref(mod, op->type_str, "LirLoadOp.type_str", true);
+    }
     verify_pointer_operand(op->ptr, "LirLoadOp.ptr");
     verify_global_load_authority(mod, *op);
     verify_native_load_result_authority(*op);
