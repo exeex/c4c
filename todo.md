@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/833_lir_truthiness_lhs_parameter_authority_completion.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Produce and verify truthiness-LHS authority
+Current Step ID: 2a
+Current Step Title: Trace the actual compare construction producer
 
 ## Just Finished
 
@@ -17,20 +17,22 @@ Current Step Title: Produce and verify truthiness-LHS authority
   requires one exact matching definition and rejects missing, foreign,
   owner-incoherent, parameter-incoherent, type-incoherent, ABI, role,
   predicate, RHS, and duplicate-definition variants.
-- The missing producer relation is bounded to the legacy string-only
-  `StmtEmitter::to_bool`: it emits the selected `icmp ne ..., 0` without a
-  native operand, unlike `to_bool_operand`, which constructs the full tuple
-  from `native_body_parameter_definitions`. `UnaryOp::Not` reaches that
-  string-only seam, so it cannot publish native identity without recovery.
+- The `UnaryOp::Not` / string-only `to_bool` hypothesis is disproven for this
+  torture family. Temporarily routing it through `to_bool_operand` built and
+  preserved the tuple, but the matching in-scope ten-case guard remained
+  10/10 failing (nine missing-authority cases plus `pr88714`'s separate 832
+  aggregate-owner failure). The temporary code and tests were reverted.
 
 ## Suggested Next
 
-- Step 2 only: preserve the selected operand through the unary truthiness
-  construction route so it calls `to_bool_operand` rather than the string-only
-  `to_bool` producer. Populate no tuple unless the existing native definition
-  lookup matches the exact direct-scalar value/type/current owner. Keep pointer,
-  floating, computed, generic, and text-only forms outside this contract.
-  Extend nearby positive/malformed truthiness coverage for the producer route.
+- Step 2a is evidence-only: trace representative in-scope direct-scalar cases
+  backward from the selected `LirCmpOp` to the actual compare construction
+  site. Do not make another producer patch until native evidence shows that
+  site receives the exact direct-scalar operand and can carry identity, owner,
+  parameter, and type facts without recovery.
+- If that discriminating condition is absent, record the failed route and the
+  next bounded diagnostic action; do not resurrect the disproven `UnaryOp::Not`
+  or string-only `to_bool` packet.
 
 ## Watchouts
 
@@ -44,10 +46,8 @@ Current Step Title: Produce and verify truthiness-LHS authority
 
 ## Proof
 
-- Evidence predecessor: 831's exact subset retains 13 GCC torture failures at
+- Evidence predecessor: 831's exact subset retains the truthiness failures at
   the unchanged missing `LirCmpOp.truthiness_lhs_parameter_authority` verifier
-  relation. Step 1 narrows this native producer/verifier seam before code.
-- Fresh exact torture subset: 13/13 failed. Ten cases retain the expected
-  missing truthiness-authority diagnostic; three (`20090113-2`, `comp-goto-1`,
-  `pr51323`) now stop at the separately owned accepted 832 aggregate-owner
-  guard and are not part of this 833 repair packet.
+  relation. Canonical `test_before.log` and `test_after.log` use the exact
+  same matching ten-case command and show no improvement from the reverted
+  UnaryOp hypothesis (10/10 failures in both).

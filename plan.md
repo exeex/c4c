@@ -47,13 +47,37 @@ Actions:
 Completion check: the selected structural relation and fail-closed verifier
 contract are explicit without text/signature/diagnostic recovery.
 
-### Step 2 - Produce and verify the selected authority relation
+### Step 2a - Trace the actual compare construction producer
 
-Goal: implement the native relation at its narrow construction seam.
+Goal: identify the construction path that produces the selected `LirCmpOp`
+instances in representative in-scope torture cases before another code packet.
 
 Actions:
 
-- populate only the selected direct-scalar truthiness-LHS authority; and
+- preserve the Step 1 authority contract and trace representative direct-scalar
+  truthiness cases backward from the `LirCmpOp` to their actual construction
+  site;
+- treat the attempted `UnaryOp::Not` / string-only `to_bool` to
+  `to_bool_operand` routing as disproven: its temporary tuple-preserving build
+  left the matching ten-case guard unchanged at 10/10 failures, and the code
+  and tests were reverted; and
+- require discriminating native evidence that the selected construction path
+  receives the direct-scalar operand and can carry exact identity, owner,
+  parameter, and type facts without text recovery.
+
+Completion check: one actual producer seam is evidenced by an in-scope case,
+or the route is explicitly rejected with the next bounded diagnostic action;
+no new implementation is authorized from the failed UnaryOp hypothesis.
+
+### Step 2b - Produce and verify the evidenced authority relation
+
+Goal: implement the native relation only at the producer seam established by
+Step 2a.
+
+Actions:
+
+- populate only the selected direct-scalar truthiness-LHS authority at the
+  evidenced construction seam; and
 - add nearby positive and malformed/foreign/incoherent authority coverage.
 
 Completion check: the verifier accepts coherent native authority and rejects
