@@ -80,8 +80,7 @@ canonical definition-to-store mapping and explicit unknown/incomplete rejection.
 
 ### Step 2 - Preserve recursive aggregate facts and all aggregate forms
 
-Status: Active; declaration/store fact capture accepted in `8eca000c9`, bounded
-function-signature occurrence producer migration remains.
+Status: Accepted in `8eca000c9`, Step 2 return commits through `88ccf591d`.
 
 Goal: migrate kind, fields, layout, projections, and recursive children without
 flattening semantic structure.
@@ -99,12 +98,14 @@ Actions:
   structured owner keys to canonical refs without adding tag/text/key fallback.
 - Retain legitimate no-owner rendered compatibility only at its named consumer.
 
-Completion check: focused build/test proof shows supported ordinary aggregate
+Completion check: focused build/test proof showed supported ordinary aggregate
 function signatures lower through canonical refs, nested/repeated aggregate
-parity remains intact, and unsupported/missing/foreign cases fail closed without
-competing operation-local authority.
+parity remains intact, and unsupported/missing/foreign/corrupted cases fail
+closed without competing operation-local authority.
 
 ### Step 3 - Enforce module ownership and migrate bounded consumers
+
+Status: Active.
 
 Goal: make justified consumers use canonical store facts and fail closed.
 
