@@ -1,27 +1,23 @@
 Status: Active
 Source Idea Path: ideas/open/840_lir_nominal_vector_store_schema_migration.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Migrate Bounded Vector Operation Consumers
+Current Step ID: 4
+Current Step Title: Retire Duplicate Vector Mirrors For Migrated Consumers
 
 # Current Packet
 
 ## Just Finished
 
-Completed a fourth bounded `plan.md` Step 3 packet for direct vector indexing.
-`LirExtractElementOp` lowering now registers a module-owned `LirVectorRef`, and
-the verifier consumes that vector-store fact for direct vector index lane and
-element shape validation while keeping row-local shape fields as compatibility
-mirrors. Nearby verifier coverage now rejects missing, out-of-range, zero-lane,
-empty-element, lane-mismatched, and element-mismatched extract vector-store
-facts.
+Step 3 is complete for the currently named migrated consumers: required
+scalar-to-vector `LirInsertElementOp`, direct vector-index `LirExtractElementOp`,
+and required scalar-splat `LirShuffleVectorOp`.
 
 ## Suggested Next
 
-Select the next bounded Step 3 packet only after supervisor review. A likely
-candidate is a narrow parity/broader proof decision for migrated Step 3
-consumers before moving to mirror retirement, but that remains separate from
-this packet.
+Start Step 4 with one narrow retirement gate. First candidate: demote or remove
+one row-local vector shape mirror for a fully migrated consumer only where the
+verifier already reads the module-owned vector store with equivalent malformed
+coverage.
 
 ## Watchouts
 
@@ -39,6 +35,6 @@ this packet.
 
 ## Proof
 
-Passed delegated proof:
-`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_native_vector_authority$' ) > test_after.log 2>&1`.
-Proof log: `test_after.log`.
+Step 3 final packet passed:
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_native_vector_authority|llvm_gcc_c_torture_src_(pr60960_c|scal_to_vec1_c|scal_to_vec2_c))$' ) > test_after.log 2>&1`.
+Regression guard against matching `test_before.log`: PASS.
