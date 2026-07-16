@@ -3,31 +3,32 @@
 Status: Active
 Source Idea Path: ideas/open/837_lir_nominal_type_family_architecture.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Define dependency order and one-first-owner successor scopes
+Current Step ID: 4
+Current Step Title: Generate ordered successor ideas and handoff documents
 
 ## Just Finished
 
-- Completed plan.md Step 2: recorded exhaustive linked groups M1--M16 and
-  boundary decisions at `da06fe48f1a8b534d29be14357b865035082cdf3`, including
-  the selected `HirAggregateRef` contract, recursive aggregate store graph,
-  bounded unions, compile-time separation, one-way rendering, and fail-closed
-  behavior. No successor or implementation was generated.
+- Completed plan.md Step 3: recorded the ordered, non-overlapping first-owner
+  successor contracts in
+  `docs/lir_nominal_type_family_architecture/dependency_ordering.md`. Every
+  M1--M16 row is assigned once; A1 canonical aggregate convergence is first,
+  universal deletion is terminal, and 812 then 813 follow accepted
+  type-family capabilities. No successor or implementation was generated.
 
 ## Suggested Next
 
-- Execute Step 3 only: define dependency order and one-first-owner successor
-  scopes from the accepted matrix and boundary decisions.
+- Execute Step 4 only: generate one ordered open source idea per accepted
+  first-owner scope and the successor queue; do not activate or implement one.
 
 ## Watchouts
 
-- Do not edit code/tests or generate successors before Step 3 accepts; keep
-  the three 836 groups and the parked 836 -> 831 Step 4 obligation distinct.
+- Keep the three 836 groups and the parked 836 -> 831 Step 4 obligation
+  distinct. Preserve exact row ownership from the Step 3 assignment check;
+  existing open ideas are dependencies, not duplicate successors.
 
 ## Proof
 
 - Documentation proof: `git diff --check --
-  docs/lir_nominal_type_family_architecture/current_lir_type_ref_responsibility_matrix.md
-  docs/lir_nominal_type_family_architecture/nominal_family_boundary_decisions.md
-  todo.md`; both Step 2 documents record the same HEAD revision. No build or
-  broad test was run for this docs-only packet.
+  docs/lir_nominal_type_family_architecture/dependency_ordering.md todo.md`;
+  passed. No build or broad test was run for this docs-only packet. The
+  delegated proof does not write `test_after.log`.
