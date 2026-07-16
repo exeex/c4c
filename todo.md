@@ -3,21 +3,30 @@
 Status: Active
 Source Idea Path: ideas/open/813_lir_string_semantic_authority_completion_umbrella.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Validate the accepted 812 input and refresh lifecycle state
+Current Step ID: 2
+Current Step Title: Assign first owners and bounded evidence routes
 
 ## Just Finished
 
-- Activated 813 after 812's accepted evidence-only closure; no 813 routing work has yet run.
+- Step 1 — Validate the accepted 812 input and refresh lifecycle state: recorded
+  the accepted 812 evidence revision, refreshed at
+  `ce1984a661b79c40f21e5ec203e5fe4d8521585b`, and confirmed all three stable
+  keys remain insufficient evidence with no exact current owner or superseding
+  closure. Preserved `836 -> 831 Step 4 -> 830 Step 3 -> 829 Step 2`.
 
 ## Suggested Next
 
-- Validate the three-key 812 handoff against current lifecycle state and record the result in 813's input-validation document.
+- Step 2 — assign each validated key exactly once to an exact existing owner or
+  a bounded evidence route, without creating implementation scope from missing
+  evidence.
 
 ## Watchouts
 
-- Do not treat the evidence handoff as implementation, interrupt the 836 return chain, or create a successor before its first owner and missing-evidence boundary are proved.
+- Do not treat validation as implementation; preserve the 836 return chain and
+  create no implementation successor before its first owner and
+  missing-evidence boundary are proved.
 
 ## Proof
 
-- Documentation/lifecycle activation only: verify source links, accepted 812 handoff key set, and `git diff --check` before dispatching Step 1.
+- `git diff --check > test_after.log` (Step 1 documentation/lifecycle-refresh
+  packet).
