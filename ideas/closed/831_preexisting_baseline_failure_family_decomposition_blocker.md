@@ -1,6 +1,6 @@
 # Pre-existing Baseline Failure-Family Decomposition Blocker
 
-Status: Open
+Status: Closed
 Type: bounded baseline provenance and first-owner decomposition prerequisite
 Blocked Parent: `ideas/open/830_lir_direct_call_structured_argument_identity_prerequisite.md`, Step 3
 
@@ -210,3 +210,29 @@ Status: parked by lifecycle switch to
   reactivate 831 at Step 4 and rerun the unchanged comparable full-suite gate.
   Do not return directly to 830 or claim baseline clearance before that gate is
   accepted.
+
+## Closure Disposition
+
+Closed as capability-complete for the baseline decomposition blocker. The
+ordered successor evidence is now complete:
+
+- 832 repaired the bounded HIR aggregate-owner crash family.
+- 833 repaired the bounded direct-scalar truthiness-LHS authority family.
+- 834 repaired the native aggregate key-to-module-owner relation.
+- 836 resumed after the nominal type-family architecture work and intentionally
+  concluded because its historical residual aggregate-owner subset no longer
+  reproduced on current representative evidence.
+
+The resumed Step 4 comparable full-suite gate then passed and was accepted:
+`test_baseline.log` records full-suite scope at commit `4be820759`, 3038/3038
+tests passed, and `scripts/plan_review_state.py accept-baseline` accepted the
+candidate against the previous 3038/3038 baseline. This clears 831's baseline
+blocker without expectation downgrades, filters, allowlists, or harness
+changes.
+
+Return action: reactivate
+`ideas/open/830_lir_direct_call_structured_argument_identity_prerequisite.md`
+at unchanged Step 3, then run its existing Step 4 focused completion and
+return to 829 Step 2. This closure does not implement or claim any 830
+direct-call argument identity/type construction, 829 authority publication, or
+Raw-BIR receiver work.
