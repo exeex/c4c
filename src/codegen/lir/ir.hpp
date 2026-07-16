@@ -721,6 +721,8 @@ struct LirPhiOp {
   LirOperand result;      // SSA name for result
   LirTypeRef type_str;    // LLVM type string
   std::vector<LirPhiIncoming> incoming;
+  std::optional<LirPhiBoundaryValueType> boundary_value_type =
+      LirPhiBoundaryValueType::from_type_ref(type_str);
 };
 
 // Typed select instruction.

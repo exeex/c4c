@@ -538,6 +538,35 @@ struct LirCompactScalarType {
   }
 };
 
+enum class LirPhiBoundaryValueKind : unsigned char {
+  Scalar,
+  Vector,
+  Aggregate,
+  Pointer,
+};
+
+struct LirPhiBoundaryValueType {
+  LirTypeRef type;
+  LirPhiBoundaryValueKind kind = LirPhiBoundaryValueKind::Scalar;
+
+  [[nodiscard]] static std::optional<LirPhiBoundaryValueType> from_type_ref(
+      const LirTypeRef& type) {
+    if (type.kind() == LirTypeKind::Integer || type.kind() == LirTypeKind::Floating) {
+      return LirPhiBoundaryValueType{type, LirPhiBoundaryValueKind::Scalar};
+    }
+    if (type.kind() == LirTypeKind::Vector) {
+      return LirPhiBoundaryValueType{type, LirPhiBoundaryValueKind::Vector};
+    }
+    if (type.kind() == LirTypeKind::Struct) {
+      return LirPhiBoundaryValueType{type, LirPhiBoundaryValueKind::Aggregate};
+    }
+    if (type.kind() == LirTypeKind::Pointer) {
+      return LirPhiBoundaryValueType{type, LirPhiBoundaryValueKind::Pointer};
+    }
+    return std::nullopt;
+  }
+};
+
 enum class LirBinaryOpcode : unsigned char {
   Add,
   Sub,

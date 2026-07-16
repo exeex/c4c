@@ -1,81 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/842_lir_restricted_first_class_value_unions.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add the restricted boundary union carrier
+Current Step ID: 3
+Current Step Title: Migrate named boundary consumers
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan.md Step 1 inventory for first-class boundary carriers.
+Completed plan.md Step 2 for the selected PHI value boundary.
 
-Current carriers and receipt points:
+Added `LirPhiBoundaryValueType` as a PHI-local restricted carrier with explicit
+scalar, vector, aggregate, and pointer alternatives. Attached it only to
+`LirPhiOp` as `boundary_value_type`, initialized from `type_str` as a
+compatibility mirror. The verifier now treats the carrier as selected PHI
+boundary authority, requires it to mirror `LirPhiOp.type_str`, and rejects
+function, void, opaque, and runtime-text-only/wrong-family carriers.
 
-- Call argument/result uses `LirCallOp.return_type`, `arg_type_refs`,
-  `callee_signature`, and `structured_args`; helpers in
-  `call_args_ops.hpp` build/parse the argument mirrors, verifier checks
-  call return/signature/argument refs, printer renders through
-  `format_lir_call_site`, and call operands are visited through
-  `structured_args` when complete.
-- PHI uses `LirPhiOp.type_str` plus `LirPhiIncoming.value`; verifier checks
-  `type_str` with `require_module_type_ref`, requires non-empty incoming
-  entries, checks incoming operand kinds and current-function value authority,
-  and separately verifies predecessor/successor occurrence authority. Printer
-  renders the single type once and each incoming value/label pair.
-- Select uses `LirSelectOp.type_str`, `cond`, `true_val`, and `false_val`;
-  verifier checks the type ref and value operands, with an existing integer
-  authoritative path that requires native result authority and comparison
-  condition evidence. Printer renders the one type for both arms.
-- Return uses `LirRet.type_str`, optional `value_str`, and selected
-  `return_value_parameter_authority`; verifier permits void/no-value,
-  non-void/value, authoritative integer immediates or SSA values, and the
-  direct-scalar parameter return tuple. Printer renders `ret void` or
-  `ret <type> <value>`.
-
-Selected Step 2 boundary target: PHI value boundary. Add a minimal
-PHI-local restricted value type carrier for `LirPhiOp.type_str`, attach it as a
-compatibility mirror first, and prove scalar integer/floating, vector,
-aggregate, and pointer alternatives while rejecting function, void, opaque,
-metadata-like/runtime text, and unbounded payload cases.
+Focused tests prove admitted integer scalar, floating scalar, vector,
+anonymous aggregate, and pointer PHI alternatives; reject function, void,
+opaque, runtime-text, and stale `type_str` cases; and preserve printer parity
+through `LirPhiOp.type_str`.
 
 ## Suggested Next
 
-Execute plan.md Step 2 for PHI only: introduce the restricted PHI boundary
-union carrier and checked construction/access APIs, keep `LirPhiOp.type_str`
-as a compatibility mirror, and add focused verifier coverage for admitted and
-wrong-kind alternatives.
+Execute plan.md Step 3 for PHI only: migrate the selected PHI verifier/printer
+consumer path to read the restricted `LirPhiBoundaryValueType` authority
+directly while keeping `LirPhiOp.type_str` as parity text.
 
 ## Watchouts
 
-Admitted matrix for the selected PHI boundary:
+PHI now has a selected carrier, but `LirPhiOp.type_str` still owns rendering
+parity. Step 3 should stay PHI-only and avoid call, select, return, Raw-BIR,
+universal value bags, generic IDs, RTTI/vtables, and deletion of
+`LirPhiOp.type_str`.
 
-- Scalar: integer and floating type refs are admitted; reuse the 841 compact
-  scalar evidence as family precedent without coupling PHI to `LirBinOp`.
-- Vector: admitted when represented as a bounded vector `LirTypeRef` already
-  accepted by `require_module_type_ref`.
-- Aggregate: admitted for structured struct/union/anonymous aggregate refs that
-  pass existing module aggregate/known-struct checks.
-- Pointer: admitted as an evidenced pointer alternative because current PHI
-  producers include pointer PHIs, including VA/source-pointer paths.
-
-Wrong-kind exclusions for Step 2:
-
-- Reject function type refs, void PHI value types, opaque/runtime-text-only
-  refs, metadata-like non-value refs, partially parsed call-signature text, raw
-  `args_str` payloads, and any universal value bag/generic ID/RTTI adapter.
-- Do not migrate call, select, or return in the PHI carrier packet.
-- Do not delete `LirPhiOp.type_str`; deletion waits for later named consumer
-  migration and Step 4.
-
-Missing evidence: none blocking for PHI Step 2. Call remains larger because
-argument/result/signature mirrors and raw compatibility parsing are intertwined;
-select and return are viable later targets but have narrower existing scalar
-authority assumptions that should not shape the first union API.
+The Step 2 wrong-kind test covers runtime-text-only refs as the feasible local
+surface for metadata-like/unbounded payload rejection. Partially parsed call
+signature text and raw `args_str` payloads remain call-boundary concerns and
+were not introduced into PHI.
 
 ## Proof
 
-Inventory proof command: `git diff --check`.
+Step 2 proof command:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'; } > test_after.log 2>&1`
 
-Suggested focused Step 2 proof command:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'; } > test_after.log 2>&1`.
+Result: passed, 1/1 focused test passing.
+
+Additional proof: `git diff --check` passed.
+
+Proof log: `test_after.log`.

@@ -9667,6 +9667,106 @@ void test_lir_binop_compact_scalar_type_authority_boundary() {
                                "void carrier must not satisfy scalar binop authority");
 }
 
+void test_lir_phi_restricted_boundary_value_type_authority() {
+  namespace lir = c4c::codegen::lir;
+
+  const auto make_module = [](lir::LirTypeRef type) {
+    lir::LirModule module;
+    lir::LirFunction function;
+    function.name = "phi_boundary_value_type_authority";
+    function.signature_text =
+        "define void @phi_boundary_value_type_authority() {";
+
+    lir::LirBlock entry;
+    entry.id = lir::LirBlockId{0};
+    entry.label = "entry";
+    entry.terminator = lir::LirBr{.target_label = "merge",
+                                  .successor = lir::LirBlockId{1}};
+
+    lir::LirBlock merge;
+    merge.id = lir::LirBlockId{1};
+    merge.label = "merge";
+    merge.insts.push_back(lir::LirPhiOp{
+        .result = lir::LirOperand("%phi"),
+        .type_str = std::move(type),
+        .incoming = {{lir::LirOperand::integer("0", 0), "entry",
+                      lir::LirBlockId{0},
+                      lir::LirSuccessorOccurrenceId::direct_branch()}},
+    });
+
+    function.blocks.push_back(std::move(entry));
+    function.blocks.push_back(std::move(merge));
+    module.functions.push_back(std::move(function));
+    return module;
+  };
+
+  const auto require_phi = [](lir::LirModule& module) -> lir::LirPhiOp& {
+    return std::get<lir::LirPhiOp>(module.functions[0].blocks[1].insts[0]);
+  };
+
+  const auto expect_valid_family = [&](lir::LirTypeRef type,
+                                       lir::LirPhiBoundaryValueKind kind,
+                                       const std::string& message) {
+    lir::LirModule module = make_module(std::move(type));
+    auto& phi = require_phi(module);
+    expect_true(phi.boundary_value_type &&
+                    phi.boundary_value_type->kind == kind &&
+                    phi.boundary_value_type->type == phi.type_str,
+                message);
+    lir::verify_module(module);
+    const std::string llvm_ir = lir::print_llvm(module);
+    expect_contains(llvm_ir, " = phi " + phi.type_str.str(),
+                    message + " should render through type_str parity text");
+  };
+
+  expect_valid_family(lir::LirTypeRef::integer(32),
+                      lir::LirPhiBoundaryValueKind::Scalar,
+                      "integer PHI should attach scalar boundary authority");
+  expect_valid_family(lir::LirTypeRef(lir::LirBuiltinType::Double),
+                      lir::LirPhiBoundaryValueKind::Scalar,
+                      "floating PHI should attach scalar boundary authority");
+  expect_valid_family(lir::LirTypeRef("<4 x i32>"),
+                      lir::LirPhiBoundaryValueKind::Vector,
+                      "vector PHI should attach vector boundary authority");
+  expect_valid_family(lir::LirTypeRef::anonymous_struct(
+                          {lir::LirTypeRef::integer(32),
+                           lir::LirTypeRef(lir::LirBuiltinType::Double)}),
+                      lir::LirPhiBoundaryValueKind::Aggregate,
+                      "aggregate PHI should attach aggregate boundary authority");
+  expect_valid_family(lir::LirTypeRef(lir::LirBuiltinType::Pointer),
+                      lir::LirPhiBoundaryValueKind::Pointer,
+                      "pointer PHI should attach pointer boundary authority");
+
+  const auto expect_wrong_family_rejected = [&](lir::LirTypeRef mirror,
+                                                lir::LirTypeRef carrier,
+                                                const std::string& message) {
+    lir::LirModule module = make_module(std::move(mirror));
+    auto& phi = require_phi(module);
+    phi.boundary_value_type = lir::LirPhiBoundaryValueType{
+        std::move(carrier), lir::LirPhiBoundaryValueKind::Scalar};
+    expect_identity_verification_rejected(module, message);
+  };
+
+  expect_wrong_family_rejected(lir::LirTypeRef("i32 (i32)", lir::LirTypeKind::Function),
+                               lir::LirTypeRef("i32 (i32)", lir::LirTypeKind::Function),
+                               "function carrier must not satisfy PHI boundary authority");
+  expect_wrong_family_rejected(lir::LirTypeRef(lir::LirBuiltinType::Void),
+                               lir::LirTypeRef(lir::LirBuiltinType::Void),
+                               "void carrier must not satisfy PHI boundary authority");
+  expect_wrong_family_rejected(lir::LirTypeRef("%opaque", lir::LirTypeKind::Opaque),
+                               lir::LirTypeRef("%opaque", lir::LirTypeKind::Opaque),
+                               "opaque carrier must not satisfy PHI boundary authority");
+  expect_wrong_family_rejected(lir::LirTypeRef::runtime_text("runtime.phi"),
+                               lir::LirTypeRef::runtime_text("runtime.phi"),
+                               "runtime text carrier must not satisfy PHI boundary authority");
+
+  lir::LirModule stale_text = make_module(lir::LirTypeRef::integer(32));
+  auto& stale_phi = require_phi(stale_text);
+  stale_phi.type_str = lir::LirTypeRef::integer(64);
+  expect_identity_verification_rejected(
+      stale_text, "stale LirPhiOp.type_str must not override PHI boundary authority");
+}
+
 }  // namespace
 
 int main() {
@@ -10225,6 +10325,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_scalar_abs_result_use_identity_boundary();
   test_selected_aggregate_producer_authority_boundary();
   test_lir_binop_compact_scalar_type_authority_boundary();
+  test_lir_phi_restricted_boundary_value_type_authority();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
   return 0;

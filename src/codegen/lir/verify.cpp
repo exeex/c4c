@@ -1185,6 +1185,21 @@ const LirCompactScalarType* compact_scalar_binop_type(const LirBinOp& op,
   return &*op.compact_scalar_type;
 }
 
+const LirPhiBoundaryValueType& phi_boundary_value_type(const LirPhiOp& op,
+                                                       std::string_view field) {
+  if (!op.boundary_value_type) {
+    fail_verify(field, "must carry a selected PHI boundary value type");
+  }
+  const auto selected =
+      LirPhiBoundaryValueType::from_type_ref(op.boundary_value_type->type);
+  if (!selected || selected->kind != op.boundary_value_type->kind ||
+      op.boundary_value_type->type != op.type_str) {
+    fail_verify(field,
+                "must mirror one selected scalar, vector, aggregate, or pointer PHI value type");
+  }
+  return *op.boundary_value_type;
+}
+
 void verify_bin_op_authority(const LirBinOp& op) {
   if (!op.result.value_id()) return;
   const std::optional<LirBinaryOpcode> opcode = op.opcode.typed();
@@ -2135,7 +2150,10 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
   }
   if (const auto* op = std::get_if<LirPhiOp>(&inst)) {
     verify_result_operand(op->result, "LirPhiOp.result");
-    require_module_type_ref(mod, op->type_str, "LirPhiOp.type_str");
+    const LirPhiBoundaryValueType& boundary_type =
+        phi_boundary_value_type(*op, "LirPhiOp.boundary_value_type");
+    require_module_type_ref(mod, boundary_type.type,
+                            "LirPhiOp.boundary_value_type");
     if (op->incoming.empty()) {
       fail_verify("LirPhiOp.incoming", "must not be empty");
     }
