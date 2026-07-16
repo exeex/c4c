@@ -1,6 +1,6 @@
 # LIR Intrinsic And Inline-Assembly Binding Evidence Runbook
 
-Status: Active
+Status: Exhausted - Pending Plan-Owner Decision
 Source Idea: ideas/open/849_lir_intrinsic_binding_evidence.md
 Activated after: ideas/closed/848_lir_global_policy_identity_evidence.md
 
@@ -72,6 +72,8 @@ directly to 734 without an accepted producer/verifier handoff.
 
 ### Step 1 - Inventory Binding Producers And Intrinsic Forms
 
+Status: Complete
+
 Goal: identify every discovered inline-assembly binding producer and intrinsic
 form relevant to the routing key.
 
@@ -87,6 +89,8 @@ Completion check:
 
 ### Step 2 - Trace Verifier And Lowerer Boundaries
 
+Status: Complete
+
 Goal: map each binding representation to verifier and lowering consumers.
 
 Actions:
@@ -100,6 +104,8 @@ Completion check:
   unproved routes.
 
 ### Step 3 - Prove Opacity And Return Relations
+
+Status: Complete
 
 Goal: define the policy boundary and downstream ownership.
 
@@ -116,6 +122,8 @@ Completion check:
 
 ### Step 4 - Validate Documentation Shape
 
+Status: Complete
+
 Goal: prove the deliverable is complete and bounded.
 
 Actions:
@@ -129,3 +137,12 @@ Completion check:
 - Required files exist with the required shape, no extra files are present in
   the directory, `git diff --check` passes, and no implementation files are
   modified.
+
+Result:
+- Created `docs/lir_intrinsic_binding_evidence/index.md`.
+- Created
+  `docs/lir_intrinsic_binding_evidence/01_intrinsic_inline_asm_binding_route.md`.
+- Recorded that structured inline-asm value bindings have verifier and selected
+  Raw-BIR routes, templates/constraints remain opaque, and no direct 734
+  receiver handoff is authorized without a later singular 796 or 846 handoff.
+- Proof passed with exact required-file listing and `git diff --check`.
