@@ -1735,8 +1735,9 @@ void test_anonymous_aggregate_layout_verifier_rejections() {
     }
   };
 
-  auto stale_layout = valid_layout;
-  stale_layout.str() = "{ double, double }";
+  auto stale_layout = lir::LirTypeRef::anonymous_struct(
+      {lir::LirTypeRef("float"), lir::LirTypeRef("float")});
+  static_cast<std::string&>(stale_layout) = "{ double, double }";
   expect_rejected(stale_layout,
                   "anonymous aggregate layout must reject a stale display mirror");
   expect_rejected(lir::LirTypeRef::anonymous_struct({}),

@@ -2167,16 +2167,23 @@ int defined_void_params(void) {
               "printer should preserve no-owner structured declaration compatibility");
 
   c4c::codegen::lir::LirModule stale_return_text = lir_module;
-  require_mutable_function(stale_return_text, "declared_pair", true)
-      .signature_return_type_ref->str() = "%struct.StaleMirrorText";
+  auto& stale_return_function =
+      require_mutable_function(stale_return_text, "declared_pair", true);
+  stale_return_function.signature_return_type_ref =
+      c4c::codegen::lir::LirTypeRef::struct_type(
+          "%struct.StaleMirrorText",
+          stale_return_function.signature_return_type_ref->struct_name_id());
   expect_verify_rejects(
       stale_return_text,
       "verifier should reject a function whose stored signature disagrees with stale return facts");
 
   c4c::codegen::lir::LirModule stale_param_text = lir_module;
-  require_mutable_function(stale_param_text, "defined_pair", false)
-      .signature_param_type_refs[0]
-      .str() = "%struct.StaleMirrorText";
+  auto& stale_param_function =
+      require_mutable_function(stale_param_text, "defined_pair", false);
+  stale_param_function.signature_param_type_refs[0] =
+      c4c::codegen::lir::LirTypeRef::struct_type(
+          "%struct.StaleMirrorText",
+          stale_param_function.signature_param_type_refs[0].struct_name_id());
   expect_verify_rejects(
       stale_param_text,
       "verifier should reject a function whose stored signature disagrees with stale parameter facts");

@@ -187,7 +187,6 @@ class LirTypeRef {
   }
 
   [[nodiscard]] const std::string& str() const { return text_; }
-  [[nodiscard]] std::string& str() { return text_; }
   // LLVM emission renders supported structural forms from their semantic facts
   // so compatibility text never becomes the source of array semantics.
   [[nodiscard]] std::string render_llvm() const {

@@ -398,14 +398,18 @@ union Slot slot_global = {.int_value = 3};
   c4c::codegen::lir::LirModule structured_identity = lir_module;
   c4c::codegen::lir::LirGlobal& identity_pair =
       require_global(structured_identity, "pair_global");
-  identity_pair.llvm_type_ref->str() = "%struct.StaleMirrorText";
+  identity_pair.llvm_type_ref =
+      c4c::codegen::lir::LirTypeRef::struct_type(
+          "%struct.StaleMirrorText", identity_pair.llvm_type_ref->struct_name_id());
   c4c::codegen::lir::verify_module(structured_identity);
 
   c4c::codegen::lir::LirModule printer_identity = lir_module;
   c4c::codegen::lir::LirGlobal& printer_pair =
       require_global(printer_identity, "pair_global");
   printer_pair.llvm_type = "%struct.StaleGlobalText";
-  printer_pair.llvm_type_ref->str() = "%struct.StaleMirrorText";
+  printer_pair.llvm_type_ref =
+      c4c::codegen::lir::LirTypeRef::struct_type(
+          "%struct.StaleMirrorText", printer_pair.llvm_type_ref->struct_name_id());
   const std::string identity_ir = c4c::codegen::lir::print_llvm(printer_identity);
   expect_true(identity_ir.find("@pair_global = global %struct.Pair ") !=
                   std::string::npos,

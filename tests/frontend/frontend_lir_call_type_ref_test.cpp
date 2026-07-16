@@ -320,11 +320,11 @@ void test_lir_type_ref_builtin_enum_authority() {
   expect_true(integer.integer_bit_width() == 32,
               "enum-built integer should retain integer width");
 
-  integer.str() = "i8";
-  expect_true(integer.builtin_type() == LirBuiltinType::I32,
-              "enum-built integer id should not be reparsed from mutable text");
+  integer = LirTypeRef("i8", LirTypeKind::Integer, 32);
+  expect_true(integer.kind() == LirTypeKind::Integer,
+              "explicit stale-display integer should retain integer kind");
   expect_true(integer.integer_bit_width() == 32,
-              "enum-built integer width should not be reparsed from mutable text");
+              "explicit stale-display integer should retain native width");
 
   const LirTypeRef pointer(LirBuiltinType::Pointer);
   expect_eq(pointer.str(), "ptr", "enum-built pointer should render as ptr");
@@ -2084,8 +2084,9 @@ loop:
               "selected local scalar alloca should remain mutable for stale type proof");
   const lir::LirValueId stale_alloca_pointer =
       stale_type_alloca->local_object_authority->pointer_definition;
-  stale_type_alloca->type_str.str() = "not-i32";
-  stale_type_alloca->local_object_authority->pointee_type.str() = "not-i32";
+  stale_type_alloca->type_str = lir::LirTypeRef("not-i32", lir::LirTypeKind::Integer, 32);
+  stale_type_alloca->local_object_authority->pointee_type =
+      lir::LirTypeRef("not-i32", lir::LirTypeKind::Integer, 32);
   for (auto& function : stale_alloca_type_display.functions) {
     for (auto& block : function.blocks) {
       for (auto& inst : block.insts) {
@@ -2128,8 +2129,9 @@ loop:
               "selected local scalar store should remain mutable for stale type proof");
   const lir::LirValueId stale_store_pointer =
       stale_type_store->local_object_authority->pointer_definition;
-  stale_type_store->type_str.str() = "not-i32";
-  stale_type_store->local_object_authority->pointee_type.str() = "not-i32";
+  stale_type_store->type_str = lir::LirTypeRef("not-i32", lir::LirTypeKind::Integer, 32);
+  stale_type_store->local_object_authority->pointee_type =
+      lir::LirTypeRef("not-i32", lir::LirTypeKind::Integer, 32);
   for (auto& function : stale_store_type_display.functions) {
     for (auto& inst : function.alloca_insts) {
       if (auto* op = std::get_if<lir::LirAllocaOp>(&inst);
@@ -2229,8 +2231,10 @@ loop:
   lir::LirGepOp* stale_text_gep = selected_local_immediate_gep(stale_array_text);
   expect_true(stale_text_gep != nullptr,
               "selected local-array GEP should remain mutable for stale text proof");
-  stale_text_gep->element_type.str() = "[99 x i8]";
-  stale_text_gep->local_object_authority->indexed_element_type->str() = "[99 x i8]";
+  stale_text_gep->element_type =
+      lir::LirTypeRef("[99 x i8]", lir::LirTypeKind::Array);
+  *stale_text_gep->local_object_authority->indexed_element_type =
+      lir::LirTypeRef("[99 x i8]", lir::LirTypeKind::Array);
   lir::verify_module(stale_array_text);
   lir::LirModule stale_index_type_display = module;
   lir::LirGepOp* stale_index_gep =
@@ -2880,7 +2884,8 @@ int read_counter_again(void) { return g_counter; }
                   selected_global_load.ptr.link_name_id() &&
                   *selected_global_load.ptr.link_name_id() == authority_id,
               "misleading load displays must not redirect native authority");
-  selected_global_load.type_str.str() = "double";
+  selected_global_load.type_str =
+      lir::LirTypeRef("double", lir::LirTypeKind::Integer, 32);
   lir::verify_module(misleading);
   const std::string stale_display_load_ir = lir::print_llvm(misleading);
   expect_contains(stale_display_load_ir,
@@ -3098,7 +3103,7 @@ void return_void_expression(void) { return return_void_helper(); }
 
   lir::LirModule stale_display_return_type = misleading;
   require_return(require_function(stale_display_return_type, "misleading_return"))
-      .type_str.str() = "double";
+      .type_str = lir::LirTypeRef("double", lir::LirTypeKind::Integer, 32);
   lir::verify_module(stale_display_return_type);
   const std::string stale_display_return_ir =
       lir::print_llvm(stale_display_return_type);
@@ -5735,8 +5740,8 @@ long long lir_scalar_cast_result_use_identity(void) {
   lir::LirModule stale_display_endpoint = misleading;
   auto [stale_cast, stale_use] = require_focused_cast(stale_display_endpoint);
   (void)stale_use;
-  stale_cast.from_type.str() = "double";
-  stale_cast.to_type.str() = "i16";
+  stale_cast.from_type = lir::LirTypeRef("double", lir::LirTypeKind::Integer, 32);
+  stale_cast.to_type = lir::LirTypeRef("i16", lir::LirTypeKind::Integer, 64);
   lir::verify_module(stale_display_endpoint);
   const std::string stale_display_endpoint_ir =
       lir::print_llvm(stale_display_endpoint);
@@ -6637,8 +6642,9 @@ int lir_vaarg_helper_result_authority_loss(int count, ...) {
                   stale_va_arg->result_authority.has_value() &&
                   stale_va_arg->result_type_authority.has_value(),
               "selected integer va_arg should retain native result authority for stale type proof");
-  stale_va_arg->type_str.str() = "not-i32";
-  stale_va_arg->result_type_authority->str() = "not-i32";
+  stale_va_arg->type_str = lir::LirTypeRef("not-i32", lir::LirTypeKind::Integer, 32);
+  *stale_va_arg->result_type_authority =
+      lir::LirTypeRef("not-i32", lir::LirTypeKind::Integer, 32);
   lir::verify_module(stale_display_type);
   const std::string stale_display_ir = lir::print_llvm(stale_display_type);
   expect_contains(stale_display_ir, " = va_arg ptr ",
@@ -6913,8 +6919,10 @@ double lir_scalar_fpext_result_use_identity(void) {
   lir::LirModule stale_display_endpoint = misleading;
   auto [stale_cast, stale_use] = require_focused_cast(stale_display_endpoint);
   (void)stale_use;
-  stale_cast.from_type.str() = "double";
-  stale_cast.to_type.str() = "float";
+  stale_cast.from_type = lir::LirTypeRef(lir::LirBuiltinType::Float);
+  stale_cast.to_type = lir::LirTypeRef(lir::LirBuiltinType::Double);
+  static_cast<std::string&>(stale_cast.from_type) = "double";
+  static_cast<std::string&>(stale_cast.to_type) = "float";
   lir::verify_module(stale_display_endpoint);
   const std::string stale_display_endpoint_ir =
       lir::print_llvm(stale_display_endpoint);
@@ -7689,7 +7697,8 @@ int lir_scalar_compare_result_use_identity(void) {
       "verifier should reject floating type on authoritative integer compare");
 
   lir::LirModule stale_display_type = lowered;
-  require_focused_compare(stale_display_type).first.type_str.str() = "double";
+  require_focused_compare(stale_display_type).first.type_str =
+      lir::LirTypeRef("double", lir::LirTypeKind::Integer, 32);
   lir::verify_module(stale_display_type);
   const std::string stale_display_ir = lir::print_llvm(stale_display_type);
   expect_true(stale_display_ir.find(" = icmp slt i32 ") != std::string::npos,
@@ -7835,7 +7844,10 @@ int lir_scalar_floating_compare_result_use_identity(void) {
       "verifier should reject integer type on floating compare mode");
 
   lir::LirModule stale_display_type = lowered;
-  require_focused_compare(stale_display_type).first.type_str.str() = "float";
+  require_focused_compare(stale_display_type).first.type_str =
+      lir::LirTypeRef(lir::LirBuiltinType::Double);
+  static_cast<std::string&>(
+      require_focused_compare(stale_display_type).first.type_str) = "float";
   lir::verify_module(stale_display_type);
   const std::string stale_display_ir = lir::print_llvm(stale_display_type);
   expect_true(stale_display_ir.find(" = fcmp olt double ") !=
@@ -7990,7 +8002,8 @@ int lir_scalar_select_result_use_identity(void) {
       "verifier should reject noninteger type on authoritative scalar select");
 
   lir::LirModule stale_display_type = lowered;
-  require_focused_select(stale_display_type).first.type_str.str() = "double";
+  require_focused_select(stale_display_type).first.type_str =
+      lir::LirTypeRef("double", lir::LirTypeKind::Integer, 32);
   lir::verify_module(stale_display_type);
   const std::string stale_display_ir = lir::print_llvm(stale_display_type);
   expect_true(stale_display_ir.find(" = select i1 ") != std::string::npos &&
@@ -9567,7 +9580,8 @@ long long lir_scalar_llabs_immediate_authority(void) {
       "verifier should reject noninteger type on authoritative scalar abs");
 
   lir::LirModule stale_display_type = lowered;
-  require_focused_abs(stale_display_type).first.int_type.str() = "double";
+  require_focused_abs(stale_display_type).first.int_type =
+      lir::LirTypeRef("double", lir::LirTypeKind::Integer, 32);
   lir::verify_module(stale_display_type);
   const std::string stale_display_ir = lir::print_llvm(stale_display_type);
   expect_true(stale_display_ir.find("@llvm.abs.i32(i32 ") != std::string::npos,
@@ -9650,7 +9664,8 @@ float extract_real(int value) { return __real__ complex_source(value); }
   lir::LirModule aggregate_display_is_not_authority = direct_complex;
   lir::LirExtractValueOp& stale_aggregate_display =
       selected_direct_extract(aggregate_display_is_not_authority);
-  stale_aggregate_display.agg_type.str() = "{ i777, i777 }";
+  static_cast<std::string&>(stale_aggregate_display.agg_type) =
+      "{ i777, i777 }";
   lir::verify_module(aggregate_display_is_not_authority);
   const std::string stale_aggregate_ir =
       lir::print_llvm(aggregate_display_is_not_authority);
@@ -9768,8 +9783,9 @@ float extract_sum_real(__complex__ float lhs, __complex__ float rhs) {
   lir::LirModule stale_terminal_type_display = direct_complex_binary;
   lir::LirInsertValueOp& stale_type_insert =
       selected_terminal_insert(stale_terminal_type_display);
-  stale_type_insert.agg_type.str() = "{ i777, i777 }";
-  stale_type_insert.elem_type.str() = "double";
+  static_cast<std::string&>(stale_type_insert.agg_type) =
+      "{ i777, i777 }";
+  static_cast<std::string&>(stale_type_insert.elem_type) = "double";
   lir::verify_module(stale_terminal_type_display);
   const std::string stale_terminal_type_ir =
       lir::print_llvm(stale_terminal_type_display);
@@ -9918,8 +9934,11 @@ void test_lir_binop_compact_scalar_type_authority_boundary() {
               "floating LirBinOp should render through compact scalar parity text");
   floating_op.type_str = lir::LirTypeRef(lir::LirBuiltinType::Double);
   floating_op.compact_scalar_type->type = lir::LirTypeRef(lir::LirBuiltinType::Double);
-  floating_op.type_str.str() = "float";
-  floating_op.compact_scalar_type->type.str() = "float";
+  floating_op.type_str = lir::LirTypeRef(lir::LirBuiltinType::Double);
+  floating_op.compact_scalar_type->type =
+      lir::LirTypeRef(lir::LirBuiltinType::Double);
+  static_cast<std::string&>(floating_op.type_str) = "float";
+  static_cast<std::string&>(floating_op.compact_scalar_type->type) = "float";
   const std::string stale_floating_carrier_ir = lir::print_llvm(floating);
   expect_true(stale_floating_carrier_ir.find("fadd double 1, 2") !=
                   std::string::npos,
@@ -10062,8 +10081,11 @@ void test_lir_phi_restricted_boundary_value_type_authority() {
                   "floating PHI should render through boundary authority");
   floating_phi.type_str = lir::LirTypeRef(lir::LirBuiltinType::Double);
   floating_phi.boundary_value_type->type = lir::LirTypeRef(lir::LirBuiltinType::Double);
-  floating_phi.type_str.str() = "float";
-  floating_phi.boundary_value_type->type.str() = "float";
+  floating_phi.type_str = lir::LirTypeRef(lir::LirBuiltinType::Double);
+  floating_phi.boundary_value_type->type =
+      lir::LirTypeRef(lir::LirBuiltinType::Double);
+  static_cast<std::string&>(floating_phi.type_str) = "float";
+  static_cast<std::string&>(floating_phi.boundary_value_type->type) = "float";
   const std::string stale_floating_carrier_ir = lir::print_llvm(floating);
   expect_contains(stale_floating_carrier_ir, " = phi double",
                   "floating PHI boundary render should use native builtin authority");
@@ -10187,8 +10209,9 @@ void test_insert_element_required_native_vector_printer_authority() {
 
   auto& insert = std::get<lir::LirInsertElementOp>(
       module.functions[0].blocks[0].insts[0]);
-  insert.vec_type.str() = "<99 x double>";
-  insert.elem_type.str() = "double";
+  insert.vec_type = lir::LirTypeRef("<99 x double>", lir::LirTypeKind::Vector);
+  insert.elem_type = lir::LirTypeRef::integer(32);
+  static_cast<std::string&>(insert.elem_type) = "double";
   lir::verify_module(module);
   const std::string stale_ir = lir::print_llvm(module);
   expect_contains(stale_ir, "insertelement <4 x i32> poison, i32 7, 0",
@@ -10255,7 +10278,7 @@ void test_extract_element_native_vector_printer_authority() {
 
   auto& extract = std::get<lir::LirExtractElementOp>(
       module.functions[0].blocks[0].insts[0]);
-  extract.vec_type.str() = "<99 x double>";
+  extract.vec_type = lir::LirTypeRef("<99 x double>", lir::LirTypeKind::Vector);
   lir::verify_module(module);
   const std::string stale_ir = lir::print_llvm(module);
   expect_contains(stale_ir, "extractelement <4 x i32> poison, i32 2",
@@ -10344,8 +10367,8 @@ void test_shuffle_vector_required_native_vector_printer_authority() {
 
   auto& shuffle = std::get<lir::LirShuffleVectorOp>(
       module.functions[0].blocks[0].insts[1]);
-  shuffle.vec_type.str() = "<99 x double>";
-  shuffle.mask_type.str() = "<99 x i64>";
+  shuffle.vec_type = lir::LirTypeRef("<99 x double>", lir::LirTypeKind::Vector);
+  shuffle.mask_type = lir::LirTypeRef("<99 x i64>", lir::LirTypeKind::Vector);
   lir::verify_module(module);
   const std::string stale_ir = lir::print_llvm(module);
   expect_contains(stale_ir,

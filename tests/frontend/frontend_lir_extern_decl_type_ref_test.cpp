@@ -121,7 +121,9 @@ void expect_type_ref_structured_equality_uses_name_id(
   c4c::codegen::lir::LirTypeRef other_bytes =
       c4c::codegen::lir::LirTypeRef::array(
           c4c::codegen::lir::LirTypeRef::integer(8), 4);
-  other_bytes.str() = "stale caller text";
+  other_bytes = c4c::codegen::lir::LirTypeRef::array(
+      c4c::codegen::lir::LirTypeRef::integer(8), 4);
+  static_cast<std::string&>(other_bytes) = "stale caller text";
   expect_true(bytes.kind() == c4c::codegen::lir::LirTypeKind::Array &&
                   bytes.has_array_shape(),
               "array factory should publish structured array semantics");
@@ -133,7 +135,9 @@ void expect_type_ref_structured_equality_uses_name_id(
   expect_true(bytes == other_bytes,
               "structured array equality should use element and length, not stale text mirrors");
 
-  other_bytes.str() = "[99 x i64]";
+  other_bytes = c4c::codegen::lir::LirTypeRef::array(
+      c4c::codegen::lir::LirTypeRef::integer(8), 4);
+  static_cast<std::string&>(other_bytes) = "[99 x i64]";
   expect_eq(other_bytes.render_llvm(), "[4 x i8]",
             "structured array rendering should use element and length, not a stale text mirror");
 
@@ -230,15 +234,19 @@ int main() {
   expect_extern_byval_parameter_printer_uses_signature_store();
 
   c4c::codegen::lir::LirModule structured_identity = module;
-  structured_identity.extern_decls.front().return_type.str() =
-      "%struct.StaleMirrorText";
+  const c4c::StructNameId extern_pair_id =
+      structured_identity.extern_decls.front().return_type.struct_name_id();
+  structured_identity.extern_decls.front().return_type =
+      c4c::codegen::lir::LirTypeRef::struct_type(
+          "%struct.StaleMirrorText", extern_pair_id);
   c4c::codegen::lir::verify_module(structured_identity);
 
   c4c::codegen::lir::LirModule printer_identity = module;
   printer_identity.extern_decls.front().return_type_str =
       "%struct.StaleReturnText";
-  printer_identity.extern_decls.front().return_type.str() =
-      "%struct.StaleMirrorText";
+  printer_identity.extern_decls.front().return_type =
+      c4c::codegen::lir::LirTypeRef::struct_type(
+          "%struct.StaleMirrorText", extern_pair_id);
   const std::string identity_ir =
       c4c::codegen::lir::print_llvm(printer_identity);
   expect_true(identity_ir.find("declare %struct.Pair @extern_pair(...)") !=

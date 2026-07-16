@@ -1,55 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/847_lir_universal_model_string_escape_hatch_deletion.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Audit deletion readiness and remaining target inventory
+Current Step ID: 2
+Current Step Title: Delete mutable LIR type text escape hatches in small packets
 
 # Current Packet
 
 ## Just Finished
 
-Completed the audit-only inventory for `plan.md` Step 1. The first safe
-deletion packet is narrow: remove the mutable non-const
-`LirTypeRef::str()` accessor from `src/codegen/lir/types.hpp`. Inspection found
-no selected semantic caller mutating a `LirTypeRef` through `.str()`; the only
-`.str() =` assignments in `src/codegen/lir/` are `LirOperand` mutations in
-call-argument normalization/lowering.
+Completed the first `plan.md` Step 2 deletion packet by removing the mutable
+non-const `LirTypeRef::str()` accessor. Updated the stale-display tests that
+previously assigned through `LirTypeRef::str()` to use fresh typed
+`LirTypeRef` assignments where possible, or the still-existing mutable string
+conversion where a test must preserve private native facts while corrupting
+display text.
 
 ## Suggested Next
 
-Execute `plan.md` Step 2 by deleting only
-`[[nodiscard]] std::string& LirTypeRef::str()` from
-`src/codegen/lir/types.hpp`, then run a fresh build plus the focused LIR proof
-selected by the supervisor. Do not delete const `str()`, constructors,
-`runtime_text`, implicit conversions, or equality operators in the same packet.
+Continue the Step 2 inventory with the next narrow mutable type-text escape
+hatch candidate, likely the remaining mutable `operator std::string&()`, after
+classifying all current callsites and choosing a focused proof.
 
 ## Watchouts
 
-- `LirTypeRef::runtime_text` still has active callers in HIR lowering,
-  call/vararg lowering, lvalue handling, parsed typed-call argument/return
-  helpers, extern declaration return storage, inline assembly, and rendered
-  aggregate/field/signature boundaries; do not delete it as the first packet.
-- Deprecated factories
-  `parsed_typed_call_argument_text`, `parsed_typed_call_return_text`,
-  `stored_extern_declaration_return_text`, `hir_inline_asm_type_text`, and
-  `hir_rendered_aggregate_field_signature_type_text` still have direct callers
-  and need separate owner/gate classification before deletion.
-- `LirTypeRef` implicit string conversions and textual equality/classification
-  remain broad compatibility surfaces with many selected and unselected
-  callsites; do not combine them with the mutable accessor deletion.
-- Switch selector surfaces are explicitly out of scope for 847 execution:
-  `LirSwitch.selector_type_ref.str()` in printer/verifier and related selector
-  authority are owned by ideas 821/822, with closed 846 also calling them out as
-  outside its handoff.
-- Residual non-type string authority remains owned by ideas 812/813, not this
-  first deletion packet.
+- Do not restore a mutable `LirTypeRef::str()` accessor or add a test-only
+  backdoor.
+- Do not delete const `str()`, `runtime_text`, factories, implicit conversions,
+  or equality/classification helpers in the same packet.
+- Remaining uses of `static_cast<std::string&>(...)` on `LirTypeRef` are the
+  intentionally exposed next mutable escape hatch, not a replacement for
+  `str()`.
+- Remaining `.str() =` lines in the unowned
+  `tests/frontend/frontend_lir_call_type_ref_test.cpp` are `LirOperand`
+  presentation mutations, not `LirTypeRef` mutations.
 
 ## Proof
 
-Audit/inspection only; no build required because only `todo.md` changed. Proof
-commands run:
-`rg -n "LirTypeRef|runtime_text|\\.str\\(|str\\(\\)|operator std::string|operator string|operator==|classif|adapter|factory|from_.*string|to_.*string" src/codegen/lir`;
-`rg -n "parsed_typed_call_argument_text|parsed_typed_call_return_text|stored_extern_declaration_return_text|hir_inline_asm_type_text|hir_rendered_aggregate_field_signature_type_text|runtime_text\\(" src/codegen/lir`;
-`rg -n "[A-Za-z0-9_>\\)\\]]+\\.str\\(\\)\\s*=" src/codegen/lir`;
-`rg -n "selector_type|LirSwitch|switch selector|switch" ideas/open ideas/closed`.
-No `test_after.log` was written for this audit-only packet.
+Proof run:
+`cmake --build build` passed.
+`ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure >
+test_after.log 2>&1` passed.
+Affected-test subset passed:
+`ctest --test-dir build -R
+'^(frontend_lir_extern_decl_type_ref|frontend_lir_global_type_ref|frontend_lir_function_signature_type_ref|backend_lir_to_bir_interface)$'
+--output-on-failure`.
+`git diff --check` passed.
+Regression guard passed:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+--before test_before.log --after test_after.log --allow-non-decreasing-passed`.
