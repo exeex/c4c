@@ -1981,7 +1981,7 @@ static void collect_inst_refs(const LirInst& inst, LirGlobalRefs& refs) {
         if (!idx.is_authoritative()) S(idx.presentation());
       }
     } else if constexpr (std::is_same_v<T, LirCastOp>) {
-      S(op.operand);
+      collect_operand_ref(op.operand, refs);
     } else if constexpr (std::is_same_v<T, LirBinOp>) {
       S(op.lhs); S(op.rhs);
     } else if constexpr (std::is_same_v<T, LirCmpOp>) {
