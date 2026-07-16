@@ -3,25 +3,30 @@
 Status: Active
 Source Idea Path: ideas/open/839_lir_nominal_function_signature_call_composition.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Migrate declarations to signature refs
+Current Step ID: 3
+Current Step Title: Migrate call composition to signature refs
 
 ## Just Finished
 
-- Step 2 definition-printer slice completed: `lir_printer` now renders
-  declarations and definitions with `LirFunctionSignatureRef` store facts for
-  return type, return extension ABI, fixed params, variadic state, and void-list
-  state. Definition rendering now takes parameter names from structured
-  signature params and preserves retained header suffix attributes while
-  ignoring stale `signature_text` return/parameter spelling. Nearby coverage
-  now asserts stale definition `signature_text` cannot control printed
-  signature types once a store ref exists.
+- Step 2 is complete enough to advance: declarations and definitions now carry
+  valid `LirFunctionSignatureRef` store refs; verifier checks compare stored
+  return type, return extension ABI, fixed params, variadic state, void-list
+  state, and byval facts against structured declaration/definition mirrors;
+  printer rendering for declarations and definitions is store-backed and ignores
+  stale `signature_text` spelling once a store ref exists. Nearby coverage
+  includes zero-parameter/explicit-void, fixed, variadic, aggregate
+  return/parameter, byval, stale structured mirror rejection, stale
+  `signature_text` non-authority, and missing/mismatched aggregate name-id
+  rejection. Recent accepted proof is recorded below.
 
 ## Suggested Next
 
-- Continue Step 2 with the next bounded declaration/definition producer or
-  remaining consumer migration through `LirFunctionSignatureRef`; do not move
-  into call composition yet.
+- Begin Step 3 with the smallest bounded direct-call slice: identify supported
+  direct-call construction paths that still derive semantic call signatures
+  from parsed call text or `args_str`, route one fixed-signature call path
+  through `LirFunctionSignatureRef`, and add nearby verifier/lowering coverage
+  proving the call composes a legal store ref without claiming 829/830 argument
+  value identity.
 
 ## Watchouts
 
