@@ -158,49 +158,6 @@ std::optional<std::string> type_ref_mismatch_detail(const LirTypeRef& type) {
       return "anonymous aggregate layout display mirror disagrees with native fields";
     }
   }
-  const auto classified_kind = type.empty() ? LirTypeKind::RawText
-                                            : LirTypeRef(type.str()).kind();
-  if (type.kind() != classified_kind) {
-    if (type.has_struct_name_id() && type.kind() == LirTypeKind::Struct) {
-      return std::nullopt;
-    }
-    std::ostringstream detail;
-    detail << "typed kind disagrees with text '" << type.str() << "'";
-    return detail.str();
-  }
-
-  if (type.kind() == LirTypeKind::Integer) {
-    const auto typed_width = type.integer_bit_width();
-    const auto text_width = LirTypeRef(type.str()).integer_bit_width();
-    if (typed_width != text_width) {
-      std::ostringstream detail;
-      detail << "typed integer width ";
-      if (typed_width.has_value()) {
-        detail << *typed_width;
-      } else {
-        detail << "<missing>";
-      }
-      detail << " disagrees with text '" << type.str() << "'";
-      return detail.str();
-    }
-  }
-
-  if (type.kind() == LirTypeKind::VrmRegister) {
-    const auto typed_width = type.vrm_width();
-    const auto text_width = LirTypeRef(type.str()).vrm_width();
-    if (typed_width != text_width) {
-      std::ostringstream detail;
-      detail << "typed VRM width ";
-      if (typed_width.has_value()) {
-        detail << *typed_width;
-      } else {
-        detail << "<missing>";
-      }
-      detail << " disagrees with text '" << type.str() << "'";
-      return detail.str();
-    }
-  }
-
   return std::nullopt;
 }
 

@@ -8,28 +8,19 @@ Current Step Title: Delete semantic string escape hatches
 
 ## Just Finished
 
-Completed Step 2 packet to delete the remaining named compatibility helper
-family `direct_owned_aggregate_type_text` from
-`src/codegen/lir/hir_to_lir/hir_to_lir.cpp`. The signature return and parameter
-call sites now pass their rendered signature text directly through the existing
-`lir_signature_type_ref(...)` native aggregate type-ref construction path.
+Completed Step 3 packet to delete verifier-side semantic text reparsing in
+`src/codegen/lir/verify.cpp`. `type_ref_mismatch_detail(...)` no longer rebuilds
+`LirTypeRef` from `type.str()` to rederive kind, integer width, or VRM width;
+the verifier now leaves those facts to the native `LirTypeRef` fields while
+preserving the anonymous aggregate layout display mirror check.
 
 ## Suggested Next
 
-Step 2 is exhausted for current evidence: no further obvious bounded
-Step 2-only named `LirTypeRef` compatibility helper deletion remains after the
-accepted helper-deletion packets through commit `4ff1f0dc4`.
-
-Start Step 3 with a narrow verifier-side semantic string authority packet in
-`src/codegen/lir/verify.cpp`: remove the textual reparsing authority in
-`type_ref_mismatch_detail(...)` where `LirTypeRef(type.str()).kind()`,
-`LirTypeRef(type.str()).integer_bit_width()`, and
-`LirTypeRef(type.str()).vrm_width()` rederive semantic facts from rendered text.
-Replace those checks with typed/native `LirTypeRef` facts or delete them where
-the typed facts are already authoritative. Keep signature-text compatibility
-parsing, byval ABI fragment checks, and aggregate signature mirror validation
-out of this first packet unless the compile/build proof forces a directly
-related local adjustment.
+Continue Step 3 with a narrow verifier-side packet for the next semantic
+textual equality/classification authority site, if supervisor diagnosis selects
+one. Keep signature-text compatibility parsing, byval ABI fragment checks, and
+aggregate signature mirror validation out of that packet unless the selected
+site directly requires them.
 
 ## Watchouts
 
@@ -47,9 +38,9 @@ related local adjustment.
   the same packet.
 - Step 3 owns verifier-side textual reparsing and textual
   equality/classification authority. Do not mix it with Step 4 adapter removal.
-- `src/codegen/lir/verify.cpp` still has semantic text reparsing in
-  `type_ref_mismatch_detail(...)` at the `LirTypeRef(type.str())` checks; that
-  is the selected next packet.
+- `src/codegen/lir/verify.cpp` no longer has the selected
+  `type_ref_mismatch_detail(...)` reparses from `LirTypeRef(type.str())` for
+  kind, integer width, or VRM width.
 - `function_signature_line(...)` parsing of `signature_text`,
   `aggregate_signature_param_mirror_matches_type(...)` byval fragment checks,
   and direct aggregate signature mirror checks are compatibility/output
@@ -96,5 +87,5 @@ Proof run passed:
 2>&1`.
 `test_after.log` contains the focused CTest subset output with 1/1 test
 passing. The clean-search done condition also passed:
-`rg -n "direct_owned_aggregate_type_text" src tests/frontend tests/backend`.
+`rg -n "LirTypeRef\(type\.str\(\)\)\.(kind|integer_bit_width|vrm_width)" src/codegen/lir/verify.cpp`.
 The supervisor-selected proof was sufficient for this packet.
