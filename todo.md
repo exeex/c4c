@@ -8,24 +8,23 @@ Current Step Title: Preserve recursive aggregate facts and all aggregate forms
 
 ## Just Finished
 
-- Step 2 migrated the bounded `lir_owned_type_spec` function-signature
-  occurrence producer to consume populated HIR `QualType::aggregate_ref`
-  through the LIR module aggregate store relation. Type declaration lowering now
-  registers the HIR definition's existing canonical ref when present, so
-  ordinary aggregate return/parameter occurrences resolve through the same
-  store entry instead of issuing a fresh definition-side ref. The legacy
-  no-owner compatibility path remains limited to occurrences without canonical
-  carriers, while populated refs fail closed on missing store entries,
-  incoherent union/struct kind, malformed LIR names, or corrupted retained HIR
-  owner identity.
+- Step 2 added focused fail-closed coverage for the migrated
+  `lir_owned_type_spec` function-signature occurrence producer. Ordinary
+  aggregate return and parameter occurrences with populated but corrupted HIR
+  `QualType::aggregate_ref` facts now prove rejection before any owner-key,
+  tag, or rendered-text compatibility can repair them: stale module-owned refs,
+  foreign/wrong-module refs, and parameter-side stale refs all fail with the
+  registered-ref boundary. Production code was unchanged because the current
+  store lookup already enforces the boundary.
 
 ## Suggested Next
 
-- Continue Step 2 with one bounded downstream consumer/proof packet that checks
-  the next function-signature aggregate consumer still reads the canonical LIR
-  aggregate store facts and does not fall back to tag/text/owner-key
-  reconstruction; keep verifier/printer/backend migrations out unless the
-  selected consumer strictly requires them.
+- Treat Step 2 as ready for supervisor acceptance and move to Step 3 activation
+  if no additional Step 2 acceptance gap is identified. The next coherent
+  packet is the first bounded consumer migration/proof under Step 3, selected
+  from declaration, field, call, verifier, printer, or receiver consumers that
+  can read canonical LIR aggregate store facts without tag/text/owner-key
+  reconstruction.
 
 ## Watchouts
 
@@ -33,7 +32,10 @@ Current Step Title: Preserve recursive aggregate facts and all aggregate forms
   for fixtures without canonical carriers. Do not expand that into a
   reconstruction path. Populated refs must resolve through
   `LirModule::find_aggregate_ref` / `find_aggregate`, and complete but
-  unmatched legacy owner metadata must continue to fail closed.
+  unmatched legacy owner metadata must continue to fail closed. The new
+  corrupted-ref tests intentionally keep valid rendered/tag metadata available
+  so the rejection proves the populated-ref path does not fall through to the
+  compatibility branch.
 - Do not widen into unrelated consumer, verifier/printer, backend, 836, or 831
   work.
 

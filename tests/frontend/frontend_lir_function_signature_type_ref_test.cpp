@@ -314,6 +314,75 @@ void owned_param(struct StaleOwnedCompat input);
   }
 }
 
+void expect_lir_lower_rejects_registered_hir_ref(
+    c4c::hir::Module hir_module,
+    std::string_view expected_diagnostic,
+    const std::string& msg) {
+  try {
+    (void)c4c::codegen::lir::lower(hir_module);
+    fail(msg + ": expected LIR lowering to reject fixture");
+  } catch (const std::runtime_error& err) {
+    const std::string actual = err.what();
+    if (actual.find(expected_diagnostic) == std::string::npos) {
+      fail(msg + "\nExpected diagnostic fragment: " +
+           std::string(expected_diagnostic) + "\nActual: " + actual);
+    }
+  }
+}
+
+void test_owned_type_spec_rejects_corrupted_populated_hir_refs() {
+  c4c::hir::Module valid_module = lower_hir_module(R"c(
+struct CanonicalSigRef {
+  int value;
+};
+
+struct CanonicalSigRef corrupt_return(struct CanonicalSigRef input);
+void corrupt_param(struct CanonicalSigRef input);
+)c");
+
+  const auto def_it = valid_module.struct_defs.find("CanonicalSigRef");
+  expect_true(def_it != valid_module.struct_defs.end(),
+              "fixture should contain the aggregate definition");
+  expect_true(def_it->second.aggregate_ref.has_value() &&
+                  valid_module.owns_aggregate_ref(*def_it->second.aggregate_ref),
+              "fixture aggregate definition should carry an owned canonical ref");
+
+  c4c::hir::Function& return_fn =
+      require_hir_function(valid_module, "corrupt_return", true);
+  c4c::hir::Function& param_fn =
+      require_hir_function(valid_module, "corrupt_param", true);
+  expect_true(return_fn.return_type.aggregate_ref == def_it->second.aggregate_ref &&
+                  return_fn.params[0].type.aggregate_ref == def_it->second.aggregate_ref &&
+                  param_fn.params[0].type.aggregate_ref == def_it->second.aggregate_ref,
+              "fixture function signatures should start from populated canonical refs");
+
+  c4c::hir::Module stale_return_ref = valid_module;
+  require_hir_function(stale_return_ref, "corrupt_return", true)
+      .return_type.aggregate_ref = stale_return_ref.issue_aggregate_ref();
+  expect_lir_lower_rejects_registered_hir_ref(
+      std::move(stale_return_ref),
+      "LIR-owned aggregate function type requires a registered HIR aggregate ref",
+      "return occurrence with an unregistered but module-owned HIR ref must not recover by rendered text");
+
+  c4c::hir::Module wrong_module_return_ref = valid_module;
+  c4c::hir::Module foreign_module;
+  require_hir_function(wrong_module_return_ref, "corrupt_return", true)
+      .return_type.aggregate_ref = foreign_module.issue_aggregate_ref();
+  expect_lir_lower_rejects_registered_hir_ref(
+      std::move(wrong_module_return_ref),
+      "LIR-owned aggregate function type requires a registered HIR aggregate ref",
+      "return occurrence with a foreign HIR ref must not recover by owner key or tag");
+
+  c4c::hir::Module stale_param_ref = valid_module;
+  require_hir_function(stale_param_ref, "corrupt_param", true)
+      .params[0]
+      .type.aggregate_ref = stale_param_ref.issue_aggregate_ref();
+  expect_lir_lower_rejects_registered_hir_ref(
+      std::move(stale_param_ref),
+      "LIR-owned aggregate function type requires a registered HIR aggregate ref",
+      "parameter occurrence with an unregistered HIR ref must not recover by rendered text");
+}
+
 void test_signature_type_ref_preserves_no_owner_compatibility_name_id() {
   c4c::hir::Module hir_module = lower_hir_module(R"c(
 struct StaleNoOwnerCompat {
@@ -793,6 +862,7 @@ double scalar_unary_fneg_lhs(double x) { return -x; }
 
 int main() {
   test_owned_type_spec_rejects_stale_rendered_compatibility();
+  test_owned_type_spec_rejects_corrupted_populated_hir_refs();
   test_signature_type_ref_preserves_no_owner_compatibility_name_id();
   test_vrm_signature_type_refs_preserve_carrier_identity();
   test_vrm_call_boundaries_reject_non_expanded_carriers();
