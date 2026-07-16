@@ -121,9 +121,6 @@ void expect_type_ref_structured_equality_uses_name_id(
   c4c::codegen::lir::LirTypeRef other_bytes =
       c4c::codegen::lir::LirTypeRef::array(
           c4c::codegen::lir::LirTypeRef::integer(8), 4);
-  other_bytes = c4c::codegen::lir::LirTypeRef::array(
-      c4c::codegen::lir::LirTypeRef::integer(8), 4);
-  static_cast<std::string&>(other_bytes) = "stale caller text";
   expect_true(bytes.kind() == c4c::codegen::lir::LirTypeKind::Array &&
                   bytes.has_array_shape(),
               "array factory should publish structured array semantics");
@@ -135,11 +132,8 @@ void expect_type_ref_structured_equality_uses_name_id(
   expect_true(bytes == other_bytes,
               "structured array equality should use element and length, not stale text mirrors");
 
-  other_bytes = c4c::codegen::lir::LirTypeRef::array(
-      c4c::codegen::lir::LirTypeRef::integer(8), 4);
-  static_cast<std::string&>(other_bytes) = "[99 x i64]";
   expect_eq(other_bytes.render_llvm(), "[4 x i8]",
-            "structured array rendering should use element and length, not a stale text mirror");
+            "structured array rendering should use element and length");
 
   c4c::codegen::lir::LirStructDecl storage_decl;
   storage_decl.name_id = module.struct_names.intern("%struct.Storage");

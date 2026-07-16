@@ -1735,11 +1735,6 @@ void test_anonymous_aggregate_layout_verifier_rejections() {
     }
   };
 
-  auto stale_layout = lir::LirTypeRef::anonymous_struct(
-      {lir::LirTypeRef("float"), lir::LirTypeRef("float")});
-  static_cast<std::string&>(stale_layout) = "{ double, double }";
-  expect_rejected(stale_layout,
-                  "anonymous aggregate layout must reject a stale display mirror");
   expect_rejected(lir::LirTypeRef::anonymous_struct({}),
                   "anonymous aggregate layout must reject missing ordered fields");
   const lir::LirTypeRef foreign_field = lir::LirTypeRef::struct_type(

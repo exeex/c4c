@@ -6921,8 +6921,6 @@ double lir_scalar_fpext_result_use_identity(void) {
   (void)stale_use;
   stale_cast.from_type = lir::LirTypeRef(lir::LirBuiltinType::Float);
   stale_cast.to_type = lir::LirTypeRef(lir::LirBuiltinType::Double);
-  static_cast<std::string&>(stale_cast.from_type) = "double";
-  static_cast<std::string&>(stale_cast.to_type) = "float";
   lir::verify_module(stale_display_endpoint);
   const std::string stale_display_endpoint_ir =
       lir::print_llvm(stale_display_endpoint);
@@ -7846,8 +7844,6 @@ int lir_scalar_floating_compare_result_use_identity(void) {
   lir::LirModule stale_display_type = lowered;
   require_focused_compare(stale_display_type).first.type_str =
       lir::LirTypeRef(lir::LirBuiltinType::Double);
-  static_cast<std::string&>(
-      require_focused_compare(stale_display_type).first.type_str) = "float";
   lir::verify_module(stale_display_type);
   const std::string stale_display_ir = lir::print_llvm(stale_display_type);
   expect_true(stale_display_ir.find(" = fcmp olt double ") !=
@@ -9664,8 +9660,6 @@ float extract_real(int value) { return __real__ complex_source(value); }
   lir::LirModule aggregate_display_is_not_authority = direct_complex;
   lir::LirExtractValueOp& stale_aggregate_display =
       selected_direct_extract(aggregate_display_is_not_authority);
-  static_cast<std::string&>(stale_aggregate_display.agg_type) =
-      "{ i777, i777 }";
   lir::verify_module(aggregate_display_is_not_authority);
   const std::string stale_aggregate_ir =
       lir::print_llvm(aggregate_display_is_not_authority);
@@ -9783,9 +9777,6 @@ float extract_sum_real(__complex__ float lhs, __complex__ float rhs) {
   lir::LirModule stale_terminal_type_display = direct_complex_binary;
   lir::LirInsertValueOp& stale_type_insert =
       selected_terminal_insert(stale_terminal_type_display);
-  static_cast<std::string&>(stale_type_insert.agg_type) =
-      "{ i777, i777 }";
-  static_cast<std::string&>(stale_type_insert.elem_type) = "double";
   lir::verify_module(stale_terminal_type_display);
   const std::string stale_terminal_type_ir =
       lir::print_llvm(stale_terminal_type_display);
@@ -9937,8 +9928,6 @@ void test_lir_binop_compact_scalar_type_authority_boundary() {
   floating_op.type_str = lir::LirTypeRef(lir::LirBuiltinType::Double);
   floating_op.compact_scalar_type->type =
       lir::LirTypeRef(lir::LirBuiltinType::Double);
-  static_cast<std::string&>(floating_op.type_str) = "float";
-  static_cast<std::string&>(floating_op.compact_scalar_type->type) = "float";
   const std::string stale_floating_carrier_ir = lir::print_llvm(floating);
   expect_true(stale_floating_carrier_ir.find("fadd double 1, 2") !=
                   std::string::npos,
@@ -10084,8 +10073,6 @@ void test_lir_phi_restricted_boundary_value_type_authority() {
   floating_phi.type_str = lir::LirTypeRef(lir::LirBuiltinType::Double);
   floating_phi.boundary_value_type->type =
       lir::LirTypeRef(lir::LirBuiltinType::Double);
-  static_cast<std::string&>(floating_phi.type_str) = "float";
-  static_cast<std::string&>(floating_phi.boundary_value_type->type) = "float";
   const std::string stale_floating_carrier_ir = lir::print_llvm(floating);
   expect_contains(stale_floating_carrier_ir, " = phi double",
                   "floating PHI boundary render should use native builtin authority");
@@ -10211,7 +10198,6 @@ void test_insert_element_required_native_vector_printer_authority() {
       module.functions[0].blocks[0].insts[0]);
   insert.vec_type = lir::LirTypeRef("<99 x double>", lir::LirTypeKind::Vector);
   insert.elem_type = lir::LirTypeRef::integer(32);
-  static_cast<std::string&>(insert.elem_type) = "double";
   lir::verify_module(module);
   const std::string stale_ir = lir::print_llvm(module);
   expect_contains(stale_ir, "insertelement <4 x i32> poison, i32 7, 0",

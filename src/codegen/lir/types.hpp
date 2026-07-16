@@ -245,7 +245,6 @@ class LirTypeRef {
   }
   [[nodiscard]] bool empty() const { return text_.empty(); }
 
-  operator std::string&() { return text_; }
   operator const std::string&() const { return text_; }
   operator std::string_view() const { return text_; }
 
