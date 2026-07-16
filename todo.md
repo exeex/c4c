@@ -8,25 +8,45 @@ Current Step Title: Build the terminal disposition matrix
 
 ## Just Finished
 
-Activated `ideas/open/797_lir_to_new_bir_final_coverage_convergence.md` after
-closed 813 and 847 supplied terminal evidence and no new direct 734 receiver
-row was authorized.
+Completed plan Step 1 documentation packet by creating
+`docs/lir_to_new_bir_final_coverage_convergence/terminal_disposition_matrix.md`.
+The matrix records accepted terminal inputs, accepted no-change/evidence
+dispositions, preserved open 795/796/821/822 scopes, closed 848/849/850 via
+813, and closed 847 deletion evidence. It also records that closed 867's
+selected direct-local `LirVaStartOp` destination `va_list` pointer authority
+is already received by 734 Step 7.52 commit `a680b50e8`.
+
+Step 1 found no missing first-owner handoff or missing 734 receipt that blocks
+797 from continuing.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: build the terminal disposition matrix from the
-accepted 734 receipts, closed producer/evidence/deletion routes, and 813/847
-handoffs. If any missing first-owner handoff or missing 734 receipt is found,
-stop and route that exact prerequisite as a separate lifecycle owner.
+Execute Step 2 from `plan.md`: compare dispatcher, importer destination
+containers, and reachable verifier behavior against the terminal matrix.
+Repair only matrix-proven gaps for rows that already have accepted typed
+receiver or evidence-backed no-change dispositions.
 
 ## Watchouts
 
-- Do not treat 813 or 847 as proving 797 complete.
-- Do not absorb open 795, 796, 821, or 822 routes into 797.
-- Do not create a 734 receiver row without an exact accepted handoff.
-- Reject text, `monostate`, rendered operand, or compatibility-mirror
-  authority.
+- 813's closed 848/849/850 dispositions are evidence/no-change inputs and do
+  not fabricate direct 734 receiver work.
+- 847 is terminal deletion evidence for 797 only; it does not prove 797
+  complete.
+- Preserve open 795, 796, 821, and 822 scopes. Do not absorb body-parameter,
+  residual instruction/terminator, inline-assembly, or switch-selector routes
+  into this 797 packet.
+- Do not reopen accepted 734 Step 7.52 or the closed 867 producer handoff.
+- Reject text, `monostate`, rendered operand, printer output, testcase
+  identity, or compatibility-mirror authority.
 
 ## Proof
 
-Lifecycle activation only. No code validation run.
+Documentation-only proof:
+
+```sh
+find docs/lir_to_new_bir_final_coverage_convergence -maxdepth 1 -type f -printf '%f\n' | sort
+git diff --check
+```
+
+`test_after.log` was not produced because this delegated packet's proof is a
+documentation inventory plus whitespace check, not a build/test command.
