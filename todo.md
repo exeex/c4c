@@ -8,30 +8,29 @@ Current Step Title: Delete semantic string escape hatches
 
 ## Just Finished
 
-Completed Step 3 packet to delete scalar comparison operand preservation that
-used direct `source_lv.str() == lv` / `source_rv.str() == rv` text equality as
-semantic authority in `src/codegen/lir/hir_to_lir/expr/binary.cpp`.
+Completed Step 3 packet to delete scalar arithmetic operand preservation that
+used direct `source.str() != normalized` display-text equality as semantic
+authority in `src/codegen/lir/hir_to_lir/expr/binary.cpp`.
 
-Added comparison-specific operand preservation that keeps native SSA authority
-only when the original operand type matches the comparison type, and keeps
-integer immediate authority only when the immediate is representable by the
-comparison type. Scalar comparison fallback now reconstructs raw normalized
-operands instead of treating matching display text as authority.
+`preserve_exact_binary_operand(...)` now keeps native SSA authority only when
+the source `TypeSpec` matches the LIR operation type, keeps integer immediate
+authority only when representable by that operation type, and reconstructs the
+normalized operand for all other cases.
 
 ## Suggested Next
 
-Supervisor should review and commit this Step 3 scalar comparison preservation
+Supervisor should review and commit this Step 3 scalar arithmetic preservation
 slice if accepted, then select the next remaining Step 3 semantic string escape
 hatch candidate. Do not widen the next packet into Step 4 adapter removal.
 
 ## Watchouts
 
-- `preserve_exact_binary_operand(...)` still contains its existing display
-  equality guard for scalar arithmetic; this packet only owned scalar
-  comparison operand preservation.
-- Scalar comparison preservation now depends on source TypeSpec snapshots taken
+- Scalar arithmetic preservation now depends on source TypeSpec snapshots taken
   before usual arithmetic conversion. Preserve that distinction if later
   packets refactor the conversion flow.
+- `preserve_exact_binary_operand(...)` no longer contains direct display-text
+  equality authority checks; do not reintroduce `source.str() == normalized` or
+  `source.str() != normalized` as semantic authority.
 - Do not restore a mutable `LirTypeRef::str()` accessor or add a test-only
   backdoor.
 - Do not restore mutable `operator std::string&()` or replace it with another

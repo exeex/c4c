@@ -22,13 +22,20 @@ bool integer_immediate_representable_by_type(const LirOperand& operand,
 }
 
 LirOperand preserve_exact_binary_operand(const LirOperand& source,
+                                         const TypeSpec& source_type,
                                          const std::string& normalized,
                                          const LirTypeRef& type) {
-  if (!source.has_authority() || source.str() != normalized ||
-      !integer_immediate_representable_by_type(source, type)) {
-    return LirOperand(normalized);
+  if (!source.has_authority()) return LirOperand(normalized);
+  if (source.value_id() != nullptr) {
+    return LirTypeRef(llvm_ty(source_type)) == type ? source
+                                                    : LirOperand(normalized);
   }
-  return source;
+  if (source.integer_immediate() != nullptr) {
+    return integer_immediate_representable_by_type(source, type)
+               ? source
+               : LirOperand(normalized);
+  }
+  return LirOperand(normalized);
 }
 
 LirOperand preserve_scalar_comparison_operand(const LirOperand& source,
@@ -610,9 +617,9 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
         const LirOperand result = fresh_value(ctx);
         const LirTypeRef type(op_ty);
         const LirOperand lhs =
-            preserve_exact_binary_operand(source_lv, lv, type);
+            preserve_exact_binary_operand(source_lv, source_lts, lv, type);
         const LirOperand rhs =
-            preserve_exact_binary_operand(source_rv, rv, type);
+            preserve_exact_binary_operand(source_rv, source_rts, rv, type);
         const bool selected_floating_lhs =
             !authoritative_scalar_floating ||
             selected_floating_lhs_authority_opcode(instr);
