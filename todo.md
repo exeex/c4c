@@ -30,13 +30,12 @@ Current Step Title: Enforce module ownership and migrate bounded consumers
   layout facts over stale legacy struct/union bits, while preserving
   no-declaration global-header compatibility and keeping explicit non-root
   stale owner metadata rejected.
+- Supervisor accepted the fresh full-suite baseline review at `53a1a8515`: the
+  full suite reported 3038/3038 passing with no failure-set expansion.
 
 ## Suggested Next
 
-- Supervisor should run the fresh full-suite baseline review required by
-  `plan.md` and confirm the rejected 0-to-64 failure expansion is gone. After
-  that review is accepted, resume normal Step 3 consumer migration or Step 4
-  assessment from `plan.md`.
+- Resume normal Step 3 consumer migration or Step 4 assessment from `plan.md`.
 
 ## Watchouts
 
@@ -74,10 +73,8 @@ Current Step Title: Enforce module ownership and migrate bounded consumers
   as unsupported. Preserve legitimate no-owner structured declarations when the
   aggregate store is nonempty, and close only the bounded legacy-owner gap
   proven by the C++ inline-method member-context failure.
-- Do not claim Step 3 acceptance from this narrow green proof alone. The
-  current blocker is explicitly the baseline expansion from 0 to 64 failures,
-  so the repair is not accepted until the fresh full-suite baseline review
-  confirms the failure set does not expand.
+- The baseline expansion blocker is cleared. Do not reopen baseline repair
+  unless a later fresh candidate expands the accepted 0-failure set.
 
 ## Proof
 
@@ -96,6 +93,7 @@ Current Step Title: Enforce module ownership and migrate bounded consumers
 - Refreshed aggregate/signature proof and backend checkpoint passed after the
   follow-up repair:
   `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_positive_sema_namespace_struct_runtime_cpp|cpp_positive_sema_template_struct_nested_cpp|llvm_gcc_c_torture_src_20071029_1_c|eastl_cpp_external_utility_frontend_basic_cpp|frontend_lir_function_signature_type_ref|frontend_lir_call_type_ref|frontend_hir_tests)$' ) > test_after.log 2>&1 && ( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' ) > /tmp/c4c_backend_after.log 2>&1`
+- Accepted full-suite baseline review:
+  `scripts/plan_review_state.py accept-baseline` after `test_baseline.new.log`
+  reported `100% tests passed, 0 tests failed out of 3038`.
 - Proof log: `test_after.log`.
-- Still required before normal Step 3/Step 4 progress: supervisor fresh
-  full-suite baseline review with no failure-set expansion.

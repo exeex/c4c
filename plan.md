@@ -105,9 +105,8 @@ closed without competing operation-local authority.
 
 ### Step 3 - Enforce module ownership and migrate bounded consumers
 
-Status: Active; baseline repair focused proof passed after rejected baseline
-candidate following `97eb154af`; supervisor full-suite baseline review still
-required.
+Status: Active; rejected baseline expansion repaired and accepted after fresh
+full-suite baseline review at `53a1a8515`.
 
 Goal: make justified consumers use canonical store facts and fail closed.
 
@@ -131,10 +130,10 @@ Actions:
   expectation downgrades as acceptance.
 
 Completion check: fresh build plus focused valid/invalid proof preserves
-754/798/801/803 seams and rejects cross-module/foreign refs. While the baseline
-repair blocker is active, Step 3 is not accepted until the focused repro subset,
-focused frontend/backend LIR coverage, backend checkpoint, and a fresh
-full-suite baseline review prove the baseline failure set did not expand.
+754/798/801/803 seams and rejects cross-module/foreign refs. The baseline
+repair blocker is cleared by focused repro coverage, focused frontend/backend
+LIR coverage, backend checkpoint, and a fresh full-suite baseline review with
+0 failures.
 
 ### Step 4 - Assess bounded convergence and hand off remaining work
 
