@@ -3,19 +3,22 @@
 Status: Active
 Source Idea Path: ideas/open/839_lir_nominal_function_signature_call_composition.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Establish the nominal function-signature store
+Current Step ID: 2
+Current Step Title: Migrate declarations to signature refs
 
 ## Just Finished
 
-- Activated `ideas/open/839_lir_nominal_function_signature_call_composition.md`
-  after closed 838 aggregate convergence at `574f2a810`.
+- Step 1 established the initial module-owned nominal function-signature store:
+  `LirFunctionSignatureRef`, store entries for return/ordered parameter type
+  refs, byval flags, variadic state, and void-list state, lowering-time
+  registration from existing structured function signature facts, and verifier
+  checks that stored facts match the function's structured mirrors exactly.
 
 ## Suggested Next
 
-- Execute Step 1: inspect current declaration/call signature construction and
-  introduce the smallest module-owned `LirFunctionSignatureRef`/store without
-  deleting compatibility mirrors.
+- Continue Step 1 with a bounded declaration/call construction probe if needed,
+  or move to Step 2 by migrating declarations to consume
+  `LirFunctionSignatureRef` while keeping compatibility mirrors intact.
 
 ## Watchouts
 
@@ -26,7 +29,12 @@ Current Step Title: Establish the nominal function-signature store
   spelling.
 - Preserve accepted aggregate owner checks from 838; wrong-module aggregate
   alternatives must fail closed.
+- `LirTypeRef` semantic equality can ignore stale rendered text when a
+  `StructNameId` matches; signature-store verifier checks must continue using
+  exact stored fact agreement where mirrors are still retained.
 
 ## Proof
 
-- Lifecycle-only activation; no build proof required yet.
+- Passed focused proof plus shared LIR backend checkpoint in
+  `test_after.log`:
+  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_function_signature_type_ref|frontend_lir_call_type_ref|frontend_hir_tests)$' && ctest --test-dir build -j --output-on-failure -R '^backend_lir_' ) > test_after.log 2>&1`

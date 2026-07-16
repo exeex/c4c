@@ -980,6 +980,16 @@ struct LirSignatureParam {
   bool is_byval = false;
 };
 
+struct LirFunctionSignatureRef {
+  uint32_t value = std::numeric_limits<uint32_t>::max();
+  [[nodiscard]] constexpr bool valid() const {
+    return value != std::numeric_limits<uint32_t>::max();
+  }
+  [[nodiscard]] static constexpr LirFunctionSignatureRef invalid() {
+    return LirFunctionSignatureRef{};
+  }
+};
+
 // The sole pointer/object authority introduced for the selected fixed-aggregate
 // byval materialization.  It is intentionally a pair, rather than a general
 // pointer or object table: all other pointer/object families remain absent.
@@ -1028,6 +1038,8 @@ struct LirFunction {
   std::vector<LirSignatureParam> signature_params;
   std::optional<LirTypeRef> signature_return_type_ref;
   std::vector<LirTypeRef> signature_param_type_refs;
+  LirFunctionSignatureRef function_signature_ref =
+      LirFunctionSignatureRef::invalid();
   std::vector<LirBlock> blocks;
   std::vector<LirDirectLabelAddressConstant> direct_label_address_constants;
   std::vector<LirStackObject> stack_objects;
@@ -1146,6 +1158,15 @@ struct LirAggregateStoreEntry {
   bool is_packed = false;
   bool is_opaque = false;
   LirAggregateLayoutKind layout_kind = LirAggregateLayoutKind::Direct;
+};
+
+struct LirFunctionSignatureStoreEntry {
+  std::optional<LirTypeRef> return_type_ref;
+  LirExtAttr return_ext_attr = LirExtAttr::None;
+  std::vector<LirTypeRef> fixed_param_type_refs;
+  std::vector<bool> fixed_param_is_byval;
+  bool is_variadic = false;
+  bool has_void_param_list = false;
 };
 
 struct LirStructuredLayoutObservation {
@@ -1314,6 +1335,7 @@ struct LirModule {
   // and rendered declaration compatibility indexes.
   std::vector<LirAggregateStoreEntry> aggregate_store;
   std::unordered_map<uint64_t, LirAggregateRef> aggregate_ref_by_hir_ref;
+  std::vector<LirFunctionSignatureStoreEntry> function_signature_store;
 
   [[nodiscard]] static uint64_t aggregate_store_key(c4c::hir::HirAggregateRef ref) {
     return (static_cast<uint64_t>(ref.module.value) << 32) | ref.aggregate.value;
@@ -1364,6 +1386,65 @@ struct LirModule {
     entry->is_packed = decl.is_packed;
     entry->is_opaque = decl.is_opaque;
     entry->layout_kind = layout_kind;
+  }
+
+  [[nodiscard]] static bool same_function_signature_entry(
+      const LirFunctionSignatureStoreEntry& lhs,
+      const LirFunctionSignatureStoreEntry& rhs) {
+    const auto same_type = [](const LirTypeRef& a, const LirTypeRef& b) {
+      return a == b && a.str() == b.str();
+    };
+    const auto same_optional_type =
+        [&](const std::optional<LirTypeRef>& a,
+            const std::optional<LirTypeRef>& b) {
+          if (a.has_value() != b.has_value()) return false;
+          return !a.has_value() || same_type(*a, *b);
+        };
+    if (!same_optional_type(lhs.return_type_ref, rhs.return_type_ref) ||
+        lhs.return_ext_attr != rhs.return_ext_attr ||
+        lhs.fixed_param_type_refs.size() != rhs.fixed_param_type_refs.size() ||
+        lhs.fixed_param_is_byval != rhs.fixed_param_is_byval ||
+        lhs.is_variadic != rhs.is_variadic ||
+        lhs.has_void_param_list != rhs.has_void_param_list) {
+      return false;
+    }
+    for (std::size_t index = 0; index < lhs.fixed_param_type_refs.size();
+         ++index) {
+      if (!same_type(lhs.fixed_param_type_refs[index],
+                     rhs.fixed_param_type_refs[index])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  [[nodiscard]] LirFunctionSignatureRef register_function_signature(
+      LirFunctionSignatureStoreEntry entry) {
+    if (entry.has_void_param_list &&
+        (!entry.fixed_param_type_refs.empty() || entry.is_variadic)) {
+      throw std::runtime_error(
+          "void function-signature parameter list cannot carry fixed params or variadic state");
+    }
+    if (entry.fixed_param_is_byval.size() != entry.fixed_param_type_refs.size()) {
+      throw std::runtime_error(
+          "function-signature byval facts must match fixed parameter refs");
+    }
+    for (std::size_t index = 0; index < function_signature_store.size(); ++index) {
+      if (same_function_signature_entry(function_signature_store[index], entry)) {
+        return LirFunctionSignatureRef{static_cast<uint32_t>(index)};
+      }
+    }
+    const LirFunctionSignatureRef ref{
+        static_cast<uint32_t>(function_signature_store.size())};
+    function_signature_store.push_back(std::move(entry));
+    return ref;
+  }
+
+  [[nodiscard]] const LirFunctionSignatureStoreEntry* find_function_signature(
+      LirFunctionSignatureRef ref) const {
+    return ref.valid() && ref.value < function_signature_store.size()
+               ? &function_signature_store[ref.value]
+               : nullptr;
   }
 
   LirStructDecl* find_struct_decl(StructNameId name_id) {

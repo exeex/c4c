@@ -4425,6 +4425,75 @@ void verify_function_signature_structured_param_shape(const LirModule& mod,
   }
 }
 
+bool same_signature_store_type_fact(const LirTypeRef& lhs,
+                                    const LirTypeRef& rhs) {
+  return lhs == rhs && lhs.str() == rhs.str();
+}
+
+bool same_signature_store_type_fact(const std::optional<LirTypeRef>& lhs,
+                                    const std::optional<LirTypeRef>& rhs) {
+  if (lhs.has_value() != rhs.has_value()) return false;
+  if (!lhs.has_value()) return true;
+  return same_signature_store_type_fact(*lhs, *rhs);
+}
+
+bool same_signature_store_type_facts(const std::vector<LirTypeRef>& lhs,
+                                     const std::vector<LirTypeRef>& rhs) {
+  if (lhs.size() != rhs.size()) return false;
+  for (std::size_t index = 0; index < lhs.size(); ++index) {
+    if (!same_signature_store_type_fact(lhs[index], rhs[index])) return false;
+  }
+  return true;
+}
+
+void verify_function_signature_store_ref(const LirModule& mod,
+                                         const LirFunction& fn) {
+  if (mod.function_signature_store.empty() &&
+      !fn.function_signature_ref.valid()) {
+    return;
+  }
+
+  constexpr std::string_view field = "LirFunction.function_signature_ref";
+  const LirFunctionSignatureStoreEntry* entry =
+      mod.find_function_signature(fn.function_signature_ref);
+  if (!entry) {
+    fail_verify(field, "must reference a module-owned function signature");
+  }
+
+  if (!same_signature_store_type_fact(entry->return_type_ref,
+                                      fn.signature_return_type_ref) ||
+      entry->return_ext_attr != LirExtAttr::None ||
+      !same_signature_store_type_facts(entry->fixed_param_type_refs,
+                                       fn.signature_param_type_refs) ||
+      entry->is_variadic != fn.signature_is_variadic ||
+      entry->has_void_param_list != fn.signature_has_void_param_list) {
+    std::ostringstream detail;
+    detail << "stored signature for function '" << fn.name
+           << "' disagrees with structured signature mirrors";
+    fail_verify(field, detail.str());
+  }
+
+  if (entry->fixed_param_is_byval.size() != fn.signature_params.size()) {
+    std::ostringstream detail;
+    detail << "stored signature for function '" << fn.name
+           << "' has " << entry->fixed_param_is_byval.size()
+           << " byval facts for " << fn.signature_params.size()
+           << " structured params";
+    fail_verify(field, detail.str());
+  }
+  for (std::size_t index = 0; index < entry->fixed_param_is_byval.size();
+       ++index) {
+    if (entry->fixed_param_is_byval[index] !=
+        fn.signature_params[index].is_byval) {
+      std::ostringstream detail;
+      detail << "stored signature byval fact " << index
+             << " for function '" << fn.name
+             << "' disagrees with structured signature param";
+      fail_verify(field, detail.str());
+    }
+  }
+}
+
 void verify_function_signature_type_ref_shadows(const LirModule& mod) {
   // Despite the historical "shadow" name, structured signature mirrors are the
   // authority here. signature_text is only checked as retained output spelling.
@@ -4435,6 +4504,7 @@ void verify_function_signature_type_ref_shadows(const LirModule& mod) {
     }
 
     verify_function_signature_structured_param_shape(mod, fn);
+    verify_function_signature_store_ref(mod, fn);
 
     if (fn.signature_return_type_ref.has_value()) {
       verify_function_signature_return_type_ref_mirror(

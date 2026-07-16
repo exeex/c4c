@@ -647,6 +647,22 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
   }
 }
 
+void register_function_signature_ref(LirModule& module,
+                                     LirFunction& lir_fn) {
+  LirFunctionSignatureStoreEntry entry;
+  entry.return_type_ref = lir_fn.signature_return_type_ref;
+  entry.return_ext_attr = LirExtAttr::None;
+  entry.fixed_param_type_refs = lir_fn.signature_param_type_refs;
+  entry.fixed_param_is_byval.reserve(lir_fn.signature_params.size());
+  for (const LirSignatureParam& param : lir_fn.signature_params) {
+    entry.fixed_param_is_byval.push_back(param.is_byval);
+  }
+  entry.is_variadic = lir_fn.signature_is_variadic;
+  entry.has_void_param_list = lir_fn.signature_has_void_param_list;
+  lir_fn.function_signature_ref =
+      module.register_function_signature(std::move(entry));
+}
+
 void populate_lir_function_params(const c4c::hir::Module& mod,
                                   const c4c::hir::Function& fn,
                                   LirModule* lir_module,
@@ -2110,6 +2126,7 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
       populate_lir_function_params(hir_mod, fn, &module, lir_fn);
       lir_fn.signature_text = sig;
       populate_signature_type_refs(hir_mod, fn, &module, lir_fn);
+      register_function_signature_ref(module, lir_fn);
       module.functions.push_back(std::move(lir_fn));
     } else {
       // Definition — hir_to_lir owns the local LirFunction shell, FnCtx setup,
@@ -2130,6 +2147,7 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
       populate_lir_function_params(hir_mod, fn, &module, lir_fn);
       lir_fn.signature_text = sig;
       populate_signature_type_refs(hir_mod, fn, &module, lir_fn);
+      register_function_signature_ref(module, lir_fn);
 
       auto ctx = init_fn_ctx(hir_mod, fn, lir_fn, &module);
       if (ctx.vla_stack_save_ptr) any_vla = true;

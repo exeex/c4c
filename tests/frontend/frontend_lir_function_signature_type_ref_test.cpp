@@ -307,6 +307,43 @@ void expect_single_signature_param(const c4c::codegen::lir::LirFunction& fn,
               msg + " should carry explicit structured byval metadata");
 }
 
+const c4c::codegen::lir::LirFunctionSignatureStoreEntry&
+expect_function_signature_store_entry(
+    const c4c::codegen::lir::LirModule& module,
+    const c4c::codegen::lir::LirFunction& fn,
+    const std::string& msg) {
+  expect_true(fn.function_signature_ref.valid(),
+              msg + " should carry a module-owned function signature ref");
+  const auto* entry = module.find_function_signature(fn.function_signature_ref);
+  expect_true(entry != nullptr,
+              msg + " should resolve its module-owned function signature ref");
+  expect_true(entry->return_type_ref == fn.signature_return_type_ref &&
+                  (!entry->return_type_ref.has_value() ||
+                   entry->return_type_ref->str() ==
+                       fn.signature_return_type_ref->str()),
+              msg + " stored return type should mirror the structured return fact");
+  expect_true(entry->fixed_param_type_refs == fn.signature_param_type_refs,
+              msg + " stored parameter types should mirror structured param facts");
+  for (std::size_t index = 0; index < entry->fixed_param_type_refs.size(); ++index) {
+    expect_true(entry->fixed_param_type_refs[index].str() ==
+                    fn.signature_param_type_refs[index].str(),
+                msg + " stored parameter text should mirror structured param facts");
+  }
+  expect_true(entry->is_variadic == fn.signature_is_variadic,
+              msg + " stored variadic fact should mirror the function fact");
+  expect_true(entry->has_void_param_list == fn.signature_has_void_param_list,
+              msg + " stored void-list fact should mirror the function fact");
+  expect_eq(std::to_string(entry->fixed_param_is_byval.size()),
+            std::to_string(fn.signature_params.size()),
+            msg + " stored byval fact count should mirror structured params");
+  for (std::size_t index = 0; index < entry->fixed_param_is_byval.size(); ++index) {
+    expect_true(entry->fixed_param_is_byval[index] ==
+                    fn.signature_params[index].is_byval,
+                msg + " stored byval fact should mirror structured param metadata");
+  }
+  return *entry;
+}
+
 void expect_single_logical_param(const c4c::codegen::lir::LirFunction& fn,
                                  c4c::TypeBase expected_base,
                                  int expected_ptr_level,
@@ -980,6 +1017,9 @@ int defined_void_params(void) {
   expect_struct_signature_refs(lir_module, declared_pair);
   expect_single_signature_param(declared_pair, "%p.input", c4c::TB_STRUCT, false,
                                 "declared aggregate signature metadata");
+  expect_function_signature_store_entry(
+      lir_module, declared_pair,
+      "declared aggregate function signature store entry");
   expect_true(!declared_pair.signature_is_variadic,
               "non-variadic declaration should carry a structured variadic=false flag");
   expect_true(!declared_pair.signature_has_void_param_list,
@@ -991,6 +1031,9 @@ int defined_void_params(void) {
   expect_struct_signature_refs(lir_module, defined_pair);
   expect_single_signature_param(defined_pair, "%p.input", c4c::TB_STRUCT, false,
                                 "defined aggregate signature metadata");
+  expect_function_signature_store_entry(
+      lir_module, defined_pair,
+      "defined aggregate function signature store entry");
   expect_true(!defined_pair.signature_is_variadic,
               "non-variadic definition should carry a structured variadic=false flag");
   expect_true(!defined_pair.signature_has_void_param_list,
@@ -1003,6 +1046,11 @@ int defined_void_params(void) {
   expect_byval_signature_refs(declared_big, byval_param_text);
   expect_single_signature_param(declared_big, "%p.input", c4c::TB_STRUCT, true,
                                 "declared byval signature metadata");
+  const auto& declared_big_signature = expect_function_signature_store_entry(
+      lir_module, declared_big,
+      "declared byval function signature store entry");
+  expect_true(declared_big_signature.fixed_param_is_byval[0],
+              "declared byval function signature store should retain byval ABI fact");
 
   const auto& defined_big = require_function(lir_module, "defined_big", false);
   expect_single_logical_param(defined_big, c4c::TB_STRUCT, 0,
@@ -1010,6 +1058,11 @@ int defined_void_params(void) {
   expect_byval_signature_refs(defined_big, byval_param_text);
   expect_single_signature_param(defined_big, "%p.input", c4c::TB_STRUCT, true,
                                 "defined byval signature metadata");
+  const auto& defined_big_signature = expect_function_signature_store_entry(
+      lir_module, defined_big,
+      "defined byval function signature store entry");
+  expect_true(defined_big_signature.fixed_param_is_byval[0],
+              "defined byval function signature store should retain byval ABI fact");
 
   const auto& declared_variadic =
       require_function(lir_module, "declared_variadic", true);
@@ -1023,6 +1076,12 @@ int defined_void_params(void) {
                                 "declared variadic signature metadata");
   expect_eq(std::to_string(declared_variadic.signature_param_type_refs.size()), "1",
             "variadic declaration should mirror only fixed parameters");
+  const auto& declared_variadic_signature =
+      expect_function_signature_store_entry(
+          lir_module, declared_variadic,
+          "declared variadic function signature store entry");
+  expect_true(declared_variadic_signature.is_variadic,
+              "declared variadic function signature store should retain variadic fact");
 
   const auto& defined_variadic =
       require_function(lir_module, "defined_variadic", false);
@@ -1036,6 +1095,11 @@ int defined_void_params(void) {
                                 "defined variadic signature metadata");
   expect_eq(std::to_string(defined_variadic.signature_param_type_refs.size()), "1",
             "variadic definition should mirror only fixed parameters");
+  const auto& defined_variadic_signature = expect_function_signature_store_entry(
+      lir_module, defined_variadic,
+      "defined variadic function signature store entry");
+  expect_true(defined_variadic_signature.is_variadic,
+              "defined variadic function signature store should retain variadic fact");
 
   const auto& declared_void_params =
       require_function(lir_module, "declared_void_params", true);
@@ -1047,6 +1111,11 @@ int defined_void_params(void) {
             "void-parameter declaration should not expose a fixed signature parameter");
   expect_eq(std::to_string(declared_void_params.signature_param_type_refs.size()), "0",
             "void-parameter declaration should not expose a fixed parameter mirror");
+  const auto& declared_void_signature = expect_function_signature_store_entry(
+      lir_module, declared_void_params,
+      "declared void-list function signature store entry");
+  expect_true(declared_void_signature.has_void_param_list,
+              "declared void-list function signature store should retain void-list fact");
 
   const auto& defined_void_params =
       require_function(lir_module, "defined_void_params", false);
@@ -1058,6 +1127,11 @@ int defined_void_params(void) {
             "void-parameter definition should not expose a fixed signature parameter");
   expect_eq(std::to_string(defined_void_params.signature_param_type_refs.size()), "0",
             "void-parameter definition should not expose a fixed parameter mirror");
+  const auto& defined_void_signature = expect_function_signature_store_entry(
+      lir_module, defined_void_params,
+      "defined void-list function signature store entry");
+  expect_true(defined_void_signature.has_void_param_list,
+              "defined void-list function signature store should retain void-list fact");
 
   c4c::codegen::lir::verify_module(lir_module);
 
@@ -1140,13 +1214,17 @@ int defined_void_params(void) {
   c4c::codegen::lir::LirModule stale_return_text = lir_module;
   require_mutable_function(stale_return_text, "declared_pair", true)
       .signature_return_type_ref->str() = "%struct.StaleMirrorText";
-  c4c::codegen::lir::verify_module(stale_return_text);
+  expect_verify_rejects(
+      stale_return_text,
+      "verifier should reject a function whose stored signature disagrees with stale return facts");
 
   c4c::codegen::lir::LirModule stale_param_text = lir_module;
   require_mutable_function(stale_param_text, "defined_pair", false)
       .signature_param_type_refs[0]
       .str() = "%struct.StaleMirrorText";
-  c4c::codegen::lir::verify_module(stale_param_text);
+  expect_verify_rejects(
+      stale_param_text,
+      "verifier should reject a function whose stored signature disagrees with stale parameter facts");
 
   c4c::codegen::lir::LirModule stale_rendered_return_text = lir_module;
   require_mutable_function(stale_rendered_return_text, "declared_pair", true)
@@ -1253,7 +1331,29 @@ int defined_void_params(void) {
   drifted_param_fn.signature_param_type_refs[0] =
       c4c::codegen::lir::LirTypeRef::struct_type("%struct.StaleMirrorText",
                                                  pair_id);
-  c4c::codegen::lir::verify_module(rendered_param_text_drift);
+  expect_verify_rejects(
+      rendered_param_text_drift,
+      "verifier should reject function signature store disagreement despite stale rendered text");
+
+  c4c::codegen::lir::LirModule stale_signature_ref = lir_module;
+  require_mutable_function(stale_signature_ref, "declared_pair", true)
+      .function_signature_ref =
+      c4c::codegen::lir::LirFunctionSignatureRef{
+          static_cast<uint32_t>(
+              stale_signature_ref.function_signature_store.size())};
+  expect_verify_rejects(
+      stale_signature_ref,
+      "verifier should reject a stale function signature ref");
+
+  c4c::codegen::lir::LirModule wrong_store_signature = lir_module;
+  auto& wrong_store_decl =
+      require_mutable_function(wrong_store_signature, "declared_pair", true);
+  wrong_store_signature
+      .function_signature_store[wrong_store_decl.function_signature_ref.value]
+      .is_variadic = true;
+  expect_verify_rejects(
+      wrong_store_signature,
+      "verifier should reject wrong-module function signature store facts");
 
   c4c::codegen::lir::LirModule byval_text_fallback = lir_module;
   require_mutable_function(byval_text_fallback, "declared_big", true)
