@@ -511,6 +511,56 @@ inline std::optional<HirRecordOwnerKey> typespec_aggregate_owner_key(const TypeS
   return std::nullopt;
 }
 
+/// HIR materialization path: consume only the durable identity copied into
+/// QualType. Parser-backed TypeSpec metadata is intentionally not a fallback
+/// here because it may already have been torn down.
+inline std::optional<HirRecordOwnerKey> typespec_aggregate_owner_key(
+    const QualType& type, const Module& mod) {
+  if ((type.spec.base != TB_STRUCT && type.spec.base != TB_UNION) ||
+      type.aggregate_owner_identity && !type.aggregate_owner_identity->complete()) {
+    return std::nullopt;
+  }
+  if (type.aggregate_owner_identity) {
+    if (type.spec.tag_text_id != type.aggregate_owner_identity->canonical_tag_text_id) {
+      return std::nullopt;
+    }
+    if (type.spec.namespace_context_id !=
+            type.aggregate_owner_identity->namespace_context_id ||
+        type.spec.is_global_qualified !=
+            type.aggregate_owner_identity->is_global_qualified) {
+      return std::nullopt;
+    }
+    NamespaceQualifier ns_qual;
+    ns_qual.context_id = type.aggregate_owner_identity->namespace_context_id;
+    ns_qual.is_global_qualified = type.aggregate_owner_identity->is_global_qualified;
+    ns_qual.segment_text_ids = type.aggregate_owner_identity->qualifier_segment_text_ids;
+    const HirRecordOwnerKey owner_key = make_hir_record_owner_key(
+        ns_qual, type.aggregate_owner_identity->declaration_text_id);
+    return hir_record_owner_key_has_complete_metadata(owner_key)
+               ? std::optional<HirRecordOwnerKey>(owner_key)
+               : std::nullopt;
+  }
+
+  // Hand-built HIR fixtures can predate the carrier. Accept only a key that
+  // is already validated by this HIR module; do not inspect record_def or
+  // qualifier arrays, which belong to parser storage.
+  if (type.spec.tag_text_id == kInvalidText || !mod.link_name_texts ||
+      type.spec.n_qualifier_segments != 0) {
+    return std::nullopt;
+  }
+  NamespaceQualifier ns_qual;
+  ns_qual.context_id = type.spec.namespace_context_id;
+  ns_qual.is_global_qualified = type.spec.is_global_qualified;
+  const HirRecordOwnerKey owner_key =
+      make_hir_record_owner_key(ns_qual, type.spec.tag_text_id);
+  const SymbolName* rendered = mod.find_struct_def_tag_by_owner(owner_key);
+  if (!rendered || rendered->empty() ||
+      mod.link_name_texts->lookup(type.spec.tag_text_id) != *rendered) {
+    return std::nullopt;
+  }
+  return owner_key;
+}
+
 inline std::optional<HirRecordOwnerKey> typespec_record_def_owner_key(
     const TypeSpec& ts,
     const Module& mod) {

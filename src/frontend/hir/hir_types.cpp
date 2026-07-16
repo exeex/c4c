@@ -470,6 +470,35 @@ QualType Lowerer::qtype_from(const TypeSpec& t, ValueCategory c) {
   QualType qt{};
   qt.spec = t;
   qt.category = c;
+  if ((t.base == TB_STRUCT || t.base == TB_UNION) && t.record_def &&
+      t.record_def->kind == NK_STRUCT_DEF && module_ && module_->link_name_texts) {
+    const Node* record = t.record_def;
+    const char* declaration = record->unqualified_name && record->unqualified_name[0]
+                                  ? record->unqualified_name
+                                  : record->name;
+    if (!declaration || !declaration[0] || record->n_qualifier_segments < 0 ||
+        (record->n_qualifier_segments > 0 && !record->qualifier_segments)) {
+      return qt;
+    }
+    HirAggregateOwnerIdentity identity;
+    identity.namespace_context_id = record->namespace_context_id;
+    identity.is_global_qualified = record->is_global_qualified;
+    identity.declaration_text_id = module_->link_name_texts->intern(declaration);
+    identity.canonical_tag_text_id = identity.declaration_text_id;
+    identity.qualifier_segment_text_ids.reserve(record->n_qualifier_segments);
+    for (int i = 0; i < record->n_qualifier_segments; ++i) {
+      const char* segment = record->qualifier_segments[i];
+      if (!segment || !segment[0]) return qt;
+      identity.qualifier_segment_text_ids.push_back(
+          module_->link_name_texts->intern(segment));
+    }
+    if (identity.complete()) {
+      qt.spec.tag_text_id = identity.canonical_tag_text_id;
+      qt.spec.namespace_context_id = identity.namespace_context_id;
+      qt.spec.is_global_qualified = identity.is_global_qualified;
+      qt.aggregate_owner_identity = std::move(identity);
+    }
+  }
   return qt;
 }
 

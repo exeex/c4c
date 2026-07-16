@@ -495,10 +495,32 @@ enum class ValueCategory : uint8_t {
   LValue,
 };
 
+/// HIR-owned declaration identity for an aggregate TypeSpec.
+///
+/// This is deliberately the declaration subset of HirRecordOwnerKey: TypeSpec
+/// still carries parser-owned record/qualifier pointers, while QualType is the
+/// durable HIR copy that survives parser teardown.
+struct HirAggregateOwnerIdentity {
+  int namespace_context_id = -1;
+  bool is_global_qualified = false;
+  std::vector<TextId> qualifier_segment_text_ids;
+  TextId declaration_text_id = kInvalidText;
+  // Coherence sentinel in the HIR module's TextTable; never use it for lookup.
+  TextId canonical_tag_text_id = kInvalidText;
+
+  [[nodiscard]] bool complete() const {
+    return declaration_text_id != kInvalidText &&
+           std::find(qualifier_segment_text_ids.begin(),
+                     qualifier_segment_text_ids.end(),
+                     kInvalidText) == qualifier_segment_text_ids.end();
+  }
+};
+
 struct QualType {
   TypeSpec spec{};
   ValueCategory category = ValueCategory::RValue;
   bool is_const_expr = false;
+  std::optional<HirAggregateOwnerIdentity> aggregate_owner_identity;
 };
 
 struct FnAttr {

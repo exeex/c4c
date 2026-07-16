@@ -87,8 +87,9 @@ void append_aarch64_hfa_signature_params(const c4c::hir::Module& mod,
   }
 }
 
-TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, TypeSpec type,
+TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, const QualType& hir_type,
                              LirModule* lir_module) {
+  TypeSpec type = hir_type.spec;
   if (!lir_module) return type;
   if (type.base != TB_STRUCT && type.base != TB_UNION) return type;
   // LIR owns this copy. `record_def` and qualifier arrays point into parser
@@ -99,7 +100,7 @@ TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, TypeSpec type,
   type.qualifier_text_ids = nullptr;
   type.n_qualifier_segments = 0;
   const std::optional<HirRecordOwnerKey> owner_key =
-      c4c::codegen::llvm_helpers::typespec_aggregate_owner_key(type, mod);
+      c4c::codegen::llvm_helpers::typespec_aggregate_owner_key(hir_type, mod);
   if (!owner_key) {
     throw std::runtime_error("LIR-owned aggregate function type requires a structured owner key");
   }
@@ -348,7 +349,7 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
 
   for (const auto& param : fn.params) {
     const TypeSpec param_ts =
-        lir_owned_type_spec(mod, param.type.spec, lir_module);
+        lir_owned_type_spec(mod, param.type, lir_module);
     const std::string pname = "%p." + sanitize_llvm_ident(param.name);
     if (is_aarch64_fixed_hfa_param(mod, param.type.spec)) {
       append_aarch64_hfa_signature_params(mod, param.type.spec, pname, lir_module, lir_fn);
@@ -373,7 +374,7 @@ void populate_lir_function_params(const c4c::hir::Module& mod,
   for (const auto& param : fn.params) {
     lir_fn.params.push_back(
         {"%p." + sanitize_llvm_ident(param.name),
-         lir_owned_type_spec(mod, param.type.spec, lir_module)});
+         lir_owned_type_spec(mod, param.type, lir_module)});
   }
 }
 
@@ -1796,7 +1797,7 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
       lir_fn.can_elide_if_unreferenced = false;
       lir_fn.is_declaration = true;
       lir_fn.return_type =
-          lir_owned_type_spec(hir_mod, fn.return_type.spec, &module);
+          lir_owned_type_spec(hir_mod, fn.return_type, &module);
       populate_lir_function_params(hir_mod, fn, &module, lir_fn);
       lir_fn.signature_text = sig;
       populate_signature_type_refs(hir_mod, fn, &module, lir_fn);
@@ -1816,7 +1817,7 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
           fn.linkage.is_static || fn.linkage.is_inline || is_std_impl_helper;
       lir_fn.is_declaration = false;
       lir_fn.return_type =
-          lir_owned_type_spec(hir_mod, fn.return_type.spec, &module);
+          lir_owned_type_spec(hir_mod, fn.return_type, &module);
       populate_lir_function_params(hir_mod, fn, &module, lir_fn);
       lir_fn.signature_text = sig;
       populate_signature_type_refs(hir_mod, fn, &module, lir_fn);
