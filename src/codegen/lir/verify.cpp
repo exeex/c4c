@@ -83,11 +83,6 @@ std::size_t count_inline_asm_constraints(std::string_view constraints) {
   return count;
 }
 
-bool same_inline_asm_type(const LirTypeRef& lhs, const LirTypeRef& rhs) {
-  return lhs.kind() == rhs.kind() && lhs.str() == rhs.str() &&
-         lhs.struct_name_id() == rhs.struct_name_id();
-}
-
 bool same_native_type_fact(const LirTypeRef& lhs, const LirTypeRef& rhs) {
   if (lhs.kind() != rhs.kind()) return false;
   if (lhs.integer_bit_width() != rhs.integer_bit_width()) return false;
@@ -2468,7 +2463,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
           fail_verify("LirInlineAsmOp.ordinary_results",
                       "a read/write result requires a matching read/write input");
         }
-        if (!same_inline_asm_type(matching_input->type, result.type)) {
+        if (!same_native_type_fact(matching_input->type, result.type)) {
           fail_verify("LirInlineAsmOp.ordinary_results",
                       "a read/write input and result must have the same type");
         }

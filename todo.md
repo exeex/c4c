@@ -8,21 +8,20 @@ Current Step Title: Delete semantic string escape hatches
 
 ## Just Finished
 
-Completed Step 3 packet to remove verifier-side floating scalar semantic text
-classification for `LirTypeRef` in `src/codegen/lir/verify.cpp`.
+Completed Step 3 packet to remove the verifier inline-asm ordinary binding type
+comparison's rendered-text equality dependency in
+`src/codegen/lir/verify.cpp`.
 
-`is_native_scalar_floating_type(...)` now uses `LirTypeRef::kind()` and
-`builtin_type()` for `float`, `double`, `x86_fp80`, and `fp128` classification.
-The direct `double(double)` helper path now uses typed/native double checks
-instead of string-constructed or rendered-text comparisons, and
-`exact_plain_scalar_mirror(...)` classifies float/double mirrors through
-`builtin_type()` rather than `mirror.str()`.
+Deleted `same_inline_asm_type(...)`, which treated `LirTypeRef::str()` equality
+as semantic authority for read/write inline-asm input/result agreement. The
+ordinary result verifier now compares `matching_input->type` and `result.type`
+with `same_native_type_fact(...)`.
 
 ## Suggested Next
 
 Supervisor should review and commit this Step 3 verifier helper slice if
 accepted, then continue with the next remaining Step 3 string escape hatch
-candidate. Do not widen this packet into Step 4 adapter removal.
+candidate. Do not widen the next packet into Step 4 adapter removal.
 
 ## Watchouts
 
@@ -45,6 +44,9 @@ candidate. Do not widen this packet into Step 4 adapter removal.
   semantic type authority.
 - `same_signature_store_type_fact(...)` in `src/codegen/lir/verify.cpp` and
   `LirModule::same_function_signature_entry(...)` behavior were left intact.
+- The remaining `lhs.str() == rhs.str()` search hit in `verify.cpp` is the
+  preserved signature-store mirror equality surface, not inline-asm ordinary
+  binding agreement.
 - The remaining `mirror.str()` checks in `exact_plain_scalar_mirror(...)` are
   integer mirror/output consistency checks, not floating scalar
   classification.
@@ -59,10 +61,7 @@ candidate. Do not widen this packet into Step 4 adapter removal.
 ## Proof
 
 Proof run passed:
-`{ cmake --build --preset default && ctest --test-dir build -j
---output-on-failure -R
-'^frontend_lir_call_type_ref$|^frontend_lir_function_signature_type_ref$'; }
-> test_after.log 2>&1`.
-`test_after.log` contains the focused CTest subset output with 2/2 selected
-tests passing.
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'; } > test_after.log 2>&1`.
+`test_after.log` contains the delegated build plus focused CTest output with
+`frontend_hir_tests` passing.
 The supervisor-selected proof was sufficient for this packet.
