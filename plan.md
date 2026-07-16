@@ -29,8 +29,15 @@ Actions:
 - Record the complete caller and registration evidence in the source decision.
 - Do not change C++ or tests.
 
-Completion check: either identify an omitted legal direct-fact owner or confirm
-that no caller has such a fact before signature normalization.
+Completion check: completed. The complete production caller set is
+`hir_build.cpp:968,970,983,988,990,1064,1070` and
+`impl/stmt/decl.cpp:103,105`; `lower_function` receives only its function
+`Node*`, optional name override, and template/NTTP bindings. Aggregate
+definitions receive module refs at `hir_types.cpp:3581` and materialized
+template instances at `impl/templates/struct_instantiation.cpp:566`, before
+free functions are lowered, but that module state is not issued as a direct
+fact to signature construction. The separate later `lower_struct_method`
+route does not produce one for free functions. No omitted legal owner exists.
 
 ### Step 2 - Decide the legal successor or no-feasible-route conclusion
 
@@ -47,3 +54,9 @@ Actions:
 
 Completion check: a new agent can tell exactly whether 848 may resume and, if
 so, which approved successor owns the required implementation.
+
+Step 1 decision route: take the otherwise branch. A module lookup keyed by
+normalized signature state would be forbidden recovery, so the pre-existing
+registrations cannot be used as a successor premise. Step 2 must conclude the
+current function-signature route deliberately no-change; it must not create an
+implementation successor or claim 838 unblocked.

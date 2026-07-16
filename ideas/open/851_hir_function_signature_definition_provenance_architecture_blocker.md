@@ -57,6 +57,35 @@ population scope.
 - No C++ code, tests, test expectations, or canonical regression logs change
   in this architecture decision initiative.
 
+## Step 1 Production Provenance Decision (2026-07-16)
+
+Read-only AST-backed and source-order inspection confirms the prior premise.
+The complete production `Lowerer::lower_function` call set is
+`src/frontend/hir/hir_build.cpp:968,970,983,988,990,1064,1070` plus
+`src/frontend/hir/impl/stmt/decl.cpp:103,105`. Its production interface admits
+only the function `Node*`, optional name override, and template/NTTP bindings;
+none provides a module-issued aggregate definition fact.
+
+`Lowerer::lower_initial_program` collects initial aggregate definitions and
+materializes template definitions/instances before it lowers non-method
+functions, then lowers pending methods. Ordinary `lower_struct_def` stores and
+registers its aggregate definition at `src/frontend/hir/hir_types.cpp:3581`;
+template-instance construction does the same at
+`src/frontend/hir/impl/templates/struct_instantiation.cpp:566`. Thus refs can
+already exist in the module when free-function signatures normalize, but no
+earlier legal semantic-construction owner issues a definition-backed direct
+fact to that normalization. The separate `lower_struct_method` path runs
+after pending-method collection and is not a direct-fact producer for the
+free-function path.
+
+Conclusion: no feasible legal direct-provenance architecture exists under the
+current supported function-signature contract. Deriving identity from the
+already-registered module state would require the prohibited parser,
+normalized-type, record/owner/tag/text, `Node*`, or reconstructed lookup
+route, rather than carrying an issued definition fact. Step 2 must record the
+deliberate no-change disposition for 848 Step 2b and retain 838 Step 2 as
+blocked; it must not create an implementation successor.
+
 ## Reviewer Reject Signals
 
 - Reject a renamed carrier or test-only injection asserted as production
