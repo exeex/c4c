@@ -1,94 +1,87 @@
-# LIR Next Body Parameter Authority Handoff Runbook
+# LIR Scalar LHS Parameter Authority Baseline Repair Runbook
 
 Status: Active
-Source Idea: ideas/open/860_lir_next_body_parameter_authority_handoff.md
-Switched From: ideas/open/734_lir_to_new_bir_container_completeness.md after accepted Step 7.48 receiver commit `6a91d07ca`
+Source Idea: ideas/open/861_lir_scalar_lhs_parameter_authority_baseline_repair.md
+Switched From: ideas/open/860_lir_next_body_parameter_authority_handoff.md after baseline failure blocked Step 1
 
 ## Purpose
 
-Unblock idea 734 by producing exactly one next structured current-LIR
-function-body parameter-use authority handoff. This runbook is producer-side
-only and must not edit Raw-BIR receiver code.
+Unblock idea 860 by repairing the current-LIR scalar LHS parameter authority
+baseline failure before any next-row producer handoff is attempted.
 
 ## Goal
 
-Select, publish, verify, test, and hand off one next valid body-parameter-use
-row after the accepted DirectScalar binary-`fsub` LHS receiver.
+Repair the `LirBinOp.scalar_lhs_parameter_authority` verifier/producer failure
+family so valid nonselected scalar RHS forms no longer fail the full-suite
+baseline.
 
 ## Core Rule
 
-Authority must come from native typed LIR fields and verifier checks. Do not
-recover parameter identity, role, type, opcode, operand relation, or consumer
-coherence from rendered text, names, signatures, diagnostics, compatibility
-mirrors, `monostate`, or testcase shape.
+Keep accepted DirectScalar authority contracts fail-closed while accepting the
+valid nonselected RHS forms required by selected floating binary LHS authority.
+Do not weaken contracts, downgrade expectations, or special-case failing tests.
 
 ## Read First
 
-- `ideas/open/860_lir_next_body_parameter_authority_handoff.md`
-- `ideas/open/734_lir_to_new_bir_container_completeness.md`
-- Closed predecessor `ideas/closed/859_lir_next_body_parameter_authority_handoff.md`
-- Accepted 734 receiver commit `6a91d07ca`
-- Existing LIR body-parameter authority producers, verifier checks, and
-  focused tests for accepted rows through Step 7.48
+- `ideas/open/861_lir_scalar_lhs_parameter_authority_baseline_repair.md`
+- Resumption record in `ideas/open/860_lir_next_body_parameter_authority_handoff.md`
+- Current LIR scalar LHS parameter authority producer and verifier code
+- Existing focused tests around DirectScalar binary parameter authority
+- Canonical baseline logs named by the supervisor
 
 ## Current Targets And Scope
 
-- Inspect remaining valid current-LIR body-parameter-use forms after the
-  accepted DirectPointer and DirectScalar receipts through 734 Step 7.48.
-- Choose exactly one next row that can be represented with structured LIR
-  authority.
-- Add only producer/schema/verifier/test changes required for that one row.
-- Preserve the parameter `LirValueId`, current-function owner, parameter
-  index, `LirTypeRef`, native ABI, explicit role, and selected consumer
-  relation.
-- Provide a closure handoff back to 734 naming the exact later Raw-BIR
-  receiver packet.
+- Diagnose the selected floating binary LHS authority path and its RHS
+  coherence rules.
+- Repair the verifier/producer behavior for valid nonselected scalar RHS
+  forms.
+- Add nearby focused positive and malformed coverage for this failure family.
+- Produce fresh proof that the baseline no longer blocks 860.
 
 ## Non-Goals
 
-- Do not edit Raw-BIR containers, builders, views, importer dispatch,
-  verifier, or backend receiver tests.
-- Do not reopen accepted 734 DirectPointer or DirectScalar body-parameter
-  receiver rows.
-- Do not select multiple rows or a generic parameter family.
-- Do not absorb memory/VA, aggregate/vector, module/type/global/metadata,
-  residual instruction/terminator, inline-assembly, ABI-expanded or aggregate
-  parameters, or target-lowering work.
+- Do not select or publish any new 860 body-parameter-use row.
+- Do not edit Raw-BIR receiver/importer/container/backend surfaces unless the
+  investigation proves they are necessary; if necessary, stop and route a
+  separate scoped idea.
+- Do not weaken DirectScalar authority contracts or expectation coverage.
+- Do not absorb broad LIR schema, ABI, target-lowering, or unrelated authority
+  family work.
 
 ## Execution Rules
 
-- Keep this producer-side and tied to one selected row.
-- Reject malformed authority before printing or downstream use.
-- Add nearby positive and malformed verifier coverage for the selected row.
-- Keep all nonselected rows fail-closed without presentation recovery.
-- For code changes, run a fresh build, focused producer/verifier proof,
-  `git diff --check`, and any matching regression guard required by the
-  supervisor.
+- Treat the listed full-suite failures as symptoms, not as a named-case patch
+  list.
+- Keep malformed authority rejected before downstream use.
+- Preserve accepted DirectScalar rows while repairing valid nonselected RHS
+  handling.
+- For code changes, run a fresh build, focused scalar authority proof,
+  `git diff --check`, and a supervisor-accepted full-suite baseline proof.
 
 ## Steps
 
-### Step 1 - Select and publish one next body-parameter authority row
+### Step 1 - Repair scalar LHS parameter authority baseline
 
-Goal: identify the first valid unreceived body-parameter-use row after 734
-Step 7.48 and publish structured LIR authority for exactly that row.
+Goal: diagnose and repair the current-LIR scalar LHS parameter authority
+failure family that blocks the full-suite baseline.
 
 Actions:
 
-- Inspect accepted body-parameter rows through Step 7.48 and the remaining
-  current-LIR producer surface.
-- Select one next bounded row only.
-- Add the minimal LIR carrier, producer population, verifier checks, and
-  focused positive/malformed coverage required for that row.
-- Preserve the full parameter tuple and selected consumer relation in typed
-  native fields.
-- Document the exact handoff and 734 return action in the source idea closure
-  record.
+- Reproduce or inspect the failure around
+  `LirBinOp.scalar_lhs_parameter_authority`.
+- Identify why selected floating binary LHS authority currently requires an
+  invalid selected scalar RHS instead of accepting valid nonselected scalar RHS
+  forms.
+- Repair only the necessary producer/verifier contract.
+- Add focused positive coverage for the valid nonselected RHS form and
+  malformed coverage that proves the accepted DirectScalar contract remains
+  fail-closed.
+- Preserve evidence for 860 resumption when this blocker closes.
 
 Completion check:
 
 - Fresh build passes.
-- Focused producer/verifier proof passes.
+- Focused scalar LHS authority proof passes.
+- Fresh full-suite baseline proof is supervisor-accepted.
 - `git diff --check` passes.
-- Matching regression guard passes if the selected proof has a comparable
-  before/after baseline.
-- No Raw-BIR receiver work lands in this idea.
+- No 860 next-row selection or Raw-BIR receiver work lands in this idea.
