@@ -511,6 +511,46 @@ QualType Lowerer::qtype_from(const TypeSpec& t,
   return qt;
 }
 
+std::optional<HirAggregateRef> Lowerer::materialize_canonical_aggregate_ref(
+    const sema::CanonicalType* canonical_type) const {
+  if (!canonical_type || !module_) return std::nullopt;
+
+  const sema::CanonicalType* leaf = canonical_type;
+  while (leaf) {
+    switch (leaf->kind) {
+      case sema::CanonicalTypeKind::Pointer:
+      case sema::CanonicalTypeKind::LValueReference:
+      case sema::CanonicalTypeKind::RValueReference:
+      case sema::CanonicalTypeKind::Array:
+        leaf = leaf->element_type.get();
+        continue;
+      default:
+        break;
+    }
+    break;
+  }
+  if (!leaf || (leaf->kind != sema::CanonicalTypeKind::Struct &&
+                leaf->kind != sema::CanonicalTypeKind::Union)) {
+    return std::nullopt;
+  }
+
+  const Node* record = leaf->identity.record_def;
+  if (!record || record->kind != NK_STRUCT_DEF) return std::nullopt;
+  const std::optional<HirRecordOwnerKey> owner_key =
+      make_struct_def_node_owner_key(record);
+  if (!owner_key || !hir_record_owner_key_has_complete_metadata(*owner_key)) {
+    return std::nullopt;
+  }
+  const HirStructDef* definition =
+      module_->find_struct_def_by_owner_structured(*owner_key);
+  if (!definition || !definition->aggregate_ref) return std::nullopt;
+  if (!definition->aggregate_ref->complete() ||
+      !module_->owns_aggregate_ref(*definition->aggregate_ref)) {
+    return std::nullopt;
+  }
+  return definition->aggregate_ref;
+}
+
 std::optional<FnPtrSig> Lowerer::fn_ptr_sig_from_decl_node(const Node* n) {
   if (!n) return std::nullopt;
   if (resolved_types_) {

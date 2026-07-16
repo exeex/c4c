@@ -925,6 +925,81 @@ void test_hir_qtype_aggregate_ref_accepts_only_direct_owned_input() {
               "qtype construction should reject foreign-module aggregate refs");
 }
 
+void test_hir_function_signature_materializes_canonical_aggregate_refs() {
+  const c4c::hir::Module module = lower_hir_module(R"c(
+struct Pair {
+  int left;
+  int right;
+};
+
+struct Pair make_pair(struct Pair value);
+struct Pair echo_pair(struct Pair again);
+struct Pair *borrow_pair(struct Pair *value);
+)c", c4c::SourceProfile::C);
+
+  const auto pair_it = module.struct_defs.find("Pair");
+  expect_true(pair_it != module.struct_defs.end() &&
+                  pair_it->second.aggregate_ref.has_value() &&
+                  module.owns_aggregate_ref(*pair_it->second.aggregate_ref),
+              "Pair definition should have a module-owned aggregate ref");
+  const c4c::hir::HirAggregateRef pair_ref = *pair_it->second.aggregate_ref;
+
+  const auto make_it = module.fn_index.find("make_pair");
+  expect_true(make_it != module.fn_index.end(),
+              "ordinary aggregate return fixture should lower make_pair");
+  const c4c::hir::Function* make_pair = module.find_function(make_it->second);
+  expect_true(make_pair != nullptr && make_pair->params.size() == 1,
+              "make_pair should retain one explicit aggregate parameter");
+  expect_true(make_pair->return_type.aggregate_ref == pair_ref,
+              "ordinary aggregate return should carry the registered HIR aggregate ref");
+  expect_true(make_pair->params[0].type.aggregate_ref == pair_ref,
+              "ordinary explicit aggregate parameter should carry the registered HIR aggregate ref");
+
+  const auto echo_it = module.fn_index.find("echo_pair");
+  expect_true(echo_it != module.fn_index.end(),
+              "repeated canonical aggregate fixture should lower echo_pair");
+  const c4c::hir::Function* echo_pair = module.find_function(echo_it->second);
+  expect_true(echo_pair != nullptr && echo_pair->params.size() == 1,
+              "echo_pair should retain one explicit aggregate parameter");
+  expect_true(echo_pair->return_type.aggregate_ref == pair_ref &&
+                  echo_pair->params[0].type.aggregate_ref == pair_ref,
+              "repeated canonical aggregate occurrences should reuse the same HIR ref");
+
+  const auto borrow_it = module.fn_index.find("borrow_pair");
+  expect_true(borrow_it != module.fn_index.end(),
+              "wrapper aggregate fixture should lower borrow_pair");
+  const c4c::hir::Function* borrow_pair = module.find_function(borrow_it->second);
+  expect_true(borrow_pair != nullptr && borrow_pair->params.size() == 1,
+              "borrow_pair should retain one explicit pointer parameter");
+  expect_true(borrow_pair->return_type.spec.ptr_level == 1 &&
+                  borrow_pair->params[0].type.spec.ptr_level == 1,
+              "aggregate pointer wrappers should remain represented in TypeSpec");
+  expect_true(borrow_pair->return_type.aggregate_ref == pair_ref &&
+                  borrow_pair->params[0].type.aggregate_ref == pair_ref,
+              "aggregate pointer wrappers should carry the aggregate leaf HIR ref");
+}
+
+void test_hir_function_signature_missing_registered_aggregate_ref_fails_closed() {
+  const c4c::hir::Module module = lower_hir_module(R"c(
+struct Forward;
+
+struct Forward *take_forward(struct Forward *value);
+)c", c4c::SourceProfile::C);
+
+  expect_true(module.struct_defs.find("Forward") == module.struct_defs.end(),
+              "forward declaration should not register a complete HIR aggregate definition");
+  const auto take_it = module.fn_index.find("take_forward");
+  expect_true(take_it != module.fn_index.end(),
+              "forward aggregate pointer fixture should lower take_forward");
+  const c4c::hir::Function* take_forward = module.find_function(take_it->second);
+  expect_true(take_forward != nullptr && take_forward->params.size() == 1,
+              "take_forward should retain one explicit pointer parameter");
+  expect_true(!take_forward->return_type.aggregate_ref.has_value(),
+              "missing registered aggregate definition should leave return ref unset");
+  expect_true(!take_forward->params[0].type.aggregate_ref.has_value(),
+              "missing registered aggregate definition should leave parameter ref unset");
+}
+
 void test_hir_ref_overload_grouping_prefers_record_def_over_stale_tag() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -8234,6 +8309,8 @@ int main() {
   test_hir_materializes_decl_ref_link_name_ids_for_emitted_refs();
   test_hir_function_params_preserve_text_ids();
   test_hir_qtype_aggregate_ref_accepts_only_direct_owned_input();
+  test_hir_function_signature_materializes_canonical_aggregate_refs();
+  test_hir_function_signature_missing_registered_aggregate_ref_fails_closed();
   test_hir_ref_overload_grouping_prefers_record_def_over_stale_tag();
   test_hir_ref_overload_grouping_rejects_stale_tag_after_record_def_mismatch();
   test_hir_ref_overload_grouping_rejects_partial_metadata_rendered_fallback();

@@ -377,6 +377,8 @@ class Lowerer {
   QualType qtype_from(const TypeSpec& t,
                       ValueCategory c = ValueCategory::RValue,
                       std::optional<HirAggregateRef> aggregate_ref = std::nullopt);
+  std::optional<HirAggregateRef> materialize_canonical_aggregate_ref(
+      const sema::CanonicalType* canonical_type) const;
 
   std::optional<FnPtrSig> fn_ptr_sig_from_decl_node(const Node* n);
 
@@ -739,7 +741,8 @@ class Lowerer {
       const TypeBindings* tpl_bindings,
       const NttpBindings* nttp_bindings,
       const std::string& context_name,
-      bool resolve_typedef_struct);
+      bool resolve_typedef_struct,
+      const sema::CanonicalType* canonical_param_type = nullptr);
 
   void append_callable_params(
       Function& fn,
@@ -749,7 +752,8 @@ class Lowerer {
       const NttpBindings* nttp_bindings,
       const std::string& context_prefix,
       bool resolve_typedef_struct,
-      bool expand_parameter_packs);
+      bool expand_parameter_packs,
+      const sema::CanonicalFunctionSig* canonical_sig = nullptr);
 
   void register_bodyless_callable(Function&& fn);
 

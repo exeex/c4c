@@ -529,6 +529,10 @@ void Lowerer::lower_function(const Node* fn_node,
   ctx.template_binding_owner_node = fn_node;
   populate_structured_template_binding_mirrors(
       ctx, fn_node, tpl_override, nttp_override);
+  std::shared_ptr<sema::CanonicalType> canonical_fn_type =
+      resolved_types_ ? resolved_types_->lookup(fn_node) : nullptr;
+  const sema::CanonicalFunctionSig* canonical_fn_sig =
+      canonical_fn_type ? sema::get_function_sig(*canonical_fn_type) : nullptr;
   {
     TypeSpec ret_ts = fn_node->type;
     if ((fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic) &&
@@ -540,7 +544,11 @@ void Lowerer::lower_function(const Node* fn_node,
         ret_ts, tpl_override, nttp_override, &ctx.structured_tpl_bindings,
         &ctx.tpl_bindings_by_text, fn_node,
         std::string("function-return:") + fn.name, false);
-    fn.return_type = qtype_from(ret_ts);
+    fn.return_type = qtype_from(
+        ret_ts, ValueCategory::RValue,
+        canonical_fn_sig ? materialize_canonical_aggregate_ref(
+                               canonical_fn_sig->return_type.get())
+                         : std::nullopt);
   }
   if (fn_node->type.is_fn_ptr ||
       fn_node->n_ret_fn_ptr_params > 0 ||
@@ -626,7 +634,7 @@ void Lowerer::lower_function(const Node* fn_node,
   fn.span = make_span(fn_node);
   append_callable_params(
       fn, ctx, fn_node, tpl_override, nttp_override, "function-param:", false,
-      true);
+      true, canonical_fn_sig);
 
   if (maybe_register_bodyless_callable(&fn, fn_node->body != nullptr)) {
     return;
@@ -1068,7 +1076,8 @@ void Lowerer::append_explicit_callable_param(
     const TypeBindings* tpl_bindings,
     const NttpBindings* nttp_bindings,
     const std::string& context_name,
-    bool resolve_typedef_struct) {
+    bool resolve_typedef_struct,
+    const sema::CanonicalType* canonical_param_type) {
   if (!(param_ts.base == TB_TYPEDEF &&
         param_ts.template_param_text_id != kInvalidText &&
         apply_signature_template_binding_by_text(
@@ -1154,7 +1163,9 @@ void Lowerer::append_explicit_callable_param(
   param.name = emitted_name;
   param.name_text_id = make_text_id(
       param.name, module_ ? module_->link_name_texts.get() : nullptr);
-  param.type = qtype_from(reference_storage_ts(param_ts), ValueCategory::LValue);
+  param.type = qtype_from(
+      reference_storage_ts(param_ts), ValueCategory::LValue,
+      materialize_canonical_aggregate_ref(canonical_param_type));
   param.fn_ptr_sig = fn_ptr_sig_from_decl_node(param_node);
   param.span = make_span(param_node);
   const uint32_t param_index = static_cast<uint32_t>(fn.params.size());
@@ -1188,7 +1199,8 @@ void Lowerer::append_callable_params(
     const NttpBindings* nttp_bindings,
     const std::string& context_prefix,
     bool resolve_typedef_struct,
-    bool expand_parameter_packs) {
+    bool expand_parameter_packs,
+    const sema::CanonicalFunctionSig* canonical_sig) {
   for (int i = 0; i < callable_node->n_params; ++i) {
     const Node* p = callable_node->params[i];
     if (!p) continue;
@@ -1241,7 +1253,10 @@ void Lowerer::append_callable_params(
 
     append_explicit_callable_param(
         fn, ctx, p, param_name, p->type, tpl_bindings, nttp_bindings,
-        context_prefix + param_name, resolve_typedef_struct);
+        context_prefix + param_name, resolve_typedef_struct,
+        canonical_sig && static_cast<size_t>(i) < canonical_sig->params.size()
+            ? &canonical_sig->params[static_cast<size_t>(i)]
+            : nullptr);
   }
 }
 
