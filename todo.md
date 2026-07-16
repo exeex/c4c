@@ -3,26 +3,30 @@
 Status: Active
 Source Idea Path: ideas/open/834_lir_owned_type_spec_module_owner_canonicalization_blocker.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Diagnose the aggregate key/module-tag ownership mismatch
+Current Step ID: 2
+Current Step Title: Repair the native owner canonicalization relation
 
 ## Just Finished
 
-- Lifecycle switch from 831 after its completed Step 3 provenance decision:
-  the shared 516-test full-suite delta is a separate native
-  `lir_owned_type_spec` module-owner canonicalization blocker.
+- Lifecycle return complete: prerequisite 835 closed as capability complete
+  after implementation commit `932c3339b` and its accepted Step 3 focused
+  proof. 834 Step 1 remains accepted and is not reset.
 
 ## Suggested Next
 
-- Execute plan Step 1: trace representative C and C++ failures to identify
-  the native structured-key/module-tag ownership invariant before editing code.
+- Execute Step 2 only: consume 835's durable HIR-owned aggregate owner
+  identity at the LIR owner lookup relation; retain the existing rejection
+  contract before proceeding to Step 3 proof.
 
 ## Watchouts
 
-- Do not reopen closed 832/833, introduce testcase-shaped exceptions, weaken
-  tests, or claim baseline clearance. 831 resumes only at Step 4 after this
-  blocker receives accepted bounded proof.
+- Do not read parser-backed record or qualifier storage after HIR
+  materialization. Do not add tag fallbacks, testcase-shaped exceptions,
+  expectation changes, filtering, or baseline claims.
 
 ## Proof
 
-- No implementation or validation is performed by this lifecycle switch.
+- Prerequisite evidence accepted: `932c3339b`; matching guard 39/42 before,
+  42/42 after, no new failures; fresh named 835 Step 3 command passed.
+- No 834 Step 2 implementation or proof has been performed in this lifecycle
+  operation.

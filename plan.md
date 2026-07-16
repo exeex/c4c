@@ -2,7 +2,7 @@
 
 Status: Active
 Source Idea: ideas/open/834_lir_owned_type_spec_module_owner_canonicalization_blocker.md
-Activated from: 831 Step 3 provenance decision
+Resumed from: accepted 835 durable-owner carrier prerequisite
 
 ## Purpose
 
@@ -12,12 +12,14 @@ routes or accepting baseline state.
 
 ## Core Rule
 
-Repair the canonical owner relation, not individual tests or diagnostic text.
-Focused repair proof is not comparable full-suite clearance.
+Consume 835's durable HIR-owned canonical identity to repair the owner
+relation, not individual tests or diagnostic text. Focused repair proof is not
+comparable full-suite clearance.
 
 ## Read First
 
 - `ideas/open/834_lir_owned_type_spec_module_owner_canonicalization_blocker.md`
+- `ideas/closed/835_hir_durable_aggregate_owner_identity_carrier_prerequisite.md`
 - `ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md`
 - `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`
 
@@ -29,29 +31,25 @@ Focused repair proof is not comparable full-suite clearance.
 
 ## Ordered Steps
 
-### Step 1 - Diagnose the aggregate key/module-tag ownership mismatch
+### Step 1 - Diagnose the aggregate key/module-tag ownership mismatch (complete)
 
-Goal: establish the smallest native relation that loses the valid module owner.
+Accepted result: cleanup-before-owner lookup loses parser-backed declaration
+and namespace canonicalization, while pre-cleanup lookup can dereference stale
+parser storage. The durable HIR carrier required for the safe repair is now
+accepted in 835 commit `932c3339b`.
 
-Actions:
-
-- Trace representative failing C and C++ cases through `lir_owned_type_spec`,
-  structured-key construction, and `find_struct_def_tag_by_owner`.
-- Compare a valid resolving aggregate path with a failing one; identify the
-  exact owner/canonicalization invariant rather than test names.
-- Select focused multi-suite coverage and an invalid/missing-owner guard.
-
-Completion check: a bounded owner relation and implementation target are
-recorded; no code or test-contract workaround is proposed.
+Completion check: complete; do not repeat the diagnosis.
 
 ### Step 2 - Repair the native owner canonicalization relation
 
-Goal: make valid LIR aggregate keys resolve their matching module tag.
+Goal: make valid LIR aggregate keys resolve their matching module tag using
+835's HIR-owned durable identity.
 
 Actions:
 
 - Implement the smallest ownership/provenance correction at the diagnosed
-  lookup relation.
+  `lir_owned_type_spec` lookup relation.
+- Consume the durable carrier rather than parser-backed record/qualifier data.
 - Preserve legitimate missing-owner rejection and avoid broad metadata or HIR
   rewrites.
 
