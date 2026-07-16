@@ -10136,6 +10136,24 @@ lir::LirModule direct_integer_call_module() {
   return module;
 }
 
+void attach_direct_integer_function_signature_ref(lir::LirModule& module) {
+  auto& call = std::get<lir::LirCallOp>(module.functions[0].blocks[0].insts[1]);
+  lir::LirFunctionSignatureStoreEntry caller_entry;
+  caller_entry.return_type_ref = lir::LirTypeRef::integer(32);
+  module.functions[0].function_signature_ref =
+      module.register_function_signature(std::move(caller_entry));
+
+  lir::LirFunctionSignatureStoreEntry entry;
+  entry.return_type_ref = lir::LirTypeRef::integer(32);
+  entry.fixed_param_type_refs = {lir::LirTypeRef::integer(32),
+                                 lir::LirTypeRef::integer(32)};
+  entry.fixed_param_is_byval = {false, false};
+  const lir::LirFunctionSignatureRef ref =
+      module.register_function_signature(std::move(entry));
+  module.functions[1].function_signature_ref = ref;
+  call.callee_signature_ref = ref;
+}
+
 void test_direct_integer_call_receipt_and_rejections() {
   const auto inspect = [](const auto& graph, const std::string& layer) {
     const auto view = graph.view();
@@ -10166,8 +10184,50 @@ void test_direct_integer_call_receipt_and_rejections() {
   expect(canonical.has_value(), "structured direct integer call must canonicalize");
   inspect(canonical.value(), "Canonical BIR");
 
+  auto missing_retained_signature = direct_integer_call_module();
+  attach_direct_integer_function_signature_ref(missing_retained_signature);
+  auto& missing_retained_call = std::get<lir::LirCallOp>(
+      missing_retained_signature.functions[0].blocks[0].insts[1]);
+  missing_retained_call.callee =
+      lir::LirOperand::global("@direct_integer_target",
+                              missing_retained_call.direct_callee_link_name_id);
+  missing_retained_call.callee_signature.reset();
+  const auto raw_missing_retained =
+      bir::lower_lir_to_raw_bir(missing_retained_signature);
+  expect(raw_missing_retained.has_value() &&
+             bir::FoundationVerifier::verify(raw_missing_retained.value()).ok(),
+         "direct integer call must use module signature store when retained signature is absent" +
+             (raw_missing_retained.has_value()
+                  ? std::string{}
+                  : ": " + raw_missing_retained.error().detail));
+  inspect(raw_missing_retained.value(), "Raw BIR store-backed direct integer call");
+  const auto canonical_missing_retained =
+      bir::lower_lir_to_canonical_bir(missing_retained_signature);
+  expect(canonical_missing_retained.has_value(),
+         "store-backed direct integer call without retained signature must canonicalize");
+  inspect(canonical_missing_retained.value(),
+          "Canonical BIR store-backed direct integer call");
+
+  auto stale_text_signature = direct_integer_call_module();
+  attach_direct_integer_function_signature_ref(stale_text_signature);
+  auto& stale_text_call = std::get<lir::LirCallOp>(
+      stale_text_signature.functions[0].blocks[0].insts[1]);
+  stale_text_call.callee =
+      lir::LirOperand::global("@direct_integer_target",
+                              stale_text_call.direct_callee_link_name_id);
+  stale_text_call.callee_signature->fixed_param_types = {
+      "i64 stale text only", "i1 stale text only"};
+  stale_text_call.callee_type_suffix = "(ptr stale suffix)";
+  stale_text_call.args_str = "double stale mirror";
+  const auto raw_stale_text = bir::lower_lir_to_raw_bir(stale_text_signature);
+  expect(raw_stale_text.has_value() &&
+             bir::FoundationVerifier::verify(raw_stale_text.value()).ok(),
+         "direct integer call must ignore retained text when signature ref resolves");
+  inspect(raw_stale_text.value(), "Raw BIR stale-text direct integer call");
+
   const auto rejected = [](auto mutate, const std::string& message) {
     auto rejected_module = direct_integer_call_module();
+    attach_direct_integer_function_signature_ref(rejected_module);
     auto& call = std::get<lir::LirCallOp>(rejected_module.functions[0].blocks[0].insts[1]);
     mutate(rejected_module, call);
     const auto raw_rejected = bir::lower_lir_to_raw_bir(rejected_module);
@@ -10189,6 +10249,10 @@ void test_direct_integer_call_receipt_and_rejections() {
              call.callee_signature->fixed_param_type_refs[1] =
                  lir::LirTypeRef::integer(64);
            }, "callee signature disagreement must reject");
+  rejected([](auto& module, auto& call) {
+             module.function_signature_store[call.callee_signature_ref.value]
+                 .fixed_param_type_refs[1] = lir::LirTypeRef::integer(64);
+           }, "signature-store disagreement must reject");
   rejected([](auto&, auto& call) {
              call.structured_args[1].type_ref = lir::LirTypeRef::integer(64);
            }, "argument type disagreement must reject");

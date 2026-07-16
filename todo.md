@@ -8,19 +8,17 @@ Current Step Title: Migrate call composition to signature refs
 
 ## Just Finished
 
-- Step 3 integer intrinsic call-authority verifier slice completed: the
-  boolean-flag (`cttz`/`ctlz`) and count (`ctpop`) direct-call helpers now
-  consume the module-owned function signature store when `callee_signature_ref`
-  resolves, with retained `callee_signature` left as the compatibility fallback
-  for unmigrated intrinsic calls. Nearby coverage proves supported boolean-flag
-  and count intrinsic direct calls verify with retained `callee_signature`
-  removed once a valid signature ref is present, while stale retained structured
-  signature facts still reject through the signature-ref disagreement check.
+- Step 3 BIR store-backed direct integer call slice completed: the compiled
+  monolithic `exact_direct_integer_call` consumer now resolves
+  `callee_signature_ref` through the module function signature store, permits
+  retained `callee_signature` to be absent or text-stale when the store entry
+  resolves, and keeps retained/store, argument, and target signature mismatches
+  fail-closed.
 
 ## Suggested Next
 
-- Continue Step 3 with another direct-call composition consumer outside the
-  migrated direct void fixed-integer and integer intrinsic call-authority
+- Continue Step 3 with the next direct-call composition consumer outside the
+  migrated direct void, direct integer, and integer intrinsic call-authority
   helpers, without touching 829/830 argument value identity.
 
 ## Watchouts
@@ -37,6 +35,10 @@ Current Step Title: Migrate call composition to signature refs
   presence non-authoritative for the migrated verifier consumer.
 - RV64 variadic return `signext`/`zeroext` is now a structured
   `signature_return_ext_attr` fact and must stay in the store path.
+- The ineffective split-file-only patch in
+  `src/backend/bir/lir_to_bir/calling.cpp` was removed for this slice; the
+  compiled backend interface path is the monolithic importer in
+  `src/backend/bir/lir_to_bir.cpp`.
 
 ## Proof
 
