@@ -139,6 +139,9 @@ struct LocalAggregateSlots {
   // Compatibility LIR type spellings retained for aggregate slot layout.
   std::string storage_type_text;
   std::string type_text;
+  // Structured aggregate type identity, when the construction site already has
+  // LIR metadata. Absent means legacy/no-id slot state must keep using text.
+  std::optional<c4c::codegen::lir::LirTypeRef> type_ref;
   std::size_t base_byte_offset = 0;
   // Aggregate field slots are keyed by byte offset; values are route-local slot
   // spellings.

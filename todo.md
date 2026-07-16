@@ -8,34 +8,34 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed Step 4 owner-boundary conversion for aggregate PHI planning in
-`src/backend/bir/lir_to_bir/cfg.cpp` and
-`src/backend/bir/lir_to_bir/lowering.hpp`.
+Completed Step 4 owner-boundary conversion for local aggregate slot state.
 
-`PhiLoweringPlan` now carries the PHI `boundary_value_type` as a structured
-`LirTypeRef`. Aggregate PHI layout/alignment planning prefers
-`lookup_backend_aggregate_type_ref_layout_result(...)` when that ref has a
-`StructNameId`, and metadata-bearing refs now fail closed instead of falling
-back through rendered `type_str`. The retained text fallback is documented as
-legacy no-id compatibility for hand-built or inline aggregate PHI LIR only.
+`LocalAggregateSlots` now carries optional structured aggregate type identity
+as `LirTypeRef`. The aggregate PHI declaration path threads
+`PhiLoweringPlan::boundary_type_ref` into the generated local aggregate slots,
+and `collect_sorted_leaf_slots(...)` now prefers
+`lookup_backend_aggregate_type_ref_layout_result(...)` for metadata-bearing
+slots. The retained rendered-text layout fallback is documented as legacy/no-id
+compatibility for slots whose construction site still lacks structured type
+metadata.
 
 ## Suggested Next
 
-Suggested Next: choose the next single owner-boundary conversion from the
-retained Step 4 fallback set, likely local aggregate slot state or byval copy
-state, and thread a structured aggregate type ref or explicit no-id marker
-before removing another rendered-text layout bridge.
+Suggested Next: choose one remaining local aggregate slot construction path
+that already has structured type metadata available, thread `LirTypeRef` into
+the slot state there, and keep text-only callers on the explicit no-id fallback.
 
 ## Watchouts
 
-- `PhiLoweringPlan::type_text` is still intentionally retained for generated
-  aggregate slot state; this packet only moved aggregate PHI layout/alignment
-  selection off rendered text when structured PHI metadata exists.
-- PHI refs without `StructNameId` still use the legacy text path for no-id or
-  inline aggregate cases. Do not widen that fallback back to metadata-bearing
-  refs.
-- The exact backend subset selected by the supervisor ran cleanly, but it did
-  not include frontend/verify PHI metadata producers.
+- `module.cpp` was touched only for the direct aggregate PHI slot declaration
+  site, so the structured ref captured in `cfg.cpp` reaches
+  `LocalAggregateSlots`.
+- Most `declare_local_aggregate_slots(...)` callers still create text-only
+  slot state by design for this packet. Do not treat the new optional field as
+  a reason to migrate every memory path in one slice.
+- Metadata-bearing local aggregate slots now fail closed in the leaf-slot
+  consumer if the structured layout lookup cannot resolve; absent/no-id slots
+  continue through the documented rendered-text fallback.
 
 ## Proof
 
@@ -45,6 +45,10 @@ Ran exactly:
 Result: passed. `test_after.log` contains `100% tests passed, 0 tests failed
 out of 6`.
 
+Supervisor regression guard:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+reported before 6/6, after 6/6, result PASS.
+
 Supplemental PHI producer/verifier smoke also passed:
 `ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|verify_tests_)'`
-reported 12/12 passing after the fresh build.
+reported 12/12 passing after the fresh backend proof.

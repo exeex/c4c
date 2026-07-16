@@ -598,10 +598,21 @@ class BirFunctionLowerer {
   bool declare_local_aggregate_slots(std::string_view type_text,
                                      std::string_view slot_name,
                                      std::size_t align_bytes);
+  bool declare_local_aggregate_slots(
+      std::string_view type_text,
+      const std::optional<c4c::codegen::lir::LirTypeRef>& type_ref,
+      std::string_view slot_name,
+      std::size_t align_bytes);
   bool declare_local_aggregate_slots(std::string_view type_text,
                                      const AggregateTypeLayout& layout,
                                      std::string_view slot_name,
                                      std::size_t align_bytes);
+  bool declare_local_aggregate_slots(
+      std::string_view type_text,
+      const std::optional<c4c::codegen::lir::LirTypeRef>& type_ref,
+      const AggregateTypeLayout& layout,
+      std::string_view slot_name,
+      std::size_t align_bytes);
   bool append_local_aggregate_copy_from_slots(const c4c::backend::LocalAggregateSlots& source_slots,
                                               const c4c::backend::LocalAggregateSlots& target_slots,
                                               std::string_view temp_prefix,

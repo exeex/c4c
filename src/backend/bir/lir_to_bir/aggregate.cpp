@@ -168,10 +168,24 @@ std::optional<BirFunctionLowerer::AggregateTypeLayout> BirFunctionLowerer::lower
 
 std::vector<std::pair<std::size_t, std::string>> BirFunctionLowerer::collect_sorted_leaf_slots(
     const LocalAggregateSlots& aggregate_slots) const {
-  const auto layout =
-      selected_aggregate_type_layout(aggregate_slots.type_text,
-                                     type_decls_,
-                                     structured_layouts_);
+  auto layout = AggregateTypeLayout{};
+  if (aggregate_slots.type_ref.has_value() && aggregate_slots.type_ref->has_struct_name_id()) {
+    const auto lookup = lookup_backend_aggregate_type_ref_layout_result(*aggregate_slots.type_ref,
+                                                                        type_decls_,
+                                                                        structured_layouts_);
+    if (!lookup.used_structured_layout) {
+      return {};
+    }
+    layout = lookup.layout;
+  }
+  if (layout.kind == AggregateTypeLayout::Kind::Invalid) {
+    // Legacy/no-id compatibility only: local aggregate slots created before a
+    // structured type ref reaches this boundary keep resolving from rendered
+    // text. Metadata-rich slots above prefer the ref lookup.
+    layout = selected_aggregate_type_layout(aggregate_slots.type_text,
+                                            type_decls_,
+                                            structured_layouts_);
+  }
   return collect_sorted_leaf_slots(aggregate_slots, layout);
 }
 
@@ -384,10 +398,48 @@ bool BirFunctionLowerer::declare_local_aggregate_slots(std::string_view type_tex
   return declare_local_aggregate_slots(type_text, aggregate_layout, slot_name, align_bytes);
 }
 
+bool BirFunctionLowerer::declare_local_aggregate_slots(
+    std::string_view type_text,
+    const std::optional<c4c::codegen::lir::LirTypeRef>& type_ref,
+    std::string_view slot_name,
+    std::size_t align_bytes) {
+  if (type_ref.has_value() && type_ref->has_struct_name_id()) {
+    const auto lookup = lookup_backend_aggregate_type_ref_layout_result(*type_ref,
+                                                                        type_decls_,
+                                                                        structured_layouts_);
+    if (!lookup.used_structured_layout ||
+        (lookup.layout.kind != AggregateTypeLayout::Kind::Struct &&
+         lookup.layout.kind != AggregateTypeLayout::Kind::Array)) {
+      return false;
+    }
+    return declare_local_aggregate_slots(type_text, type_ref, lookup.layout, slot_name, align_bytes);
+  }
+
+  // Legacy/no-id compatibility only: direct local aggregate declarations that
+  // still lack a StructNameId-bearing LirTypeRef continue to resolve from text.
+  const auto aggregate_layout = selected_aggregate_type_layout(type_text,
+                                                               type_decls_,
+                                                               structured_layouts_);
+  return declare_local_aggregate_slots(type_text, type_ref, aggregate_layout, slot_name, align_bytes);
+}
+
 bool BirFunctionLowerer::declare_local_aggregate_slots(std::string_view type_text,
                                                        const AggregateTypeLayout& aggregate_layout,
                                                        std::string_view slot_name,
                                                        std::size_t align_bytes) {
+  return declare_local_aggregate_slots(type_text,
+                                       std::nullopt,
+                                       aggregate_layout,
+                                       slot_name,
+                                       align_bytes);
+}
+
+bool BirFunctionLowerer::declare_local_aggregate_slots(
+    std::string_view type_text,
+    const std::optional<c4c::codegen::lir::LirTypeRef>& type_ref,
+    const AggregateTypeLayout& aggregate_layout,
+    std::string_view slot_name,
+    std::size_t align_bytes) {
   if (aggregate_layout.kind != AggregateTypeLayout::Kind::Struct &&
       aggregate_layout.kind != AggregateTypeLayout::Kind::Array) {
     return false;
@@ -396,6 +448,7 @@ bool BirFunctionLowerer::declare_local_aggregate_slots(std::string_view type_tex
   LocalAggregateSlots aggregate_slots{
       .storage_type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(type_text)),
       .type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(type_text)),
+      .type_ref = type_ref,
       .base_byte_offset = 0,
   };
   if (!append_local_aggregate_scalar_slots(aggregate_layout,

@@ -1386,7 +1386,10 @@ bool BirFunctionLowerer::initialize_aggregate_phi_state() {
       }
 
       if (!declare_local_aggregate_slots(
-              phi_plan.type_text, phi_plan.result_name, phi_plan.aggregate_align_bytes)) {
+              phi_plan.type_text,
+              phi_plan.boundary_type_ref,
+              phi_plan.result_name,
+              phi_plan.aggregate_align_bytes)) {
         note_function_lowering_family_failure("scalar-control-flow semantic family");
         return false;
       }
