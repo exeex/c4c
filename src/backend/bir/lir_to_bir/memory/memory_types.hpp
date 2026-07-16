@@ -56,6 +56,9 @@ struct LocalSlotAddress {
   // Compatibility LIR type spellings retained for aggregate pointer layout.
   std::string storage_type_text;
   std::string type_text;
+  // Structured aggregate type identity when this address was derived from a
+  // metadata-bearing local aggregate carrier. Absent means legacy/no-id state.
+  std::optional<c4c::codegen::lir::LirTypeRef> type_ref;
   std::vector<std::string> array_element_slots;
   std::size_t array_base_index = 0;
   std::string source_object_name;
@@ -157,6 +160,9 @@ struct PointerAddress {
   // Compatibility LIR type spellings retained for pointer provenance layout.
   std::string storage_type_text;
   std::string type_text;
+  // Structured aggregate type identity when the pointer address was derived
+  // from metadata-bearing local aggregate address state.
+  std::optional<c4c::codegen::lir::LirTypeRef> type_ref;
   bir::TypeKind loaded_pointer_value_type = bir::TypeKind::Void;
   std::string loaded_pointer_type_text;
   bool aarch64_variadic_fp_register_save_area = false;

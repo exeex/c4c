@@ -91,6 +91,27 @@ std::optional<BirFunctionLowerer::AggregateTypeLayout> local_memory_aggregate_la
                                                           &structured_layouts);
 }
 
+std::optional<BirFunctionLowerer::AggregateTypeLayout> local_memory_aggregate_layout(
+    const LocalSlotAddress& address,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
+  if (address.type_ref.has_value() && address.type_ref->has_struct_name_id()) {
+    if (structured_layouts == nullptr) {
+      return std::nullopt;
+    }
+    return local_memory_aggregate_layout(*address.type_ref,
+                                         address.type_text,
+                                         type_decls,
+                                         *structured_layouts);
+  }
+  if (structured_layouts != nullptr) {
+    return BirFunctionLowerer::lower_byval_aggregate_layout(address.type_text,
+                                                            type_decls,
+                                                            structured_layouts);
+  }
+  return BirFunctionLowerer::lower_byval_aggregate_layout(address.type_text, type_decls);
+}
+
 bool collect_homogeneous_fp_aggregate_facts(
     const BirFunctionLowerer::AggregateTypeLayout& layout,
     const BirFunctionLowerer::TypeDeclMap& type_decls,
@@ -240,6 +261,7 @@ bool is_byte_storage_layout(const BirFunctionLowerer::AggregateTypeLayout& layou
       .byte_offset = 0,
       .storage_type_text = address.storage_type_text,
       .type_text = address.type_text,
+      .type_ref = address.type_ref,
   };
   if (!address.array_element_slots.empty()) {
     pointer_address.dynamic_element_count =
@@ -1249,11 +1271,12 @@ bool BirFunctionLowerer::lower_memory_store_inst(
     if (context_.target_profile.arch == c4c::TargetArch::Aarch64 &&
         context_.target_profile.has_float_return_registers) {
       const auto target_layout =
-          lookup_scalar_byte_offset_layout(target_aggregate_it->second.type_text,
-                                           type_decls_,
-                                           &structured_layouts_);
+          local_memory_aggregate_layout(target_aggregate_it->second, type_decls_, structured_layouts_);
+      if (!target_layout.has_value()) {
+        return false;
+      }
       if (const auto hfa_facts =
-              homogeneous_fp_aggregate_facts(target_layout, type_decls_, &structured_layouts_);
+              homogeneous_fp_aggregate_facts(*target_layout, type_decls_, &structured_layouts_);
           hfa_facts.has_value()) {
         std::vector<bir::Value> lanes;
         bool has_return_lane_store = false;
@@ -2428,17 +2451,19 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
         }
         local_pointer_slot_addresses->erase(ptr_it->second);
         const auto target_layout =
-            lookup_scalar_byte_offset_layout(local_aggregate_it->second.type_text,
-                                             type_decls,
-                                             &structured_layouts_);
+            local_memory_aggregate_layout(local_aggregate_it->second, type_decls, structured_layouts_);
+        if (!target_layout.has_value()) {
+          return LocalSlotStoreResult::Failed;
+        }
         auto stored_address = LocalSlotAddress{
             .slot_name = leaf_it->second,
-            .value_type = target_layout.kind == AggregateTypeLayout::Kind::Scalar
-                              ? target_layout.scalar_type
+            .value_type = target_layout->kind == AggregateTypeLayout::Kind::Scalar
+                              ? target_layout->scalar_type
                               : bir::TypeKind::Void,
             .byte_offset = 0,
             .storage_type_text = local_aggregate_it->second.storage_type_text,
             .type_text = local_aggregate_it->second.type_text,
+            .type_ref = local_aggregate_it->second.type_ref,
         };
         if (const auto array_slots = collect_local_scalar_array_slots(
                 local_aggregate_it->second.type_text,
@@ -2816,10 +2841,13 @@ void BirFunctionLowerer::record_loaded_local_pointer_slot_state(
 
   const auto result = std::string(result_name);
   (*local_slot_pointer_values)[result] = local_slot_it->second;
-  const auto loaded_layout = lookup_scalar_byte_offset_layout(
-      local_slot_it->second.type_text, type_decls, structured_layouts);
-  if ((loaded_layout.kind == AggregateTypeLayout::Kind::Struct ||
-       loaded_layout.kind == AggregateTypeLayout::Kind::Array) &&
+  const auto loaded_layout = local_memory_aggregate_layout(
+      local_slot_it->second, type_decls, structured_layouts);
+  if (!loaded_layout.has_value()) {
+    return;
+  }
+  if ((loaded_layout->kind == AggregateTypeLayout::Kind::Struct ||
+       loaded_layout->kind == AggregateTypeLayout::Kind::Array) &&
       local_slot_it->second.byte_offset >= 0) {
     std::optional<LocalAggregateSlots> aggregate_view;
     for (const auto& [aggregate_name, aggregate_slots] : *local_aggregate_slots) {
@@ -2834,6 +2862,7 @@ void BirFunctionLowerer::record_loaded_local_pointer_slot_state(
         aggregate_view = LocalAggregateSlots{
             .storage_type_text = aggregate_slots.storage_type_text,
             .type_text = local_slot_it->second.type_text,
+            .type_ref = local_slot_it->second.type_ref,
             .base_byte_offset =
                 byte_offset + static_cast<std::size_t>(local_slot_it->second.byte_offset),
             .leaf_slots = aggregate_slots.leaf_slots,
@@ -2848,16 +2877,17 @@ void BirFunctionLowerer::record_loaded_local_pointer_slot_state(
       (*local_aggregate_slots)[result] = std::move(*aggregate_view);
     }
   }
-  if (loaded_layout.kind == AggregateTypeLayout::Kind::Array &&
+  if (loaded_layout->kind == AggregateTypeLayout::Kind::Array &&
       !local_slot_it->second.array_element_slots.empty() &&
       local_slot_it->second.byte_offset >= 0) {
     const auto element_layout = lookup_scalar_byte_offset_layout(
-        loaded_layout.element_type_text, type_decls, structured_layouts);
+        loaded_layout->element_type_text, type_decls, structured_layouts);
     if (element_layout.kind == AggregateTypeLayout::Kind::Scalar &&
         element_layout.size_bytes != 0) {
       LocalAggregateSlots aggregate_view{
           .storage_type_text = local_slot_it->second.storage_type_text,
           .type_text = local_slot_it->second.type_text,
+          .type_ref = local_slot_it->second.type_ref,
           .base_byte_offset = static_cast<std::size_t>(local_slot_it->second.byte_offset),
       };
       for (std::size_t index = 0; index < local_slot_it->second.array_element_slots.size();
@@ -2870,8 +2900,8 @@ void BirFunctionLowerer::record_loaded_local_pointer_slot_state(
   }
   if (!local_slot_it->second.array_element_slots.empty() &&
       local_slot_it->second.byte_offset >= 0 &&
-      !(loaded_layout.kind == AggregateTypeLayout::Kind::Array &&
-        local_slot_it->second.array_element_slots.size() > loaded_layout.array_count)) {
+      !(loaded_layout->kind == AggregateTypeLayout::Kind::Array &&
+        local_slot_it->second.array_element_slots.size() > loaded_layout->array_count)) {
     (*local_pointer_array_bases)[result] = LocalPointerArrayBase{
         .element_slots = local_slot_it->second.array_element_slots,
         .base_index = local_slot_it->second.array_base_index,

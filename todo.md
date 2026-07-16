@@ -8,53 +8,39 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed Step 4 residual classification through the call ABI, global
-aggregate, and memory projection families.
+Completed Step 4 local aggregate memory identity repair for the direct
+local-slot chain feeding intrinsic fill/copy and local pointer reconstruction.
 
-Accepted classifications:
-- `aggregate.cpp`, `call_abi.cpp`, `global_initializers.cpp`, `globals.cpp`,
-  `memory/addressing.cpp`, and `memory/local_gep.cpp` residual comments now
-  document deliberate no-id, legacy, or target-policy compatibility paths after
-  metadata-bearing callers have already been forced through structured
-  `LirTypeRef` lookup and fail-closed behavior.
-- The latest focused backend proof passed, and the supervisor accepted the
-  full-suite baseline candidate at 3038/3038 after the global aggregate packet.
-
-Step 4 is not ready to advance yet. The remaining comments in
-`memory/intrinsics.cpp`, `memory/local_slots.cpp`, `memory/provenance.cpp`, and
-`types.cpp` still describe active valid-lowering paths where local aggregate,
-pointer-derived leaf, byte-offset, provenance, or central aggregate layout
-state can reach raw rendered aggregate type text because structured type
-identity is not threaded to that boundary. That is still 847-owned because the
-source idea requires deleting expired universal/string escape hatches and
-proving compile-time separation in valid LIR authority paths, not merely
-labeling a missing metadata carrier as compatibility.
+`LocalSlotAddress` and `PointerAddress` now carry the existing
+`LocalAggregateSlots::type_ref` metadata when an address is derived from a
+metadata-bearing aggregate carrier. `memory/intrinsics.cpp` now resolves local
+aggregate memset/memcpy layouts through structured `LirTypeRef` lookup when
+that carrier is present, and fails closed on structured misses instead of
+recovering through rendered type spelling. `memory/local_slots.cpp` now uses
+the same structured local aggregate layout path when materializing HFA
+aggregate stores, publishing local aggregate pointer addresses, and rebuilding
+aggregate views from loaded local pointer slot state.
 
 ## Suggested Next
 
-Suggested Next: keep Step 4 active and execute one bounded in-scope packet:
-thread structured aggregate type identity, or prove an explicit no-id boundary,
-across the local aggregate memory chain that feeds
-`memory/intrinsics.cpp`, `memory/local_slots.cpp`, `memory/provenance.cpp`, and
-the central `types.cpp` raw `TypeDeclMap` fallback.
-
-The packet should start at the local-slot/address state that owns aggregate
-object identity, then update only the directly connected intrinsic fill/copy,
-scalar byte-offset, and provenance lookups needed to stop metadata-bearing
-valid LIR from recovering through rendered type spelling. If a subpath is
-proven deliberately no-id only, leave a narrow comment saying so; if it still
-lacks a metadata carrier, repair that carrier instead of advancing to Step 5.
+Suggested Next: keep Step 4 active and run a bounded provenance/central-layout
+packet that either threads the new `PointerAddress::type_ref` into scalar
+subobject provenance classification or records the exact no-id boundaries that
+still cannot receive structured layout context. Include the central
+`types.cpp` raw `TypeDeclMap` fallback in that same audit only where it is
+directly exercised by the remaining provenance helper.
 
 ## Watchouts
 
-- Keep this packet narrow. Do not reopen already classified call ABI, global,
-  aggregate-parameter, memory/addressing, or local GEP comments unless the
-  memory aggregate identity repair exposes a direct contradiction.
-- Do not silently expand 847 into unrelated owners. If a residual bridge is not
-  an 847 deletion target, preserve the current Step 4 return point and ask
-  plan-owner to create or switch to the correct separate initiative.
-- Keep legitimate no-id text fallbacks explicit and narrow; do not replace the
-  deleted universal model with a renamed compatibility bag.
+- `memory/provenance.cpp` still classifies scalar subobject addressability with
+  only rendered type text and `TypeDeclMap`; its current helper signatures do
+  not receive `BackendStructuredLayoutTable`, so fully consuming
+  `PointerAddress::type_ref` there is a separate plumbing packet.
+- Raw text fallbacks remain legitimate for legacy/no-id local address state
+  where `type_ref` is absent. Do not relabel metadata-bearing misses as no-id.
+- Do not reopen already classified call ABI, global, aggregate-parameter,
+  memory/addressing, or local GEP comments unless this local memory repair
+  exposes a direct contradiction.
 
 ## Proof
 

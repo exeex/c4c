@@ -10,6 +10,7 @@
 namespace c4c::backend {
 
 using lir_to_bir_detail::lower_integer_type;
+using lir_to_bir_detail::lookup_backend_aggregate_type_ref_layout_result;
 using lir_to_bir_detail::parse_i64;
 using lir_to_bir_detail::type_size_bytes;
 using BackendStructuredLayoutTable = lir_to_bir_detail::BackendStructuredLayoutTable;
@@ -117,6 +118,31 @@ BirFunctionLowerer::lower_intrinsic_aggregate_layout(
     return lower_byval_aggregate_layout(text, type_decls);
   }
   return lower_byval_aggregate_layout(text, type_decls, structured_layouts);
+}
+
+std::optional<BirFunctionLowerer::AggregateTypeLayout> lower_intrinsic_local_aggregate_layout(
+    const LocalAggregateSlots& aggregate_slots,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
+  if (aggregate_slots.type_ref.has_value() && aggregate_slots.type_ref->has_struct_name_id()) {
+    if (structured_layouts == nullptr) {
+      return std::nullopt;
+    }
+    const auto lookup = lookup_backend_aggregate_type_ref_layout_result(*aggregate_slots.type_ref,
+                                                                        type_decls,
+                                                                        *structured_layouts);
+    const auto& layout = lookup.layout;
+    if (!lookup.used_structured_layout ||
+        (layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Struct &&
+         layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Array) ||
+        layout.size_bytes == 0 || layout.align_bytes == 0) {
+      return std::nullopt;
+    }
+    return layout;
+  }
+  return BirFunctionLowerer::lower_intrinsic_aggregate_layout(aggregate_slots.type_text,
+                                                              type_decls,
+                                                              structured_layouts);
 }
 
 bool BirFunctionLowerer::try_lower_immediate_local_memset(
@@ -277,7 +303,7 @@ bool BirFunctionLowerer::try_lower_immediate_local_memset(
   const auto collect_sorted_leaf_slots_for_memops =
       [&](const LocalAggregateSlots& aggregate_slots) -> std::vector<std::pair<std::size_t, std::string>> {
     const auto layout =
-        lower_intrinsic_aggregate_layout(aggregate_slots.type_text, type_decls, structured_layouts);
+        lower_intrinsic_local_aggregate_layout(aggregate_slots, type_decls, structured_layouts);
     if (!layout.has_value()) {
       return {};
     }
@@ -349,9 +375,7 @@ bool BirFunctionLowerer::try_lower_immediate_local_memset(
   if (const auto aggregate_it = local_aggregate_slots.find(std::string(dst_operand));
       aggregate_it != local_aggregate_slots.end()) {
     const auto aggregate_layout =
-        lower_intrinsic_aggregate_layout(aggregate_it->second.type_text,
-                                         type_decls,
-                                         structured_layouts);
+        lower_intrinsic_local_aggregate_layout(aggregate_it->second, type_decls, structured_layouts);
     if (!aggregate_layout.has_value()) {
       return false;
     }
@@ -435,9 +459,7 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
   const auto build_memcpy_leaf_view_from_aggregate =
       [&](const LocalAggregateSlots& aggregate_slots) -> std::optional<LocalMemcpyLeafView> {
     const auto aggregate_layout =
-        lower_intrinsic_aggregate_layout(aggregate_slots.type_text,
-                                         type_decls,
-                                         structured_layouts);
+        lower_intrinsic_local_aggregate_layout(aggregate_slots, type_decls, structured_layouts);
     if (!aggregate_layout.has_value()) {
       return std::nullopt;
     }
@@ -587,9 +609,7 @@ bool BirFunctionLowerer::try_lower_immediate_local_memcpy(
           continue;
         }
         const auto aggregate_layout =
-            lower_intrinsic_aggregate_layout(aggregate_slots.type_text,
-                                             type_decls,
-                                             structured_layouts);
+            lower_intrinsic_local_aggregate_layout(aggregate_slots, type_decls, structured_layouts);
         if (!aggregate_layout.has_value()) {
           continue;
         }
