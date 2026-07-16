@@ -7485,6 +7485,16 @@ int lir_scalar_compare_result_use_identity(void) {
   expect_identity_verification_rejected(
       conflicting_type,
       "verifier should reject floating type on authoritative integer compare");
+
+  lir::LirModule stale_display_type = lowered;
+  require_focused_compare(stale_display_type).first.type_str.str() = "double";
+  lir::verify_module(stale_display_type);
+  const std::string stale_display_ir = lir::print_llvm(stale_display_type);
+  expect_true(stale_display_ir.find(" = icmp slt i32 ") != std::string::npos,
+              "integer compare printer should render type from native width authority");
+  expect_true(stale_display_ir.find(" = icmp slt double ") ==
+                  std::string::npos,
+              "integer compare printer must not recover type semantics from stale display text");
 }
 
 void test_scalar_floating_compare_result_use_identity_boundary() {

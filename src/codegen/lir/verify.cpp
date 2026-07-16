@@ -2179,7 +2179,11 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
   if (const auto* op = std::get_if<LirCmpOp>(&inst)) {
     verify_result_operand(op->result, "LirCmpOp.result");
     (void)render_cmp_predicate(op->predicate, "LirCmpOp.predicate");
-    require_module_type_ref(mod, op->type_str, "LirCmpOp.type_str");
+    if (op->is_float) {
+      require_module_type_ref(mod, op->type_str, "LirCmpOp.type_str");
+    } else {
+      (void)render_integer_type_ref(op->type_str, "LirCmpOp.type_str");
+    }
     verify_value_operand(op->lhs, "LirCmpOp.lhs");
     verify_value_operand(op->rhs, "LirCmpOp.rhs");
     verify_cmp_op_authority(*op);

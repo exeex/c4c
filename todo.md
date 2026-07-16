@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/846_lir_family_overloaded_verifier_dispatch_printer.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add The Bounded Family Overload
+Current Step ID: 5
+Current Step Title: Decide Next 846 Packet Or 847 Handoff
 
 # Current Packet
 
@@ -78,12 +78,20 @@ family consumers, so the next selected surface is the integer compare branch of
   `tests/frontend/frontend_lir_call_type_ref_test.cpp`, with backend BIR
   comparison receipt/rejection coverage in `backend_lir_to_bir_interface`.
 
+Completed the selected integer `LirCmpOp.type_str` packet:
+
+- Reused `render_integer_type_ref` for only non-floating compare verifier and
+  printer type fields.
+- Preserved floating compare type refs on the existing generic path.
+- Added focused stale-display coverage proving integer compare printing uses
+  native integer width authority rather than mutable display text.
+
 ## Suggested Next
 
-Execute `plan.md` Step 2 and Step 3 for only the non-floating integer branch
-of `LirCmpOp.type_str`. Reuse or extend the bounded scalar integer type-ref
-requirement as appropriate, while leaving floating compare type refs on the
-existing generic path.
+Execute `plan.md` Step 5: inventory remaining universal classifier, renderer,
+mutable semantic string, and implicit conversion callers. Classify the next
+exact 846-owned consumer or record the handoff/blocker decision if no 846
+consumer is ready.
 
 ## Watchouts
 
@@ -125,9 +133,12 @@ Next Step 5 decision is trace/lifecycle state unless it selects and records
 another bounded implementation packet.
 
 Step 5 trace selected the integer branch of `LirCmpOp.type_str` for the next
-bounded packet. Expected code-changing proof for that packet:
+bounded packet. Completed integer compare packet proof:
 
 - `cmake --build build`
 - `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
 - `ctest --test-dir build -R '^backend_lir_to_bir_interface$' --output-on-failure`
 - `git diff --check`
+
+Next Step 5 decision is trace/lifecycle state unless it selects and records
+another bounded implementation packet.
