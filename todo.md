@@ -8,33 +8,31 @@ Current Step Title: Receive DirectPointer Truthiness Parameter Authority
 
 ## Just Finished
 
-Activated 734 after closed 853's accepted DirectPointer pointer-truthiness
-producer/schema/verifier handoff. Steps 1 through 7.41 remain accepted
-historical receiver work and must not be repeated.
+Step 7.42 received the closed-853 DirectPointer pointer-truthiness
+body-parameter authority row into typed Raw BIR. The accepted tuple is the
+original current-function parameter `LirValueId{81}`, owner
+`pointer_truthiness_parameter_owner`, parameter index `0`, pointer
+`LirTypeRef`, `DirectPointer` ABI, `PointerTruthiness` role, and the verified
+`PtrToInt` plus `icmp ne i64 <ptr-int>, 0` consumer relation. The focused
+backend coverage now includes the positive Raw-BIR receipt and malformed
+missing, invalid, foreign, duplicate, owner/index/type/ABI/role, non-PtrToInt,
+operand, compare-LHS, zero-RHS, and duplicate-row rejection cases.
 
 ## Suggested Next
 
-Implement only Step 7.42: receive the closed-853 tuple for an original
-current-function DirectPointer parameter used by pointer truthiness lowering,
-including parameter `LirValueId`, owner, parameter index, pointer type,
-`DirectPointer` ABI, `PointerTruthiness` role, and the verified `PtrToInt`
-plus `icmp ne i64 <ptr-int>, 0` consumer relation.
+Ask plan-owner to reassess source completion for 734 now that Step 7.42 is
+implemented and the runbook appears exhausted.
 
 ## Watchouts
 
-Do not edit LIR producer/schema code, repeat accepted parameter rows through
-fixed-direct-call argument 1, receive another parameter form, or recover
-authority from pointer text, cast spelling, comparison text, signatures,
-names, diagnostics, compatibility mirrors, or testcase shape.
+No LIR producer/schema files were edited. Keep any further work out of adjacent
+parameter rows unless plan-owner repairs or replaces the runbook.
 
 ## Proof
 
-Passed matching focused regression proof:
-
-`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$' ) > test_before.log 2>&1`
+Passed delegated focused proof:
 
 `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$' ) > test_after.log 2>&1 && git diff --check`
 
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
-
-Result: before 1/1, after 1/1, no new failures; `git diff --check` passed.
+Result: build passed, `backend_lir_to_bir_interface` passed 1/1, and
+`git diff --check` passed. Proof log: `test_after.log`.
