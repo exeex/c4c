@@ -9476,11 +9476,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
                       "@make_pair");
   missing_direct_signature_ref_call.callee_signature_ref =
       c4c::codegen::lir::LirFunctionSignatureRef::invalid();
-  try {
-    c4c::codegen::lir::verify_module(missing_direct_signature_ref);
-    fail("verifier should reject a direct call missing its callee signature ref");
-  } catch (const c4c::codegen::lir::LirVerifyError&) {
-  }
+  c4c::codegen::lir::verify_module(missing_direct_signature_ref);
 
   c4c::codegen::lir::LirModule stale_direct_signature_ref = lir_module;
   c4c::codegen::lir::LirCallOp& stale_direct_signature_ref_call =

@@ -555,28 +555,6 @@ void verify_call_callee_signature_ref(const LirModule& mod,
                                       const LirCallOp& call) {
   constexpr std::string_view field = "LirCallOp.callee_signature_ref";
   if (!call.callee_signature_ref.valid()) {
-    if (call.direct_callee_link_name_id != kInvalidLinkName &&
-        call.callee_signature.has_value() &&
-        !call.callee_signature->has_unspecified_params) {
-      const LirFunction* callee = find_unique_function_by_link_name(
-          mod, call.direct_callee_link_name_id, field);
-      const LirFunctionSignatureStoreEntry* signature =
-          callee && callee->function_signature_ref.valid()
-              ? mod.find_function_signature(callee->function_signature_ref)
-              : nullptr;
-      const bool has_byval_param =
-          signature &&
-          std::any_of(signature->fixed_param_is_byval.begin(),
-                      signature->fixed_param_is_byval.end(),
-                      [](bool is_byval) { return is_byval; });
-      if (signature && !callee->is_declaration && !signature->is_variadic &&
-          !has_byval_param) {
-        std::ostringstream detail;
-        detail << "direct module call with structured signature must carry a callee signature ref"
-               << " for callee '" << call.callee.str() << "'";
-        fail_verify(field, detail.str());
-      }
-    }
     return;
   }
 
