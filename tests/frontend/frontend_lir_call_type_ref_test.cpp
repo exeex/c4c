@@ -3610,6 +3610,8 @@ double lir_direct_scalar_floating_result_call_identity(void) {
   };
 
   auto [call, add] = require_focused(lowered);
+  lir::LirFunction& caller_function = require_function(
+      lowered, "lir_direct_scalar_floating_result_call_identity");
   expect_true(call.direct_callee_link_name_id != c4c::kInvalidLinkName &&
                   call.return_type.kind() == lir::LirTypeKind::Floating &&
                   call.return_type.str() == "double" && call.callee_signature &&
@@ -3621,6 +3623,18 @@ double lir_direct_scalar_floating_result_call_identity(void) {
                   call.callee_signature->fixed_param_type_refs.empty() &&
                   call.structured_args.empty() && call.arg_type_refs.empty() &&
                   call.result.value_id() && call.result.value_id()->valid() &&
+                  call.direct_zero_arg_scalar_floating_call_authority &&
+                  call.direct_zero_arg_scalar_floating_call_authority->result ==
+                      *call.result.value_id() &&
+                  call.direct_zero_arg_scalar_floating_call_authority->owner ==
+                      caller_function.link_name_id &&
+                  call.direct_zero_arg_scalar_floating_call_authority->callee ==
+                      call.direct_callee_link_name_id &&
+                  call.direct_zero_arg_scalar_floating_call_authority->return_type ==
+                      call.return_type &&
+                  call.direct_zero_arg_scalar_floating_call_authority->role ==
+                      lir::LirDirectZeroArgScalarFloatingCallRole::
+                          ResultIntoFloatingBinaryLhs &&
                   add.opcode.typed() == lir::LirBinaryOpcode::FAdd &&
                   add.type_str.kind() == lir::LirTypeKind::Floating &&
                   add.type_str.str() == "double" && add.lhs.value_id() &&
@@ -3639,11 +3653,25 @@ double lir_direct_scalar_floating_result_call_identity(void) {
   expect_identity_verification_rejected(
       missing_result, "verifier should reject missing direct double call result authority");
 
+  lir::LirModule missing_carrier = lowered;
+  require_focused(missing_carrier)
+      .first.direct_zero_arg_scalar_floating_call_authority.reset();
+  expect_identity_verification_rejected(
+      missing_carrier, "verifier should reject missing direct double authority carrier");
+
   lir::LirModule invalid_result = lowered;
   require_focused(invalid_result).first.result =
       lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
   expect_identity_verification_rejected(
       invalid_result, "verifier should reject invalid direct double call result ID");
+
+  lir::LirModule stale_carrier_result = lowered;
+  require_focused(stale_carrier_result)
+      .first.direct_zero_arg_scalar_floating_call_authority->result =
+      lir::LirValueId{99};
+  expect_identity_verification_rejected(
+      stale_carrier_result,
+      "verifier should reject stale direct double authority result ID");
 
   lir::LirModule duplicate_result = lowered;
   auto [duplicate_call, duplicate_add] = require_focused(duplicate_result);
@@ -3672,6 +3700,22 @@ double lir_direct_scalar_floating_result_call_identity(void) {
   expect_identity_verification_rejected(
       callee_conflict, "verifier should reject conflicting direct double callee IDs");
 
+  lir::LirModule carrier_callee_conflict = lowered;
+  require_focused(carrier_callee_conflict)
+      .first.direct_zero_arg_scalar_floating_call_authority->callee =
+      c4c::LinkNameId{999};
+  expect_identity_verification_rejected(
+      carrier_callee_conflict,
+      "verifier should reject conflicting direct double authority callee ID");
+
+  lir::LirModule carrier_owner_conflict = lowered;
+  require_focused(carrier_owner_conflict)
+      .first.direct_zero_arg_scalar_floating_call_authority->owner =
+      c4c::LinkNameId{999};
+  expect_identity_verification_rejected(
+      carrier_owner_conflict,
+      "verifier should reject foreign direct double authority owner ID");
+
   lir::LirModule signature_conflict = lowered;
   require_focused(signature_conflict).first.callee_signature->is_variadic = true;
   expect_identity_verification_rejected(
@@ -3690,6 +3734,22 @@ double lir_direct_scalar_floating_result_call_identity(void) {
       lir::LirTypeRef::integer(32);
   expect_identity_verification_rejected(
       return_type_conflict, "verifier should reject conflicting direct double return type");
+
+  lir::LirModule carrier_type_conflict = lowered;
+  require_focused(carrier_type_conflict)
+      .first.direct_zero_arg_scalar_floating_call_authority->return_type =
+      lir::LirTypeRef::integer(32);
+  expect_identity_verification_rejected(
+      carrier_type_conflict,
+      "verifier should reject conflicting direct double authority return type");
+
+  lir::LirModule carrier_role_conflict = lowered;
+  require_focused(carrier_role_conflict)
+      .first.direct_zero_arg_scalar_floating_call_authority->role =
+      lir::LirDirectZeroArgScalarFloatingCallRole::Invalid;
+  expect_identity_verification_rejected(
+      carrier_role_conflict,
+      "verifier should reject invalid direct double authority role");
 
   lir::LirModule opcode_conflict = lowered;
   require_focused(opcode_conflict).second.opcode = lir::LirBinaryOpcode::Add;

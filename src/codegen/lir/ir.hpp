@@ -553,6 +553,20 @@ enum class LirZeroCountBehavior : unsigned char {
   Undefined,
 };
 
+enum class LirDirectZeroArgScalarFloatingCallRole : uint8_t {
+  Invalid,
+  ResultIntoFloatingBinaryLhs,
+};
+
+struct LirDirectZeroArgScalarFloatingCallAuthority {
+  LirValueId result = LirValueId::invalid();
+  LinkNameId owner = kInvalidLinkName;
+  LinkNameId callee = kInvalidLinkName;
+  LirTypeRef return_type;
+  LirDirectZeroArgScalarFloatingCallRole role =
+      LirDirectZeroArgScalarFloatingCallRole::Invalid;
+};
+
 // Typed call instruction.
 // Covers both direct calls, indirect calls, and intrinsic calls.
 struct LirCallOp {
@@ -572,6 +586,8 @@ struct LirCallOp {
   bool requires_native_result_authority = false;
   LirFunctionSignatureRef callee_signature_ref =
       LirFunctionSignatureRef::invalid();
+  std::optional<LirDirectZeroArgScalarFloatingCallAuthority>
+      direct_zero_arg_scalar_floating_call_authority;
 };
 
 enum class LirScalarBinaryParameterRole : uint8_t {

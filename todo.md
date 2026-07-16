@@ -7,21 +7,36 @@ Current Step Title: Select and publish one next non-body-parameter authority row
 # Current Packet
 
 ## Just Finished
-Lifecycle switch complete. Closed 862 as an intentionally concluded no-change
-route because no unaccepted current-LIR body-parameter authority row remains
-inside its source scope after accepted 734 Step 7.49.
+Step 1 selected and published exactly one next current-LIR non-body-parameter
+authority row: direct zero-argument scalar floating `LirCallOp` result
+authority for the selected result consumed as the LHS of the downstream
+floating binary operation. The producer now carries
+`LirDirectZeroArgScalarFloatingCallAuthority` with native result `LirValueId`,
+current-function owner `LinkNameId`, direct callee `LinkNameId`, exact
+floating `LirTypeRef`, and explicit `ResultIntoFloatingBinaryLhs` role.
+Verifier and focused frontend LIR coverage now reject absent, stale result,
+foreign owner, callee-incoherent, type-incoherent, role-incoherent, and
+consumer-incoherent forms.
 
 ## Suggested Next
-Execute Step 1 of `plan.md`: inspect current LIR producer/verifier behavior
-and select exactly one non-body-parameter row with native structured authority
-for handoff back to 734.
+Return to 734 with one receiver packet for the selected direct zero-argument
+scalar floating call-result row. Receive only the structured result/owner/
+callee/return-type/role tuple into typed Raw BIR and keep all other
+nonselected current-LIR rows fail-closed.
 
 ## Watchouts
-Do not edit Raw-BIR/importer code, reopen accepted body-parameter rows, select
-multiple rows, or use text/names/rendered operands/diagnostics/compatibility
-mirrors/`monostate` as authority. Existing open residual-family ideas are
-context only unless the supervisor explicitly reconciles their stale return
-records with this post-7.49 route.
+This packet selected only the direct zero-argument scalar floating result-call
+row. It did not authorize Raw-BIR receiver edits, body-parameter rows,
+multiple call families, nonzero-argument floating calls, indirect calls,
+aggregate/vector/memory/VA/CFG/PHI/inline-assembly rows, or presentation-based
+recovery.
 
 ## Proof
-Not run. This was a lifecycle-only switch with no implementation changes.
+Passed. Proof log: `test_after.log`.
+
+Command:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_(function_signature_type_ref|extern_decl_type_ref|global_type_ref|call_type_ref)$'; } > test_after.log 2>&1`
+
+Supervisor full-suite proof also passed:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure; } > test_after.log 2>&1`
+with `3038/3038` tests passing.

@@ -555,19 +555,52 @@ bool is_direct_zero_arg_scalar_floating_result_claim(const LirCallOp& call) {
          call.structured_args.empty() && call.arg_type_refs.empty();
 }
 
-void verify_direct_zero_arg_scalar_floating_result_call(const LirModule& mod,
-                                                        const LirCallOp& call) {
+void verify_direct_zero_arg_scalar_floating_result_call(
+    const LirModule& mod, const LirFunction* owner_function,
+    const LirCallOp& call) {
   const bool direct_scalar_floating_result_authority =
       is_native_scalar_floating_type(call.return_type) &&
-      call.callee.kind() == LirOperandKind::Global && call.result.value_id();
+      call.callee.kind() == LirOperandKind::Global &&
+      call.direct_zero_arg_scalar_floating_call_authority.has_value();
   if (!direct_scalar_floating_result_authority &&
       !is_direct_zero_arg_scalar_floating_result_claim(call)) {
     return;
   }
 
+  const auto& authority = call.direct_zero_arg_scalar_floating_call_authority;
+  if (!authority.has_value()) {
+    fail_verify("LirCallOp.direct_zero_arg_scalar_floating_call_authority",
+                "direct zero-argument scalar floating call requires native authority");
+  }
   if (!call.result.value_id()) {
     fail_verify("LirCallOp.result",
                 "direct zero-argument scalar floating call requires LirValueId result authority");
+  }
+  if (authority->result != *call.result.value_id() ||
+      !authority->result.valid()) {
+    fail_verify("LirCallOp.direct_zero_arg_scalar_floating_call_authority",
+                "direct zero-argument scalar floating call result authority must match the result operand");
+  }
+  if (!owner_function ||
+      owner_function->link_name_id == kInvalidLinkName ||
+      authority->owner != owner_function->link_name_id) {
+    fail_verify("LirCallOp.direct_zero_arg_scalar_floating_call_authority",
+                "direct zero-argument scalar floating call owner must match the current function");
+  }
+  if (authority->callee != call.direct_callee_link_name_id ||
+      authority->callee == kInvalidLinkName) {
+    fail_verify("LirCallOp.direct_zero_arg_scalar_floating_call_authority",
+                "direct zero-argument scalar floating call callee authority must match the direct callee");
+  }
+  if (authority->return_type != call.return_type ||
+      !is_native_scalar_floating_type(authority->return_type)) {
+    fail_verify("LirCallOp.direct_zero_arg_scalar_floating_call_authority",
+                "direct zero-argument scalar floating call return authority must match the call return type");
+  }
+  if (authority->role !=
+      LirDirectZeroArgScalarFloatingCallRole::ResultIntoFloatingBinaryLhs) {
+    fail_verify("LirCallOp.direct_zero_arg_scalar_floating_call_authority",
+                "direct zero-argument scalar floating call requires the selected result-consumer role");
   }
   if (!call.callee_signature.has_value() ||
       call.direct_callee_link_name_id == kInvalidLinkName ||
@@ -1780,7 +1813,8 @@ void verify_insert_value_authority(const LirInsertValueOp& op) {
   }
 }
 
-void verify_inst(const LirModule& mod, const LirInst& inst) {
+void verify_inst(const LirModule& mod, const LirInst& inst,
+                 const LirFunction* owner_function = nullptr) {
   if (const auto* op = std::get_if<LirMemcpyOp>(&inst)) {
     verify_pointer_operand(op->dst, "LirMemcpyOp.dst");
     verify_pointer_operand(op->src, "LirMemcpyOp.src");
@@ -1940,7 +1974,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
     }
     verify_direct_void_fixed_integer_immediate_call(mod, *op);
     verify_direct_void_fixed_integer_ssa_call(mod, *op);
-    verify_direct_zero_arg_scalar_floating_result_call(mod, *op);
+    verify_direct_zero_arg_scalar_floating_result_call(mod, owner_function, *op);
     verify_integer_boolean_flag_call_authority(mod, *op);
     verify_integer_count_call_authority(mod, *op);
     verify_native_call_result_authority(*op);
@@ -5206,10 +5240,12 @@ void verify_module(const LirModule& mod) {
   }
   for (const auto& function : mod.functions) {
     verify_function_value_ownership(mod, function, instruction_result_owners);
-    for (const auto& inst : function.alloca_insts) verify_inst(mod, inst);
+    for (const auto& inst : function.alloca_insts) {
+      verify_inst(mod, inst, &function);
+    }
     for (const auto& block : function.blocks) {
       for (const auto& inst : block.insts) {
-        verify_inst(mod, inst);
+        verify_inst(mod, inst, &function);
         if (const auto* indirect_br = std::get_if<LirIndirectBrOp>(&inst)) {
           verify_indirect_br_successors(function, *indirect_br);
         }
