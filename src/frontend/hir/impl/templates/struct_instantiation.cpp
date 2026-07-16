@@ -562,6 +562,8 @@ void Lowerer::instantiate_template_struct_body(
       register_template_struct_instance_owner(def, primary_tpl, tpl_def, instance_key, true);
   module_->struct_def_order.push_back(mangled);
   module_->struct_defs[mangled] = std::move(def);
+  HirStructDef& stored_def = module_->struct_defs.at(mangled);
+  stored_def.aggregate_ref = module_->register_aggregate_definition(stored_def);
   struct_def_nodes_[mangled] = tpl_def;
   register_instantiated_template_struct_methods(
       mangled, owner_key, tpl_def, method_tpl_bindings, method_nttp_bindings);

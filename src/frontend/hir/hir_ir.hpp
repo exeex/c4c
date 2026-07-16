@@ -1851,6 +1851,10 @@ struct HirStructDef {
   SymbolName tag;
   TextId tag_text_id = kInvalidText;
   NamespaceQualifier ns_qual;  // owning namespace context from AST
+  // Issued once the definition is stored in its owning HIR module.  This is
+  // the direct canonical aggregate identity carrier for HIR occurrence
+  // construction; do not reconstruct it from record spelling or AST state.
+  std::optional<HirAggregateRef> aggregate_ref;
   bool is_union = false;
   int size_bytes = 0;
   int align_bytes = 1;

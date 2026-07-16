@@ -871,6 +871,60 @@ int use_params(int input) { return input + 1; }
             "method parameter TextIds should resolve through the HIR text table");
 }
 
+void test_hir_qtype_aggregate_ref_accepts_only_direct_owned_input() {
+  c4c::hir::Module lowered_module = lower_hir_module("struct StoredAggregate { int value; };");
+  const auto stored = lowered_module.struct_defs.find("StoredAggregate");
+  expect_true(stored != lowered_module.struct_defs.end() &&
+                  stored->second.aggregate_ref.has_value() &&
+                  lowered_module.owns_aggregate_ref(*stored->second.aggregate_ref),
+              "HIR aggregate definition construction should retain its module-issued canonical ref");
+
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  c4c::hir::HirStructDef definition;
+  definition.tag = "DirectAggregate";
+  auto [it, inserted] = module.struct_defs.emplace(definition.tag, std::move(definition));
+  expect_true(inserted, "fixture should store its aggregate definition in the HIR module");
+  it->second.aggregate_ref = module.register_aggregate_definition(it->second);
+  expect_true(it->second.aggregate_ref.has_value() &&
+                  module.owns_aggregate_ref(*it->second.aggregate_ref),
+              "stored aggregate definition should retain its module-issued canonical ref");
+
+  c4c::TypeSpec aggregate_type{};
+  aggregate_type.base = c4c::TB_STRUCT;
+  const c4c::hir::QualType direct =
+      lowerer.qtype_from(aggregate_type, c4c::hir::ValueCategory::RValue,
+                         it->second.aggregate_ref);
+  expect_true(direct.aggregate_ref == it->second.aggregate_ref,
+              "qtype construction should copy a direct complete module-owned aggregate ref");
+
+  const c4c::hir::QualType missing = lowerer.qtype_from(aggregate_type);
+  expect_true(!missing.aggregate_ref.has_value(),
+              "qtype construction should leave aggregate refs unset without direct input");
+
+  const c4c::hir::QualType incomplete =
+      lowerer.qtype_from(aggregate_type, c4c::hir::ValueCategory::RValue,
+                         c4c::hir::HirAggregateRef{});
+  expect_true(!incomplete.aggregate_ref.has_value(),
+              "qtype construction should reject incomplete direct aggregate refs");
+
+  c4c::hir::Module foreign_module;
+  c4c::hir::HirStructDef foreign_definition;
+  foreign_definition.tag = "ForeignAggregate";
+  auto [foreign_it, foreign_inserted] =
+      foreign_module.struct_defs.emplace(foreign_definition.tag, std::move(foreign_definition));
+  expect_true(foreign_inserted, "fixture should store its foreign aggregate definition");
+  foreign_it->second.aggregate_ref =
+      foreign_module.register_aggregate_definition(foreign_it->second);
+  const c4c::hir::QualType foreign =
+      lowerer.qtype_from(aggregate_type, c4c::hir::ValueCategory::RValue,
+                         foreign_it->second.aggregate_ref);
+  expect_true(!foreign.aggregate_ref.has_value(),
+              "qtype construction should reject foreign-module aggregate refs");
+}
+
 void test_hir_ref_overload_grouping_prefers_record_def_over_stale_tag() {
   c4c::Arena arena;
   c4c::TextTable texts;
@@ -1306,6 +1360,9 @@ Box<int> make_box() { return {}; }
   expect_true(instantiated_it != hir_module.struct_defs.end(),
               "fixture should instantiate a template struct definition that inherits from Derived");
   const c4c::hir::HirStructDef& instantiated = instantiated_it->second;
+  expect_true(instantiated.aggregate_ref.has_value() &&
+                  hir_module.owns_aggregate_ref(*instantiated.aggregate_ref),
+              "instantiated template struct definitions should retain module-issued aggregate refs");
   expect_true(instantiated.tag_text_id != c4c::kInvalidText,
               "instantiated template struct defs should preserve a parallel tag TextId");
   expect_eq(hir_module.link_name_texts->lookup(instantiated.tag_text_id), instantiated.tag,
@@ -8176,6 +8233,7 @@ int main() {
   test_hir_materializes_link_name_ids_for_emitted_symbols();
   test_hir_materializes_decl_ref_link_name_ids_for_emitted_refs();
   test_hir_function_params_preserve_text_ids();
+  test_hir_qtype_aggregate_ref_accepts_only_direct_owned_input();
   test_hir_ref_overload_grouping_prefers_record_def_over_stale_tag();
   test_hir_ref_overload_grouping_rejects_stale_tag_after_record_def_mismatch();
   test_hir_ref_overload_grouping_rejects_partial_metadata_rendered_fallback();

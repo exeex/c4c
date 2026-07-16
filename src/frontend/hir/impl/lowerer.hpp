@@ -374,7 +374,9 @@ class Lowerer {
 
   static bool contains_stmt_expr(const Node* n);
 
-  QualType qtype_from(const TypeSpec& t, ValueCategory c = ValueCategory::RValue);
+  QualType qtype_from(const TypeSpec& t,
+                      ValueCategory c = ValueCategory::RValue,
+                      std::optional<HirAggregateRef> aggregate_ref = std::nullopt);
 
   std::optional<FnPtrSig> fn_ptr_sig_from_decl_node(const Node* n);
 

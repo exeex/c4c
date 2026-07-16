@@ -466,10 +466,19 @@ bool Lowerer::contains_stmt_expr(const Node* n) {
   return false;
 }
 
-QualType Lowerer::qtype_from(const TypeSpec& t, ValueCategory c) {
+QualType Lowerer::qtype_from(const TypeSpec& t,
+                             ValueCategory c,
+                             std::optional<HirAggregateRef> aggregate_ref) {
   QualType qt{};
   qt.spec = t;
   qt.category = c;
+  // Aggregate occurrence identity is supplied directly by the HIR definition
+  // construction path.  Never derive it from TypeSpec, parser state, owner
+  // keys, tags, or text; absent or non-owned refs fail closed.
+  if (aggregate_ref && aggregate_ref->complete() && module_ &&
+      module_->owns_aggregate_ref(*aggregate_ref)) {
+    qt.aggregate_ref = *aggregate_ref;
+  }
   if ((t.base == TB_STRUCT || t.base == TB_UNION) && t.record_def &&
       t.record_def->kind == NK_STRUCT_DEF && module_ && module_->link_name_texts) {
     const Node* record = t.record_def;
@@ -3568,6 +3577,8 @@ void Lowerer::lower_struct_def(const Node* sd) {
   if (append_struct_def_order)
     module_->struct_def_order.push_back(tag);
   module_->struct_defs[tag] = std::move(def);
+  HirStructDef& stored_def = module_->struct_defs.at(tag);
+  stored_def.aggregate_ref = module_->register_aggregate_definition(stored_def);
 
   // Collect struct methods (stored in sd->children[]) for later lowering.
   // If the struct was parser-instantiated from a template, extract the
