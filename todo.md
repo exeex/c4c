@@ -8,28 +8,25 @@ Current Step Title: Select One Carrier-Backed Collector Seam
 
 ## Just Finished
 
-Accepted commit `6d9ecb05f` completed plan Step 1-3 for the one-field
-`LirSelectOp.false_val` packet in `collect_inst_refs`: raw
-`S(op.false_val)` scanning was replaced with
-`collect_operand_ref(op.false_val, refs)` only. Closure is rejected because
-durable in-scope aggregate/vector collector migration remains.
+Completed plan Step 1 one-field packet for `LirExtractValueOp.agg` in
+`collect_inst_refs`: raw `S(op.agg)` scanning was replaced with
+`collect_operand_ref(op.agg, refs)` only.
 
 ## Suggested Next
 
-Implement the next one-field packet: migrate `LirExtractValueOp.agg` in
-`collect_inst_refs` from raw `S(op.agg)` scanning to
-`collect_operand_ref(op.agg, refs)`.
+Select the next one-field carrier-backed aggregate/vector collector seam and
+migrate only that field after confirming its producer records semantic carrier
+data.
 
 ## Watchouts
 
-Do not close 845 yet. Do not perform a broad collector sweep. Leave
-`LirInsertValueOp`, vector ops, inline asm, and residual raw/global text on
-their current scanner paths. Do not reconstruct references from rendered names
-or text. This packet should touch only `LirExtractValueOp.agg`.
+Do not close 845 yet. Do not perform a broad collector sweep. `LirInsertValueOp`,
+vector ops, inline asm, and residual raw/global text remain on their current
+scanner paths. Do not reconstruct references from rendered names or text.
 
 ## Proof
 
-Required implementation proof:
+Required implementation proof for this packet passed:
 
 ```
 { cmake --build build && ctest --test-dir build -R '^frontend_hir_tests$' --output-on-failure; } > test_after.log 2>&1
