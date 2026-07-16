@@ -1,143 +1,155 @@
-# LIR Global, Extern Declaration, and Initializer Family Facts Runbook
+# LIR Extern Declaration Type Facts Repair Runbook
 
 Status: Active
 Source Idea: ideas/open/844_lir_global_extern_initializer_family_facts.md
-Activated From: 866 remaining-authority ordering after bounded 843 closure
+Repaired From: exhausted selected global aggregate route after commits 0d81739ec, 17924cbbf, ab59b41d5, and 6149ed4a4
 
 ## Purpose
 
-Execute the next ordered producer/schema successor by moving global and extern
-type facts away from parallel `TypeSpec`, runtime text, and optional-ref mirrors
-toward explicit family refs.
+Continue idea 844 after the bounded global aggregate carrier route completed by
+selecting the next in-scope global/extern type-fact target without reopening
+initializer payload semantics, global policy identity, collector-only receiver
+work, or Raw-BIR import work.
 
 ## Goal
 
-Migrate global and extern declaration type facts to family refs while keeping
-initializer-text semantics separately owned and preserving legacy initializer
-compatibility until its named migration proves deletion.
+Migrate the next exact extern declaration type-fact path toward family refs,
+starting from the currently known extern return mirror and nominal signature
+store evidence, while preserving final declaration output compatibility.
 
 ## Core Rule
 
-This is global/extern type-fact migration only. Do not redesign initializer
-text semantics, delete legacy scanners prematurely, expand 812/813 non-type
-string routing, or claim final rendering text as semantic type authority.
+This repaired route is still idea 844 only: global/extern type facts. It must
+not redesign initializer text, delete the initializer scanner, absorb 812/813
+string routing, or treat final declaration text as semantic type authority.
 
-## Read First
+## Accepted Prior Route
 
-- `ideas/open/844_lir_global_extern_initializer_family_facts.md`
-- `docs/lir_remaining_authority_owner_triage/ordering_and_closure.md`
-- Accepted 843 commits for recursive array/GEP producer prerequisites:
-  `0803da789`, `3e7691199`, `67e5e8a69`, `c7d7267ce`
-- Existing global, extern declaration, initializer, verifier, printer, and
-  family-ref collection tests
+The prior route completed the selected declared aggregate global slice:
+
+- Step 1 inventory selected `LirGlobal.llvm_type_ref` as the first target.
+- Step 2 required declared aggregate globals to carry matching structured type
+  refs.
+- Step 3 moved global printer rendering to structured `StructNameId` authority
+  when present.
+- Step 4 concluded no safe deletion of `LirGlobal.llvm_type` remains inside
+  that selected slice because it is still compatibility/output text for
+  unselected families and receiver/backend paths.
 
 ## Current Targets And Scope
 
-- Global type facts currently held in `TypeSpec`, `llvm_type`, or optional
-  type-ref mirrors.
-- Extern declaration return/parameter type facts and their verifier/printer
-  consumers.
-- Family-ref collection for global and extern type facts.
-- Legacy initializer compatibility proof, without redesigning initializer-text
-  semantics.
+- Extern declaration return type facts currently held in
+  `LirExternDecl.return_type_str`, `LirExternDecl.return_type`, and the
+  module function-signature store.
+- Extern declaration fixed parameter type facts currently owned by nominal
+  function-signature entries rather than direct `LirExternDecl` fields.
+- Verifier/printer handling for extern declarations.
+- Family-ref collection/import-preparation seams only as observations until an
+  exact producer carrier exists.
 
 ## Non-Goals
 
-- Do not migrate initializer-text semantics or non-type string policy.
-- Do not delete the legacy initializer scanner until its exact producer and
-  carrier migration are proven.
-- Do not absorb 812/813 string-routing work.
-- Do not return to 734 without one exact typed global or extern handoff.
+- Do not migrate initializer payload text or global policy identity.
+- Do not delete final extern declaration output text before printer parity is
+  proven.
+- Do not invent direct extern parameter fields unless Step 1 proves that is the
+  minimal selected target.
+- Do not absorb collector-only or Raw-BIR receiver migration.
 
 ## Execution Rules
 
-- Work in bounded global or extern packets; do not rewrite both families at
-  once unless Step 1 proves a shared helper is the minimal safe slice.
-- For each code slice, run a fresh build plus focused global/extern lowering,
-  verifier/printer, collection, and initializer compatibility proof matching
-  the touched path.
-- Preserve final output rendering and initializer scanner compatibility until
-  named-consumer parity is proven.
-- Keep type facts separate from global policy identity and initializer payload
-  semantics.
+- Work in one bounded extern return or extern parameter packet at a time.
+- For code slices, run a fresh build plus focused extern declaration, global
+  initializer compatibility, and selected printer/verifier tests.
+- Preserve final declaration rendering until selected structured printer parity
+  is proven.
+- Keep extern return facts separate from function symbol identity and parameter
+  signature-store facts unless a packet explicitly selects a store-backed
+  target.
 
 ## Steps
 
-### Step 1 - Inventory global and extern type fact carriers
+### Step 1 - Inventory remaining extern declaration type fact carriers
 
-Goal: identify current global/extern type carriers, verifier/printer paths,
-family-ref collection points, and initializer compatibility dependencies.
+Goal: select the next bounded extern return or parameter target after the
+completed global aggregate route.
 
 Actions:
 
-- Trace global type facts through lowering, LIR schema, verifier, printer, and
-  collector/import-preparation seams.
-- Trace extern declaration return and parameter type facts through the same
-  surfaces.
-- Separate type facts from initializer payload text, global policy identity,
-  and non-type string semantics.
-- Select the first bounded Step 2 target and record valid/malformed/stale-text
-  proof needs.
+- Trace extern return facts through `record_extern_decl`, `ExternDeclInfo`,
+  `LirExternDecl`, verifier, printer, and call/signature-store seams.
+- Trace extern fixed parameter facts through nominal signature-store entries
+  and identify whether a direct `LirExternDecl` carrier is required or whether
+  a store-backed target is sufficient.
+- Separate return/parameter type facts from extern symbol identity,
+  final declaration text, global initializer payload text, and collector-only
+  receiver work.
+- Select the first bounded repaired Step 2 target and record positive,
+  malformed, stale-text, and missing-carrier proof needs.
 
 Completion check:
 
-- `todo.md` records the selected global or extern target, current carriers,
-  accepted and rejected authority inputs, proof command, and any missing
+- `todo.md` records the selected extern return or parameter target, current
+  carriers, accepted and rejected authority inputs, proof command, and missing
   evidence.
 - No implementation change is required for this step.
 
-### Step 2 - Add or complete the selected family-ref carrier
+### Step 2 - Add or complete the selected extern family-ref carrier
 
-Goal: make the selected global or extern type path publish explicit family refs
-from producer-owned type facts.
+Goal: make the selected extern declaration type path publish or require the
+minimal structured family ref from producer-owned facts.
 
 Actions:
 
-- Add or complete the minimal carrier/API for the selected target.
-- Preserve old text fields only as compatibility mirrors for named consumers.
-- Add positive and wrong-authority coverage for stale text and missing family
-  refs.
+- Add or complete the selected carrier/API.
+- Preserve old return or declaration text only as compatibility/output mirror
+  for named consumers.
+- Add positive and wrong-authority coverage for stale text, missing refs, and
+  wrong-family inputs.
 
 Completion check:
 
 - Fresh build passes.
-- Focused tests prove the selected target publishes family refs and does not
-  recover semantic type authority from final rendering or initializer text.
+- Focused tests prove the selected extern target publishes/uses structured
+  family refs and does not recover semantic type authority from final
+  declaration text.
 
-### Step 3 - Migrate selected verifier, printer, and collection consumers
+### Step 3 - Migrate selected extern verifier/printer consumers
 
-Goal: move selected consumers to the family-ref carrier while preserving final
-output compatibility.
+Goal: move selected extern consumers to the selected family-ref carrier while
+preserving output compatibility.
 
 Actions:
 
-- Migrate verifier checks for the selected target.
-- Migrate printer or final rendering only to consume family refs as semantic
-  input while preserving required compatibility output.
-- Migrate family-ref collection for the selected target.
+- Migrate verifier checks for the selected extern target.
+- Migrate printer or final declaration rendering to consume the structured
+  carrier as semantic input while preserving normal output.
+- Record collector/import-preparation implications without implementing
+  collector-only receiver work unless the selected producer carrier demands a
+  local observation.
 
 Completion check:
 
 - Fresh build and focused tests cover valid facts, malformed refs, stale text,
-  collection, and legacy initializer compatibility for the selected target.
+  final declaration compatibility, and no initializer scanner regression.
 
-### Step 4 - Retire selected legacy type mirrors only with parity
+### Step 4 - Retire selected extern legacy mirrors only with parity
 
-Goal: delete old type mirrors only where every selected named consumer has
-migrated.
+Goal: delete selected extern runtime-text mirrors only when every selected named
+consumer has migrated.
 
 Actions:
 
-- Delete `llvm_type`, extern runtime-text, helper comparisons, or conversions
-  only for the exact selected target with proven parity.
-- Retain final rendering and initializer scanner compatibility unless their
-  own named migration is accepted.
+- Delete or demote `return_type_str` or related text only for the exact
+  selected extern target with proven verifier/printer parity.
+- Retain final output text unless structured rendering fully owns the selected
+  declaration form.
 - Document any exact typed global or extern handoff that can later return to
   734.
 
 Completion check:
 
 - Fresh build and focused regression prove no selected named consumer depends
-  on the retired legacy type mirror.
-- Any 734 return condition names one exact typed global or extern row and
-  excludes initializer text and non-type global policy semantics.
+  on the retired legacy mirror.
+- Any 734 return condition names one exact typed extern row and excludes
+  initializer text, global policy semantics, and collector-only work.
