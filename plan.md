@@ -1,92 +1,119 @@
-# LIR-To-New-BIR Body-Parameter Receiver Runbook
+# LIR Next Body Parameter Authority Handoff Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
+Source Idea: ideas/open/855_lir_next_body_parameter_authority_handoff.md
+Supersedes: exhausted 734 Step 7.43 runbook after accepted commit `617a8fae9`
 
 ## Purpose
 
-Resume 734 after closed 854's accepted producer/schema/verifier handoff and
-receive exactly one further function-body parameter row into typed Raw BIR.
+Unblock idea 734 after its accepted Step 7.43 DirectScalar unary-`fneg`
+receiver by publishing exactly one next native LIR body-parameter authority
+handoff.
 
 ## Goal
 
-Add the Raw-BIR receiver for the closed-854 DirectScalar unary-`fneg`
-body-parameter authority while preserving all accepted receiver history
-through Step 7.42.
+Select, publish, verify, and hand off one next valid function-body
+parameter-use row for a later bounded Raw-BIR receiver packet in 734.
 
 ## Core Rule
 
 Use only native structured LIR authority. Do not recover parameter identity,
 type, ABI, owner, role, or consumer coherence from text, names, rendered
-operands, signatures, diagnostics, compatibility mirrors, or testcase shape.
+operands, signatures, diagnostics, compatibility mirrors, `monostate`, or
+testcase shape.
 
 ## Read First
 
+- `ideas/open/855_lir_next_body_parameter_authority_handoff.md`
 - `ideas/open/734_lir_to_new_bir_container_completeness.md`
-- `ideas/closed/854_lir_next_body_parameter_authority_handoff.md`
-- Current Raw-BIR body-parameter receiver code and verifier coverage
-- Existing accepted Step 7.34 through Step 7.42 parameter receiver tests
+- The accepted Step 7.43 receiver commit `617a8fae9`
+- Existing LIR body-parameter authority producers and verifier coverage
 
 ## Current Targets And Scope
 
-- Preserve accepted Steps 1 through 7.42, most recently receiver commit
-  `96853b2a2`.
-- Consume only closed 854's DirectScalar unary-`fneg` tuple: original
-  current-function parameter `LirValueId`, owner, parameter index, matching
-  `LirTypeRef`, `DirectScalar` ABI, explicit `Lhs` role, and unary `LirBinOp`
-  consumer coherence with opcode `fneg`, parameter SSA/value as `lhs`, and
-  empty `rhs`.
-- Add only the minimum typed Raw-BIR destination, importer dispatch, reachable
-  verifier path, and transactional positive/negative coverage needed for that
-  row.
+- Preserve 734's accepted receiver progress through Step 7.43.
+- Find exactly one next valid body-parameter use after the accepted
+  DirectPointer and DirectScalar rows already listed in 734.
+- Publish native producer/schema authority for that one row and verify the
+  selected consumer relation.
+- Produce a handoff record that lets 734 resume with one Raw-BIR receiver
+  packet.
 
 ## Non-Goals
 
-- Do not repeat accepted parameter receipts through pointer truthiness.
-- Do not receive another parameter row, memory/VA row, aggregate/vector row,
-  module/type/global/metadata row, residual instruction/terminator row, or
-  inline-assembly row.
-- Do not edit LIR producer/schema code as part of this receiver packet.
-- Do not infer missing facts from operand text, opcode spelling, signatures,
-  names, diagnostics, compatibility mirrors, or rendered output.
+- Do not edit Raw-BIR containers, builders, importer dispatch, backend
+  verifier code, or receiver tests.
+- Do not reopen accepted body-parameter rows through Step 7.43.
+- Do not select more than one parameter row.
+- Do not absorb memory/VA, aggregate/vector, module/type/global/metadata,
+  residual instruction/terminator, inline-assembly, or other non-parameter
+  families.
+- Do not infer missing authority from presentation fields or testcase shape.
 
 ## Execution Rules
 
-- Keep the packet bounded to Step 7.43 unless the verifier exposes a true
-  blocker outside 734's receiver scope.
+- Keep this runbook bounded to one producer/schema/verifier handoff.
 - Add nearby same-feature malformed-authority coverage for the selected row.
-- For code changes, run a fresh build, focused backend receiver proof, and the
-  supervisor-selected regression guard.
-- After the one receipt, return to the 734 source completion gate; do not
-  claim source-wide completeness from this row alone.
+- For code changes, run a fresh build and focused producer/verifier proof.
+- After acceptance, return to 734 for plan-owner repair of one matching
+  receiver packet.
 
 ## Steps
 
-### Step 7.43 - Receive DirectScalar Fneg Parameter Authority
+### Step 1 - Select The Next Body-Parameter Authority Row
 
-Goal: receive closed 854's one DirectScalar unary-`fneg` body-parameter
-authority row into typed Raw BIR.
+Goal: identify one valid current-LIR body-parameter use that still lacks a
+734 receiver handoff after Step 7.43.
 
 Actions:
 
-- Inspect the existing typed Raw-BIR parameter receiver structures for the
-  accepted DirectPointer and DirectScalar rows.
-- Add the smallest destination/verifier representation for the selected `Lhs`
-  unary-`fneg` role if none already exists.
-- Import only a verified closed-854 tuple whose original parameter identity,
-  owner, parameter index, scalar type, DirectScalar ABI, explicit `Lhs` role,
-  unary `fneg` opcode, `lhs` parameter value, and empty `rhs` are present and
-  consistent.
-- Reject missing, invalid, foreign, duplicate, owner/index/type/ABI/role, and
-  consumer-incoherent authority before Raw-BIR publication.
-- Add focused positive and malformed tests next to the existing body-parameter
-  receiver coverage.
+- Inspect the existing body-parameter authority matrix and tests.
+- Exclude all rows already accepted through 734 Step 7.43.
+- Choose exactly one next row whose producer can carry native structured
+  authority without presentation recovery.
+- Record why later parameter rows and non-parameter families remain out of
+  scope.
 
 Completion check:
 
-- Fresh build passes.
-- Focused backend receiver proof passes.
-- Matching regression guard is non-regressive.
-- `git diff --check` passes.
-- `todo.md` records the exact received tuple, proof, and source completion
-  reassessment request.
+- One selected row is named with its expected parameter tuple and consumer
+  relation.
+- No Raw-BIR or importer file is changed.
+
+### Step 2 - Publish And Verify The Selected Authority
+
+Goal: add native structured authority and verifier checks for the selected row.
+
+Actions:
+
+- Add the smallest producer/schema carrier needed for the selected row.
+- Populate it from existing typed parameter and consumer facts.
+- Verify parameter value, owner, index, type, ABI, role, and consumer
+  coherence.
+- Reject missing, invalid, duplicate, foreign, mismatched, and
+  consumer-incoherent authority before printing or downstream use.
+
+Completion check:
+
+- Positive and malformed producer/verifier coverage passes.
+- No Raw-BIR receiver behavior is claimed.
+
+### Step 3 - Record The Handoff To 734
+
+Goal: make the accepted producer result executable by a later 734 receiver
+runbook.
+
+Actions:
+
+- Update the source idea with the exact selected row, accepted proof, and
+  commit reference.
+- State the exact 734 return action: repair 734 for one bounded Raw-BIR
+  receiver packet derived only from this handoff.
+- Preserve that all other parameter rows and semantic families remain
+  fail-closed and separately scoped.
+
+Completion check:
+
+- Fresh build and focused proof are recorded.
+- The handoff is specific enough for plan-owner to repair 734 without
+  rediscovering producer facts.

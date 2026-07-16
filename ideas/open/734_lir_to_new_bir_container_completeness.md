@@ -1803,3 +1803,53 @@ and transactional positive/negative coverage. Do not repeat Step 7.42, claim
 Raw-BIR receipt from 854, receive another body-parameter row, or absorb
 memory/VA, aggregate/vector, module/type/global, instruction/terminator, or
 inline-assembly forms.
+
+## Runbook Exhaustion Decision: post-Step 7.43 DirectScalar unary-fneg receipt
+
+Close rejected. Commit `617a8fae9` receives exactly closed 854's DirectScalar
+unary-`fneg` body-parameter authority row into typed Raw BIR. The Raw-BIR
+`FNeg` builder admission is limited to the selected current-function parameter
+tuple: parameter `LirValueId`, owner, parameter index, matching scalar type,
+DirectScalar ABI, explicit `Lhs` role, unary `fneg` opcode, lhs parameter
+value, and empty rhs. The importer passes invalid Raw-BIR RHS for the validated
+unary row. Focused coverage checks the positive tuple plus missing, invalid,
+foreign, duplicate, owner/index/type/ABI/role, definition scalar-type
+mismatch, signature parameter-type mismatch, non-`fneg`, lhs mismatch,
+rhs-populated, and duplicate-consumer failures.
+
+The supervisor accepted a fresh build plus focused receiver proof
+`ctest --test-dir build -j --output-on-failure -R
+'^backend_lir_to_bir_interface$'`, followed by `git diff --check`, and a
+matching broader backend regression guard with before 6/6, after 6/6, and no
+new failures under `--allow-non-decreasing-passed`.
+
+This bounded receiver row does not satisfy the source completion gate. The
+checked no-omission coverage matrix and its per-row typed authority,
+destination, importer, verifier, and proof disposition remain incomplete;
+lossless verified receipt of every valid current-LIR semantic fact, complete
+explicit dispatcher and neighboring coverage, whole-module transactional
+proof, documentation convergence, and source-wide focused/broader proof are
+still unmet. Valid unreceived families include further function-body
+parameter uses, memory/VA, aggregate/vector, module/type/global/metadata,
+residual instruction/terminator, and inline-assembly forms. They remain fail
+closed; no receiver may recover authority from text, names, rendered operands,
+signatures, compatibility mirrors, `monostate`, or unclassified values.
+
+Classification: `separate-blocker`. New open idea
+`ideas/open/855_lir_next_body_parameter_authority_handoff.md` owns only
+tracing, publishing, verifying, and handing off exactly one next valid
+function-body parameter-use row after the accepted DirectScalar unary-`fneg`
+receipt. It must not edit Raw-BIR/importer code, reopen any accepted
+DirectPointer or DirectScalar body-parameter receipt, select from presentation
+fields, or absorb another family.
+
+Resumption record: Steps 1 through 7.43 are accepted historical work, most
+recently receiver commit `617a8fae9` with the fresh focused proof, matching
+broader accepted regression guard, and `git diff --check` stated above.
+Interrupted point: source completion reassessment after Step 7.43; no further
+734 receiver row is authorized. After 855 closes with one exact structured
+handoff and accepted focused producer proof, reactivate 734 and repair its
+runbook only for that matching typed Raw-BIR receiver row. Do not repeat Step
+7.43 or receive another parameter, memory/VA, aggregate/vector,
+module/type/global, instruction/terminator, or inline-assembly form without
+its separately scoped first-owner handoff.
