@@ -8,16 +8,16 @@ Current Step Title: Prove Parity And Fail-Closed Behavior
 
 ## Just Finished
 
-Completed the fourth 845 migration packet for `LirGepOp.ptr`.
-`collect_inst_refs` now routes GEP base pointers through `collect_operand_ref`,
+Completed the fifth 845 migration packet for `LirPhiIncoming.value`.
+`collect_inst_refs` now routes PHI incoming values through `collect_operand_ref`,
 so `LirOperand::global` semantic `LinkNameId` identity preempts stale rendered
-text. Raw `LirGepOp.ptr` operands still scan text for compatibility.
+text. Raw PHI incoming values still scan text for compatibility.
 
 ## Suggested Next
 
 Ask plan-owner whether to close 845, repair with another one-field migration,
-or route a successor. Remaining scanner fields include GEP indices, PHIs,
-inline asm, and residual raw/global text; this packet did not claim them.
+or route a successor. Remaining scanner fields include GEP indices, inline asm,
+and residual raw/global text; this packet did not claim them.
 
 ## Watchouts
 
