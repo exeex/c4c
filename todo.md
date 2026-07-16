@@ -8,23 +8,24 @@ Current Step Title: Select One Carrier-Backed Collector Seam
 
 ## Just Finished
 
-Completed plan Step 1-3 for the one-field `LirSelectOp.false_val` packet in
-`collect_inst_refs`: replaced raw `S(op.false_val)` scanning with
-`collect_operand_ref(op.false_val, refs)` only. Added nearby frontend HIR
-coverage proving false_val semantic `LinkNameId` identity preempts stale
-rendered text, while legacy raw false_val compatibility remains.
+Accepted commit `6d9ecb05f` completed plan Step 1-3 for the one-field
+`LirSelectOp.false_val` packet in `collect_inst_refs`: raw
+`S(op.false_val)` scanning was replaced with
+`collect_operand_ref(op.false_val, refs)` only. Closure is rejected because
+durable in-scope aggregate/vector collector migration remains.
 
 ## Suggested Next
 
-Supervisor should select the next packet or lifecycle action. Executor did not
-repair lifecycle, choose a follow-on field, or widen this slice.
+Implement the next one-field packet: migrate `LirExtractValueOp.agg` in
+`collect_inst_refs` from raw `S(op.agg)` scanning to
+`collect_operand_ref(op.agg, refs)`.
 
 ## Watchouts
 
 Do not close 845 yet. Do not perform a broad collector sweep. Leave
-aggregate/vector ops, inline asm, and residual raw/global text on their current
-scanner paths. Do not reconstruct references from rendered names or text. This
-packet touched only `LirSelectOp.false_val`.
+`LirInsertValueOp`, vector ops, inline asm, and residual raw/global text on
+their current scanner paths. Do not reconstruct references from rendered names
+or text. This packet should touch only `LirExtractValueOp.agg`.
 
 ## Proof
 
