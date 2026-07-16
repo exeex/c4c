@@ -8,29 +8,29 @@ Current Step Title: Retire accepted universal boundary escape hatches
 
 ## Just Finished
 
-Completed plan.md Step 3 for the selected PHI value boundary.
+Completed plan.md Step 4 for the selected PHI value boundary as a bounded
+no-code retirement check.
 
-Migrated the selected PHI verifier/printer consumer path so modeled PHI result
-type queries read `LirPhiOp.boundary_value_type` as the semantic boundary
-authority. PHI rendering now requires the same carrier and verifies it mirrors
-`LirPhiOp.type_str` before using that field as compatibility/rendering text.
-
-Focused coverage now proves stale or misleading `LirPhiOp.type_str` cannot
-override the selected PHI boundary carrier for verification or rendering, while
-valid PHI alternatives still verify and render with their parity text intact.
+No safe PHI-only universal boundary escape hatch remains to delete in this
+runbook slice. The selected PHI verifier, modeled-result, and printer authority
+consumers have already migrated to `LirPhiOp.boundary_value_type`; the remaining
+`LirPhiOp.type_str` use is compatibility/rendering parity text validated
+against that carrier before rendering. Deleting `type_str` would require broader
+receiver/backend/schema compatibility work outside the PHI-only packet.
 
 ## Suggested Next
 
-Execute plan.md Step 4 for the selected PHI boundary only: retire the accepted
-PHI universal escape hatch only if every selected PHI consumer has migrated,
-while leaving call, select, return, Raw-BIR, and unrelated families untouched.
+Route active idea 842 to plan-owner for lifecycle disposition. The PHI-only
+slice has delivered the restricted PHI boundary carrier and migrated the
+selected verifier/printer consumers; remaining call, select, return, Raw-BIR,
+and compatibility/schema work belongs to separate successors.
 
 ## Watchouts
 
 PHI rendering intentionally still emits `LirPhiOp.type_str` as parity text, but
-the printer now validates `LirPhiOp.boundary_value_type` before rendering. Step
-4 must not delete `LirPhiOp.type_str` unless the supervisor selects that exact
-retirement and proves no remaining PHI consumer depends on it.
+the printer now validates `LirPhiOp.boundary_value_type` before rendering. Do
+not delete `LirPhiOp.type_str` in this PHI-only idea unless a future packet also
+owns the receiver/backend compatibility and schema migration surface.
 
 The Step 2 wrong-kind test covers runtime-text-only refs as the feasible local
 surface for metadata-like/unbounded payload rejection. Partially parsed call
@@ -39,11 +39,9 @@ were not introduced into PHI.
 
 ## Proof
 
-Step 3 proof command:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_|^backend_'; } > test_after.log 2>&1`
+Step 4 proof command: `git diff --check`
 
-Result: passed, 19/19 frontend/backend tests passing.
+Result: passed.
 
-Additional proof: `git diff --check` passed.
-
-Proof log: `test_after.log`.
+No `test_after.log` was written for Step 4 because no code changed in this
+packet. The existing `test_after.log` remains from the prior Step 3 code proof.
