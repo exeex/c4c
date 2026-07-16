@@ -144,6 +144,18 @@ LirTypeRef lir_aggregate_type_ref(const std::string& rendered_text, LirModule* l
                   : LirTypeRef::struct_type(mirror_text, name_id);
 }
 
+// Step 1 canonical seam: callers that already carry a HIR aggregate ref can
+// register it without consulting tags, text, parser pointers, or an owner-key
+// reconstruction. The source HIR module validates ownership. Existing lowering
+// remains on its legacy adapter path until the next migration packet supplies
+// refs at every occurrence.
+LirAggregateRef lir_register_aggregate_ref(const c4c::hir::Module& source_module,
+                                           LirModule& lir_module,
+                                           c4c::hir::HirAggregateRef hir_ref,
+                                           StructNameId name_id, bool is_union) {
+  return lir_module.register_aggregate(source_module, hir_ref, name_id, is_union);
+}
+
 StructNameId lir_aggregate_structured_name_id(const c4c::hir::Module& mod,
                                               LirModule* lir_module,
                                               const std::string& rendered_text,

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -15,6 +16,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -495,6 +497,45 @@ enum class ValueCategory : uint8_t {
   LValue,
 };
 
+// Canonical, module-scoped identity for one aggregate definition.  Unlike the
+// older owner-key bridge, this is an occurrence carrier: consumers transport
+// it directly and never recover identity from spelling, tags, or AST storage.
+struct HirModuleId {
+  uint32_t value = std::numeric_limits<uint32_t>::max();
+  [[nodiscard]] constexpr bool valid() const {
+    return value != std::numeric_limits<uint32_t>::max();
+  }
+};
+
+struct HirAggregateId {
+  uint32_t value = std::numeric_limits<uint32_t>::max();
+  [[nodiscard]] constexpr bool valid() const {
+    return value != std::numeric_limits<uint32_t>::max();
+  }
+};
+
+struct HirAggregateRef {
+  HirModuleId module;
+  HirAggregateId aggregate;
+
+  [[nodiscard]] constexpr bool complete() const {
+    return module.valid() && aggregate.valid();
+  }
+};
+
+[[nodiscard]] constexpr bool operator==(HirAggregateRef lhs, HirAggregateRef rhs) {
+  return lhs.module.value == rhs.module.value && lhs.aggregate.value == rhs.aggregate.value;
+}
+
+[[nodiscard]] inline HirModuleId issue_hir_module_id() {
+  static std::atomic<uint32_t> next{0};
+  const uint32_t value = next.fetch_add(1, std::memory_order_relaxed);
+  if (value == std::numeric_limits<uint32_t>::max()) {
+    throw std::overflow_error("HIR module identity space exhausted");
+  }
+  return HirModuleId{value};
+}
+
 /// HIR-owned declaration identity for an aggregate TypeSpec.
 ///
 /// This is deliberately the declaration subset of HirRecordOwnerKey: TypeSpec
@@ -521,6 +562,9 @@ struct QualType {
   ValueCategory category = ValueCategory::RValue;
   bool is_const_expr = false;
   std::optional<HirAggregateOwnerIdentity> aggregate_owner_identity;
+  // Canonical aggregate occurrence identity.  The owner-identity field above
+  // remains a legacy adapter until all producers have migrated.
+  std::optional<HirAggregateRef> aggregate_ref;
 };
 
 struct FnAttr {
@@ -2459,6 +2503,12 @@ struct HirTemplateDef {
 };
 
 struct Module {
+  // Issued once for this HIR module; aggregate refs can only be created
+  // through issue_aggregate_ref(), and lowering validates this owner.
+ private:
+  HirModuleId aggregate_module_id = issue_hir_module_id();
+
+ public:
   SourceProfile source_profile = SourceProfile::C;
   c4c::TargetProfile target_profile{};
   std::string data_layout;
@@ -2531,12 +2581,23 @@ struct Module {
   uint32_t next_local_id = 0;
   uint32_t next_block_id = 0;
   uint32_t next_expr_id = 0;
+  uint32_t next_aggregate_id = 0;
 
   [[nodiscard]] FunctionId alloc_function_id() { return FunctionId{next_function_id++}; }
   [[nodiscard]] GlobalId alloc_global_id() { return GlobalId{next_global_id++}; }
   [[nodiscard]] LocalId alloc_local_id() { return LocalId{next_local_id++}; }
   [[nodiscard]] BlockId alloc_block_id() { return BlockId{next_block_id++}; }
   [[nodiscard]] ExprId alloc_expr_id() { return ExprId{next_expr_id++}; }
+  [[nodiscard]] HirModuleId aggregate_identity() const { return aggregate_module_id; }
+  [[nodiscard]] HirAggregateRef issue_aggregate_ref() {
+    if (next_aggregate_id == std::numeric_limits<uint32_t>::max()) {
+      throw std::overflow_error("HIR aggregate identity space exhausted");
+    }
+    return HirAggregateRef{aggregate_module_id, HirAggregateId{next_aggregate_id++}};
+  }
+  [[nodiscard]] bool owns_aggregate_ref(HirAggregateRef ref) const {
+    return ref.complete() && ref.module.value == aggregate_module_id.value;
+  }
 
   void index_function_decl(const Function& fn) {
     fn_index[fn.name] = fn.id;

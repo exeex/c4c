@@ -42,6 +42,7 @@
 #include "types.hpp"
 #include "call_args.hpp"
 #include "ast.hpp"  // TypeSpec, TypeBase
+#include "../../frontend/hir/hir_ir.hpp"
 #include "../../shared/struct_name_table.hpp"
 #include "../../shared/text_id_table.hpp"
 #include "../../target_profile.hpp"
@@ -1114,6 +1115,25 @@ struct LirStructDecl {
   bool is_opaque = false;
 };
 
+// Module-owned aggregate store identity.  A reference is meaningful only in
+// the LIR module that registered it; the HIR source ref records the canonical
+// occurrence identity used to intern it.
+struct LirAggregateRef {
+  uint32_t value = std::numeric_limits<uint32_t>::max();
+  [[nodiscard]] constexpr bool valid() const {
+    return value != std::numeric_limits<uint32_t>::max();
+  }
+  [[nodiscard]] static constexpr LirAggregateRef invalid() {
+    return LirAggregateRef{};
+  }
+};
+
+struct LirAggregateStoreEntry {
+  c4c::hir::HirAggregateRef hir_ref;
+  StructNameId name_id = kInvalidStructName;
+  bool is_union = false;
+};
+
 struct LirStructuredLayoutObservation {
   std::string site;
   std::string type_name;
@@ -1275,6 +1295,49 @@ struct LirModule {
   std::vector<LirStructDecl> struct_decls;
   std::unordered_map<StructNameId, std::size_t> struct_decl_index;
   mutable std::vector<LirStructuredLayoutObservation> structured_layout_observations;
+
+  // The canonical aggregate seam is intentionally separate from struct-name
+  // and rendered declaration compatibility indexes.
+  std::vector<LirAggregateStoreEntry> aggregate_store;
+  std::unordered_map<uint64_t, LirAggregateRef> aggregate_ref_by_hir_ref;
+
+  [[nodiscard]] static uint64_t aggregate_store_key(c4c::hir::HirAggregateRef ref) {
+    return (static_cast<uint64_t>(ref.module.value) << 32) | ref.aggregate.value;
+  }
+
+  [[nodiscard]] LirAggregateRef find_aggregate_ref(const c4c::hir::Module& source_module,
+                                                    c4c::hir::HirAggregateRef ref) const {
+    if (!source_module.owns_aggregate_ref(ref)) return LirAggregateRef::invalid();
+    const auto it = aggregate_ref_by_hir_ref.find(aggregate_store_key(ref));
+    return it == aggregate_ref_by_hir_ref.end() ? LirAggregateRef::invalid() : it->second;
+  }
+
+  [[nodiscard]] const LirAggregateStoreEntry* find_aggregate(
+      LirAggregateRef ref) const {
+    return ref.valid() && ref.value < aggregate_store.size() ? &aggregate_store[ref.value]
+                                                               : nullptr;
+  }
+
+  [[nodiscard]] LirAggregateRef register_aggregate(const c4c::hir::Module& source_module,
+                                                    c4c::hir::HirAggregateRef hir_ref,
+                                                    StructNameId name_id,
+                                                    bool is_union) {
+    if (!source_module.owns_aggregate_ref(hir_ref)) {
+      throw std::runtime_error(
+          "cannot register an invalid, incomplete, or foreign HIR aggregate ref");
+    }
+    if (name_id == kInvalidStructName) {
+      throw std::runtime_error("cannot register an aggregate without a LIR declaration name");
+    }
+    if (const LirAggregateRef existing = find_aggregate_ref(source_module, hir_ref);
+        existing.valid()) {
+      return existing;
+    }
+    const LirAggregateRef ref{static_cast<uint32_t>(aggregate_store.size())};
+    aggregate_store.push_back({hir_ref, name_id, is_union});
+    aggregate_ref_by_hir_ref.emplace(aggregate_store_key(hir_ref), ref);
+    return ref;
+  }
 
   LirStructDecl* find_struct_decl(StructNameId name_id) {
     const auto it = struct_decl_index.find(name_id);

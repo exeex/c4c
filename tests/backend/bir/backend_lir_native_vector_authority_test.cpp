@@ -412,9 +412,48 @@ void test_native_vector_authority_verifier_boundary() {
                   "zero-initializer shuffle mask must reject invalid native lane kinds");
 }
 
+void test_module_owned_aggregate_ref_store() {
+  c4c::hir::Module source_module;
+  c4c::hir::Module foreign_module;
+  lir::LirModule lir_module;
+  lir_module.link_name_texts = std::make_shared<c4c::TextTable>();
+  lir_module.struct_names.attach_text_table(lir_module.link_name_texts.get());
+  const c4c::StructNameId name_id = lir_module.struct_names.intern("%struct.AggregateStore");
+  const c4c::hir::HirAggregateRef source_ref = source_module.issue_aggregate_ref();
+
+  const lir::LirAggregateRef first =
+      lir_module.register_aggregate(source_module, source_ref, name_id, false);
+  const lir::LirAggregateRef repeated =
+      lir_module.register_aggregate(source_module, source_ref, name_id, false);
+  if (!first.valid() || first.value != repeated.value || lir_module.aggregate_store.size() != 1 ||
+      lir_module.find_aggregate_ref(source_module, source_ref).value != first.value ||
+      lir_module.find_aggregate(first) == nullptr) {
+    fail("same module-owned aggregate occurrence must intern exactly once");
+  }
+
+  try {
+    lir_module.register_aggregate(
+        source_module,
+        c4c::hir::HirAggregateRef{source_module.aggregate_identity(),
+                                   c4c::hir::HirAggregateId{}},
+        name_id, false);
+    fail("incomplete aggregate ref must be rejected");
+  } catch (const std::runtime_error&) {
+  }
+  try {
+    lir_module.register_aggregate(foreign_module, source_ref, name_id, false);
+    fail("foreign aggregate ref must be rejected by its non-owning source module");
+  } catch (const std::runtime_error&) {
+  }
+  if (lir_module.find_aggregate_ref(foreign_module, source_ref).valid()) {
+    fail("foreign aggregate ref lookup must fail closed");
+  }
+}
+
 }  // namespace
 
 int main() {
   test_native_vector_authority_verifier_boundary();
+  test_module_owned_aggregate_ref_store();
   return 0;
 }

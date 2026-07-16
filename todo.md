@@ -8,19 +8,23 @@ Current Step Title: Establish the canonical aggregate identity and store seam
 
 ## Just Finished
 
-- Lifecycle close/switch: 837 completed its docs-only architecture umbrella
-  scope and was archived; 838 is now the active first-owner aggregate route.
+- Plan Step 1: added a HIR-module-issued, fail-closed `HirAggregateRef` and
+  module-owned LIR aggregate ref/store. Re-registering an owned ref returns
+  its original LIR ref; invalid/incomplete and foreign-source refs are
+  rejected by both registration and lookup. Legacy owner-key/tag lowering
+  remains an adapter.
 
 ## Suggested Next
 
-- Execute plan.md Step 1 with a bounded aggregate identity/store seam packet.
+- Migrate the first aggregate-bearing lowering occurrence to populate and use
+  the canonical HIR ref/store seam, with focused valid and invalid coverage.
 
 ## Watchouts
 
-- Preserve parked 836 Step 1 and its 831 Step 4 return. Do not reconstruct
-  aggregate identity from tags, parser pointers, rendered text, or owner keys.
+- The new seam deliberately has no producer migration yet: existing lowering
+  still uses owner-key/tag compatibility paths. Do not recover canonical refs
+  from tags, parser pointers, rendered text, or owner keys.
 
 ## Proof
 
-- Lifecycle structural proof pending supervisor verification: active plan and
-  todo link to 838; no implementation work started by this transition.
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' | tee test_after.log` passed (6 tests); log: `test_after.log`.
