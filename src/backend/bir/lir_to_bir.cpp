@@ -474,6 +474,28 @@ bool retained_signature_matches_store(
          !retained.has_unspecified_params;
 }
 
+const std::vector<codegen::lir::LirTypeRef>* call_fixed_param_type_refs(
+    const LirModule& module, const LirCallOp& call) {
+  const auto* stored_signature = resolved_call_signature(module, call);
+  if (stored_signature != nullptr) {
+    if (call.callee_signature.has_value() &&
+        !retained_signature_matches_store(*call.callee_signature, *stored_signature)) {
+      return nullptr;
+    }
+    if (stored_signature->is_variadic ||
+        stored_signature->has_void_param_list) {
+      return nullptr;
+    }
+    return &stored_signature->fixed_param_type_refs;
+  }
+  if (!call.callee_signature || call.callee_signature->is_variadic ||
+      call.callee_signature->has_unspecified_params ||
+      call.callee_signature->has_void_param_list) {
+    return nullptr;
+  }
+  return &call.callee_signature->fixed_param_type_refs;
+}
+
 bool exact_direct_void_call(const LirModule& module, const LirCallOp& call) {
   if (!call.result.empty() || call.result.has_authority() ||
       call.return_type.kind() != codegen::lir::LirTypeKind::Void ||
@@ -2648,6 +2670,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
                           "direct scalar fixed direct-call argument requires its one typed authority row");
       continue;
     }
+    const auto* call_fixed_params = call_fixed_param_type_refs(module, *call);
     if (selected_fixed_direct_call_argument0_authority || !authority->value.valid() ||
         authority->owner != function.link_name_id ||
         authority->parameter_index >= function.params.size() ||
@@ -2657,10 +2680,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
         !argument_value || *argument_value != authority->value ||
         call->structured_args[0].type_ref != authority->type ||
         function.signature_param_type_refs[authority->parameter_index] != authority->type ||
-        !call->callee_signature || call->callee_signature->is_variadic ||
-        call->callee_signature->has_unspecified_params ||
-        call->callee_signature->fixed_param_type_refs.empty() ||
-        call->callee_signature->fixed_param_type_refs[0] != authority->type ||
+        !call_fixed_params || call_fixed_params->empty() ||
+        (*call_fixed_params)[0] != authority->type ||
         matching_definition_count != 1)
       return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
                         "direct scalar fixed direct-call argument requires one exact typed authority row");
