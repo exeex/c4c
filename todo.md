@@ -8,29 +8,29 @@ Current Step Title: Receive the one 864-authorized double(double) direct call-re
 
 ## Just Finished
 
-Closed 864 after accepted producer-side publication of exactly one next
-non-body-parameter row:
-`LirCallOp.direct_one_double_arg_scalar_floating_call_authority` for direct
-nonvariadic `double(double)` call results. Reactivated 734 after accepted Step
-7.50; Steps 1 through 7.50 remain historical progress and must not be repeated.
+Corrected `plan.md` Step 7.51 by removing the declaration-only callee
+restriction from the one-double-argument direct floating call-result receiver.
+The focused backend coverage now drives a module-owned defined direct
+`double(double)` target and verifies Raw BIR plus Canonical BIR preserve the
+same `DirectCallResult` tuple.
 
 ## Suggested Next
 
-Execute `plan.md` Step 7.51 only: receive the closed-864 direct nonvariadic
-`double(double)` `LirCallOp` result authority into typed Raw BIR, preserving
-the handed-off result/owner/callee/`double(double)`/`DirectCallResult` tuple.
+Supervisor should select the next bounded 734 receiver-completeness packet from
+the active runbook.
 
 ## Watchouts
 
-Do not edit LIR producer authority, repeat Step 7.50, reopen fixed direct-call
-arguments 0/1, receive any body-parameter row, require selected downstream
-floating binary LHS consumer coherence, recover authority from presentation
-text, or absorb memory/VA, aggregate/vector, module/type/global/metadata, CFG/
-PHI, residual instruction/terminator, inline-assembly, generic residual
-sweeps, or any other family.
+Do not edit LIR producer authority, repeat or broaden Step 7.50, reopen fixed
+direct-call arguments 0/1, receive any body-parameter row, recover authority
+from presentation text, or absorb memory/VA, aggregate/vector, module/type/
+global/metadata, CFG/PHI, residual instruction/terminator, inline-assembly,
+generic residual sweeps, or any other family. Step 7.51 deliberately differs
+from Step 7.50 by accepting the direct `double(double)` callee whether it is a
+module-owned declaration or definition when the structured signature tuple
+matches.
 
 ## Proof
 
-No proof has run for Step 7.51 yet. Expected proof starts with a fresh build,
-focused backend LIR-to-BIR receiver test, `git diff --check`, and broader
-backend proof if shared importer or verifier code is touched.
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$'; } > test_after.log 2>&1`
+passed and wrote the focused receiver proof to root `test_after.log`.

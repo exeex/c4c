@@ -901,6 +901,90 @@ bool exact_direct_zero_arg_scalar_floating_call_authority(
                                    ResultIntoFloatingBinaryLhs;
 }
 
+bool exact_direct_one_double_arg_scalar_floating_call(
+    const LirModule& module, const LirCallOp& call) {
+  const Type f64{TypeKind::F64, 64, "double"};
+  const auto* result = call.result.value_id();
+  if (call.result.kind() != codegen::lir::LirOperandKind::SsaValue || !result ||
+      !result->valid() || call.return_ext_attr != LirExtAttr::None ||
+      call.direct_callee_link_name_id == c4c::kInvalidLinkName ||
+      call.structured_args.size() != 1 || call.arg_type_refs.size() != 1 ||
+      call.structured_args[0].type_ref != codegen::lir::LirTypeRef("double") ||
+      call.arg_type_refs[0] != codegen::lir::LirTypeRef("double") ||
+      call.structured_args[0].operand.kind() !=
+          codegen::lir::LirOperandKind::SsaValue ||
+      !call.structured_args[0].operand.value_id() ||
+      !call.structured_args[0].operand.value_id()->valid() ||
+      call.return_type != codegen::lir::LirTypeRef("double"))
+    return false;
+
+  const auto return_type = native_floating_call_type(module, call.return_type);
+  const auto argument_type = native_floating_call_type(module, call.arg_type_refs[0]);
+  const auto* stored_signature = resolved_call_signature(module, call);
+  if (stored_signature != nullptr && call.callee_signature.has_value() &&
+      !retained_signature_matches_store(*call.callee_signature, *stored_signature)) {
+    return false;
+  }
+  if (stored_signature == nullptr && !call.callee_signature.has_value()) return false;
+
+  const auto return_ref = stored_signature != nullptr
+                              ? stored_signature->return_type_ref
+                              : call.callee_signature->return_type_ref;
+  const auto return_ext_attr = stored_signature != nullptr
+                                   ? stored_signature->return_ext_attr
+                                   : call.callee_signature->return_ext_attr;
+  const auto is_variadic = stored_signature != nullptr
+                               ? stored_signature->is_variadic
+                               : call.callee_signature->is_variadic;
+  const auto has_unspecified_params =
+      stored_signature == nullptr && call.callee_signature->has_unspecified_params;
+  const auto& fixed_param_type_refs = stored_signature != nullptr
+                                          ? stored_signature->fixed_param_type_refs
+                                          : call.callee_signature->fixed_param_type_refs;
+  if (!return_type || *return_type != f64 || !argument_type ||
+      *argument_type != f64 || !return_ref ||
+      *return_ref != codegen::lir::LirTypeRef("double") ||
+      return_ext_attr != LirExtAttr::None || is_variadic ||
+      has_unspecified_params || fixed_param_type_refs.size() != 1 ||
+      fixed_param_type_refs[0] != codegen::lir::LirTypeRef("double"))
+    return false;
+  if (stored_signature == nullptr &&
+      call.callee_signature->fixed_param_types.size() != 1)
+    return false;
+
+  const LirFunction* resolved = nullptr;
+  for (const auto& target : module.functions) {
+    if (target.link_name_id != call.direct_callee_link_name_id) continue;
+    if (resolved) return false;
+    const auto target_return = lower_signature_type(
+        module, target.return_type, target.signature_return_type_ref);
+    const auto target_params = lower_function_parameter_types(module, target);
+    if (!target_return || *target_return != f64 || !target_params ||
+        target_params->size() != 1 ||
+        (*target_params)[0] != f64 || target.signature_is_variadic ||
+        target.signature_has_void_param_list)
+      return false;
+    resolved = &target;
+  }
+  return resolved != nullptr;
+}
+
+bool exact_direct_one_double_arg_scalar_floating_call_authority(
+    const LirFunction& function, const LirCallOp& call,
+    const codegen::lir::LirDirectOneDoubleArgScalarFloatingCallAuthority&
+        authority) {
+  const auto* result = call.result.value_id();
+  return result && *result == authority.result && authority.result.valid() &&
+         authority.owner == function.link_name_id &&
+         authority.callee == call.direct_callee_link_name_id &&
+         authority.callee != c4c::kInvalidLinkName &&
+         authority.return_type == codegen::lir::LirTypeRef("double") &&
+         authority.argument_type == codegen::lir::LirTypeRef("double") &&
+         authority.role == codegen::lir::
+                               LirDirectOneDoubleArgScalarFloatingCallRole::
+                                   DirectCallResult;
+}
+
 bool exact_downstream_double_fmul(
     const LirBinOp& bin,
     const std::unordered_map<std::uint32_t, Type>& source_values,
@@ -2979,6 +3063,17 @@ Result<void, ImportError> validate_function(const LirModule& module,
                           "direct zero-argument scalar floating call result requires one exact typed authority row consumed as floating binary LHS");
       selected_direct_floating_call_result_authority = floating_authority;
     }
+    if (call->direct_one_double_arg_scalar_floating_call_authority) {
+      const auto& authority =
+          *call->direct_one_double_arg_scalar_floating_call_authority;
+      if (!exact_direct_one_double_arg_scalar_floating_call(module, *call) ||
+          !exact_direct_one_double_arg_scalar_floating_call_authority(
+              function, *call, authority)) {
+        return fail<void>(
+            ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+            "direct one-double-argument scalar floating call result requires one exact double(double) authority row");
+      }
+    }
     for (std::size_t index = 0; index < call->structured_args.size(); ++index) {
       const auto& argument = call->structured_args[index];
       const auto* authority = argument.fixed_direct_call_argument_parameter_authority
@@ -3898,6 +3993,29 @@ Result<void, ImportError> validate_function(const LirModule& module,
                   block.label,
                   "duplicate direct native floating call-result authority");
           }
+          const auto result_type = native_floating_call_type(module, call->return_type);
+          if (!source_values.emplace(call->result.value_id()->value, *result_type).second)
+            return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                              name, block.label,
+                            "duplicate authoritative LirValueId definition");
+          native_floating_call_results.insert(call->result.value_id()->value);
+          continue;
+        }
+        if (exact_direct_one_double_arg_scalar_floating_call(module, *call)) {
+          if (!call->direct_one_double_arg_scalar_floating_call_authority) {
+            return fail<void>(
+                ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                block.label,
+                "direct one-double-argument scalar floating call result requires its one typed authority row");
+          }
+          const auto& authority =
+              *call->direct_one_double_arg_scalar_floating_call_authority;
+          if (!exact_direct_one_double_arg_scalar_floating_call_authority(
+                  function, *call, authority))
+            return fail<void>(
+                ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                block.label,
+                "direct one-double-argument scalar floating call-result authority tuple is incoherent");
           const auto result_type = native_floating_call_type(module, call->return_type);
           if (!source_values.emplace(call->result.value_id()->value, *result_type).second)
             return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
@@ -6147,6 +6265,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                     direct_scalar_argument;
                 std::optional<DirectZeroArgScalarFloatingCallResult>
                     direct_floating_result;
+                std::optional<DirectOneDoubleArgScalarFloatingCallResult>
+                    direct_one_double_floating_result;
                 for (std::size_t index = 0; index < call->structured_args.size(); ++index) {
                   if (!call->structured_args[index]
                            .fixed_direct_call_argument_parameter_authority)
@@ -6190,6 +6310,30 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                           DirectZeroArgScalarFloatingCallRole::
                               ResultIntoFloatingBinaryLhs};
                 }
+                if (call->direct_one_double_arg_scalar_floating_call_authority) {
+                  const auto& authority =
+                      *call->direct_one_double_arg_scalar_floating_call_authority;
+                  const auto owner = imported_link_names.find(authority.owner);
+                  const auto callee_link =
+                      imported_link_names.find(authority.callee);
+                  if (owner == imported_link_names.end() ||
+                      callee_link == imported_link_names.end()) {
+                    edit_error = ImportError{
+                        ImportErrorCode::UnsupportedOrdinaryInstruction,
+                        name, block.label,
+                        "validated direct one-double call-result authority link name disappeared"};
+                    return Result<void, BuildError>::failure(
+                        BuildError::InvalidNameId);
+                  }
+                  direct_one_double_floating_result =
+                      DirectOneDoubleArgScalarFloatingCallResult{
+                          authority.result.value, owner->second,
+                          callee_link->second,
+                          *lower_lir_type(module, authority.return_type),
+                          *lower_lir_type(module, authority.argument_type),
+                          DirectOneDoubleArgScalarFloatingCallRole::
+                              DirectCallResult};
+                }
                 auto appended = function_builder.append(
                     blocks.at(block.id.value),
                     CallSpec{callee->second, std::move(arguments),
@@ -6197,7 +6341,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                  ? std::optional<std::uint32_t>{call->result.value_id()->value}
                                  : std::nullopt,
                              direct_scalar_argument,
-                             direct_floating_result});
+                             direct_floating_result,
+                             direct_one_double_floating_result});
                 if (!appended) {
                   edit_error = builder_failure(name, block.label,
                                                "append call",

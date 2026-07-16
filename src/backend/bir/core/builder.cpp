@@ -1523,6 +1523,30 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       return Result<BuildResult, BuildError>::failure(
           BuildError::UnsupportedOpcode);
   }
+  if (spec.direct_one_double_arg_scalar_floating_result) {
+    const auto& authority = *spec.direct_one_double_arg_scalar_floating_result;
+    const Type f64{TypeKind::F64, 64, "double"};
+    if (!spec.source_result_id ||
+        authority.source_result_id != *spec.source_result_id ||
+        authority.source_result_id == 0 || spec.arguments.size() != 1 ||
+        signature.return_type != f64 || signature.parameter_types.size() != 1 ||
+        signature.parameter_types[0] != f64 ||
+        authority.return_type != f64 || authority.argument_type != f64 ||
+        authority.role !=
+            DirectOneDoubleArgScalarFloatingCallRole::DirectCallResult ||
+        !authority.owner.valid() ||
+        authority.owner.epoch != parent_->data_->epoch_ ||
+        authority.owner.slot >= parent_->data_->link_names_.size() ||
+        parent_->data_->link_names_[authority.owner.slot].spelling !=
+            function_data.link_name_ ||
+        !authority.callee.valid() ||
+        authority.callee.epoch != parent_->data_->epoch_ ||
+        authority.callee.slot >= parent_->data_->link_names_.size() ||
+        parent_->data_->link_names_[authority.callee.slot].spelling !=
+            callee.value().get().link_name_)
+      return Result<BuildResult, BuildError>::failure(
+          BuildError::UnsupportedOpcode);
+  }
   if (spec.source_result_id &&
       function_data.values_by_source_id_.count(*spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::DuplicateSourceValue);
@@ -1531,7 +1555,8 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
   instruction.opcode = Opcode::Call;
   instruction.payload =
       CallNode{spec.callee, spec.direct_scalar_argument,
-               spec.direct_zero_arg_scalar_floating_result};
+               spec.direct_zero_arg_scalar_floating_result,
+               spec.direct_one_double_arg_scalar_floating_result};
   instruction.operands = std::move(spec.arguments);
   auto inserted =
       function_data.insts_.emplace(function_, std::move(instruction));

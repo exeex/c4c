@@ -217,6 +217,8 @@ struct CallSpec {
       direct_scalar_argument;
   std::optional<DirectZeroArgScalarFloatingCallResult>
       direct_zero_arg_scalar_floating_result;
+  std::optional<DirectOneDoubleArgScalarFloatingCallResult>
+      direct_one_double_arg_scalar_floating_result;
 };
 
 struct BinarySpec {

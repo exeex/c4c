@@ -10587,6 +10587,83 @@ lir::LirModule direct_native_floating_call_module() {
   return module;
 }
 
+void make_direct_native_floating_target_double_arg(lir::LirFunction& target) {
+  auto parameter = scalar_type(c4c::TB_DOUBLE);
+  parameter.inner_rank = -1;
+  target.signature_has_void_param_list = false;
+  target.params.clear();
+  target.signature_params.clear();
+  target.signature_param_type_refs.clear();
+  target.params.emplace_back("%target-parameter", parameter);
+  target.signature_params.push_back({"%target-signature-parameter", parameter,
+                                     false});
+  target.signature_param_type_refs = {lir::LirTypeRef("double")};
+}
+
+void make_direct_native_floating_target_double_arg_definition(
+    lir::LirFunction& target) {
+  target.is_declaration = false;
+  target.blocks = {unreachable_block(0, "entry")};
+  target.entry = target.blocks.front().id;
+}
+
+lir::LirCallOp direct_one_double_arg_native_floating_call(
+    c4c::LinkNameId target) {
+  lir::LirCallOp call;
+  call.result = lir::LirOperand::ssa("%misleading-one-double-result",
+                                     lir::LirValueId{9});
+  call.return_type = lir::LirTypeRef("double");
+  call.callee = lir::LirOperand::raw("%presentation-only-indirect-display");
+  call.direct_callee_link_name_id = target;
+  call.callee_type_suffix = "(ptr) presentation-only";
+  call.args_str = "i64 99 presentation-only";
+  lir::LirCallSignature signature;
+  signature.return_type_ref = lir::LirTypeRef("double");
+  signature.fixed_param_types = {"double"};
+  signature.fixed_param_type_refs = {lir::LirTypeRef("double")};
+  call.callee_signature = std::move(signature);
+  call.arg_type_refs = {lir::LirTypeRef("double")};
+  call.structured_args = {
+      {"i64 presentation-only",
+       lir::LirOperand::ssa("%presentation-only-double-arg",
+                            lir::LirValueId{8}),
+       lir::LirTypeRef("double")}};
+  return call;
+}
+
+lir::LirModule direct_one_double_arg_native_floating_call_module() {
+  lir::LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  const auto caller_link =
+      module.link_names.intern("direct_one_double_arg_float_caller");
+  const auto target_link =
+      module.link_names.intern("direct_one_double_arg_float_target");
+
+  auto caller = void_definition("misleading_one_double_arg_float_caller",
+                                {return_block(0, "entry")});
+  caller.link_name_id = caller_link;
+  caller.blocks[0].insts.push_back(lir::LirConstFloat{
+      lir::LirValueId{8}, scalar_type(c4c::TB_DOUBLE), 2.5});
+  auto call = direct_one_double_arg_native_floating_call(target_link);
+  call.direct_one_double_arg_scalar_floating_call_authority =
+      lir::LirDirectOneDoubleArgScalarFloatingCallAuthority{
+          lir::LirValueId{9}, caller_link, target_link,
+          lir::LirTypeRef("double"), lir::LirTypeRef("double"),
+          lir::LirDirectOneDoubleArgScalarFloatingCallRole::DirectCallResult};
+  caller.blocks[0].insts.push_back(std::move(call));
+  module.functions.push_back(std::move(caller));
+
+  auto target = direct_native_floating_function(
+      "misleading_one_double_arg_float_target", true);
+  target.link_name_id = target_link;
+  make_direct_native_floating_target_double_arg(target);
+  make_direct_native_floating_target_double_arg_definition(target);
+  module.functions.push_back(std::move(target));
+  return module;
+}
+
 void attach_direct_native_floating_function_signature_ref(
     lir::LirModule& module) {
   lir::LirFunctionSignatureStoreEntry caller_entry;
@@ -11588,6 +11665,133 @@ void test_normalized_i32_mul_receipt_and_rejections() {
              candidate.functions.push_back(std::move(foreign));
              mul.lhs = lir::LirOperand::ssa("%cross", lir::LirValueId{78});
            }, "cross-function Mul lhs must reject");
+}
+
+void test_direct_one_double_argument_call_result_authority_receipt_and_rejections() {
+  const auto inspect = [](const auto& graph, const std::string& layer) {
+    const auto view = graph.view();
+    const auto caller_id = view.functions()[0];
+    const auto caller = view.function(caller_id).value();
+    const auto instructions = caller.instructions(caller.blocks()[0]).value();
+    expect(instructions.size() == 1,
+           layer + " must retain the direct double(double) Call");
+    const auto call = caller.instruction(instructions[0]).value();
+    const auto result = caller.value(call.results()[0]).value();
+    const bool has_double_argument =
+        call.operands().size() == 1 &&
+        caller.value(call.operands()[0]).has_value() &&
+        caller.value(call.operands()[0]).value().type ==
+            bir::Type{bir::TypeKind::F64, 64, "double"};
+    expect(call.opcode() == bir::Opcode::Call && call.call() &&
+               call.call()->callee == view.functions()[1] &&
+               has_double_argument &&
+               call.results().size() == 1 &&
+               result.type == bir::Type{bir::TypeKind::F64, 64, "double"} &&
+               result.source_id == bir::SourceValueId{caller_id, 9} &&
+               caller.source_value(*result.source_id).value() ==
+                   call.results()[0] &&
+               call.call()->direct_one_double_arg_scalar_floating_result &&
+               call.call()
+                       ->direct_one_double_arg_scalar_floating_result
+                       ->source_result_id == 9 &&
+               call.call()
+                       ->direct_one_double_arg_scalar_floating_result->owner
+                       .valid() &&
+               call.call()
+                       ->direct_one_double_arg_scalar_floating_result->callee
+                       .valid() &&
+               call.call()
+                       ->direct_one_double_arg_scalar_floating_result
+                       ->return_type ==
+                   bir::Type{bir::TypeKind::F64, 64, "double"} &&
+               call.call()
+                       ->direct_one_double_arg_scalar_floating_result
+                       ->argument_type ==
+                   bir::Type{bir::TypeKind::F64, 64, "double"} &&
+               call.call()
+                       ->direct_one_double_arg_scalar_floating_result->role ==
+                   bir::DirectOneDoubleArgScalarFloatingCallRole::
+                       DirectCallResult,
+           layer + " must preserve the native result/owner/callee/double(double)/DirectCallResult tuple without a selected consumer");
+  };
+
+  const auto module = direct_one_double_arg_native_floating_call_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  const auto verified = raw.has_value()
+      ? bir::FoundationVerifier::verify(raw.value())
+      : bir::VerificationResult{};
+  expect(raw.has_value() && verified.ok(),
+         "direct double(double) call-result authority must publish verified Raw BIR");
+  inspect(raw.value(), "Raw BIR");
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(), "direct double(double) call-result authority must canonicalize");
+  inspect(canonical.value(), "Canonical BIR");
+
+  const auto rejected = [](auto mutate, const std::string& message) {
+    auto candidate = direct_one_double_arg_native_floating_call_module();
+    auto& call = std::get<lir::LirCallOp>(
+        candidate.functions[0].blocks[0].insts[1]);
+    mutate(candidate, call);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() && raw_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value() && canonical_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Canonical rollback)");
+  };
+  rejected([](auto&, auto& call) {
+             call.direct_one_double_arg_scalar_floating_call_authority.reset();
+           }, "missing direct double(double) call-result authority must reject");
+  rejected([](auto&, auto& call) {
+             call.direct_one_double_arg_scalar_floating_call_authority->result =
+                 lir::LirValueId{77};
+           }, "stale direct double(double) call-result authority must reject");
+  rejected([](auto&, auto& call) {
+             call.result =
+                 lir::LirOperand::ssa("%invalid", lir::LirValueId::invalid());
+           }, "invalid direct double(double) call result must reject");
+  rejected([](auto& candidate, auto&) {
+             candidate.functions[0].blocks[0].insts.push_back(
+                 candidate.functions[0].blocks[0].insts[1]);
+           }, "duplicate direct double(double) call result must reject");
+  rejected([](auto& candidate, auto& call) {
+             call.direct_one_double_arg_scalar_floating_call_authority->owner =
+                 candidate.link_names.intern("foreign_one_double_owner");
+           }, "foreign direct double(double) call owner must reject");
+  rejected([](auto& candidate, auto& call) {
+             call.direct_one_double_arg_scalar_floating_call_authority->callee =
+                 candidate.functions[0].link_name_id;
+           }, "foreign direct double(double) callee must reject");
+  rejected([](auto&, auto& call) {
+             call.callee_signature->return_type_ref = lir::LirTypeRef("float");
+           }, "direct double(double) signature mismatch must reject");
+  rejected([](auto&, auto& call) {
+             call.direct_one_double_arg_scalar_floating_call_authority
+                 ->return_type = lir::LirTypeRef("float");
+           }, "direct double(double) return authority mismatch must reject");
+  rejected([](auto&, auto& call) {
+             call.structured_args[0].type_ref = lir::LirTypeRef("float");
+           }, "direct double(double) argument type mismatch must reject");
+  rejected([](auto&, auto& call) {
+             call.direct_one_double_arg_scalar_floating_call_authority
+                 ->argument_type = lir::LirTypeRef("float");
+           }, "direct double(double) argument authority mismatch must reject");
+  rejected([](auto&, auto& call) {
+             call.direct_one_double_arg_scalar_floating_call_authority->role =
+                 lir::LirDirectOneDoubleArgScalarFloatingCallRole::Invalid;
+           }, "direct double(double) role mismatch must reject");
+  rejected([](auto&, auto& call) {
+             call.structured_args[0].operand =
+                 lir::LirOperand::ssa("%missing", lir::LirValueId{77});
+           }, "direct double(double) stale argument value must reject");
+  rejected([](auto&, auto& call) {
+             call.callee_type_suffix = "(double) stale";
+             call.args_str = "double %looks-valid";
+             call.structured_args[0].type = "i64 stale";
+             call.structured_args[0].type_ref = lir::LirTypeRef("float");
+           }, "direct double(double) must not recover from presentation strings");
 }
 
 void test_direct_native_floating_call_receipt_and_rejections() {
@@ -14983,6 +15187,7 @@ int main() {
   test_direct_integer_call_receipt_and_rejections();
   test_direct_native_floating_call_receipt_and_rejections();
   test_downstream_double_fadd_receipt_and_rejections();
+  test_direct_one_double_argument_call_result_authority_receipt_and_rejections();
   test_downstream_double_olt_compare_receipt_and_rejections();
   test_scalar_double_to_float_fptrunc_receipt_and_rejections();
   test_scalar_float_to_double_fpext_receipt_and_rejections();

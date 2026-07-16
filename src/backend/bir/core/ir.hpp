@@ -321,12 +321,32 @@ struct DirectZeroArgScalarFloatingCallResult {
       DirectZeroArgScalarFloatingCallRole::Invalid;
 };
 
+enum class DirectOneDoubleArgScalarFloatingCallRole : std::uint8_t {
+  Invalid,
+  DirectCallResult,
+};
+
+// Receipt of one producer-authorized direct nonvariadic double(double) call
+// result.  This preserves the native result/owner/callee/type tuple and does
+// not imply any selected downstream consumer.
+struct DirectOneDoubleArgScalarFloatingCallResult {
+  std::uint32_t source_result_id = 0;
+  LinkNameId owner{};
+  LinkNameId callee{};
+  Type return_type{TypeKind::Void};
+  Type argument_type{TypeKind::Void};
+  DirectOneDoubleArgScalarFloatingCallRole role =
+      DirectOneDoubleArgScalarFloatingCallRole::Invalid;
+};
+
 struct CallNode {
   FunctionId callee{};
   std::optional<DirectScalarBodyParameterFixedDirectCallArgument>
       direct_scalar_argument;
   std::optional<DirectZeroArgScalarFloatingCallResult>
       direct_zero_arg_scalar_floating_result;
+  std::optional<DirectOneDoubleArgScalarFloatingCallResult>
+      direct_one_double_arg_scalar_floating_result;
 };
 
 enum class BinaryOpcode : std::uint8_t { FAdd, FSub, FMul, FNeg, Add, Mul };

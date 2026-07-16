@@ -1150,8 +1150,41 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                       value.value().get().source_id->value ==
                           direct_floating->source_result_id;
              }());
+        const auto* direct_one_double =
+            call->direct_one_double_arg_scalar_floating_result
+                ? &*call->direct_one_double_arg_scalar_floating_result
+                : nullptr;
+        const Type f64{TypeKind::F64, 64, "double"};
+        const bool exact_direct_one_double = !direct_one_double ||
+            (exact_signature && instruction.operands.size() == 1 &&
+             instruction.results.size() == 1 &&
+             callee.value().get().signature_.return_type == f64 &&
+             callee.value().get().signature_.parameter_types.size() == 1 &&
+             callee.value().get().signature_.parameter_types[0] == f64 &&
+             direct_one_double->source_result_id != 0 &&
+             direct_one_double->owner.valid() &&
+             direct_one_double->owner.epoch == module.epoch_ &&
+             direct_one_double->owner.slot < module.link_names_.size() &&
+             module.link_names_[direct_one_double->owner.slot].spelling ==
+                 function.link_name_ &&
+             direct_one_double->callee.valid() &&
+             direct_one_double->callee.epoch == module.epoch_ &&
+             direct_one_double->callee.slot < module.link_names_.size() &&
+             module.link_names_[direct_one_double->callee.slot].spelling ==
+                 callee.value().get().link_name_ &&
+             direct_one_double->return_type == f64 &&
+             direct_one_double->argument_type == f64 &&
+             direct_one_double->role ==
+                 DirectOneDoubleArgScalarFloatingCallRole::DirectCallResult &&
+             [&] {
+               const auto value =
+                   function.values_.get(function_id, instruction.results[0]);
+               return value && value.value().get().source_id &&
+                      value.value().get().source_id->value ==
+                          direct_one_double->source_result_id;
+             }());
         if (!exact_arguments || !exact_result || !exact_direct_scalar ||
-            !exact_direct_floating)
+            !exact_direct_floating || !exact_direct_one_double)
           report(result, VerificationRule::ValueDefinition, function_id,
                  inst_id,
                  "call must target one module-owned nonvariadic function with exact ordered operands, result arity, and retained direct-scalar/direct-floating authority");
