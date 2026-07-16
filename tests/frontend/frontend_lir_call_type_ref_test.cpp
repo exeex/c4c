@@ -10110,8 +10110,8 @@ void test_lir_phi_restricted_boundary_value_type_authority() {
   expect_wrong_family_rejected(lir::LirTypeRef("%opaque", lir::LirTypeKind::Opaque),
                                lir::LirTypeRef("%opaque", lir::LirTypeKind::Opaque),
                                "opaque carrier must not satisfy PHI boundary authority");
-  expect_wrong_family_rejected(lir::LirTypeRef::runtime_text("runtime.phi"),
-                               lir::LirTypeRef::runtime_text("runtime.phi"),
+  expect_wrong_family_rejected(lir::LirTypeRef("runtime.phi"),
+                               lir::LirTypeRef("runtime.phi"),
                                "runtime text carrier must not satisfy PHI boundary authority");
 
   lir::LirModule stale_text = make_module(lir::LirTypeRef::integer(32));

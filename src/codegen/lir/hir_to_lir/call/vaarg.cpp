@@ -11,7 +11,7 @@ namespace {
     "no-LirModule fixed va_list tag text: no structured name ID is available "
     "at this runtime-text compatibility boundary")]]
 LirTypeRef no_module_va_list_tag_type_text(std::string rendered_text) {
-  return LirTypeRef::runtime_text(std::move(rendered_text));
+  return LirTypeRef(std::move(rendered_text));
 }
 
 StructNameId vaarg_aggregate_structured_name_id(const c4c::hir::Module& mod,

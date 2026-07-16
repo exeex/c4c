@@ -35,7 +35,7 @@ LirTypeRef lir_aggregate_gep_type_ref(const std::string& rendered_text,
                   "compatibility boundary")]]
 LirTypeRef hir_rendered_indexed_gep_element_type_text(
     std::string rendered_text) {
-  return LirTypeRef::runtime_text(std::move(rendered_text));
+  return LirTypeRef(std::move(rendered_text));
 }
 
 StructNameId indexed_gep_structured_name_id(const c4c::hir::Module& mod,

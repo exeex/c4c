@@ -15,7 +15,7 @@ namespace {
     "audit this runtime-text compatibility boundary")]]
 LirTypeRef hir_rendered_aarch64_vector_call_argument_abi_source_type_text(
     std::string rendered_text) {
-  return LirTypeRef::runtime_text(std::move(rendered_text));
+  return LirTypeRef(std::move(rendered_text));
 }
 
 StructNameId call_aggregate_structured_name_id(const c4c::hir::Module& mod,

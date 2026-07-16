@@ -8,18 +8,18 @@ Current Step Title: Delete mutable LIR type text escape hatches in small packets
 
 ## Just Finished
 
-Rejected the hook-generated `test_baseline.new.log` candidate because it
-exposed a real regression in `backend_lir_native_vector_authority`. Repaired the
-required scalar-to-vector splat shuffle verifier so `mask_type` must mirror the
-module-owned vector-store lane count, and updated stale shape/mask tests to
-expect rejection where those facts are now verified.
+Completed Step 2 packet to delete the generic
+`LirTypeRef::runtime_text` factory. Existing named deprecated compatibility
+factories now construct `LirTypeRef` directly, local HIR-rendered compatibility
+helpers route through constructors, and focused tests use explicit constructors
+for intentionally unstructured type text.
 
 ## Suggested Next
 
-Continue the Step 2 inventory with the next narrow `LirTypeRef` compatibility
-surface. Candidate categories are the remaining implicit const conversions,
-textual equality/classification helpers, and deprecated runtime-text factories;
-classify current callsites before selecting one deletion packet.
+Continue Step 2 with the next narrow `LirTypeRef` compatibility surface. A good
+next packet is to classify the remaining deprecated named compatibility
+factories or const implicit conversions and delete one family without touching
+equality/classification helpers in the same slice.
 
 ## Watchouts
 
@@ -27,34 +27,25 @@ classify current callsites before selecting one deletion packet.
   backdoor.
 - Do not restore mutable `operator std::string&()` or replace it with another
   mutable text escape hatch.
-- Do not delete const `str()`, `runtime_text`, factories, const implicit
-  conversions, or equality/classification helpers in the same packet.
+- Do not add a renamed generic runtime-text factory; remaining text-backed
+  constructions should stay behind named compatibility factories or explicit
+  constructors until their own packet deletes them.
+- Do not delete const `str()`, remaining named compatibility factories, const
+  implicit conversions, or equality/classification helpers in the same packet.
 - Required scalar-to-vector splat shuffles now reject incoherent native
   `mask_type` mirrors against vector-store lane count; do not weaken that
   baseline repair.
 - Remaining `.str() =` lines in the unowned
   `tests/frontend/frontend_lir_call_type_ref_test.cpp` are `LirOperand`
   presentation mutations, not `LirTypeRef` mutations.
+- `rg -n "LirTypeRef::runtime_text" src tests/frontend tests/backend` is now
+  clean.
 
 ## Proof
 
-Proof run:
-`cmake --build build` passed.
-Rejected baseline candidate:
-`python3 scripts/plan_review_state.py reject-baseline --delete-candidate`.
-Baseline-repair focused proof passed:
-`ctest --test-dir build -R '^backend_lir_native_vector_authority$'
---output-on-failure`.
-`ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure >
-test_after.log 2>&1` passed.
-Affected-test subset passed:
-`ctest --test-dir build -R
-'^(frontend_lir_extern_decl_type_ref|frontend_lir_global_type_ref|frontend_lir_function_signature_type_ref|backend_lir_to_bir_interface)$'
---output-on-failure`.
-`git diff --check` passed.
-Searches showed no remaining `static_cast<std::string&>(...)` use in `src` or
-`tests`, and no remaining mutable `operator std::string&()` on `LirTypeRef`;
-`LirOperand` still has its own mutable operand-text conversion.
-Regression guard passed:
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
---before test_before.log --after test_after.log --allow-non-decreasing-passed`.
+Proof run passed:
+`cmake --build build && ctest --test-dir build -R
+'^(frontend_lir_call_type_ref|frontend_lir_extern_decl_type_ref|backend_lir_to_bir_interface)$'
+--output-on-failure > test_after.log 2>&1`.
+`test_after.log` contains the focused CTest subset output with 3/3 tests
+passing.

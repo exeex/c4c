@@ -90,10 +90,6 @@ class LirTypeRef {
     return LirTypeRef("i" + std::to_string(bit_width), LirTypeKind::Integer, bit_width);
   }
 
-  [[nodiscard]] static LirTypeRef runtime_text(std::string text) {
-    return LirTypeRef(std::move(text));
-  }
-
   // Parsed LIR call argument types are compatibility text re-owned from input,
   // not a closed set of builtins. Keep this deprecated boundary local so builds
   // inventory the remaining parser/runtime-text constructions without warning
@@ -101,7 +97,7 @@ class LirTypeRef {
   [[nodiscard, deprecated(
       "parsed/re-owned LIR typed-call argument text: audit this compatibility boundary")]]
   static LirTypeRef parsed_typed_call_argument_text(std::string text) {
-    return runtime_text(std::move(text));
+    return LirTypeRef(std::move(text));
   }
 
   // Parsed LIR call return types are re-owned runtime text from input, not a
@@ -110,7 +106,7 @@ class LirTypeRef {
   [[nodiscard, deprecated(
       "parsed/re-owned LIR typed-call return text: audit this compatibility boundary")]]
   static LirTypeRef parsed_typed_call_return_text(std::string text) {
-    return runtime_text(std::move(text));
+    return LirTypeRef(std::move(text));
   }
 
   // Extern declarations retain return-type text from their external/stored
@@ -119,7 +115,7 @@ class LirTypeRef {
   [[nodiscard, deprecated(
       "stored/re-owned extern-declaration return text: audit this runtime-text compatibility boundary")]]
   static LirTypeRef stored_extern_declaration_return_text(std::string text) {
-    return runtime_text(std::move(text));
+    return LirTypeRef(std::move(text));
   }
 
   // Inline-assembly operands and results retain LLVM type text rendered from
@@ -128,7 +124,7 @@ class LirTypeRef {
   [[nodiscard, deprecated(
       "HIR TypeSpec-derived inline-assembly type text: audit this runtime-text compatibility boundary")]]
   static LirTypeRef hir_inline_asm_type_text(std::string text) {
-    return runtime_text(std::move(text));
+    return LirTypeRef(std::move(text));
   }
 
   // Aggregate, field, and signature type text rendered from HIR may not carry
@@ -137,7 +133,7 @@ class LirTypeRef {
   [[nodiscard, deprecated(
       "HIR-rendered aggregate/field/signature type text: audit this runtime-text compatibility boundary")]]
   static LirTypeRef hir_rendered_aggregate_field_signature_type_text(std::string text) {
-    return runtime_text(std::move(text));
+    return LirTypeRef(std::move(text));
   }
 
   [[nodiscard]] static LirTypeRef vrm_register(unsigned width) {

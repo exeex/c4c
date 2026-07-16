@@ -17,7 +17,7 @@ namespace {
                   "HIR-rendered call-target type text: audit this runtime-text "
                   "compatibility boundary")]]
 LirTypeRef hir_rendered_call_target_type_text(std::string rendered_text) {
-  return LirTypeRef::runtime_text(std::move(rendered_text));
+  return LirTypeRef(std::move(rendered_text));
 }
 
 StructNameId call_target_aggregate_structured_name_id(const c4c::hir::Module& mod,

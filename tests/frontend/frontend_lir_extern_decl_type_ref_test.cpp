@@ -142,8 +142,7 @@ void expect_type_ref_structured_equality_uses_name_id(
             "%struct.Storage = type { [4 x i8] }",
             "structured declaration rendering should use structural array facts");
 
-  const c4c::codegen::lir::LirTypeRef runtime_array =
-      c4c::codegen::lir::LirTypeRef::runtime_text("[4 x i8]");
+  const c4c::codegen::lir::LirTypeRef runtime_array("[4 x i8]");
   expect_true(!runtime_array.has_array_shape(),
               "runtime text should remain an explicit unstructured compatibility boundary");
 }

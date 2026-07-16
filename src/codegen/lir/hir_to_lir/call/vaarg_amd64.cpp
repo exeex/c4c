@@ -12,7 +12,7 @@ namespace {
     "no-LirModule fixed AMD64 va_list tag text: no structured name ID is "
     "available at this runtime-text compatibility boundary")]]
 LirTypeRef no_module_amd64_va_list_tag_type_text(std::string rendered_text) {
-  return LirTypeRef::runtime_text(std::move(rendered_text));
+  return LirTypeRef(std::move(rendered_text));
 }
 
 LirTypeRef lir_va_list_tag_type_ref(lir::LirModule* module) {

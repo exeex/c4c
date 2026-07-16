@@ -77,7 +77,7 @@ LirTypeRef lir_signature_type_ref(const std::string& rendered_text,
     "compatibility boundary")]]
 LirTypeRef hir_rendered_aarch64_vector_abi_source_type_text(
     std::string rendered_text) {
-  return LirTypeRef::runtime_text(std::move(rendered_text));
+  return LirTypeRef(std::move(rendered_text));
 }
 
 bool is_aarch64_fixed_hfa_param(const c4c::hir::Module& mod, const TypeSpec& ts) {
