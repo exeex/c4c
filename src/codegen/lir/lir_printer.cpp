@@ -164,6 +164,28 @@ std::string render_cast_endpoint_type_ref(const LirTypeRef& type,
   return require_type_ref(type, field);
 }
 
+std::optional<std::pair<std::string, std::string>>
+render_required_insert_element_types_from_store(const LirModule& mod,
+                                                const LirInsertElementOp& op) {
+  if (!op.requires_native_vector_authority || !op.native_vector_authority ||
+      !op.native_vector_authority->vector_ref) {
+    return std::nullopt;
+  }
+  const LirVectorStoreEntry* vector =
+      mod.find_vector(*op.native_vector_authority->vector_ref);
+  if (!vector || vector->lane_count == 0 || vector->element_type.empty()) {
+    throw LirVerifyError(
+        LirVerifyErrorKind::Malformed,
+        "LirInsertElementOp.native_vector_authority.vector_ref must reference a complete vector store fact");
+  }
+  const std::string elem_type =
+      require_type_ref(vector->element_type,
+                       "LirInsertElementOp.native_vector_authority.vector_ref.element_type");
+  return std::pair<std::string, std::string>{
+      "<" + std::to_string(vector->lane_count) + " x " + elem_type + ">",
+      elem_type};
+}
+
 std::string_view signature_header_line(const LirFunction& function) {
   std::string_view signature = function.signature_text;
   while (!signature.empty()) {
@@ -716,18 +738,23 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
                                 LirOperandKind::SpecialToken})
        << "\n";
   } else if (const auto* op = std::get_if<LirInsertElementOp>(&inst)) {
+    const auto store_types = render_required_insert_element_types_from_store(mod, *op);
+    const std::string vec_type =
+        store_types ? store_types->first
+                    : require_type_ref(op->vec_type, "LirInsertElementOp.vec_type");
+    const std::string elem_type =
+        store_types ? store_types->second
+                    : require_type_ref(op->elem_type, "LirInsertElementOp.elem_type");
     os << "  "
        << require_operand_kind(op->result, "LirInsertElementOp.result",
                                {LirOperandKind::SsaValue})
-       << " = insertelement "
-       << require_type_ref(op->vec_type, "LirInsertElementOp.vec_type") << " "
+       << " = insertelement " << vec_type << " "
        << require_operand_kind(op->vec, "LirInsertElementOp.vec",
                                {LirOperandKind::SsaValue,
                                 LirOperandKind::Global,
                                 LirOperandKind::Immediate,
                                 LirOperandKind::SpecialToken})
-       << ", " << require_type_ref(op->elem_type, "LirInsertElementOp.elem_type")
-       << " "
+       << ", " << elem_type << " "
        << require_operand_kind(op->elem, "LirInsertElementOp.elem",
                                {LirOperandKind::SsaValue,
                                 LirOperandKind::Global,

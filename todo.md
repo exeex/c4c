@@ -8,20 +8,20 @@ Current Step Title: Decide Next 846 Packet Or 847 Handoff
 
 ## Just Finished
 
-Completed `plan.md` Step 5 selected consumer migration for
-`LirVaArgOp.type_str` native integer semantic va_arg results.
+Completed `plan.md` Step 5 selected consumer repair for `LirInsertElementOp`
+required native-vector authority.
 
-- Routed selected integer va_arg verifier validation through
-  `render_integer_type_ref` when the instruction carries native va_arg result
-  authority.
-- Updated `LirVaArgOp` printing to render selected integer va_arg result types
-  from native width authority instead of mutable display text.
-- Preserved generic `require_module_type_ref` / `require_type_ref` behavior for
-  floating, pointer, aggregate, vector, compatibility, and other non-integer
-  va_arg type refs.
-- Added focused stale-display coverage in
-  `test_vaarg_helper_result_authority_loss()` proving selected integer va_arg
-  printing emits `i32` and does not recover from stale type text.
+- Updated required native-vector insert-element printing to render vector and
+  element types from the module-owned `LirVectorStoreEntry` reached through
+  `native_vector_authority.vector_ref`.
+- Repaired required native-vector insert-element verification so stale
+  `vec_type.str()` / `elem_type.str()` display mirrors are check-only when the
+  module-owned vector store fact, native element type fact, vector shape,
+  owner/result/use facts, and zero index all match.
+- Preserved the generic `require_type_ref` path for legacy/unselected
+  insert-element instructions without required native-vector authority.
+- Added focused stale-display coverage proving required insert-element printing
+  emits the vector-store shape/element type after mutating stale display text.
 
 ## Suggested Next
 
@@ -31,14 +31,16 @@ if no bounded 846 consumer remains.
 
 ## Watchouts
 
-This packet intentionally did not broaden va_list memory authority, va_arg
-lowering, result-use verification, universal model deletion, Raw-BIR, 734/797
-surfaces, LirSwitch selector surfaces, or unrelated LIR consumers. Non-integer
-va_arg type refs still rely on the existing generic verifier/printer paths.
+This packet intentionally did not broaden vector verifier policy, vector
+lowering, extract/shuffle/select/cmp/ret consumers, Raw-BIR, generic helper
+deletion, or idea 847 deletion work. The stale-display allowance is limited to
+the selected `requires_native_vector_authority` insert-element path with a
+module-owned complete `native_vector_authority.vector_ref`; legacy
+insert-element validation still treats display mirrors as semantic input.
 
 ## Proof
 
-Completed selected integer va_arg packet proof:
+Completed selected required insert-element packet proof:
 
 - `cmake --build build`
 - `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`

@@ -88,6 +88,39 @@ bool same_inline_asm_type(const LirTypeRef& lhs, const LirTypeRef& rhs) {
          lhs.struct_name_id() == rhs.struct_name_id();
 }
 
+bool same_native_type_fact(const LirTypeRef& lhs, const LirTypeRef& rhs) {
+  if (lhs.kind() != rhs.kind()) return false;
+  if (lhs.integer_bit_width() != rhs.integer_bit_width()) return false;
+  if (lhs.vrm_width() != rhs.vrm_width()) return false;
+  if (lhs.builtin_type() != rhs.builtin_type()) return false;
+  if (lhs.named_composite_kind() != rhs.named_composite_kind()) return false;
+  if (lhs.has_struct_name_id() || rhs.has_struct_name_id()) {
+    return lhs.has_struct_name_id() && rhs.has_struct_name_id() &&
+           lhs.struct_name_id() == rhs.struct_name_id();
+  }
+  if (lhs.has_array_shape() || rhs.has_array_shape()) {
+    if (!lhs.has_array_shape() || !rhs.has_array_shape() ||
+        lhs.array_length() != rhs.array_length()) {
+      return false;
+    }
+    return same_native_type_fact(*lhs.array_element_type(),
+                                 *rhs.array_element_type());
+  }
+  if (lhs.has_anonymous_struct_layout() || rhs.has_anonymous_struct_layout()) {
+    const auto* lhs_fields = lhs.anonymous_struct_field_types();
+    const auto* rhs_fields = rhs.anonymous_struct_field_types();
+    if (!lhs_fields || !rhs_fields || lhs_fields->size() != rhs_fields->size()) {
+      return false;
+    }
+    for (std::size_t index = 0; index < lhs_fields->size(); ++index) {
+      if (!same_native_type_fact((*lhs_fields)[index], (*rhs_fields)[index])) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 bool operand_kind_allowed(LirOperandKind kind,
                           std::initializer_list<LirOperandKind> allowed_kinds) {
   for (const auto allowed : allowed_kinds) {
@@ -2259,9 +2292,13 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
   }
   if (const auto* op = std::get_if<LirInsertElementOp>(&inst)) {
     verify_result_operand(op->result, "LirInsertElementOp.result");
-    require_module_type_ref(mod, op->vec_type, "LirInsertElementOp.vec_type");
+    if (!op->requires_native_vector_authority) {
+      require_module_type_ref(mod, op->vec_type, "LirInsertElementOp.vec_type");
+    }
     verify_value_operand(op->vec, "LirInsertElementOp.vec");
-    require_module_type_ref(mod, op->elem_type, "LirInsertElementOp.elem_type");
+    if (!op->requires_native_vector_authority) {
+      require_module_type_ref(mod, op->elem_type, "LirInsertElementOp.elem_type");
+    }
     verify_value_operand(op->elem, "LirInsertElementOp.elem");
     verify_value_operand(op->index, "LirInsertElementOp.index");
     return;
@@ -3852,13 +3889,13 @@ void verify_function_value_ownership(const LirModule& mod,
           fail_verify("LirInsertElementOp.native_vector_authority.vector_ref",
                       "aggregate element vectors must consume an accepted aggregate store fact");
         }
-        if (op.vec_type.str() != "<" + std::to_string(vector->lane_count) + " x " +
-                                 vector->element_type.str() + ">") {
-          fail_verify("LirInsertElementOp.vec_type",
-                      "must mirror the scalar-to-vector splat vector store fact");
+        if (authority.result_shape.lane_count != vector->lane_count ||
+            !same_native_type_fact(authority.result_shape.element_type,
+                                   vector->element_type)) {
+          fail_verify("LirInsertElementOp.native_vector_authority.result_shape",
+                      "must match the scalar-to-vector splat vector store fact");
         }
-        if (op.elem_type != vector->element_type ||
-            op.elem_type.str() != vector->element_type.str()) {
+        if (!same_native_type_fact(op.elem_type, vector->element_type)) {
           fail_verify("LirInsertElementOp.elem_type",
                       "must match the scalar-to-vector splat vector store element type");
         }
