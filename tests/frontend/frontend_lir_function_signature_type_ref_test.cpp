@@ -214,6 +214,50 @@ void expect_signature_aggregate_registered(
             "signature aggregate store entry should retain the LIR declaration name");
 }
 
+void remove_aggregate_store_entry_by_name(
+    c4c::codegen::lir::LirModule& module,
+    c4c::StructNameId name_id) {
+  std::vector<c4c::hir::HirAggregateRef> removed_hir_refs;
+  for (const auto& entry : module.aggregate_store) {
+    if (entry.name_id == name_id) {
+      removed_hir_refs.push_back(entry.hir_ref);
+    }
+  }
+  module.aggregate_store.erase(
+      std::remove_if(module.aggregate_store.begin(), module.aggregate_store.end(),
+                     [&](const c4c::codegen::lir::LirAggregateStoreEntry& entry) {
+                       return entry.name_id == name_id;
+                     }),
+      module.aggregate_store.end());
+  module.aggregate_ref_by_hir_ref.clear();
+  for (std::size_t index = 0; index < module.aggregate_store.size(); ++index) {
+    const auto& entry = module.aggregate_store[index];
+    const auto removed = std::find_if(
+        removed_hir_refs.begin(), removed_hir_refs.end(),
+        [&](const c4c::hir::HirAggregateRef& ref) {
+          return ref.module.value == entry.hir_ref.module.value &&
+                 ref.aggregate.value == entry.hir_ref.aggregate.value;
+        });
+    if (removed != removed_hir_refs.end()) continue;
+    module.aggregate_ref_by_hir_ref.emplace(
+        c4c::codegen::lir::LirModule::aggregate_store_key(entry.hir_ref),
+        c4c::codegen::lir::LirAggregateRef{static_cast<uint32_t>(index)});
+  }
+}
+
+c4c::codegen::lir::LirAggregateStoreEntry& require_aggregate_store_entry_by_name(
+    c4c::codegen::lir::LirModule& module,
+    c4c::StructNameId name_id,
+    const std::string& msg) {
+  const auto it = std::find_if(
+      module.aggregate_store.begin(), module.aggregate_store.end(),
+      [&](const c4c::codegen::lir::LirAggregateStoreEntry& entry) {
+        return entry.name_id == name_id;
+      });
+  expect_true(it != module.aggregate_store.end(), msg);
+  return *it;
+}
+
 void expect_byval_signature_refs(
     const c4c::codegen::lir::LirFunction& fn,
     std::string_view expected_param_text) {
@@ -1076,6 +1120,60 @@ int defined_void_params(void) {
   expect_verify_rejects(
       mismatched_param_name,
       "verifier should reject a signature parameter with mismatched StructNameId");
+
+  c4c::codegen::lir::LirModule missing_return_store = lir_module;
+  remove_aggregate_store_entry_by_name(missing_return_store, pair_id);
+  expect_verify_rejects(
+      missing_return_store,
+      "verifier should reject a direct aggregate signature return without a matching aggregate store entry");
+
+  c4c::codegen::lir::LirModule empty_return_store = lir_module;
+  empty_return_store.aggregate_store.clear();
+  empty_return_store.aggregate_ref_by_hir_ref.clear();
+  expect_verify_rejects(
+      empty_return_store,
+      "verifier should reject a direct aggregate signature return when canonical store facts are absent");
+
+  c4c::codegen::lir::LirModule wrong_kind_return_store = lir_module;
+  auto& wrong_return_entry = require_aggregate_store_entry_by_name(
+      wrong_kind_return_store, pair_id,
+      "fixture should carry a Pair aggregate store entry for return kind corruption");
+  wrong_return_entry.is_union = true;
+  wrong_return_entry.layout_kind =
+      c4c::codegen::lir::LirAggregateLayoutKind::Union;
+  expect_verify_rejects(
+      wrong_kind_return_store,
+      "verifier should reject a direct aggregate signature return with incoherent aggregate store kind");
+
+  c4c::codegen::lir::LirModule missing_param_store = lir_module;
+  remove_aggregate_store_entry_by_name(missing_param_store, pair_id);
+  require_mutable_function(missing_param_store, "declared_pair", true)
+      .signature_return_type_ref.reset();
+  expect_verify_rejects(
+      missing_param_store,
+      "verifier should reject a direct aggregate signature parameter without a matching aggregate store entry");
+
+  c4c::codegen::lir::LirModule empty_param_store = lir_module;
+  empty_param_store.aggregate_store.clear();
+  empty_param_store.aggregate_ref_by_hir_ref.clear();
+  require_mutable_function(empty_param_store, "declared_pair", true)
+      .signature_return_type_ref.reset();
+  expect_verify_rejects(
+      empty_param_store,
+      "verifier should reject a direct aggregate signature parameter when canonical store facts are absent");
+
+  c4c::codegen::lir::LirModule wrong_kind_param_store = lir_module;
+  require_mutable_function(wrong_kind_param_store, "declared_pair", true)
+      .signature_return_type_ref.reset();
+  auto& wrong_param_entry = require_aggregate_store_entry_by_name(
+      wrong_kind_param_store, pair_id,
+      "fixture should carry a Pair aggregate store entry for parameter kind corruption");
+  wrong_param_entry.is_union = true;
+  wrong_param_entry.layout_kind =
+      c4c::codegen::lir::LirAggregateLayoutKind::Union;
+  expect_verify_rejects(
+      wrong_kind_param_store,
+      "verifier should reject a direct aggregate signature parameter with incoherent aggregate store kind");
 
   c4c::codegen::lir::LirModule rendered_param_text_drift = lir_module;
   auto& drifted_param_fn =

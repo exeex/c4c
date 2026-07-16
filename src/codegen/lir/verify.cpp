@@ -3967,6 +3967,43 @@ StructNameId expected_direct_aggregate_signature_id(const LirModule& mod,
   return mod.struct_names.find(rendered);
 }
 
+void verify_direct_aggregate_signature_store_entry(const LirModule& mod,
+                                                   const TypeSpec& type,
+                                                   StructNameId expected_id,
+                                                   bool expected_union,
+                                                   std::string_view field) {
+  if (mod.aggregate_store.empty() && type.namespace_context_id < 0) return;
+
+  const LirAggregateStoreEntry* found = nullptr;
+  for (const LirAggregateStoreEntry& entry : mod.aggregate_store) {
+    if (entry.name_id == expected_id) {
+      found = &entry;
+      break;
+    }
+  }
+  if (!found) {
+    fail_verify(field,
+                "direct aggregate signature mirror requires matching canonical LIR aggregate store entry");
+  }
+
+  if (found->is_union != expected_union ||
+      (found->layout_kind == LirAggregateLayoutKind::Union) != expected_union) {
+    fail_verify(field,
+                "direct aggregate signature mirror disagrees with canonical aggregate store kind");
+  }
+
+  const LirStructDecl* decl = mod.find_struct_decl(expected_id);
+  if (!decl) {
+    fail_verify(field,
+                "direct aggregate signature mirror requires matching structured declaration facts");
+  }
+  if (decl->name_id != found->name_id || decl->fields.size() != found->fields.size() ||
+      decl->is_packed != found->is_packed || decl->is_opaque != found->is_opaque) {
+    fail_verify(field,
+                "direct aggregate signature mirror disagrees with canonical aggregate store facts");
+  }
+}
+
 bool aggregate_signature_param_mirror_matches_type(const LirTypeRef& mirror,
                                                    std::string_view type_text) {
   if (mirror.str() == type_text) return true;
@@ -4033,6 +4070,9 @@ void verify_function_signature_return_type_ref_mirror(
              << expected_name;
       fail_verify(field, detail.str());
     }
+    verify_direct_aggregate_signature_store_entry(
+        mod, fn.return_type, expected_id, fn.return_type.base == TB_UNION,
+        field);
     return;
   }
 
@@ -4105,6 +4145,8 @@ void verify_function_signature_param_type_ref_mirror(
              << expected_name;
       fail_verify(field, detail.str());
     }
+    verify_direct_aggregate_signature_store_entry(
+        mod, param->type, expected_id, param->type.base == TB_UNION, field);
     return;
   }
 

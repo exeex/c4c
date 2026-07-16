@@ -8,19 +8,18 @@ Current Step Title: Enforce module ownership and migrate bounded consumers
 
 ## Just Finished
 
-- Step 2 is accepted through `88ccf591d`. The bounded
-  `lir_owned_type_spec` function-signature producer consumes populated HIR
-  `QualType::aggregate_ref` through the LIR aggregate store, and focused proof
-  now covers both valid ordinary aggregate signatures and stale, foreign, and
-  parameter-side corrupted populated refs failing closed before owner-key,
-  tag, or rendered-text compatibility can repair them.
+- Step 3 verifier consumer packet completed. Direct aggregate
+  function-signature return and parameter mirrors that carry `StructNameId`
+  now validate against canonical `LirModule::aggregate_store` facts when the
+  module has canonical aggregate-store state. The verifier rejects missing
+  matching store entries and incoherent struct/union/layout facts while
+  preserving no-owner compatibility and byval/non-aggregate behavior.
 
 ## Suggested Next
 
-- Start Step 3 with one bounded consumer migration/proof packet selected from
-  declaration, field, call, verifier, printer, or receiver consumers that can
-  read canonical LIR aggregate store facts without tag/text/owner-key
-  reconstruction.
+- Continue Step 3 with one bounded printer or receiver consumer that can read
+  canonical LIR aggregate store facts directly, with focused valid/invalid
+  proof and no expansion into backend or broad nominal-family cleanup.
 
 ## Watchouts
 
@@ -32,6 +31,11 @@ Current Step Title: Enforce module ownership and migrate bounded consumers
   corrupted-ref tests intentionally keep valid rendered/tag metadata available
   so the rejection proves the populated-ref path does not fall through to the
   compatibility branch.
+- The verifier packet intentionally treats an empty canonical aggregate store
+  as the legacy no-owner compatibility boundary. Corruption tests remove or
+  mutate only the relevant `Pair` store facts while other canonical aggregate
+  facts remain, so rejection proves the direct signature verifier is not using
+  `StructNameId`, tag, or rendered text alone as authority.
 - Do not widen into unrelated consumer, verifier/printer, backend, 836, or 831
   work.
 
@@ -39,6 +43,4 @@ Current Step Title: Enforce module ownership and migrate bounded consumers
 
 - Passed:
   `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_function_signature_type_ref|frontend_hir_tests)$' ) > test_after.log 2>&1`
-- Supervisor checkpoint passed:
-  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' ) > /tmp/c4c_backend_after.log 2>&1`
 - Proof log: `test_after.log`.
