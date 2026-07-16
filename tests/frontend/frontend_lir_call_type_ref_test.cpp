@@ -9470,6 +9470,21 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
                   "call %struct.Pair (ptr) @make_pair") == std::string::npos,
               "direct-call printer should ignore stale callee_type_suffix when a signature ref exists");
 
+  c4c::codegen::lir::LirModule direct_without_retained_signature = lir_module;
+  c4c::codegen::lir::LirCallOp& direct_without_retained_signature_call =
+      require_call_to(require_function(direct_without_retained_signature, "call_pair"),
+                      "@make_pair");
+  direct_without_retained_signature_call.callee_signature.reset();
+  c4c::codegen::lir::verify_module(direct_without_retained_signature);
+
+  c4c::codegen::lir::LirModule stale_retained_signature_text = lir_module;
+  c4c::codegen::lir::LirCallOp& stale_retained_signature_text_call =
+      require_call_to(require_function(stale_retained_signature_text, "call_pair"),
+                      "@make_pair");
+  stale_retained_signature_text_call.callee_signature->fixed_param_types[0] =
+      "rendered-retained-parameter-text-is-not-authority";
+  c4c::codegen::lir::verify_module(stale_retained_signature_text);
+
   c4c::codegen::lir::LirModule missing_direct_signature_ref = lir_module;
   c4c::codegen::lir::LirCallOp& missing_direct_signature_ref_call =
       require_call_to(require_function(missing_direct_signature_ref, "call_pair"),
