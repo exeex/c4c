@@ -4418,6 +4418,48 @@ void fixed_call_argument0_native(int value) {
   });
 }
 
+void test_structural_direct_call_argument1_identity() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+void structural_argument1_target(int first, int second);
+void structural_argument1_native(int first, int second) {
+  structural_argument1_target(first, second);
+}
+)c", "x86_64-linux-gnu");
+  const auto require_call = [](lir::LirModule& module) -> lir::LirCallOp& {
+    return require_call_to(require_function(module, "structural_argument1_native"),
+                           "@structural_argument1_target");
+  };
+
+  lir::LirCallOp& call = require_call(lowered);
+  expect_true(call.callee.kind() == lir::LirOperandKind::Global &&
+                  call.direct_callee_link_name_id != c4c::kInvalidLinkName &&
+                  call.callee_signature && !call.callee_signature->is_variadic &&
+                  !call.callee_signature->has_unspecified_params &&
+                  call.callee_signature->fixed_param_type_refs.size() == 2 &&
+                  call.structured_args.size() == 2 && call.arg_type_refs.size() == 2 &&
+                  call.structured_args[1].operand.kind() == lir::LirOperandKind::SsaValue &&
+                  call.structured_args[1].operand.value_id() &&
+                  !call.structured_args[1].type_ref.empty() &&
+                  call.structured_args[1].type_ref == call.arg_type_refs[1] &&
+                  call.arg_type_refs[1] == call.callee_signature->fixed_param_type_refs[1],
+              "direct two-parameter argument 1 should retain native SSA and type mirrors");
+  lir::verify_module(lowered);
+
+  const auto rejected = [&](const std::string& message, const auto& mutate) {
+    lir::LirModule malformed = lowered;
+    mutate(require_call(malformed));
+    expect_identity_verification_rejected(malformed, message);
+  };
+  rejected("missing argument-1 type mirror must fail closed", [](auto& candidate) {
+    candidate.arg_type_refs.clear();
+  });
+  rejected("incoherent argument-1 fixed type must fail closed", [](auto& candidate) {
+    candidate.structured_args[1].type_ref = lir::LirTypeRef::integer(64);
+  });
+}
+
 void test_native_direct_scalar_switch_selector_authority() {
   namespace lir = c4c::codegen::lir;
 
@@ -9439,6 +9481,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_direct_branch_successor_identity_contract();
   test_conditional_and_switch_successor_identity_contract();
   test_native_direct_scalar_fixed_call_argument0_authority();
+  test_structural_direct_call_argument1_identity();
   test_native_direct_scalar_switch_selector_authority();
   test_native_direct_scalar_truthiness_comparison_lhs_authority();
   test_indirect_branch_successor_identity_contract();

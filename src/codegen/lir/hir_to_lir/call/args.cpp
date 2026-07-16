@@ -373,6 +373,14 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
   }
 
   const std::string out_llvm_ty = llvm_value_ty(mod_, out_arg_ts);
+  const bool current_function_direct_scalar_source =
+      source_operand.value_id() && ctx.lir_function &&
+      std::any_of(ctx.lir_function->native_body_parameter_definitions.begin(),
+                  ctx.lir_function->native_body_parameter_definitions.end(),
+                  [&](const auto& definition) {
+                    return definition.value == *source_operand.value_id() &&
+                           definition.abi == LirNativeBodyParameterAbi::DirectScalar;
+                  });
   const bool authoritative_fixed_integer_path =
       call_target.ret_ty == "void" &&
       call_target.callee_link_name_id != kInvalidLinkName && target_fn &&
@@ -381,18 +389,25 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
       out_arg_ts.ptr_level == 0 && out_arg_ts.array_rank == 0 &&
       is_any_int(out_arg_ts.base) &&
       llvm_value_ty(mod_, arg_ts) == out_llvm_ty;
+  const bool structural_argument1_identity_path =
+      call_target.callee_link_name_id != kInvalidLinkName && target_fn &&
+      !target_fn->attrs.variadic && target_fn->params.size() == 2 &&
+      arg_index == 1 && fixed_param_ts && !is_variadic_arg &&
+      current_function_direct_scalar_source && arg == source_operand.str();
   const bool authoritative_current_function_value = source_operand.value_id() != nullptr;
   const bool authoritative_fixed_integer_argument =
       authoritative_fixed_integer_path &&
       (source_operand.integer_immediate() || authoritative_current_function_value);
-  LirOperand call_operand = authoritative_fixed_integer_argument
+  const bool preserve_native_argument =
+      authoritative_fixed_integer_argument || structural_argument1_identity_path;
+  LirOperand call_operand = preserve_native_argument
                                 ? source_operand
                                 : LirOperand(arg);
   call_operand.str() = arg;
   PreparedCallArg out_arg{
       {{.type = out_llvm_ty,
         .operand = std::move(call_operand),
-        .type_ref = authoritative_fixed_integer_argument
+        .type_ref = preserve_native_argument
                         ? LirTypeRef(out_llvm_ty)
                         : lir_call_type_ref(out_llvm_ty, module_, mod_, out_arg_ts),
         .ext_attr = is_variadic_arg ? rv64_integer_ext_attr_for_abi_type(mod_, out_arg_ts)
