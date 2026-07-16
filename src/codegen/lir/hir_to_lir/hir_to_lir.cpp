@@ -610,9 +610,13 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
   lir_fn.signature_param_type_refs.clear();
   const TypeSpec return_ts =
       lir_owned_type_spec(mod, fn.return_type, lir_module);
+  const bool direct_aggregate_return =
+      !return_ts.is_lvalue_ref && !return_ts.is_rvalue_ref;
   const std::string return_type_text =
-      direct_owned_aggregate_type_text(mod, return_ts, lir_module)
-          .value_or(rendered_signature_return_type(mod, return_ts));
+      direct_aggregate_return
+          ? direct_owned_aggregate_type_text(mod, return_ts, lir_module)
+                .value_or(rendered_signature_return_type(mod, return_ts))
+          : rendered_signature_return_type(mod, return_ts);
   lir_fn.signature_return_type_ref =
       lir_signature_type_ref(return_type_text, lir_module, mod, return_ts);
   lir_fn.signature_return_ext_attr =
