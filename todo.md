@@ -8,27 +8,21 @@ Current Step Title: Select One Carrier-Backed Collector Seam
 
 ## Just Finished
 
-Completed plan Steps 1-3 for the one-field `LirSelectOp.cond` packet in
-`collect_inst_refs`.
-
-`LirSelectOp.cond` now uses `collect_operand_ref(op.cond, refs)`, preserving
-semantic `LinkNameId` identity before stale rendered text while keeping legacy
-raw condition text compatibility. `LirSelectOp.true_val` and
-`LirSelectOp.false_val` remain on raw scanning.
+Accepted commit `142ffce66` completed plan Steps 1-3 for the one-field
+`LirSelectOp.cond` packet in `collect_inst_refs`.
 
 ## Suggested Next
 
-Supervisor should select any next packet. No follow-on field was selected by
-this executor slice.
+Next packet: migrate only `LirSelectOp.true_val` in `collect_inst_refs` from
+raw `S(op.true_val)` scanning to `collect_operand_ref(op.true_val, refs)`.
 
 ## Watchouts
 
 Do not close 845 yet. Do not perform a broad collector sweep. Leave
-`LirSelectOp.true_val`, `LirSelectOp.false_val`, aggregate/vector ops, inline
-asm, and residual raw/global text on their current scanner paths. Do not
-reconstruct references from rendered names or text. Preserve legacy raw
-compatibility for `LirSelectOp.cond` if the semantic carrier is absent or
-non-authoritative.
+`LirSelectOp.false_val`, aggregate/vector ops, inline asm, and residual
+raw/global text on their current scanner paths. Do not reconstruct references
+from rendered names or text. Preserve legacy raw compatibility for
+`LirSelectOp.true_val` if the semantic carrier is absent or non-authoritative.
 
 ## Proof
 
