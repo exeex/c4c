@@ -80,8 +80,15 @@ LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_mo
   if (name_id == kInvalidStructName) {
     return hir_rendered_call_target_type_text(rendered_text);
   }
-  return type.base == TB_UNION ? LirTypeRef::union_type(rendered_text, name_id)
-                               : LirTypeRef::struct_type(rendered_text, name_id);
+  bool is_union = type.base == TB_UNION;
+  for (const LirAggregateStoreEntry& entry : lir_module->aggregate_store) {
+    if (entry.name_id == name_id) {
+      is_union = entry.layout_kind == LirAggregateLayoutKind::Union;
+      break;
+    }
+  }
+  return is_union ? LirTypeRef::union_type(rendered_text, name_id)
+                  : LirTypeRef::struct_type(rendered_text, name_id);
 }
 
 std::string rendered_call_signature_param_type(const c4c::hir::Module& mod,

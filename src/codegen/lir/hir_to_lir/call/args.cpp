@@ -70,8 +70,15 @@ LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_mo
         lir_module, rendered_text, lir_module->struct_names.find(rendered_text), true);
   }
   if (name_id == kInvalidStructName) return LirTypeRef();
-  return type.base == TB_UNION ? LirTypeRef::union_type(rendered_text, name_id)
-                               : LirTypeRef::struct_type(rendered_text, name_id);
+  bool is_union = type.base == TB_UNION;
+  for (const LirAggregateStoreEntry& entry : lir_module->aggregate_store) {
+    if (entry.name_id == name_id) {
+      is_union = entry.layout_kind == LirAggregateLayoutKind::Union;
+      break;
+    }
+  }
+  return is_union ? LirTypeRef::union_type(rendered_text, name_id)
+                  : LirTypeRef::struct_type(rendered_text, name_id);
 }
 
 bool is_aarch64_fixed_hfa_arg(const c4c::hir::Module& mod, const TypeSpec* fixed_param_ts) {

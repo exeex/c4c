@@ -276,7 +276,9 @@ void verify_call_aggregate_type_ref_store_entry(const LirModule& mod,
 
   const bool layout_is_union =
       found->layout_kind == LirAggregateLayoutKind::Union;
-  if (found->is_union != layout_is_union) {
+  const bool mirror_is_union =
+      mirror.named_composite_kind() == LirNamedCompositeKind::Union;
+  if (mirror_is_union != layout_is_union) {
     fail_verify(field,
                 "call aggregate mirror disagrees with canonical aggregate store kind");
   }
@@ -4004,17 +4006,23 @@ StructNameId expected_direct_aggregate_signature_id(const LirModule& mod,
   }
   const std::string_view tag = mod.link_name_texts->lookup(type.tag_text_id);
   if (tag.empty()) return kInvalidStructName;
-  const std::string rendered =
-      tag.rfind("%struct.", 0) == 0 || tag.rfind("%\"struct.", 0) == 0
-          ? std::string(tag)
-          : c4c::codegen::llvm_helpers::llvm_struct_type_str(std::string(tag));
-  return mod.struct_names.find(rendered);
+  if (tag.rfind("%struct.", 0) == 0 || tag.rfind("%\"struct.", 0) == 0 ||
+      tag.rfind("%union.", 0) == 0 || tag.rfind("%\"union.", 0) == 0) {
+    return mod.struct_names.find(std::string(tag));
+  }
+  const std::string struct_rendered =
+      c4c::codegen::llvm_helpers::llvm_struct_type_str(std::string(tag));
+  if (const StructNameId struct_id = mod.struct_names.find(struct_rendered);
+      struct_id != kInvalidStructName) {
+    return struct_id;
+  }
+  return mod.struct_names.find("%union." + std::string(tag));
 }
 
 void verify_direct_aggregate_signature_store_entry(const LirModule& mod,
                                                    const TypeSpec& type,
                                                    StructNameId expected_id,
-                                                   bool expected_union,
+                                                   const LirTypeRef& mirror,
                                                    std::string_view field) {
   if (mod.aggregate_store.empty() && type.namespace_context_id < 0) return;
 
@@ -4030,8 +4038,9 @@ void verify_direct_aggregate_signature_store_entry(const LirModule& mod,
                 "direct aggregate signature mirror requires matching canonical LIR aggregate store entry");
   }
 
-  if (found->is_union != expected_union ||
-      (found->layout_kind == LirAggregateLayoutKind::Union) != expected_union) {
+  const bool mirror_is_union =
+      mirror.named_composite_kind() == LirNamedCompositeKind::Union;
+  if ((found->layout_kind == LirAggregateLayoutKind::Union) != mirror_is_union) {
     fail_verify(field,
                 "direct aggregate signature mirror disagrees with canonical aggregate store kind");
   }
@@ -4115,8 +4124,7 @@ void verify_function_signature_return_type_ref_mirror(
       fail_verify(field, detail.str());
     }
     verify_direct_aggregate_signature_store_entry(
-        mod, fn.return_type, expected_id, fn.return_type.base == TB_UNION,
-        field);
+        mod, fn.return_type, expected_id, mirror, field);
     return;
   }
 
@@ -4190,7 +4198,7 @@ void verify_function_signature_param_type_ref_mirror(
       fail_verify(field, detail.str());
     }
     verify_direct_aggregate_signature_store_entry(
-        mod, param->type, expected_id, param->type.base == TB_UNION, field);
+        mod, param->type, expected_id, mirror, field);
     return;
   }
 

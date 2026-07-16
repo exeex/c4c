@@ -161,9 +161,13 @@ std::optional<std::string> unique_decl_ty_for_tag_text(const c4c::hir::Module& m
   if (tag_text.empty()) return std::nullopt;
   const std::string prefix = std::string(tag_text) + "_T";
   const std::string* match = nullptr;
+  const auto same_namespace_context = [](int lhs, int rhs) {
+    if (lhs == rhs) return true;
+    return (lhs == 0 && rhs < 0) || (lhs < 0 && rhs == 0);
+  };
   for (const auto& [tag, def] : mod.struct_defs) {
     if (ts.namespace_context_id >= 0 &&
-        def.ns_qual.context_id != ts.namespace_context_id) {
+        !same_namespace_context(def.ns_qual.context_id, ts.namespace_context_id)) {
       continue;
     }
     std::string_view unqualified = tag;
@@ -200,7 +204,8 @@ std::optional<std::string> tag_from_structured_lir_name(std::string_view name,
 }
 
 std::optional<std::string> direct_owned_aggregate_type_text(
-    const c4c::hir::Module& mod, const TypeSpec& type) {
+    const c4c::hir::Module& mod, const TypeSpec& type,
+    const LirModule* lir_module) {
   if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
       type.array_rank > 0 || type.tag_text_id == kInvalidText ||
       !mod.link_name_texts) {
@@ -212,8 +217,46 @@ std::optional<std::string> direct_owned_aggregate_type_text(
       tag.rfind("%union.", 0) == 0 || tag.rfind("%\"union.", 0) == 0) {
     return std::string(tag);
   }
+  if (lir_module) {
+    const std::string struct_name =
+        c4c::codegen::llvm_helpers::llvm_struct_type_str(std::string(tag));
+    const c4c::StructNameId struct_id =
+        lir_module->struct_names.find(struct_name);
+    if (struct_id != c4c::kInvalidStructName &&
+        lir_module->find_struct_decl(struct_id)) {
+      return struct_name;
+    }
+    const std::string union_name = "%union." + std::string(tag);
+    const c4c::StructNameId union_id =
+        lir_module->struct_names.find(union_name);
+    if (union_id != c4c::kInvalidStructName &&
+        lir_module->find_struct_decl(union_id)) {
+      return union_name;
+    }
+  }
   if (type.base == TB_UNION) return "%union." + std::string(tag);
   return c4c::codegen::llvm_helpers::llvm_struct_type_str(std::string(tag));
+}
+
+std::optional<std::string> declared_lir_aggregate_type_text_for_tag(
+    const c4c::hir::Module& mod, const TypeSpec& type,
+    const LirModule* lir_module) {
+  if ((type.base != TB_STRUCT && type.base != TB_UNION) ||
+      type.tag_text_id == kInvalidText || !mod.link_name_texts || !lir_module) {
+    return std::nullopt;
+  }
+  const std::string_view tag = mod.link_name_texts->lookup(type.tag_text_id);
+  if (tag.empty()) return std::nullopt;
+  for (const std::string& rendered :
+       {c4c::codegen::llvm_helpers::llvm_struct_type_str(std::string(tag)),
+        "%union." + std::string(tag)}) {
+    const c4c::StructNameId name_id = lir_module->struct_names.find(rendered);
+    if (name_id != c4c::kInvalidStructName &&
+        lir_module->find_struct_decl(name_id)) {
+      return rendered;
+    }
+  }
+  return std::nullopt;
 }
 
 TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, const QualType& hir_type,
@@ -289,6 +332,10 @@ TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, const QualType& hir_ty
     if (!structured_type) {
       structured_type = unique_decl_ty_for_tag_text(mod, hir_type.spec);
     }
+    if (!structured_type) {
+      structured_type =
+          declared_lir_aggregate_type_text_for_tag(mod, hir_type.spec, lir_module);
+    }
     if (structured_type) {
       const c4c::StructNameId name_id =
           lir_module->struct_names.find(*structured_type);
@@ -300,6 +347,12 @@ TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, const QualType& hir_ty
     }
   }
   if (!tag) {
+    const bool root_namespace_type =
+        type.namespace_context_id == 0 || type.namespace_context_id < 0;
+    if ((!hir_type.aggregate_owner_identity || root_namespace_type) &&
+        !declared_lir_aggregate_type_text_for_tag(mod, hir_type.spec, lir_module)) {
+      return type;
+    }
     throw std::runtime_error("LIR-owned aggregate function type requires a matching module owner");
   }
   const std::optional<std::string> source_tag =
@@ -485,7 +538,22 @@ LirTypeRef lir_signature_type_ref(const std::string& rendered_text,
   if (name_id == kInvalidStructName) {
     return LirTypeRef::hir_rendered_aggregate_field_signature_type_text(rendered_text);
   }
-  return lir_aggregate_type_ref(rendered_text, lir_module, name_id, type.base == TB_UNION);
+  const bool rendered_is_union = rendered_text.rfind("%union.", 0) == 0 ||
+                                 rendered_text.rfind("%\"union.", 0) == 0;
+  const bool rendered_is_struct = rendered_text.rfind("%struct.", 0) == 0 ||
+                                  rendered_text.rfind("%\"struct.", 0) == 0;
+  std::optional<bool> store_is_union;
+  if (lir_module) {
+    for (const LirAggregateStoreEntry& entry : lir_module->aggregate_store) {
+      if (entry.name_id == name_id) {
+        store_is_union = entry.layout_kind == LirAggregateLayoutKind::Union;
+        break;
+      }
+    }
+  }
+  const bool is_union = store_is_union.value_or(
+      rendered_is_union ? true : (rendered_is_struct ? false : type.base == TB_UNION));
+  return lir_aggregate_type_ref(rendered_text, lir_module, name_id, is_union);
 }
 
 std::string rendered_signature_return_type(const c4c::hir::Module& mod,
@@ -543,7 +611,7 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
   const TypeSpec return_ts =
       lir_owned_type_spec(mod, fn.return_type, lir_module);
   const std::string return_type_text =
-      direct_owned_aggregate_type_text(mod, return_ts)
+      direct_owned_aggregate_type_text(mod, return_ts, lir_module)
           .value_or(rendered_signature_return_type(mod, return_ts));
   lir_fn.signature_return_type_ref =
       lir_signature_type_ref(return_type_text, lir_module, mod, return_ts);
@@ -569,7 +637,7 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
         llvm_cc::amd64_fixed_aggregate_passed_byval(param.type.spec, mod);
     const std::string param_type_text =
         !is_byval_signature_param
-            ? direct_owned_aggregate_type_text(mod, param_ts)
+            ? direct_owned_aggregate_type_text(mod, param_ts, lir_module)
                   .value_or(rendered_signature_param_type(mod, lir_module, param_ts))
             : rendered_signature_param_type(mod, lir_module, param_ts);
     lir_fn.signature_params.push_back(

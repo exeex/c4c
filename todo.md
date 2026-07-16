@@ -24,6 +24,12 @@ Current Step Title: Enforce module ownership and migrate bounded consumers
   GCC torture aggregates, and quoted EASTL template-specialization names now
   resolve through bounded declaration-backed compatibility without making
   tag/text lookup durable authority.
+- A fresh full-suite baseline candidate after `74e17efe3` still regressed by
+  10 tests. The follow-up repair closes that remaining family by making direct
+  signature and call aggregate mirrors prefer existing module declaration/store
+  layout facts over stale legacy struct/union bits, while preserving
+  no-declaration global-header compatibility and keeping explicit non-root
+  stale owner metadata rejected.
 
 ## Suggested Next
 
@@ -85,6 +91,11 @@ Current Step Title: Enforce module ownership and migrate bounded consumers
   `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_positive_sema_namespace_struct_runtime_cpp|cpp_positive_sema_template_struct_nested_cpp|llvm_gcc_c_torture_src_20071029_1_c|eastl_cpp_external_utility_frontend_basic_cpp|frontend_lir_function_signature_type_ref|frontend_lir_call_type_ref|frontend_hir_tests)$' ) > test_after.log 2>&1`
 - Refreshed backend checkpoint passed:
   `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' ) > /tmp/c4c_backend_after.log 2>&1`
+- Rejected-baseline 10-test follow-up proof passed:
+  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_function_signature_type_ref|c_testsuite_src_00220_c|llvm_gcc_c_torture_src_ieee_fp_cmp_1_c|llvm_gcc_c_torture_src_ieee_fp_cmp_2_c|llvm_gcc_c_torture_src_ieee_fp_cmp_3_c|llvm_gcc_c_torture_src_20180131_1_c|llvm_gcc_c_torture_src_921112_1_c|llvm_gcc_c_torture_src_921204_1_c|llvm_gcc_c_torture_src_930208_1_c|llvm_gcc_c_torture_src_bswap_2_c|llvm_gcc_c_torture_src_pr23324_c)$' ) > test_after.log 2>&1`
+- Refreshed aggregate/signature proof and backend checkpoint passed after the
+  follow-up repair:
+  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(cpp_positive_sema_namespace_struct_runtime_cpp|cpp_positive_sema_template_struct_nested_cpp|llvm_gcc_c_torture_src_20071029_1_c|eastl_cpp_external_utility_frontend_basic_cpp|frontend_lir_function_signature_type_ref|frontend_lir_call_type_ref|frontend_hir_tests)$' ) > test_after.log 2>&1 && ( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' ) > /tmp/c4c_backend_after.log 2>&1`
 - Proof log: `test_after.log`.
 - Still required before normal Step 3/Step 4 progress: supervisor fresh
   full-suite baseline review with no failure-set expansion.
