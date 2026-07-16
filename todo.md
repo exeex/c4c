@@ -8,15 +8,16 @@ Current Step Title: Select One Carrier-Backed Collector Seam
 
 ## Just Finished
 
-Plan-owner repaired the exhausted one-field runbook after accepted commit
-`a067e8cc5` completed the prior `LirInsertValueOp.elem` target.
+Completed Step 1 packet for `LirShuffleVectorOp.vec1`: migrated only the
+`collect_inst_refs` shuffle `vec1` field from raw `S(op.vec1)` scanning to
+`collect_operand_ref(op.vec1, refs)`. `LirShuffleVectorOp.vec2` remains on the
+raw scanner path.
 
 ## Suggested Next
 
-Execute Step 1 for the next bounded packet: confirm `LirShuffleVectorOp.vec1`
-in `collect_inst_refs` is the selected carrier-backed field, then migrate only
-that field from raw `S(op.vec1)` scanning to
-`collect_operand_ref(op.vec1, refs)`.
+Execute the next bounded collector packet: confirm `LirShuffleVectorOp.vec2`
+has an acceptable semantic carrier, then migrate only that field from raw
+`S(op.vec2)` scanning if selected by the supervisor.
 
 ## Watchouts
 
@@ -28,9 +29,11 @@ text. Do not change producers, verifier semantics, or BIR lowering unless
 
 ## Proof
 
-Required after implementation:
+Passed:
 
 ```
 { cmake --build build && ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure; } > test_after.log 2>&1
 git diff --check
 ```
+
+Proof log: `test_after.log`.
