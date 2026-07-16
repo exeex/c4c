@@ -3055,6 +3055,92 @@ void test_lir_dead_internal_select_cond_uses_link_name_id_before_rendered_text()
               "legacy raw select cond should keep text-scan compatibility");
 }
 
+void test_lir_dead_internal_select_true_val_uses_link_name_id_before_rendered_text() {
+  c4c::codegen::lir::LirModule module = make_link_name_aware_lir_module();
+  const c4c::LinkNameId semantic_helper_id =
+      module.link_names.intern("semantic_select_true_helper");
+  const c4c::LinkNameId rendered_shadow_id =
+      module.link_names.intern("rendered_select_true_shadow");
+  expect_true(semantic_helper_id != c4c::kInvalidLinkName &&
+                  rendered_shadow_id != c4c::kInvalidLinkName,
+              "fixture should allocate stable select true reachability LinkNameIds");
+
+  c4c::codegen::lir::LirFunction root;
+  root.name = "root_select_true";
+  root.link_name_id = module.link_names.intern("root_select_true");
+  c4c::codegen::lir::LirBlock root_block;
+  root_block.label = "entry";
+  root_block.insts.push_back(c4c::codegen::lir::LirSelectOp{
+      c4c::codegen::lir::LirOperand::ssa("%pick", c4c::codegen::lir::LirValueId{1}),
+      c4c::codegen::lir::LirTypeRef(c4c::codegen::lir::LirBuiltinType::I32),
+      c4c::codegen::lir::LirOperand::integer("1", 1),
+      c4c::codegen::lir::LirOperand::global("@rendered_select_true_shadow",
+                                            semantic_helper_id),
+      c4c::codegen::lir::LirOperand::integer("0", 0)});
+  root.blocks.push_back(std::move(root_block));
+  module.functions.push_back(std::move(root));
+
+  c4c::codegen::lir::LirFunction semantic_helper;
+  semantic_helper.name = "semantic_select_true_helper";
+  semantic_helper.link_name_id = semantic_helper_id;
+  semantic_helper.is_internal = true;
+  semantic_helper.can_elide_if_unreferenced = true;
+  module.functions.push_back(std::move(semantic_helper));
+
+  c4c::codegen::lir::LirFunction rendered_shadow;
+  rendered_shadow.name = "rendered_select_true_shadow";
+  rendered_shadow.link_name_id = rendered_shadow_id;
+  rendered_shadow.is_internal = true;
+  rendered_shadow.can_elide_if_unreferenced = true;
+  module.functions.push_back(std::move(rendered_shadow));
+
+  c4c::codegen::lir::eliminate_dead_internals(module);
+
+  const auto semantic_it = std::find_if(
+      module.functions.begin(), module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.link_name_id == semantic_helper_id;
+      });
+  expect_true(semantic_it != module.functions.end(),
+              "select true_val LinkNameId should keep the semantic helper");
+
+  const auto shadow_it = std::find_if(
+      module.functions.begin(), module.functions.end(),
+      [&](const c4c::codegen::lir::LirFunction& fn) {
+        return fn.link_name_id == rendered_shadow_id;
+      });
+  expect_true(shadow_it == module.functions.end(),
+              "stale select true_val spelling should not keep the rendered-name shadow");
+
+  c4c::codegen::lir::LirModule legacy_module = make_link_name_aware_lir_module();
+  c4c::codegen::lir::LirFunction legacy_root;
+  legacy_root.name = "legacy_root_select_true";
+  legacy_root.link_name_id =
+      legacy_module.link_names.intern("legacy_root_select_true");
+  c4c::codegen::lir::LirBlock legacy_block;
+  legacy_block.label = "entry";
+  legacy_block.insts.push_back(c4c::codegen::lir::LirSelectOp{
+      c4c::codegen::lir::LirOperand::ssa("%pick", c4c::codegen::lir::LirValueId{1}),
+      c4c::codegen::lir::LirTypeRef(c4c::codegen::lir::LirBuiltinType::I32),
+      c4c::codegen::lir::LirOperand::integer("1", 1),
+      c4c::codegen::lir::LirOperand::raw("@rendered_select_true_shadow"),
+      c4c::codegen::lir::LirOperand::integer("0", 0)});
+  legacy_root.blocks.push_back(std::move(legacy_block));
+  legacy_module.functions.push_back(std::move(legacy_root));
+
+  c4c::codegen::lir::LirFunction legacy_shadow;
+  legacy_shadow.name = "rendered_select_true_shadow";
+  legacy_shadow.link_name_id =
+      legacy_module.link_names.intern("rendered_select_true_shadow");
+  legacy_shadow.is_internal = true;
+  legacy_shadow.can_elide_if_unreferenced = true;
+  legacy_module.functions.push_back(std::move(legacy_shadow));
+
+  c4c::codegen::lir::eliminate_dead_internals(legacy_module);
+  expect_true(legacy_module.functions.size() == 2,
+              "legacy raw select true_val should keep text-scan compatibility");
+}
+
 void test_hir_to_lir_global_initializer_function_designator_prefers_link_name_id_after_function_miss() {
   c4c::hir::Module hir_module = lower_hir_module(R"cpp(
 extern int rendered_shadow(int value);
@@ -9456,6 +9542,7 @@ int main() {
   test_lir_dead_internal_cmp_lhs_uses_link_name_id_before_rendered_text();
   test_lir_dead_internal_cmp_rhs_uses_link_name_id_before_rendered_text();
   test_lir_dead_internal_select_cond_uses_link_name_id_before_rendered_text();
+  test_lir_dead_internal_select_true_val_uses_link_name_id_before_rendered_text();
   test_hir_preserves_c4c_builtin_vrm_carrier_types();
   test_inline_asm_string_literal_plus_folds_to_literal_metadata();
   test_inline_asm_insn_d_string_literal_plus_folds_to_literal_metadata();
