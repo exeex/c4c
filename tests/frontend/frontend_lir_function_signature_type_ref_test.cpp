@@ -322,6 +322,8 @@ expect_function_signature_store_entry(
                    entry->return_type_ref->str() ==
                        fn.signature_return_type_ref->str()),
               msg + " stored return type should mirror the structured return fact");
+  expect_true(entry->return_ext_attr == fn.signature_return_ext_attr,
+              msg + " stored return extension should mirror the structured ABI fact");
   expect_true(entry->fixed_param_type_refs == fn.signature_param_type_refs,
               msg + " stored parameter types should mirror structured param facts");
   for (std::size_t index = 0; index < entry->fixed_param_type_refs.size(); ++index) {
@@ -1230,6 +1232,15 @@ int defined_void_params(void) {
   require_mutable_function(stale_rendered_return_text, "declared_pair", true)
       .signature_text = "declare void @declared_pair(void)";
   c4c::codegen::lir::verify_module(stale_rendered_return_text);
+  const std::string stale_rendered_decl_ir =
+      c4c::codegen::lir::print_llvm(stale_rendered_return_text);
+  expect_true(stale_rendered_decl_ir.find(
+                  "declare %struct.Pair @declared_pair(%struct.Pair)") !=
+                  std::string::npos,
+              "declaration printer should render from the module-owned function signature store");
+  expect_true(stale_rendered_decl_ir.find(
+                  "declare void @declared_pair(void)") == std::string::npos,
+              "declaration printer should ignore stale signature_text once a store ref exists");
 
   c4c::codegen::lir::LirModule stale_rendered_param_text = lir_module;
   require_mutable_function(stale_rendered_param_text, "defined_pair", false)

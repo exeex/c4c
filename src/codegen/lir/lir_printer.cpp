@@ -50,6 +50,47 @@ std::string render_signature_with_link_name(std::string_view signature_text,
   return rendered;
 }
 
+std::string_view render_ext_attr(LirExtAttr attr);
+
+std::string render_type_ref_for_signature(const LirTypeRef& type) {
+  return type.str();
+}
+
+std::optional<std::string> render_declaration_signature_from_store(
+    const LirModule& mod,
+    const LirFunction& function,
+    std::string_view resolved_name) {
+  if (!function.is_declaration || !function.function_signature_ref.valid()) {
+    return std::nullopt;
+  }
+  const LirFunctionSignatureStoreEntry* signature =
+      mod.find_function_signature(function.function_signature_ref);
+  if (!signature || !signature->return_type_ref.has_value()) {
+    return std::nullopt;
+  }
+
+  std::ostringstream out;
+  out << "declare " << render_ext_attr(signature->return_ext_attr)
+      << render_type_ref_for_signature(*signature->return_type_ref) << " "
+      << llvm_global_sym(std::string(resolved_name.empty() ? function.name
+                                                           : resolved_name))
+      << "(";
+  bool need_comma = false;
+  if (!signature->has_void_param_list) {
+    for (const LirTypeRef& param_type : signature->fixed_param_type_refs) {
+      if (need_comma) out << ", ";
+      out << render_type_ref_for_signature(param_type);
+      need_comma = true;
+    }
+    if (signature->is_variadic) {
+      if (need_comma) out << ", ";
+      out << "...";
+    }
+  }
+  out << ")";
+  return out.str();
+}
+
 std::string resolve_direct_call_callee(const LirCallOp& call,
                                        const c4c::LinkNameTable& link_names) {
   if (!parse_lir_direct_global_callee(call.callee).has_value()) {
@@ -539,10 +580,13 @@ void render_terminator(std::ostringstream& os, const LirTerminator& term) {
   // LirIndirectBr is handled via LirIndirectBrOp instruction, not terminator.
 }
 
-std::string render_fn(const LirFunction& f, std::string_view resolved_name,
+std::string render_fn(const LirModule& mod, const LirFunction& f,
+                      std::string_view resolved_name,
                       const c4c::LinkNameTable& link_names) {
   const std::string signature =
-      render_signature_with_link_name(f.signature_text, resolved_name);
+      render_declaration_signature_from_store(mod, f, resolved_name)
+          .value_or(render_signature_with_link_name(f.signature_text,
+                                                   resolved_name));
   if (f.is_declaration) return signature;
   std::ostringstream fout;
   fout << signature;
@@ -685,7 +729,8 @@ std::string print_llvm(const LirModule& mod) {
   // Dead internal functions have already been removed by the lowering pass
   // (eliminate_dead_internals); the printer renders everything it receives.
   for (const auto& f : mod.functions) {
-    out << render_fn(f, resolve_link_name(mod.link_names, f.link_name_id), mod.link_names);
+    out << render_fn(mod, f, resolve_link_name(mod.link_names, f.link_name_id),
+                     mod.link_names);
   }
 
   // Specialization metadata.

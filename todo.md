@@ -8,17 +8,18 @@ Current Step Title: Migrate declarations to signature refs
 
 ## Just Finished
 
-- Step 1 established the initial module-owned nominal function-signature store:
-  `LirFunctionSignatureRef`, store entries for return/ordered parameter type
-  refs, byval flags, variadic state, and void-list state, lowering-time
-  registration from existing structured function signature facts, and verifier
-  checks that stored facts match the function's structured mirrors exactly.
+- Step 2 declaration consumer migration started: declaration header rendering
+  now consumes `LirFunctionSignatureRef`/store facts for return type, return
+  extension ABI, ordered fixed params, variadic state, and void-list state.
+  `signature_text` remains a compatibility field, but stale declaration
+  `signature_text` no longer controls printed declaration output when a valid
+  store ref exists.
 
 ## Suggested Next
 
-- Continue Step 1 with a bounded declaration/call construction probe if needed,
-  or move to Step 2 by migrating declarations to consume
-  `LirFunctionSignatureRef` while keeping compatibility mirrors intact.
+- Continue Step 2 with the next bounded declaration/definition verifier or
+  header-consumer migration through `LirFunctionSignatureRef`; do not move into
+  call composition yet.
 
 ## Watchouts
 
@@ -32,6 +33,8 @@ Current Step Title: Migrate declarations to signature refs
 - `LirTypeRef` semantic equality can ignore stale rendered text when a
   `StructNameId` matches; signature-store verifier checks must continue using
   exact stored fact agreement where mirrors are still retained.
+- RV64 variadic return `signext`/`zeroext` is now a structured
+  `signature_return_ext_attr` fact and must stay in the store path.
 
 ## Proof
 

@@ -1037,6 +1037,7 @@ struct LirFunction {
   bool signature_has_void_param_list = false;
   std::vector<LirSignatureParam> signature_params;
   std::optional<LirTypeRef> signature_return_type_ref;
+  LirExtAttr signature_return_ext_attr = LirExtAttr::None;
   std::vector<LirTypeRef> signature_param_type_refs;
   LirFunctionSignatureRef function_signature_ref =
       LirFunctionSignatureRef::invalid();

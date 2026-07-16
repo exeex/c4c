@@ -615,6 +615,8 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
           .value_or(rendered_signature_return_type(mod, return_ts));
   lir_fn.signature_return_type_ref =
       lir_signature_type_ref(return_type_text, lir_module, mod, return_ts);
+  lir_fn.signature_return_ext_attr =
+      rv64_variadic_return_ext_attr_for_abi_type(mod, fn);
 
   const bool void_param_list =
       fn.params.size() == 1 &&
@@ -651,7 +653,7 @@ void register_function_signature_ref(LirModule& module,
                                      LirFunction& lir_fn) {
   LirFunctionSignatureStoreEntry entry;
   entry.return_type_ref = lir_fn.signature_return_type_ref;
-  entry.return_ext_attr = LirExtAttr::None;
+  entry.return_ext_attr = lir_fn.signature_return_ext_attr;
   entry.fixed_param_type_refs = lir_fn.signature_param_type_refs;
   entry.fixed_param_is_byval.reserve(lir_fn.signature_params.size());
   for (const LirSignatureParam& param : lir_fn.signature_params) {

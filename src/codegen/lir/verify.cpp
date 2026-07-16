@@ -4462,7 +4462,7 @@ void verify_function_signature_store_ref(const LirModule& mod,
 
   if (!same_signature_store_type_fact(entry->return_type_ref,
                                       fn.signature_return_type_ref) ||
-      entry->return_ext_attr != LirExtAttr::None ||
+      entry->return_ext_attr != fn.signature_return_ext_attr ||
       !same_signature_store_type_facts(entry->fixed_param_type_refs,
                                        fn.signature_param_type_refs) ||
       entry->is_variadic != fn.signature_is_variadic ||
