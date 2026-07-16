@@ -1160,7 +1160,40 @@ bool is_integer_boolean_flag_call_claim(const LirCallOp& call) {
          call.intrinsic_kind == LirIntrinsicKind::Ctlz;
 }
 
-bool has_complete_integer_boolean_flag_call_authority(const LirCallOp& call) {
+struct IntegerIntrinsicSignatureView {
+  const std::optional<LirTypeRef>* return_type_ref = nullptr;
+  const std::vector<LirTypeRef>* fixed_param_type_refs = nullptr;
+  LirExtAttr return_ext_attr = LirExtAttr::None;
+  bool is_variadic = false;
+  bool has_unspecified_params = false;
+  bool has_void_param_list = false;
+};
+
+std::optional<IntegerIntrinsicSignatureView> integer_intrinsic_signature_view(
+    const LirModule& mod, const LirCallOp& call) {
+  if (const LirFunctionSignatureStoreEntry* signature =
+          call_signature_store_entry(mod, call)) {
+    return IntegerIntrinsicSignatureView{
+        &signature->return_type_ref,
+        &signature->fixed_param_type_refs,
+        signature->return_ext_attr,
+        signature->is_variadic,
+        false,
+        signature->has_void_param_list};
+  }
+  if (!call.callee_signature.has_value()) return std::nullopt;
+  const LirCallSignature& signature = *call.callee_signature;
+  return IntegerIntrinsicSignatureView{
+      &signature.return_type_ref,
+      &signature.fixed_param_type_refs,
+      signature.return_ext_attr,
+      signature.is_variadic,
+      signature.has_unspecified_params,
+      signature.has_void_param_list};
+}
+
+bool has_complete_integer_boolean_flag_call_authority(const LirModule& mod,
+                                                      const LirCallOp& call) {
   if (!is_integer_boolean_flag_call_claim(call) ||
       (call.intrinsic_kind != LirIntrinsicKind::Cttz &&
        call.intrinsic_kind != LirIntrinsicKind::Ctlz) ||
@@ -1168,15 +1201,15 @@ bool has_complete_integer_boolean_flag_call_authority(const LirCallOp& call) {
       call.return_type.kind() != LirTypeKind::Integer ||
       !call.callee.link_name_id() ||
       call.direct_callee_link_name_id != *call.callee.link_name_id() ||
-      !call.callee_signature.has_value() ||
-      !call.callee_signature->return_type_ref.has_value() ||
       !call.zero_count_behavior.has_value()) {
     return false;
   }
-  const LirCallSignature& signature = *call.callee_signature;
-  if (signature.is_variadic || signature.has_unspecified_params ||
-      signature.has_void_param_list ||
-      signature.fixed_param_type_refs.size() != 2 ||
+  const auto signature = integer_intrinsic_signature_view(mod, call);
+  if (!signature || !signature->return_type_ref ||
+      !signature->return_type_ref->has_value() ||
+      !signature->fixed_param_type_refs || signature->is_variadic ||
+      signature->has_unspecified_params || signature->has_void_param_list ||
+      signature->fixed_param_type_refs->size() != 2 ||
       call.arg_type_refs.size() != 2 || call.structured_args.size() != 2) {
     return false;
   }
@@ -1184,9 +1217,9 @@ bool has_complete_integer_boolean_flag_call_authority(const LirCallOp& call) {
   const LirTypeRef i1_type = LirTypeRef::integer(1);
   const std::int64_t expected_flag =
       *call.zero_count_behavior == LirZeroCountBehavior::Defined ? 0 : 1;
-  return *signature.return_type_ref == integer_type &&
-         signature.fixed_param_type_refs[0] == integer_type &&
-         signature.fixed_param_type_refs[1] == i1_type &&
+  return **signature->return_type_ref == integer_type &&
+         (*signature->fixed_param_type_refs)[0] == integer_type &&
+         (*signature->fixed_param_type_refs)[1] == i1_type &&
          call.arg_type_refs[0] == integer_type &&
          call.arg_type_refs[1] == i1_type &&
          call.structured_args[0].type_ref == integer_type &&
@@ -1198,7 +1231,9 @@ bool has_complete_integer_boolean_flag_call_authority(const LirCallOp& call) {
 void verify_integer_boolean_flag_call_authority(const LirModule& mod,
                                                 const LirCallOp& call) {
   if (!is_integer_boolean_flag_call_claim(call)) return;
-  if (!has_complete_integer_boolean_flag_call_authority(call)) {
+  const auto signature = integer_intrinsic_signature_view(mod, call);
+  if (!has_complete_integer_boolean_flag_call_authority(mod, call) ||
+      !signature) {
     fail_verify("LirCallOp",
                 "authoritative integer boolean-flag call requires complete native callee/signature/argument authority");
   }
@@ -1207,10 +1242,9 @@ void verify_integer_boolean_flag_call_authority(const LirModule& mod,
     fail_verify("LirCallOp.callee",
                 "authoritative integer boolean-flag callee must resolve in the module");
   }
-  const LirCallSignature& signature = *call.callee_signature;
   if (call.callee.kind() != LirOperandKind::Global ||
       call.return_ext_attr != LirExtAttr::None ||
-      signature.return_ext_attr != LirExtAttr::None ||
+      signature->return_ext_attr != LirExtAttr::None ||
       call.structured_args[0].ext_attr != LirExtAttr::None ||
       call.structured_args[1].ext_attr != LirExtAttr::None) {
     fail_verify("LirCallOp",
@@ -1228,25 +1262,26 @@ void verify_integer_boolean_flag_call_authority(const LirModule& mod,
   }
 }
 
-bool has_complete_integer_count_call_authority(const LirCallOp& call) {
+bool has_complete_integer_count_call_authority(const LirModule& mod,
+                                               const LirCallOp& call) {
   if (call.intrinsic_kind != LirIntrinsicKind::Ctpop ||
       call.zero_count_behavior.has_value() || !call.result.value_id() ||
       call.return_type.kind() != LirTypeKind::Integer ||
       !call.callee.link_name_id() ||
-      call.direct_callee_link_name_id != *call.callee.link_name_id() ||
-      !call.callee_signature.has_value() ||
-      !call.callee_signature->return_type_ref.has_value()) {
+      call.direct_callee_link_name_id != *call.callee.link_name_id()) {
     return false;
   }
-  const LirCallSignature& signature = *call.callee_signature;
-  if (signature.is_variadic || signature.has_unspecified_params ||
-      signature.has_void_param_list ||
-      signature.fixed_param_type_refs.size() != 1 ||
+  const auto signature = integer_intrinsic_signature_view(mod, call);
+  if (!signature || !signature->return_type_ref ||
+      !signature->return_type_ref->has_value() ||
+      !signature->fixed_param_type_refs || signature->is_variadic ||
+      signature->has_unspecified_params || signature->has_void_param_list ||
+      signature->fixed_param_type_refs->size() != 1 ||
       call.arg_type_refs.size() != 1 || call.structured_args.size() != 1) {
     return false;
   }
-  return *signature.return_type_ref == call.return_type &&
-         signature.fixed_param_type_refs[0] == call.return_type &&
+  return **signature->return_type_ref == call.return_type &&
+         (*signature->fixed_param_type_refs)[0] == call.return_type &&
          call.arg_type_refs[0] == call.return_type &&
          call.structured_args[0].type_ref == call.return_type;
 }
@@ -1254,7 +1289,8 @@ bool has_complete_integer_count_call_authority(const LirCallOp& call) {
 void verify_integer_count_call_authority(const LirModule& mod,
                                          const LirCallOp& call) {
   if (call.intrinsic_kind != LirIntrinsicKind::Ctpop) return;
-  if (!has_complete_integer_count_call_authority(call)) {
+  const auto signature = integer_intrinsic_signature_view(mod, call);
+  if (!has_complete_integer_count_call_authority(mod, call) || !signature) {
     fail_verify("LirCallOp",
                 "authoritative integer count call requires complete native callee/signature/argument authority and no zero-count behavior");
   }
@@ -1263,10 +1299,9 @@ void verify_integer_count_call_authority(const LirModule& mod,
     fail_verify("LirCallOp.callee",
                 "authoritative integer count callee must resolve in the module");
   }
-  const LirCallSignature& signature = *call.callee_signature;
   if (call.callee.kind() != LirOperandKind::Global ||
       call.return_ext_attr != LirExtAttr::None ||
-      signature.return_ext_attr != LirExtAttr::None ||
+      signature->return_ext_attr != LirExtAttr::None ||
       call.structured_args[0].ext_attr != LirExtAttr::None) {
     fail_verify("LirCallOp",
                 "authoritative integer count call has conflicting native shape");
@@ -1833,8 +1868,8 @@ void verify_inst(const LirModule& mod, const LirInst& inst) {
         has_complete_fixed_call_type_authority(mod, *op) ||
         has_complete_direct_void_integer_immediate_authority(mod, *op) ||
         has_complete_direct_void_integer_ssa_authority(mod, *op) ||
-        has_complete_integer_boolean_flag_call_authority(*op) ||
-        has_complete_integer_count_call_authority(*op);
+        has_complete_integer_boolean_flag_call_authority(mod, *op) ||
+        has_complete_integer_count_call_authority(mod, *op);
     require_operand_kind(op->result, "LirCallOp.result",
                          {LirOperandKind::SsaValue}, true);
     verify_call_return_type_ref_mirror(mod, op->return_type);

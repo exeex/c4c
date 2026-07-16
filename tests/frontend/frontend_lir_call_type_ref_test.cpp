@@ -923,6 +923,57 @@ void expect_identity_verification_rejected(
     const c4c::codegen::lir::LirModule& module,
     const std::string& message);
 
+void attach_direct_intrinsic_signature_ref(
+    c4c::codegen::lir::LirModule& module,
+    c4c::codegen::lir::LirCallOp& call) {
+  namespace lir = c4c::codegen::lir;
+  const auto type_spec_for_ref = [](const lir::LirTypeRef& ref) {
+    if (ref.kind() == lir::LirTypeKind::Integer && ref.integer_bit_width() == 1) {
+      return c4c::TypeSpec{.base = c4c::TB_BOOL};
+    }
+    if (ref.kind() == lir::LirTypeKind::Integer && ref.integer_bit_width() == 64) {
+      return c4c::TypeSpec{.base = c4c::TB_LONGLONG};
+    }
+    return c4c::TypeSpec{.base = c4c::TB_INT};
+  };
+  expect_true(call.direct_callee_link_name_id != c4c::kInvalidLinkName &&
+                  call.callee.link_name_id() &&
+                  call.callee_signature.has_value(),
+              "fixture intrinsic call should carry retained direct-call signature facts");
+  const lir::LirCallSignature& retained = *call.callee_signature;
+  lir::LirFunctionSignatureStoreEntry entry;
+  entry.return_type_ref = retained.return_type_ref;
+  entry.return_ext_attr = retained.return_ext_attr;
+  entry.fixed_param_type_refs = retained.fixed_param_type_refs;
+  entry.fixed_param_is_byval.assign(retained.fixed_param_type_refs.size(), false);
+  entry.is_variadic = retained.is_variadic;
+  entry.has_void_param_list = retained.has_void_param_list;
+  const lir::LirFunctionSignatureRef ref =
+      module.register_function_signature(std::move(entry));
+  call.callee_signature_ref = ref;
+
+  lir::LirFunction declaration;
+  declaration.name = module.link_names.spelling(call.direct_callee_link_name_id);
+  declaration.link_name_id = call.direct_callee_link_name_id;
+  declaration.is_declaration = true;
+  declaration.signature_return_type_ref = retained.return_type_ref;
+  declaration.signature_return_ext_attr = retained.return_ext_attr;
+  declaration.signature_param_type_refs = retained.fixed_param_type_refs;
+  for (std::size_t index = 0; index < retained.fixed_param_type_refs.size();
+       ++index) {
+    const std::string name = "%arg" + std::to_string(index);
+    const c4c::TypeSpec type = type_spec_for_ref(retained.fixed_param_type_refs[index]);
+    declaration.params.emplace_back(name, type);
+    declaration.signature_params.push_back({name, type, false});
+  }
+  declaration.signature_is_variadic = retained.is_variadic;
+  declaration.signature_has_void_param_list = retained.has_void_param_list;
+  declaration.function_signature_ref = ref;
+  declaration.signature_text =
+      "declare " + call.return_type.str() + " @" + declaration.name + "()";
+  module.functions.push_back(std::move(declaration));
+}
+
 void test_vaarg_native_producer_result_authority_contract() {
   namespace lir = c4c::codegen::lir;
   lir::LirModule lowered = lower_lir_module_for_target(R"c(
@@ -8101,10 +8152,22 @@ int lir_ffs_cttz_i64_literal(void) {
       unresolved_callee, "verifier should reject unresolved ffs cttz callee ID");
 
   lir::LirModule missing_signature = lowered;
-  require_focused_pair(missing_signature, "lir_ffs_cttz_i32")
-      .call->callee_signature.reset();
+  attach_direct_intrinsic_signature_ref(
+      missing_signature,
+      *require_focused_pair(missing_signature, "lir_ffs_cttz_i32").call);
+  require_focused_pair(missing_signature, "lir_ffs_cttz_i32").call->callee_signature.reset();
+  lir::verify_module(missing_signature);
+
+  lir::LirModule stale_retained_signature = lowered;
+  attach_direct_intrinsic_signature_ref(
+      stale_retained_signature,
+      *require_focused_pair(stale_retained_signature, "lir_ffs_cttz_i32").call);
+  require_focused_pair(stale_retained_signature, "lir_ffs_cttz_i32")
+      .call->callee_signature->fixed_param_type_refs[0] =
+      lir::LirTypeRef::integer(64);
   expect_identity_verification_rejected(
-      missing_signature, "verifier should reject missing ffs cttz signature");
+      stale_retained_signature,
+      "verifier should reject ffs cttz retained/store signature disagreement");
 
   lir::LirModule variadic_signature = lowered;
   require_focused_pair(variadic_signature, "lir_ffs_cttz_i32")
@@ -8693,10 +8756,22 @@ int lir_popcount_i64_literal(void) { return __builtin_popcountll(7LL) + 1; }
       forbidden_zero_behavior, "verifier should reject zero-count behavior on Ctpop");
 
   lir::LirModule missing_signature = lowered;
-  require_chain(missing_signature, "lir_popcount_i32", false)
-      .call->callee_signature.reset();
+  attach_direct_intrinsic_signature_ref(
+      missing_signature,
+      *require_chain(missing_signature, "lir_popcount_i32", false).call);
+  require_chain(missing_signature, "lir_popcount_i32", false).call->callee_signature.reset();
+  lir::verify_module(missing_signature);
+
+  lir::LirModule stale_retained_signature = lowered;
+  attach_direct_intrinsic_signature_ref(
+      stale_retained_signature,
+      *require_chain(stale_retained_signature, "lir_popcount_i32", false).call);
+  require_chain(stale_retained_signature, "lir_popcount_i32", false)
+      .call->callee_signature->fixed_param_type_refs[0] =
+      lir::LirTypeRef::integer(64);
   expect_identity_verification_rejected(
-      missing_signature, "verifier should reject popcount without a signature");
+      stale_retained_signature,
+      "verifier should reject popcount retained/store signature disagreement");
 
   lir::LirModule extra_argument = lowered;
   FocusedChain extra = require_chain(extra_argument, "lir_popcount_i32", false);

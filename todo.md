@@ -8,19 +8,20 @@ Current Step Title: Migrate call composition to signature refs
 
 ## Just Finished
 
-- Step 3 direct void fixed-integer verifier slice completed: the immediate and
-  SSA direct void fixed-integer call helpers now consume the module-owned
-  function signature store when `callee_signature_ref` resolves, with retained
-  `callee_signature` left as the compatibility fallback for unmigrated calls.
-  Nearby coverage proves supported immediate and SSA direct void integer calls
-  verify with the retained signature mirror removed, while existing structured
-  retained-signature disagreement checks continue to reject stale mirrors.
+- Step 3 integer intrinsic call-authority verifier slice completed: the
+  boolean-flag (`cttz`/`ctlz`) and count (`ctpop`) direct-call helpers now
+  consume the module-owned function signature store when `callee_signature_ref`
+  resolves, with retained `callee_signature` left as the compatibility fallback
+  for unmigrated intrinsic calls. Nearby coverage proves supported boolean-flag
+  and count intrinsic direct calls verify with retained `callee_signature`
+  removed once a valid signature ref is present, while stale retained structured
+  signature facts still reject through the signature-ref disagreement check.
 
 ## Suggested Next
 
-- Continue Step 3 with another direct-call composition consumer that still reads
-  retained call text or argument type mirrors, without touching 829/830 argument
-  value identity.
+- Continue Step 3 with another direct-call composition consumer outside the
+  migrated direct void fixed-integer and integer intrinsic call-authority
+  helpers, without touching 829/830 argument value identity.
 
 ## Watchouts
 
