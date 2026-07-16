@@ -23,6 +23,10 @@ LirOperand integer_store_operand_after_coercion(const LirOperand& source,
 
 namespace {
 
+LirTypeRef lir_aggregate_gep_type_ref(const std::string& rendered_text,
+                                      lir::LirModule* module,
+                                      StructNameId name_id, bool is_union);
+
 // Indexed-GEP element text is rendered from a resolved HIR TypeSpec. It can
 // legitimately be an array, pointer, vector, or other non-builtin spelling,
 // so retain it through this local, auditable runtime-text boundary.
@@ -52,6 +56,47 @@ StructNameId indexed_gep_structured_name_id(const c4c::hir::Module& mod,
   const StructNameId name_id =
       module->struct_names.find(llvm_struct_type_str(*structured_tag));
   return normalize_lir_aggregate_struct_name_id(module, rendered_text, name_id, true);
+}
+
+std::optional<LirTypeRef> indexed_gep_type_ref_from_typespec(
+    const c4c::hir::Module& mod, const lir::LirModule* module,
+    const TypeSpec& ts) {
+  if (ts.ptr_level > 0 || ts.is_fn_ptr) {
+    return LirTypeRef(LirBuiltinType::Pointer);
+  }
+  if (ts.array_rank > 0) {
+    if (ts.array_size < 0) return std::nullopt;
+    TypeSpec elem_ts = ts;
+    elem_ts.array_rank--;
+    if (elem_ts.array_rank > 0) {
+      for (int i = 0; i < elem_ts.array_rank; ++i) {
+        elem_ts.array_dims[i] = elem_ts.array_dims[i + 1];
+      }
+    }
+    elem_ts.array_size = elem_ts.array_rank > 0 ? elem_ts.array_dims[0] : -1;
+    std::optional<LirTypeRef> elem_ref =
+        indexed_gep_type_ref_from_typespec(mod, module, elem_ts);
+    if (!elem_ref) return std::nullopt;
+    return LirTypeRef::array(std::move(*elem_ref),
+                             static_cast<std::size_t>(ts.array_size));
+  }
+  if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && module) {
+    const std::string rendered_text = llvm_ty(ts);
+    const StructNameId name_id =
+        indexed_gep_structured_name_id(mod, module, rendered_text, ts);
+    if (name_id != kInvalidStructName) {
+      const StructuredLayoutLookup layout =
+          lookup_structured_layout(mod, const_cast<lir::LirModule*>(module), ts,
+                                   "indexed-gep-array-element", name_id);
+      if (layout.structured_decl) {
+        return lir_aggregate_gep_type_ref(rendered_text,
+                                          const_cast<lir::LirModule*>(module),
+                                          layout.structured_name_id,
+                                          ts.base == TB_UNION);
+      }
+    }
+  }
+  return LirTypeRef(llvm_ty(ts));
 }
 
 std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
@@ -958,6 +1003,12 @@ LirTypeRef StmtEmitter::indexed_gep_elem_ty(const TypeSpec& base_ts,
   const TypeSpec elem_ts = resolve_indexed_gep_pointee_type(base_ts);
   if (elem_ts.base == TB_VOID && elem_ts.ptr_level == 0 && elem_ts.array_rank == 0) {
     return LirTypeRef(lir::LirBuiltinType::I8);
+  }
+  if (elem_ts.array_rank > 0 && elem_ts.ptr_level == 0) {
+    if (std::optional<LirTypeRef> type_ref =
+            indexed_gep_type_ref_from_typespec(mod_, module_, elem_ts)) {
+      return *type_ref;
+    }
   }
   std::string rendered_text;
   if (elem_ts.array_rank > 0 && elem_ts.ptr_level == 0) {

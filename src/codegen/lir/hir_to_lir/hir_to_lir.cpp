@@ -35,6 +35,38 @@ std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
   return resolved.empty() ? std::string(fallback) : std::string(resolved);
 }
 
+std::optional<LirTypeRef> local_array_type_ref_from_typespec(const TypeSpec& ts) {
+  if (ts.ptr_level > 0 || ts.is_fn_ptr) return LirTypeRef(LirBuiltinType::Pointer);
+  if (ts.array_rank > 0) {
+    if (ts.array_size < 0) return std::nullopt;
+    TypeSpec elem_ts = ts;
+    elem_ts.array_rank--;
+    if (elem_ts.array_rank > 0) {
+      for (int i = 0; i < elem_ts.array_rank; ++i) {
+        elem_ts.array_dims[i] = elem_ts.array_dims[i + 1];
+      }
+    }
+    elem_ts.array_size = elem_ts.array_rank > 0 ? elem_ts.array_dims[0] : -1;
+    std::optional<LirTypeRef> elem_ref = local_array_type_ref_from_typespec(elem_ts);
+    if (!elem_ref) return std::nullopt;
+    return LirTypeRef::array(std::move(*elem_ref),
+                             static_cast<std::size_t>(ts.array_size));
+  }
+  return LirTypeRef(c4c::codegen::llvm_helpers::llvm_ty(ts));
+}
+
+std::optional<LirTypeRef> indexed_local_array_element_type_ref(
+    const TypeSpec& array_ts) {
+  if (array_ts.array_rank == 0) return std::nullopt;
+  TypeSpec element = array_ts;
+  --element.array_rank;
+  for (int i = 0; i < element.array_rank; ++i) {
+    element.array_dims[i] = element.array_dims[i + 1];
+  }
+  element.array_size = element.array_rank > 0 ? element.array_dims[0] : -1;
+  return local_array_type_ref_from_typespec(element);
+}
+
 LirTypeRef lir_signature_type_ref(const std::string& rendered_text,
                                   LirModule* lir_module,
                                   const c4c::hir::Module& mod,
@@ -1677,21 +1709,11 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
           .pointer_type = LirTypeRef(LirBuiltinType::Pointer),
           .pointee_type = pointee_type,
           .live = true,
-          .indexed_element_type =
-              d->vla_size || d->type.spec.array_rank == 0
-                  ? std::nullopt
-                  : std::optional<LirTypeRef>(
-                        stmt_emitter_detail::llvm_value_ty(mod, [&] {
-                          TypeSpec element = d->type.spec;
-                          --element.array_rank;
-                          for (int i = 0; i < element.array_rank; ++i) {
-                            element.array_dims[i] = element.array_dims[i + 1];
-                          }
-                          element.array_size = element.array_rank > 0
-                              ? element.array_dims[0] : -1;
-                          return element;
-                        }())),
-      };
+	          .indexed_element_type =
+	              d->vla_size || d->type.spec.array_rank == 0
+	                  ? std::nullopt
+	                  : indexed_local_array_element_type_ref(d->type.spec),
+	      };
       ctx.local_object_authorities.emplace(d->id.value, authority);
       const LirOperand slot_operand =
           LirOperand::ssa(slot, authority.pointer_definition);

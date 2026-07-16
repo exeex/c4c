@@ -1878,9 +1878,9 @@ int local_indexed_authority(int index) {
   return values[index];
 }
 int local_immediate_indexed_authority(void) {
-  int values[2];
-  values[0] = 7;
-  return values[0];
+  int values[2][4];
+  values[0][0] = 7;
+  return values[0][0];
 }
 int vla_lifetime_authority(int n) {
   int total = 0;
@@ -2130,6 +2130,12 @@ loop:
                   immediate_gep->indices[0].type_ref() == lir::LirTypeRef::integer(64) &&
                   immediate_gep->indices[0].value().integer_immediate(),
               "selected direct local-array GEP should retain native receipt authority");
+  expect_true(immediate_gep->element_type.has_array_shape() &&
+                  immediate_gep->element_type.array_length() == 4 &&
+                  immediate_gep->element_type.array_element_type() &&
+                  immediate_gep->element_type.array_element_type()->kind() ==
+                      lir::LirTypeKind::Integer,
+              "selected direct local-array GEP should construct its array element type from structured facts");
   const auto reject_selected_local_gep = [&](const auto& base, auto mutate,
                                              const std::string& message) {
     lir::LirModule candidate = base;
