@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/840_lir_nominal_vector_store_schema_migration.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Trace Current Vector Authority And Pick The First Store Seam
+Current Step ID: 2
+Current Step Title: Introduce The Nominal Vector Store Fact
 
 # Current Packet
 
