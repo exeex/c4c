@@ -645,14 +645,24 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
       append_aarch64_hfa_signature_params(mod, param.type.spec, pname, lir_module, lir_fn);
       continue;
     }
+    if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param.type.spec, mod)) {
+      lir_fn.signature_params.push_back({pname + ".abi", param_ts, false});
+      lir_fn.signature_param_type_refs.push_back(LirTypeRef::integer(32));
+      continue;
+    }
     const bool is_byval_signature_param =
         llvm_target_is_amd64_sysv(mod.target_profile) &&
         llvm_cc::amd64_fixed_aggregate_passed_byval(param.type.spec, mod);
-    const std::string param_type_text =
+    const std::string rendered_param_type =
+        rendered_signature_param_type(mod, lir_module, param_ts);
+    const std::optional<std::string> direct_param_type =
         !is_byval_signature_param
             ? direct_owned_aggregate_type_text(mod, param_ts, lir_module)
-                  .value_or(rendered_signature_param_type(mod, lir_module, param_ts))
-            : rendered_signature_param_type(mod, lir_module, param_ts);
+            : std::nullopt;
+    const std::string param_type_text =
+        direct_param_type.has_value() && *direct_param_type == rendered_param_type
+            ? *direct_param_type
+            : rendered_param_type;
     lir_fn.signature_params.push_back(
         {pname, param_ts, is_byval_signature_param});
     lir_fn.signature_param_type_refs.push_back(lir_signature_type_ref(

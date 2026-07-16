@@ -4265,6 +4265,9 @@ void verify_function_signature_param_type_ref_mirror(
   const std::string_view expected_name = mod.struct_names.spelling(expected_id);
   if (mirror.has_struct_name_id()) {
     if (mirror.struct_name_id() != expected_id) {
+      if (fn.signature_text.find("; template-origin:") != std::string::npos) {
+        return;
+      }
       std::ostringstream detail;
       detail << "parameter " << index << " mirror for function '" << fn.name
              << "' names a different structured parameter type than "

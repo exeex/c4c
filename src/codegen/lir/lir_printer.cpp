@@ -71,6 +71,25 @@ std::string_view signature_header_line(const LirFunction& function) {
   return {};
 }
 
+std::string signature_prefix_comments(const LirFunction& function) {
+  if (function.is_declaration) return {};
+  std::string_view signature = function.signature_text;
+  std::string prefix;
+  while (!signature.empty()) {
+    const std::size_t line_end = signature.find('\n');
+    const std::string_view line =
+        line_end == std::string_view::npos ? signature : signature.substr(0, line_end);
+    if (line.rfind("define ", 0) == 0) break;
+    if (!line.empty() && line.front() == ';') {
+      prefix.append(line);
+      prefix.push_back('\n');
+    }
+    if (line_end == std::string_view::npos) break;
+    signature.remove_prefix(line_end + 1);
+  }
+  return prefix;
+}
+
 std::string_view signature_suffix_after_param_list(const LirFunction& function) {
   const std::string_view line = signature_header_line(function);
   const std::size_t open_paren = line.find('(');
@@ -94,6 +113,7 @@ std::optional<std::string> render_function_signature_from_store(
   }
 
   std::ostringstream out;
+  out << signature_prefix_comments(function);
   out << (function.is_declaration ? "declare " : "define ")
       << (function.is_internal ? "internal " : "")
       << render_ext_attr(signature->return_ext_attr)
