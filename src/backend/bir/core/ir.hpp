@@ -311,7 +311,7 @@ struct CallNode {
       direct_scalar_argument;
 };
 
-enum class BinaryOpcode : std::uint8_t { FAdd, FMul, Add, Mul };
+enum class BinaryOpcode : std::uint8_t { FAdd, FMul, FNeg, Add, Mul };
 
 struct BinaryNode {
   BinaryOpcode opcode = BinaryOpcode::FAdd;

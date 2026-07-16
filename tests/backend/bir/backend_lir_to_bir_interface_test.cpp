@@ -13735,6 +13735,84 @@ void test_truthiness_comparison_lhs_parameter_authority_receipt_and_rejections()
   rejected([](auto& candidate) { candidate.functions[0].blocks[0].insts.push_back(candidate.functions[0].blocks[0].insts[0]); }, "second truthiness authority row must reject transactionally");
 }
 
+void test_direct_scalar_fneg_parameter_authority_receipt_and_rejections() {
+  const auto make_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    const auto owner = module.link_names.intern("direct_scalar_fneg_parameter_owner");
+    lir::LirFunction function;
+    function.name = "direct_scalar_fneg_parameter_owner";
+    function.return_type = scalar_type(c4c::TB_VOID);
+    function.signature_return_type_ref = lir::LirTypeRef("void");
+    function.link_name_id = owner;
+    function.params.emplace_back("%presentation-only", scalar_type(c4c::TB_FLOAT));
+    function.signature_params.push_back({"%presentation-only-signature", scalar_type(c4c::TB_FLOAT), false});
+    function.signature_param_type_refs.push_back(lir::LirTypeRef("float"));
+    function.native_body_parameter_definitions.push_back(
+        {lir::LirValueId{81}, 0, lir::LirTypeRef("float"), owner,
+         lir::LirNativeBodyParameterAbi::DirectScalar});
+    lir::LirBlock entry = return_block(0, "entry");
+    entry.insts.push_back(lir::LirBinOp{
+        lir::LirOperand::ssa("%fneg-result", lir::LirValueId{82}), "fneg",
+        lir::LirTypeRef("float"),
+        lir::LirOperand::ssa("%presentation-only-lhs", lir::LirValueId{81}),
+        lir::LirOperand{},
+        lir::LirScalarBinaryLhsParameterAuthority{
+            lir::LirValueId{81}, 0, lir::LirTypeRef("float"), owner,
+            lir::LirNativeBodyParameterAbi::DirectScalar,
+            lir::LirScalarBinaryParameterRole::Lhs}});
+    function.blocks.push_back(std::move(entry));
+    function.entry = lir::LirBlockId{0};
+    module.functions.push_back(std::move(function));
+    return module;
+  };
+
+  const auto module = make_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "direct-scalar fneg parameter authority must publish verified Raw BIR: " +
+             (raw.has_value() ? "foundation verifier rejected it" : raw.error().detail));
+  const auto view = raw.value().view();
+  const auto function = view.function(view.functions()[0]).value();
+  const auto instruction =
+      function.instruction(function.instructions(function.blocks()[0]).value()[0]).value();
+  expect(instruction.binary() &&
+             instruction.binary()->opcode == bir::BinaryOpcode::FNeg &&
+             instruction.binary()->type ==
+                 bir::Type{bir::TypeKind::Floating, 32, "float"} &&
+             instruction.binary()->direct_scalar_lhs &&
+             instruction.binary()->direct_scalar_lhs->source_value_id == 81 &&
+             instruction.binary()->direct_scalar_lhs->parameter_index == 0 &&
+             instruction.binary()->direct_scalar_lhs->scalar_type ==
+                 bir::Type{bir::TypeKind::Floating, 32, "float"} &&
+             !instruction.binary()->direct_scalar_rhs &&
+             instruction.operands().size() == 1 &&
+             instruction.operands()[0] == function.parameters()[0],
+         "Raw BIR must retain the exact typed fneg LHS parameter authority");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = make_module();
+    mutate(candidate);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value(), message + " (Raw rollback)");
+    expect(!bir::lower_lir_to_canonical_bir(candidate).has_value(), message + " (Canonical rollback)");
+  };
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[0]).scalar_lhs_parameter_authority.reset(); }, "missing fneg authority must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[0]).scalar_lhs_parameter_authority->value = lir::LirValueId::invalid(); }, "invalid fneg authority must reject transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].native_body_parameter_definitions.push_back(candidate.functions[0].native_body_parameter_definitions[0]); }, "duplicate fneg parameter definition must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[0]).scalar_lhs_parameter_authority->owner = candidate.link_names.intern("foreign_fneg_owner"); }, "foreign fneg owner must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[0]).scalar_lhs_parameter_authority->parameter_index = 1; }, "fneg parameter index mismatch must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[0]).scalar_lhs_parameter_authority->type = lir::LirTypeRef("double"); }, "fneg parameter type mismatch must reject transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].native_body_parameter_definitions[0].type = lir::LirTypeRef("double"); }, "fneg definition scalar type mismatch must reject transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].signature_param_type_refs[0] = lir::LirTypeRef("double"); }, "fneg signature parameter type mismatch must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[0]).scalar_lhs_parameter_authority->abi = lir::LirNativeBodyParameterAbi::DirectPointer; }, "fneg ABI mismatch must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[0]).scalar_lhs_parameter_authority->role = lir::LirScalarBinaryParameterRole::Rhs; }, "fneg role mismatch must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[0]).opcode = "fadd"; }, "non-fneg opcode must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[0]).lhs = lir::LirOperand::ssa("%other", lir::LirValueId{83}); }, "fneg LHS relation mismatch must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[0]).rhs = lir::LirOperand::ssa("%rhs", lir::LirValueId{84}); }, "fneg populated RHS must reject transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].blocks[0].insts.push_back(candidate.functions[0].blocks[0].insts[0]); }, "second fneg authority row must reject transactionally");
+}
+
 void test_pointer_truthiness_parameter_authority_receipt_and_rejections() {
   const auto make_module = [] {
     lir::LirModule module;
@@ -14305,6 +14383,7 @@ int main() {
   test_return_value_parameter_authority_receipt_and_rejections();
   test_switch_selector_parameter_authority_receipt_and_rejections();
   test_truthiness_comparison_lhs_parameter_authority_receipt_and_rejections();
+  test_direct_scalar_fneg_parameter_authority_receipt_and_rejections();
   test_pointer_truthiness_parameter_authority_receipt_and_rejections();
   test_fixed_direct_call_argument0_parameter_authority_receipt_and_rejections();
   test_store_backed_byval_aggregate_call_receipt_and_rejections();

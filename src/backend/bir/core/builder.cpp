@@ -1580,7 +1580,7 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
   if (!function)
     return Result<BuildResult, BuildError>::failure(function.error());
   if (!same_owner(function_, block) || !same_owner(function_, spec.lhs) ||
-      !same_owner(function_, spec.rhs))
+      (spec.opcode != BinaryOpcode::FNeg && !same_owner(function_, spec.rhs)))
     return Result<BuildResult, BuildError>::failure(BuildError::ForeignOwner);
   auto& function_data = function.value().get();
   if (!function_data.blocks_.contains(function_, block))
@@ -1604,6 +1604,16 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
   const bool exact_direct_scalar_add = exact_add && direct_scalar &&
       direct_scalar->source_value_id != 0 && direct_scalar->scalar_type == i32 &&
       direct_scalar->owner.valid() && direct_scalar->owner.epoch == parent_->data_->epoch_ &&
+      direct_scalar->owner.slot < parent_->data_->link_names_.size() &&
+      parent_->data_->link_names_[direct_scalar->owner.slot].spelling ==
+          function_data.link_name_ &&
+      direct_scalar->parameter_index < function_data.parameters_.size() &&
+      function_data.parameters_[direct_scalar->parameter_index] == spec.lhs;
+  const bool exact_direct_scalar_fneg = spec.opcode == BinaryOpcode::FNeg &&
+      lhs && !spec.rhs.valid() && direct_scalar &&
+      direct_scalar->source_value_id != 0 && direct_scalar->scalar_type == spec.type &&
+      direct_scalar->owner.valid() &&
+      direct_scalar->owner.epoch == parent_->data_->epoch_ &&
       direct_scalar->owner.slot < parent_->data_->link_names_.size() &&
       parent_->data_->link_names_[direct_scalar->owner.slot].spelling ==
           function_data.link_name_ &&
@@ -1659,13 +1669,17 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
     const auto* intrinsic = std::get_if<IntrinsicCallNode>(&lhs_producer.value().get().payload);
     return intrinsic && intrinsic->kind == IntrinsicKind::Cttz && intrinsic->type == spec.type;
   }();
-  if ((!exact_fadd && !exact_fmul && !exact_float_fmul && !exact_add && !exact_sext_add && !exact_mul &&
-       !exact_direct_scalar_add && !exact_direct_scalar_rhs_add) ||
+  if ((!exact_fadd && !exact_fmul && !exact_float_fmul &&
+       !exact_add && !exact_sext_add && !exact_mul &&
+       !exact_direct_scalar_add && !exact_direct_scalar_fneg &&
+       !exact_direct_scalar_rhs_add) ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
-  if (!exact_direct_scalar_add && !exact_direct_scalar_rhs_add && !lhs_def)
+  if (!exact_direct_scalar_add && !exact_direct_scalar_fneg &&
+      !exact_direct_scalar_rhs_add && !lhs_def)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
-  if (!exact_direct_scalar_add && !exact_direct_scalar_rhs_add && (!lhs_producer ||
+  if (!exact_direct_scalar_add && !exact_direct_scalar_fneg &&
+      !exact_direct_scalar_rhs_add && (!lhs_producer ||
       (exact_fadd && !std::holds_alternative<CallNode>(lhs_producer.value().get().payload)) ||
       (exact_fmul && [&] {
         const auto* binary = std::get_if<BinaryNode>(&lhs_producer.value().get().payload);
@@ -1714,7 +1728,9 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
   instruction.opcode = Opcode::Binary;
   instruction.payload = BinaryNode{spec.opcode, spec.type, spec.direct_scalar_lhs,
                                    spec.direct_scalar_rhs};
-  instruction.operands = {spec.lhs, spec.rhs};
+  instruction.operands = spec.opcode == BinaryOpcode::FNeg
+      ? std::vector<ValueId>{spec.lhs}
+      : std::vector<ValueId>{spec.lhs, spec.rhs};
   auto inserted = function_data.insts_.emplace(function_, std::move(instruction));
   if (!inserted)
     return Result<BuildResult, BuildError>::failure(storage_error(inserted.error()));
