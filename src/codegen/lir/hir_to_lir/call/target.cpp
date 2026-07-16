@@ -405,22 +405,30 @@ CallTargetInfo StmtEmitter::resolve_call_target_info(FnCtx& ctx, const CallExpr&
 
 namespace {
 
-void publish_fixed_direct_call_argument0_authority(
-    FnCtx& ctx, const CallTargetInfo& call_target, LirCallOp& call) {
+void publish_fixed_direct_call_argument_parameter_authority(
+    FnCtx& ctx, const CallTargetInfo& call_target, LirCallOp& call,
+    const std::size_t argument_index,
+    const LirFixedDirectCallArgumentParameterRole role) {
   if (!ctx.lir_function || call_target.callee_link_name_id == kInvalidLinkName ||
       !call_target.target_fn || call_target.target_fn->attrs.variadic ||
       call_target.callee_fn_ptr_sig || !call.callee_signature ||
       call.callee_signature->is_variadic ||
       call.callee_signature->has_unspecified_params ||
-      call.structured_args.empty() || call.arg_type_refs.empty()) {
+      call.structured_args.size() <= argument_index ||
+      call.arg_type_refs.size() <= argument_index ||
+      call.callee_signature->fixed_param_type_refs.size() <= argument_index) {
     return;
   }
-  LirCallArg& argument = call.structured_args[0];
+  if (argument_index == 1 &&
+      (call.structured_args.size() != 2 ||
+       call.callee_signature->fixed_param_type_refs.size() != 2)) {
+    return;
+  }
+  LirCallArg& argument = call.structured_args[argument_index];
   if (argument.operand.kind() != LirOperandKind::SsaValue ||
       !argument.operand.value_id() || argument.type_ref.empty() ||
-      argument.type_ref != call.arg_type_refs[0] ||
-      call.callee_signature->fixed_param_type_refs.empty() ||
-      argument.type_ref != call.callee_signature->fixed_param_type_refs[0]) {
+      argument.type_ref != call.arg_type_refs[argument_index] ||
+      argument.type_ref != call.callee_signature->fixed_param_type_refs[argument_index]) {
     return;
   }
   const auto definition = std::find_if(
@@ -439,7 +447,7 @@ void publish_fixed_direct_call_argument0_authority(
           .type = definition->type,
           .owner = definition->owner,
           .abi = definition->abi,
-          .role = LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument0,
+          .role = role,
       };
 }
 
@@ -455,7 +463,12 @@ void StmtEmitter::emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
       callee_signature);
   call.callee_signature_ref =
       direct_callee_signature_ref(module_, call_target, callee_signature);
-  publish_fixed_direct_call_argument0_authority(ctx, call_target, call);
+  publish_fixed_direct_call_argument_parameter_authority(
+      ctx, call_target, call, 0,
+      LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument0);
+  publish_fixed_direct_call_argument_parameter_authority(
+      ctx, call_target, call, 1,
+      LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument1);
   emit_lir_op(ctx, std::move(call));
 }
 
@@ -492,7 +505,12 @@ LirOperand StmtEmitter::emit_call_with_result(
       callee_signature);
   call.callee_signature_ref =
       direct_callee_signature_ref(module_, call_target, callee_signature);
-  publish_fixed_direct_call_argument0_authority(ctx, call_target, call);
+  publish_fixed_direct_call_argument_parameter_authority(
+      ctx, call_target, call, 0,
+      LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument0);
+  publish_fixed_direct_call_argument_parameter_authority(
+      ctx, call_target, call, 1,
+      LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument1);
   emit_lir_op(ctx, std::move(call));
   return result;
 }

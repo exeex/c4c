@@ -4537,21 +4537,66 @@ void structural_argument1_native(int first, int second) {
                   call.structured_args[1].operand.value_id() &&
                   !call.structured_args[1].type_ref.empty() &&
                   call.structured_args[1].type_ref == call.arg_type_refs[1] &&
-                  call.arg_type_refs[1] == call.callee_signature->fixed_param_type_refs[1],
-              "direct two-parameter argument 1 should retain native SSA and type mirrors");
+                  call.arg_type_refs[1] == call.callee_signature->fixed_param_type_refs[1] &&
+                  call.structured_args[1].fixed_direct_call_argument_parameter_authority,
+              "direct two-parameter argument 1 should retain native SSA, type, and authority");
+  const auto& authority =
+      *call.structured_args[1].fixed_direct_call_argument_parameter_authority;
+  expect_true(authority.value == *call.structured_args[1].operand.value_id() &&
+                  authority.parameter_index == 1 &&
+                  authority.type == call.structured_args[1].type_ref &&
+                  authority.type == call.arg_type_refs[1] &&
+                  authority.type == call.callee_signature->fixed_param_type_refs[1] &&
+                  authority.abi == lir::LirNativeBodyParameterAbi::DirectScalar &&
+                  authority.role ==
+                      lir::LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument1,
+              "argument-1 authority should mirror the selected direct scalar tuple");
   lir::verify_module(lowered);
 
   const auto rejected = [&](const std::string& message, const auto& mutate) {
     lir::LirModule malformed = lowered;
-    mutate(require_call(malformed));
+    mutate(malformed, require_call(malformed));
     expect_identity_verification_rejected(malformed, message);
   };
-  rejected("missing argument-1 type mirror must fail closed", [](auto& candidate) {
+  rejected("missing argument-1 type mirror must fail closed", [](auto&, auto& candidate) {
     candidate.arg_type_refs.clear();
   });
-  rejected("incoherent argument-1 fixed type must fail closed", [](auto& candidate) {
+  rejected("incoherent argument-1 fixed type must fail closed", [](auto&, auto& candidate) {
     candidate.structured_args[1].type_ref = lir::LirTypeRef::integer(64);
   });
+  rejected("missing argument-1 authority must fail closed", [](auto&, auto& candidate) {
+    candidate.structured_args[1].fixed_direct_call_argument_parameter_authority.reset();
+  });
+  rejected("invalid argument-1 authority must fail closed", [](auto&, auto& candidate) {
+    candidate.structured_args[1].fixed_direct_call_argument_parameter_authority->value =
+        lir::LirValueId::invalid();
+  });
+  rejected("foreign argument-1 authority must fail closed", [](auto&, auto& candidate) {
+    candidate.structured_args[1].fixed_direct_call_argument_parameter_authority->owner =
+        c4c::LinkNameId{999};
+  });
+  rejected("wrong argument-1 parameter index must fail closed", [](auto&, auto& candidate) {
+    candidate.structured_args[1].fixed_direct_call_argument_parameter_authority->parameter_index = 0;
+  });
+  rejected("wrong argument-1 authority type must fail closed", [](auto&, auto& candidate) {
+    candidate.structured_args[1].fixed_direct_call_argument_parameter_authority->type =
+        lir::LirTypeRef::integer(64);
+  });
+  rejected("wrong argument-1 ABI must fail closed", [](auto&, auto& candidate) {
+    candidate.structured_args[1].fixed_direct_call_argument_parameter_authority->abi =
+        lir::LirNativeBodyParameterAbi::DirectPointer;
+  });
+  rejected("wrong argument-1 role must fail closed", [](auto&, auto& candidate) {
+    candidate.structured_args[1].fixed_direct_call_argument_parameter_authority->role =
+        lir::LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument0;
+  });
+  rejected("duplicate argument-1 parameter definition must fail closed",
+           [](auto& module, auto&) {
+             lir::LirFunction& function =
+                 require_function(module, "structural_argument1_native");
+             function.native_body_parameter_definitions.push_back(
+                 function.native_body_parameter_definitions.back());
+           });
 }
 
 void test_native_direct_scalar_switch_selector_authority() {

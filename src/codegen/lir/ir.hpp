@@ -514,10 +514,11 @@ enum class LirNativeBodyParameterAbi : uint8_t {
 enum class LirFixedDirectCallArgumentParameterRole : uint8_t {
   Invalid,
   FixedDirectCallArgument0,
+  FixedDirectCallArgument1,
 };
 
 // Native authority for exactly a direct plain scalar current-function
-// parameter passed unchanged as fixed direct-call argument 0. The operand
+// parameter passed unchanged as a selected fixed direct-call argument. The operand
 // spelling is a checked display mirror; selection facts live here.
 struct LirFixedDirectCallArgumentParameterAuthority {
   LirValueId value = LirValueId::invalid();

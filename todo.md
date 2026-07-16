@@ -31,4 +31,6 @@ non-variadic, specified call. Add malformed-authority coverage and run focused
 
 ## Proof
 
-No resumed 829 Step 2 proof has run yet.
+Passed focused proof:
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$' ) > test_after.log 2>&1`.
+Matching before/after `frontend_lir_call_type_ref` regression guard passed.
