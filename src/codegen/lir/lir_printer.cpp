@@ -139,6 +139,32 @@ std::string resolve_direct_call_callee(const LirCallOp& call,
   return llvm_global_sym(std::string(resolved_name));
 }
 
+std::optional<std::string> render_call_signature_suffix_from_store(
+    const LirModule& mod,
+    LirFunctionSignatureRef signature_ref) {
+  if (!signature_ref.valid()) return std::nullopt;
+  const LirFunctionSignatureStoreEntry* signature =
+      mod.find_function_signature(signature_ref);
+  if (!signature) return std::nullopt;
+
+  std::ostringstream out;
+  out << "(";
+  bool need_comma = false;
+  if (!signature->has_void_param_list) {
+    for (const LirTypeRef& param_type : signature->fixed_param_type_refs) {
+      if (need_comma) out << ", ";
+      out << render_type_ref_for_signature(param_type);
+      need_comma = true;
+    }
+    if (signature->is_variadic) {
+      if (need_comma) out << ", ";
+      out << "...";
+    }
+  }
+  out << ")";
+  return out.str();
+}
+
 std::string resolve_extern_decl_name(const LirExternDecl& decl,
                                      const c4c::LinkNameTable& link_names) {
   const std::string_view resolved_name =
@@ -180,8 +206,9 @@ std::string resolve_direct_label_address(const LirFunction& function,
          block->label + ")";
 }
 
-void render_inst(std::ostringstream& os, const LirFunction& function,
-                 const LirInst& inst, const c4c::LinkNameTable& link_names) {
+void render_inst(std::ostringstream& os, const LirModule& mod,
+                 const LirFunction& function, const LirInst& inst,
+                 const c4c::LinkNameTable& link_names) {
   if (const auto* op = std::get_if<LirAllocaOp>(&inst)) {
     const auto& result =
         require_operand_kind(op->result, "LirAllocaOp.result",
@@ -423,6 +450,12 @@ void render_inst(std::ostringstream& os, const LirFunction& function,
                                             {LirOperandKind::SsaValue,
                                              LirOperandKind::Global});
     validated.callee = resolve_direct_call_callee(validated, link_names);
+    if (std::optional<std::string> suffix =
+            render_call_signature_suffix_from_store(mod,
+                                                    validated.callee_signature_ref);
+        suffix.has_value()) {
+      validated.callee_type_suffix = std::move(*suffix);
+    }
     os << format_lir_call_site(validated) << "\n";
   } else if (const auto* op = std::get_if<LirBinOp>(&inst)) {
     os << "  "
@@ -630,9 +663,11 @@ std::string render_fn(const LirModule& mod, const LirFunction& f,
     fout << blk.label << ":\n";
     // Alloca instructions are hoisted to the start of the entry block.
     if (i == 0) {
-      for (const auto& inst : f.alloca_insts) render_inst(fout, f, inst, link_names);
+      for (const auto& inst : f.alloca_insts)
+        render_inst(fout, mod, f, inst, link_names);
     }
-    for (const auto& inst : blk.insts) render_inst(fout, f, inst, link_names);
+    for (const auto& inst : blk.insts)
+      render_inst(fout, mod, f, inst, link_names);
     render_terminator(fout, blk.terminator);
   }
   fout << "}\n\n";

@@ -8,24 +8,22 @@ Current Step Title: Migrate call composition to signature refs
 
 ## Just Finished
 
-- Step 3 fixed direct-call signature-ref slice completed: `LirCallOp` now has
-  an opt-in `callee_signature_ref`, supported non-extern/non-variadic/
-  non-unspecified/non-byval direct calls populate it from the resolved callee
-  function's module-owned `LirFunctionSignatureRef`, and verifier checks prove
-  the call ref names the same module function/store signature as the retained
-  structured call signature. Nearby coverage now proves a fixed aggregate
-  direct call carries the nominal ref, stale or missing refs reject for that
-  supported shape, and no-prototype direct calls remain on compatibility
-  metadata.
+- Step 3 direct-call printer consumer slice completed: for calls with a valid
+  `callee_signature_ref`, `lir_printer` now renders the direct callee type
+  suffix from the module-owned function signature store instead of retained
+  `callee_type_suffix` text. Nearby coverage mutates the retained direct-call
+  suffix and proves printing still uses the store-backed fixed aggregate
+  signature while stale suffix text is ignored.
 
 ## Suggested Next
 
 - Continue Step 3 with the next bounded call-composition slice: either migrate
   another supported direct-call signature shape through `callee_signature_ref`
-  or move one verifier/printer/reference consumer from retained
+  or move one remaining verifier/reference consumer from retained
   `callee_signature`/`args_str` compatibility toward the nominal ref. Keep
-  extern declarations, no-prototype, variadic, byval, and 829/830 argument
-  value identity as explicit later gates unless the packet owns one of them.
+  extern declarations, no-prototype, variadic, byval, indirect calls, and
+  829/830 argument value identity as explicit later gates unless the packet owns
+  one of them.
 
 ## Watchouts
 

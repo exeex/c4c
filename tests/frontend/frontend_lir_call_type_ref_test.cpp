@@ -9460,6 +9460,15 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
       require_call_to(require_function(stale_direct_suffix, "call_pair"), "@make_pair");
   stale_direct_call.callee_type_suffix = "(ptr)";
   c4c::codegen::lir::verify_module(stale_direct_suffix);
+  const std::string stale_direct_suffix_ir =
+      c4c::codegen::lir::print_llvm(stale_direct_suffix);
+  expect_true(stale_direct_suffix_ir.find(
+                  "call %struct.Pair (%struct.Pair) @make_pair(%struct.Pair ") !=
+                  std::string::npos,
+              "direct-call printer should render callee suffix from the signature store");
+  expect_true(stale_direct_suffix_ir.find(
+                  "call %struct.Pair (ptr) @make_pair") == std::string::npos,
+              "direct-call printer should ignore stale callee_type_suffix when a signature ref exists");
 
   c4c::codegen::lir::LirModule missing_direct_signature_ref = lir_module;
   c4c::codegen::lir::LirCallOp& missing_direct_signature_ref_call =
