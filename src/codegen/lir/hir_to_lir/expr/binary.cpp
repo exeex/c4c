@@ -300,16 +300,18 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
       emit_lir_op(ctx, lir::LirInsertElementOp{ins, vec_ty_s, "poison", elem_ty, coerced,
                                                zero_index, std::move(insert_authority), true});
       const LirOperand shuf = fresh_value(ctx);
+      lir::LirNativeVectorAuthority shuffle_authority{
+          ctx.lir_function->link_name_id, *shuf.value_id(), *ins.value_id(), std::nullopt,
+          std::nullopt, shape, shape, shape, std::nullopt,
+          std::vector<lir::LirShuffleMaskLane>(
+              static_cast<size_t>(lanes),
+              {.kind = lir::LirShuffleMaskLane::Kind::Selected, .selected_lane = 0})};
+      shuffle_authority.vector_ref = vector_ref;
       emit_lir_op(ctx, lir::LirShuffleVectorOp{
                            shuf, vec_ty_s, ins, "poison",
                            "<" + std::to_string(lanes) + " x i32>",
                            LirOperand::special_token(lir::LirSpecialToken::ZeroInitializer),
-                           lir::LirNativeVectorAuthority{ctx.lir_function->link_name_id, *shuf.value_id(),
-                               *ins.value_id(), std::nullopt, std::nullopt, shape, shape, shape,
-                               std::nullopt, std::vector<lir::LirShuffleMaskLane>(
-                                   static_cast<size_t>(lanes),
-                                   {.kind = lir::LirShuffleMaskLane::Kind::Selected, .selected_lane = 0})},
-                               true});
+                           std::move(shuffle_authority), true});
       return shuf.str();
     };
     if (is_vector_value(lts) && !is_vector_value(rts) && rts.ptr_level == 0) {
@@ -424,17 +426,17 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
     emit_lir_op(ctx, lir::LirInsertElementOp{ins, vec_ty, "poison", elem_ty, coerced, zero_index,
         std::move(insert_authority), true});
     const LirOperand shuf = fresh_value(ctx);
+    lir::LirNativeVectorAuthority shuffle_authority{
+        ctx.lir_function->link_name_id, *shuf.value_id(), *ins.value_id(), std::nullopt,
+        std::nullopt, shape, shape, shape, std::nullopt,
+        std::vector<lir::LirShuffleMaskLane>(
+            static_cast<size_t>(lanes),
+            {.kind = lir::LirShuffleMaskLane::Kind::Selected, .selected_lane = 0})};
+    shuffle_authority.vector_ref = vector_ref;
     emit_lir_op(ctx, lir::LirShuffleVectorOp{shuf, vec_ty, ins, "poison",
                                              "<" + std::to_string(lanes) + " x i32>",
                                              LirOperand::special_token(lir::LirSpecialToken::ZeroInitializer),
-                                             lir::LirNativeVectorAuthority{
-                                              ctx.lir_function->link_name_id, *shuf.value_id(), *ins.value_id(), std::nullopt,
-                                              std::nullopt, shape, shape, shape, std::nullopt,
-                                              std::vector<lir::LirShuffleMaskLane>(
-                                                  static_cast<size_t>(lanes),
-                                                  {.kind = lir::LirShuffleMaskLane::Kind::Selected,
-                                                   .selected_lane = 0})},
-                                              true});
+                                             std::move(shuffle_authority), true});
     return shuf.str();
   };
   if (is_vector_value(lts) && !is_vector_value(rts) && rts.ptr_level == 0) {
