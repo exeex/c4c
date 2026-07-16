@@ -1,32 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/841_lir_compact_scalar_abi_leaf_migration.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Migrate named scalar producers and consumers
+Current Step ID: 4
+Current Step Title: Retire accepted scalar text escape hatches
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan.md Step 2 for idea 841. Added `LirCompactScalarType` as the
-minimal compact scalar authority carrier/ref for true scalar integer widths and
-floating builtins `half`, `float`, `double`, `fp128`, and `x86_fp80`; attached
-it first to `LirBinOp` as a selected scalar-only mirror of `type_str`; and kept
-the existing `LirTypeRef` field as the rendering/compatibility mirror.
+Completed plan.md Step 3 for idea 841 with the bounded selected `LirBinOp`
+consumer migration. The binop verifier now uses `compact_scalar_type` as the
+semantic scalar source for floating opcode agreement, integer immediate width
+checks, and direct-scalar parameter authority matching when the compact carrier
+is present. The printer validates compact-scalar/type-text parity before
+rendering selected scalar binops and renders from the compact carrier after
+parity is proven.
 
-Added verifier checks so an attached `LirBinOp.compact_scalar_type` must mirror
-the selected scalar type exactly and rejects vector, aggregate, function,
-opaque, pointer, and void families. Added focused `frontend_lir_call_type_ref`
-coverage for positive integer and floating scalar binops plus those
-wrong-family rejection cases.
+Kept `LirBinOp.type_str` as compatibility/rendering parity text and preserved
+the optional-carrier fallback for unmigrated/manual compatibility construction.
+Added focused coverage proving valid integer/floating scalar binops still
+verify/render and stale `type_str` text cannot override a mismatched compact
+scalar carrier.
 
 ## Suggested Next
 
-Execute Step 3 with one bounded named scalar producer/consumer migration. A
-coherent next packet is to migrate `LirBinOp` verifier/printer consumption from
-`type_str` checks to `compact_scalar_type` for the selected scalar binop path
-while keeping `type_str` as parity/rendering text and preserving unmigrated
-schemas.
+Execute Step 4 with one bounded retirement candidate: remove only the
+`LirBinOp` scalar text classification/comparison use that is now covered by
+the compact scalar carrier, leaving `type_str` compatibility text in place
+until every named consumer of that field has migrated.
 
 ## Watchouts
 
@@ -34,16 +35,15 @@ Do not implement 734 Raw-BIR receiver work in this idea. Do not assume opaque is
 scalar, do not parse rendered text as scalar authority, and do not reopen
 accepted receiver rows such as `LirAbsOp` selected-global/i32.
 
-The Step 2 carrier is intentionally optional for compatibility and auto-derived
-from `LirBinOp.type_str` through aggregate initialization. Later Step 3 packets
-should tighten named producers/consumers one group at a time rather than
-requiring every raw/manual `LirBinOp` compatibility construction to migrate at
-once.
+The compact scalar carrier remains intentionally optional for compatibility and
+auto-derived from `LirBinOp.type_str` through aggregate initialization. Do not
+delete `LirBinOp.type_str` yet: it is still the compatibility/rendering parity
+field and other binop-adjacent paths may still reference it.
 
 ## Proof
 
-Step 2 implementation proof passed:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'; } > test_after.log 2>&1`.
+Step 3 implementation proof passed:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_'; } > test_after.log 2>&1`.
 
 Additional whitespace proof passed: `git diff --check`.
 

@@ -478,11 +478,22 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
     }
     os << format_lir_call_site(validated) << "\n";
   } else if (const auto* op = std::get_if<LirBinOp>(&inst)) {
+    const LirTypeRef* type = &op->type_str;
+    if (op->compact_scalar_type) {
+      const auto selected_scalar =
+          LirCompactScalarType::from_type_ref(op->compact_scalar_type->type);
+      if (!selected_scalar || op->compact_scalar_type->type != op->type_str) {
+        throw LirVerifyError(
+            LirVerifyErrorKind::Malformed,
+            "LirBinOp.compact_scalar_type: must mirror one selected integer or floating scalar binop type");
+      }
+      type = &op->compact_scalar_type->type;
+    }
     os << "  "
        << require_operand_kind(op->result, "LirBinOp.result",
                                {LirOperandKind::SsaValue})
        << " = " << render_binary_opcode(op->opcode, "LirBinOp.opcode") << " "
-       << require_type_ref(op->type_str, "LirBinOp.type_str", true) << " ";
+       << require_type_ref(*type, "LirBinOp.compact_scalar_type", true) << " ";
     if (op->rhs.empty()) {
       // Unary op (fneg): "fneg type lhs"
       os << require_operand_kind(op->lhs, "LirBinOp.lhs",

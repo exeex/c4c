@@ -1173,30 +1173,38 @@ bool is_floating_binary_opcode(LirBinaryOpcode opcode) {
 
 bool integer_immediate_representable(long long value, unsigned bit_width);
 
+const LirCompactScalarType* compact_scalar_binop_type(const LirBinOp& op,
+                                                      std::string_view field) {
+  if (!op.compact_scalar_type) return nullptr;
+  const auto selected_scalar =
+      LirCompactScalarType::from_type_ref(op.compact_scalar_type->type);
+  if (!selected_scalar || op.compact_scalar_type->type != op.type_str) {
+    fail_verify(field,
+                "must mirror one selected integer or floating scalar binop type");
+  }
+  return &*op.compact_scalar_type;
+}
+
 void verify_bin_op_authority(const LirBinOp& op) {
   if (!op.result.value_id()) return;
   const std::optional<LirBinaryOpcode> opcode = op.opcode.typed();
   if (!opcode) return;
-  if (op.compact_scalar_type) {
-    const auto selected_scalar =
-        LirCompactScalarType::from_type_ref(op.compact_scalar_type->type);
-    if (!selected_scalar || op.compact_scalar_type->type != op.type_str) {
-      fail_verify("LirBinOp.compact_scalar_type",
-                  "must mirror one selected integer or floating scalar binop type");
-    }
-  }
+  const LirCompactScalarType* compact_scalar =
+      compact_scalar_binop_type(op, "LirBinOp.compact_scalar_type");
+  const LirTypeRef& binary_type =
+      compact_scalar ? compact_scalar->type : op.type_str;
   const bool floating_opcode = is_floating_binary_opcode(*opcode);
-  const bool floating_type = op.type_str.kind() == LirTypeKind::Floating;
+  const bool floating_type = binary_type.kind() == LirTypeKind::Floating;
   if (floating_opcode != floating_type) {
-    fail_verify("LirBinOp.type_str",
+    fail_verify(compact_scalar ? "LirBinOp.compact_scalar_type" : "LirBinOp.type_str",
                 "authoritative floating binary opcode and type must agree");
   }
-  if (!floating_opcode && op.type_str.kind() == LirTypeKind::Integer) {
-    const auto verify_integer_operand_authority = [&op](
+  if (!floating_opcode && binary_type.kind() == LirTypeKind::Integer) {
+    const auto verify_integer_operand_authority = [&binary_type](
         const LirOperand& operand, std::string_view field) {
       if (!operand.has_authority() || operand.value_id()) return;
       if (const LirIntegerImmediate* immediate = operand.integer_immediate()) {
-        const std::optional<unsigned> width = op.type_str.integer_bit_width();
+        const std::optional<unsigned> width = binary_type.integer_bit_width();
         if (!width ||
             !integer_immediate_representable(immediate->value, *width)) {
           fail_verify(field,
@@ -3112,6 +3120,10 @@ void verify_function_value_ownership(const LirModule& mod,
   std::size_t selected_floating_fadd_lhs_authority_count = 0;
   std::size_t selected_floating_fsub_lhs_authority_count = 0;
   const auto verify_scalar_binary_lhs_authority = [&](const LirBinOp& op) {
+    const LirCompactScalarType* compact_scalar =
+        compact_scalar_binop_type(op, "LirBinOp.compact_scalar_type");
+    const LirTypeRef& binary_type =
+        compact_scalar ? compact_scalar->type : op.type_str;
     const auto scalar_lhs_definition = std::find_if(
         function.native_body_parameter_definitions.begin(),
         function.native_body_parameter_definitions.end(), [&](const auto& definition) {
@@ -3152,7 +3164,7 @@ void verify_function_value_ownership(const LirModule& mod,
         authority.abi != LirNativeBodyParameterAbi::DirectScalar ||
         authority.role != LirScalarBinaryParameterRole::Lhs ||
         op.lhs.kind() != LirOperandKind::SsaValue || !op.lhs.value_id() ||
-        *op.lhs.value_id() != authority.value || op.type_str != authority.type) {
+        *op.lhs.value_id() != authority.value || binary_type != authority.type) {
       fail_verify(field, "requires one native direct-scalar current-function LHS value binding");
     }
     if (authority.type.kind() == LirTypeKind::Floating) {
@@ -3189,6 +3201,10 @@ void verify_function_value_ownership(const LirModule& mod,
   std::size_t selected_floating_fadd_rhs_authority_count = 0;
   std::size_t selected_floating_fsub_rhs_authority_count = 0;
   const auto verify_scalar_binary_rhs_authority = [&](const LirBinOp& op) {
+    const LirCompactScalarType* compact_scalar =
+        compact_scalar_binop_type(op, "LirBinOp.compact_scalar_type");
+    const LirTypeRef& binary_type =
+        compact_scalar ? compact_scalar->type : op.type_str;
     const auto scalar_rhs_definition = std::find_if(
         function.native_body_parameter_definitions.begin(),
         function.native_body_parameter_definitions.end(), [&](const auto& definition) {
@@ -3231,7 +3247,7 @@ void verify_function_value_ownership(const LirModule& mod,
         authority.abi != LirNativeBodyParameterAbi::DirectScalar ||
         authority.role != LirScalarBinaryParameterRole::Rhs ||
         op.rhs.kind() != LirOperandKind::SsaValue || !op.rhs.value_id() ||
-        *op.rhs.value_id() != authority.value || op.type_str != authority.type) {
+        *op.rhs.value_id() != authority.value || binary_type != authority.type) {
       fail_verify(field, "requires one native direct-scalar current-function RHS value binding");
     }
     if (authority.type.kind() == LirTypeKind::Floating) {

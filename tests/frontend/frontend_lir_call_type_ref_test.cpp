@@ -9601,6 +9601,9 @@ void test_lir_binop_compact_scalar_type_authority_boundary() {
                   integer_op.compact_scalar_type->type == lir::LirTypeRef::integer(32),
               "integer LirBinOp should attach selected compact scalar type authority");
   lir::verify_module(integer);
+  const std::string integer_ir = lir::print_llvm(integer);
+  expect_true(integer_ir.find("add i32 1, 2") != std::string::npos,
+              "integer LirBinOp should render through compact scalar parity text");
 
   lir::LirModule floating = make_module(lir::LirTypeRef(lir::LirBuiltinType::Double));
   auto& floating_op =
@@ -9611,6 +9614,27 @@ void test_lir_binop_compact_scalar_type_authority_boundary() {
                       lir::LirTypeRef(lir::LirBuiltinType::Double),
               "floating LirBinOp should attach selected compact scalar type authority");
   lir::verify_module(floating);
+  const std::string floating_ir = lir::print_llvm(floating);
+  expect_true(floating_ir.find("fadd double 1, 2") != std::string::npos,
+              "floating LirBinOp should render through compact scalar parity text");
+
+  lir::LirModule stale_text = make_module(lir::LirTypeRef::integer(32));
+  auto& stale_text_op =
+      std::get<lir::LirBinOp>(stale_text.functions[0].blocks[0].insts[0]);
+  stale_text_op.type_str = lir::LirTypeRef::integer(64);
+  expect_identity_verification_rejected(
+      stale_text,
+      "stale LirBinOp.type_str must not override compact scalar authority");
+
+  lir::LirModule stale_floating_text =
+      make_module(lir::LirTypeRef(lir::LirBuiltinType::Double));
+  auto& stale_floating_text_op =
+      std::get<lir::LirBinOp>(stale_floating_text.functions[0].blocks[0].insts[0]);
+  stale_floating_text_op.opcode = lir::LirBinaryOpcode::FAdd;
+  stale_floating_text_op.type_str = lir::LirTypeRef(lir::LirBuiltinType::Float);
+  expect_identity_verification_rejected(
+      stale_floating_text,
+      "stale floating LirBinOp.type_str must not override compact scalar authority");
 
   const auto expect_wrong_family_rejected = [&](lir::LirTypeRef mirror,
                                                 lir::LirTypeRef carrier,
