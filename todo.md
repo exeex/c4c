@@ -3,12 +3,15 @@
 Status: Active
 Source Idea Path: ideas/open/839_lir_nominal_function_signature_call_composition.md
 Source Plan Path: plan.md
-Current Step ID: 3C
-Current Step Title: Split byval store authority from retained ABI metadata
+Current Step ID: 4
+Current Step Title: Migrate printer and reference collectors
 
 ## Just Finished
 
-- Step 3C completed: fixed aggregate/byval direct-call composition now uses
+- Repaired Step 3 completed through accepted Step 3A, 3B, and 3C commits:
+  variadic declaration admission reaches the signature-store path, raw extern
+  direct-call compatibility now has a named one-way signature-store adapter,
+  and fixed aggregate/byval direct-call composition now uses
   module `LirFunctionSignatureRef` store facts for parameter authority while
   retained ABI-shaped byval metadata remains only a verifier/import
   compatibility check for existing argument/layout handling. Backend LIR
@@ -18,9 +21,10 @@ Current Step Title: Split byval store authority from retained ABI metadata
 
 ## Suggested Next
 
-- Continue repaired Step 3 toward Step 4 readiness: migrate printer/reference
-  collector observation of nominal function-signature facts without restoring
-  rendered signature text as semantic authority.
+- Execute Step 4: migrate printer/debug output and reference collectors to
+  observe nominal function-signature facts directly, covering declaration and
+  call cases with aggregate refs, variadic state, and malformed stale mirrors
+  without restoring rendered signature text as semantic authority.
 
 ## Watchouts
 
