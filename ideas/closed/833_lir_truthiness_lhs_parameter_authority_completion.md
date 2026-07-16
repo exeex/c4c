@@ -1,6 +1,6 @@
 # LIR Truthiness-LHS Parameter Authority Completion
 
-Status: Open
+Status: Closed — capability complete
 Type: bounded native LIR truthiness-LHS producer/verifier authority completion
 Blocked Parent: `ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md`, Step 2
 Ordered After: `ideas/open/832_hir_aggregate_owner_function_parameter_crash_repair.md`
@@ -61,3 +61,24 @@ proof to 831.
   filtering, or weaker harness contracts as proof of capability.
 - Reject a broad all-truthiness or ABI redesign when the direct-scalar LHS
   producer/verifier seam can be repaired locally.
+
+## Completion Record
+
+Disposition: capability complete for the bounded direct-scalar
+truthiness-LHS producer/verifier authority relation.
+
+- Completed Steps 1, 2a, 2b, and 3. Step 1 specified the fail-closed native
+  contract; Step 2a located the actual binary-`Ne` construction producer;
+  Step 2b populated that native relation with generated-path and malformed
+  verifier coverage; and Step 3 supplied accepted focused proof.
+- Accepted implementation: `9b5046952`.
+- Accepted proof: fresh build plus matching canonical exact 13-case logs,
+  accepted by the supervisor regression guard, improved 0/13 before to 9/13
+  after with zero new failures.
+- Scope boundary: this does not claim comparable full-suite or baseline
+  clearance. The residual `20090113-2`, `comp-goto-1`, `pr51323`, and
+  `pr88714` failures remain aggregate-owner-family errors outside this idea.
+- Successor return: resume
+  `ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md`
+  at Step 2 to collect the accepted 832 and 833 evidence, then run its Step 3
+  comparable full-suite gate before returning 830 unchanged at Step 3.

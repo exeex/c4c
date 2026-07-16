@@ -120,3 +120,26 @@ Status: parked by lifecycle switch to
 - Exact next return: after 833 has accepted focused proof, reactivate 831 at
   Step 2 solely to collect 832 and 833 evidence, then run Step 3 comparable
   full-suite proof before returning 830 unchanged at Step 3.
+
+## Resumption Update: closed 833 and resumed Step 2 evidence collection
+
+- 833 is capability-complete for its bounded native direct-scalar
+  truthiness-LHS authority relation and is archived at
+  `ideas/closed/833_lir_truthiness_lhs_parameter_authority_completion.md`.
+  Its completed Steps 1, 2a, 2b, and 3 establish the actual binary-`Ne`
+  producer seam, native authority population, generated-path and malformed
+  verifier coverage, and accepted focused proof.
+- Accepted implementation and proof: `9b5046952`, fresh build, and matching
+  canonical exact 13-case regression logs accepted by the supervisor guard:
+  0/13 before to 9/13 after, with zero new failures. This establishes only
+  that the nine repaired cases no longer stop at the missing
+  `LirCmpOp.truthiness_lhs_parameter_authority` relation.
+- Residual ownership: `20090113-2`, `comp-goto-1`, `pr51323`, and `pr88714`
+  remain visible as aggregate-owner family errors outside 833. They are not
+  baseline clearance and do not revise the ordered-family provenance.
+- Exact resumed return point: Step 2 — **Collect accepted successor evidence
+  and confirm family boundaries**. Record the accepted 832 and 833 focused
+  proofs and their remaining-family boundaries, then execute Step 3's
+  comparable full-suite baseline gate before returning 830 unchanged at Step
+  3. Do not claim comparable full-suite or baseline clearance before that
+  Step 3 proof is accepted.
