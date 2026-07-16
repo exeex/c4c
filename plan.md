@@ -37,11 +37,15 @@ complete 836 or change its 831 Step 4 return.
 ## Current Targets
 
 - Step 1 is accepted in commits `69ffa299f` and `a50d35d4e`.
-- Step 2 declaration/store fact capture is accepted in `8eca000c9`.
-- The active packet is the Step 2 return from closed 852: migrate only the
-  bounded `lir_owned_type_spec` function-signature occurrence producer to
-  consume populated `QualType::aggregate_ref` through the accepted
-  HIR-ref-to-LIR-ref intern relation.
+- Step 2 declaration/store fact capture is accepted in `8eca000c9`; the
+  Step 2 return through bounded `lir_owned_type_spec` function-signature
+  occurrence migration is accepted through `88ccf591d`.
+- Step 3 store-backed declaration, field, call, verifier, printer, and receiver
+  consumers are accepted through `9497d5980`, including the repaired and
+  accepted full-suite baseline review at `53a1a8515`.
+- The active packet is Step 4 assessment: record the remaining adapters and
+  deletion gates without absorbing F1, V1, S1, U1, P1, G1, R1, C1, T1, 836,
+  831, 812/813, or 797.
 
 ## Non-Goals
 
@@ -105,8 +109,8 @@ closed without competing operation-local authority.
 
 ### Step 3 - Enforce module ownership and migrate bounded consumers
 
-Status: Active; rejected baseline expansion repaired and accepted after fresh
-full-suite baseline review at `53a1a8515`.
+Status: Accepted through `9497d5980`; rejected baseline expansion repaired and
+accepted after fresh full-suite baseline review at `53a1a8515`.
 
 Goal: make justified consumers use canonical store facts and fail closed.
 
@@ -136,6 +140,8 @@ LIR coverage, backend checkpoint, and a fresh full-suite baseline review with
 0 failures.
 
 ### Step 4 - Assess bounded convergence and hand off remaining work
+
+Status: Active.
 
 Goal: verify A1's contract and document exact remaining deletion gates.
 
