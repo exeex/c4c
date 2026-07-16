@@ -1,6 +1,6 @@
 # LIR Next Body Parameter Authority Handoff
 
-Status: Open
+Status: Closed
 Parent Return: ideas/open/734_lir_to_new_bir_container_completeness.md after accepted Step 7.43 receiver commit `617a8fae9`
 Type: producer/schema/verifier handoff for one function-body parameter row
 
@@ -77,3 +77,40 @@ verify malformed forms fail closed, and record an exact handoff back to 734.
 - Reject expectation downgrades, unsupported-to-supported label changes,
   helper-only refactors, or named-case-only checks claimed as capability
   progress.
+
+## Closure Disposition
+
+Closed as capability complete for this bounded producer/schema/verifier route.
+The accepted handoff is exactly one native LIR body-parameter authority row:
+`LirBinOp.scalar_lhs_parameter_authority` for a current-function
+`DirectScalar` floating parameter used as the LHS of binary floating multiply
+`fmul`.
+
+Receiver tuple for
+`ideas/open/734_lir_to_new_bir_container_completeness.md`: original parameter
+`LirValueId`, current `LirFunction.link_name_id` owner, parameter index,
+matching floating `LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`,
+and explicit `LirScalarBinaryParameterRole::Lhs`.
+
+Consumer relation: `LirBinOp` opcode `fmul`; `lhs` is the same parameter
+SSA/value as the authority tuple; `type_str` matches the authority type; and
+`rhs` is a nonselected scalar operand. The existing carrier/emitter already
+published the tuple. The accepted implementation tightened verifier consumer
+coherence and added focused positive/malformed coverage for omitted, invalid,
+duplicate, foreign, owner/index/type/ABI/role, non-`fmul`, LHS mismatch, type
+mismatch, and RHS consumer incoherence.
+
+Accepted producer/verifier proof:
+
+- Step 2 commit `dcb6e1233` (`Prove fmul parameter authority`).
+- Focused proof:
+  `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_function_signature_type_ref$' ) > test_after.log 2>&1 && git diff --check`
+- Broader frontend LIR stash-based regression guard passed with before 7/7,
+  after 7/7, and no new failures.
+- Direct code review found no blocker; commit `ac7ada4b6` repaired todo
+  metadata while preserving the hook-managed reminder.
+
+Return action: hand this exact one-row producer fact back to
+`ideas/open/734_lir_to_new_bir_container_completeness.md` for one bounded Step
+7.44 typed Raw-BIR receiver packet. Raw-BIR receipt remains separate and was
+not implemented or claimed in 855.

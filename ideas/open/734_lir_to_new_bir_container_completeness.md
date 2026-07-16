@@ -1853,3 +1853,36 @@ runbook only for that matching typed Raw-BIR receiver row. Do not repeat Step
 7.43 or receive another parameter, memory/VA, aggregate/vector,
 module/type/global, instruction/terminator, or inline-assembly form without
 its separately scoped first-owner handoff.
+
+## Resumption Record: binary fmul LHS parameter authority completion
+
+Closed idea 855 completed the next body-parameter producer prerequisite with
+accepted implementation `dcb6e1233` and lifecycle metadata repair `ac7ada4b6`.
+The exact handed-off row is
+`LirBinOp.scalar_lhs_parameter_authority` for a current-function
+`DirectScalar` floating parameter used as the LHS of binary floating multiply
+`fmul`.
+
+The LIR authority tuple includes the original parameter `LirValueId`, current
+`LirFunction.link_name_id` owner, parameter index, matching floating
+`LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`, and explicit
+`LirScalarBinaryParameterRole::Lhs`. The consumer relation is `LirBinOp`
+opcode `fmul`, with `lhs` equal to the same parameter SSA/value, `type_str`
+matching the authority type, and `rhs` a nonselected scalar operand.
+
+The accepted producer proof is the fresh build plus focused
+`^frontend_lir_function_signature_type_ref$` result recorded in
+`test_after.log`, followed by `git diff --check`; the broader frontend LIR
+stash-based regression guard passed with before 7/7, after 7/7, and no new
+failures. Focused malformed coverage rejects omitted, invalid, duplicate,
+foreign, owner/index/type/ABI/role, non-`fmul`, LHS mismatch, type mismatch,
+and RHS consumer incoherence. Direct code review found no blocker.
+
+Exact return action: repair and execute one bounded Step 7.44 Raw-BIR receiver
+packet. Consume only the handed-off `DirectScalar` binary-`fmul` LHS parameter
+authority row; preserve the parameter tuple and binary consumer coherence in
+a typed Raw-BIR destination, importer path, reachable verifier, and
+transactional positive/negative coverage. Do not repeat Step 7.43, claim
+Raw-BIR receipt from 855, receive another body-parameter row, or absorb
+memory/VA, aggregate/vector, module/type/global, instruction/terminator, or
+inline-assembly forms.

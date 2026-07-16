@@ -1,40 +1,33 @@
 Status: Active
-Source Idea Path: ideas/open/855_lir_next_body_parameter_authority_handoff.md
+Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish And Verify The Selected Authority
-你該做code review了
+Current Step ID: 7.44
+Current Step Title: Receive DirectScalar Binary-Fmul LHS Parameter Authority
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 for the selected
-`LirBinOp.scalar_lhs_parameter_authority` row: the existing carrier/emitter
-already published the native current-function DirectScalar LHS tuple for
-floating `fmul`, and the verifier now fails closed unless that floating LHS
-authority is consumed by the selected `fmul` relation with a nonselected scalar
-RHS. Added focused frontend coverage for the positive `double x * 2.0` row and
-malformed authority/consumer cases covering omitted, invalid, duplicate,
-foreign, owner/index/type/ABI/role, non-`fmul`, LHS mismatch, type mismatch,
-and RHS consumer incoherence.
+Closed 855 as the producer/verifier handoff for one selected
+`LirBinOp.scalar_lhs_parameter_authority` row: a current-function
+`DirectScalar` floating parameter used as the LHS of binary floating `fmul`.
+734 is resumed after accepted Step 7.43 for only the matching typed Raw-BIR
+receiver packet.
 
 ## Suggested Next
 
-Supervisor should choose the next packet. A coherent next slice is the
-downstream handoff for only this selected binary-`fmul` LHS row if the runbook
-intends receiver work next; otherwise keep later rows separate.
+Execute `plan.md` Step 7.44. Receive only the closed 855 binary-`fmul` LHS
+parameter authority row into typed Raw BIR with transactional positive and
+malformed coverage.
 
 ## Watchouts
 
-`ir.hpp` and `hir_to_lir/expr/binary.cpp` were intentionally left unchanged:
-the existing scalar-LHS authority carrier and emitter already support the
-selected row. Raw-BIR receiver files, backend tests, `plan.md`, source ideas,
-and `test_before.log` remain untouched. Later or nonselected candidates remain
-out of scope for this packet.
+Do not repeat Step 7.43, claim Raw-BIR receipt from 855, receive another
+parameter row, or recover authority from presentation fields. Later parameter,
+memory/VA, aggregate/vector, module/type/global, instruction/terminator, and
+inline-assembly forms remain out of scope.
 
 ## Proof
 
-`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_function_signature_type_ref$' ) > test_after.log 2>&1 && git diff --check`
-
-Passed. Proof log: `test_after.log`.
+Run a fresh build plus focused backend receiver proof selected by the
+supervisor, followed by `git diff --check`.

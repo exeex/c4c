@@ -1,19 +1,18 @@
-# LIR Next Body Parameter Authority Handoff Runbook
+# LIR-To-New-BIR Container And Import Completeness Runbook
 
 Status: Active
-Source Idea: ideas/open/855_lir_next_body_parameter_authority_handoff.md
-Supersedes: exhausted 734 Step 7.43 runbook after accepted commit `617a8fae9`
+Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
+Resumed After: closed 855 binary-`fmul` LHS parameter-authority handoff
 
 ## Purpose
 
-Unblock idea 734 after its accepted Step 7.43 DirectScalar unary-`fneg`
-receiver by publishing exactly one next native LIR body-parameter authority
-handoff.
+Resume idea 734 after accepted Step 7.43 and closed 855's producer/verifier
+handoff by receiving exactly one native body-parameter row into typed Raw BIR.
 
 ## Goal
 
-Select, publish, verify, and hand off one next valid function-body
-parameter-use row for a later bounded Raw-BIR receiver packet in 734.
+Consume the closed 855 `DirectScalar` binary-`fmul` LHS parameter authority row
+without rediscovering authority from presentation fields.
 
 ## Core Rule
 
@@ -24,27 +23,32 @@ testcase shape.
 
 ## Read First
 
-- `ideas/open/855_lir_next_body_parameter_authority_handoff.md`
 - `ideas/open/734_lir_to_new_bir_container_completeness.md`
+- `ideas/closed/855_lir_next_body_parameter_authority_handoff.md`
 - The accepted Step 7.43 receiver commit `617a8fae9`
-- Existing LIR body-parameter authority producers and verifier coverage
+- The accepted 855 producer commit `dcb6e1233`
+- Existing Raw-BIR body-parameter receiver patterns and rollback coverage
 
 ## Current Targets And Scope
 
-- Preserve 734's accepted receiver progress through Step 7.43.
-- Find exactly one next valid body-parameter use after the accepted
-  DirectPointer and DirectScalar rows already listed in 734.
-- Publish native producer/schema authority for that one row and verify the
-  selected consumer relation.
-- Produce a handoff record that lets 734 resume with one Raw-BIR receiver
-  packet.
+- Preserve accepted 734 receiver progress through Step 7.43.
+- Receive exactly the closed 855 handoff row:
+  `LirBinOp.scalar_lhs_parameter_authority` for a current-function
+  `DirectScalar` floating parameter used as LHS of binary floating `fmul`.
+- Preserve the tuple: original parameter `LirValueId`, current
+  `LirFunction.link_name_id` owner, parameter index, matching floating
+  `LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`, and explicit
+  `LirScalarBinaryParameterRole::Lhs`.
+- Preserve the consumer relation: `LirBinOp` opcode `fmul`, `lhs` equal to the
+  same parameter SSA/value, `type_str` matching the authority type, and `rhs`
+  a nonselected scalar operand.
 
 ## Non-Goals
 
-- Do not edit Raw-BIR containers, builders, importer dispatch, backend
-  verifier code, or receiver tests.
-- Do not reopen accepted body-parameter rows through Step 7.43.
-- Do not select more than one parameter row.
+- Do not edit LIR producer authority or verifier code for 855.
+- Do not repeat Step 7.43 or reopen accepted DirectPointer/DirectScalar
+  body-parameter receipts.
+- Do not receive any other parameter row.
 - Do not absorb memory/VA, aggregate/vector, module/type/global/metadata,
   residual instruction/terminator, inline-assembly, or other non-parameter
   families.
@@ -52,68 +56,36 @@ testcase shape.
 
 ## Execution Rules
 
-- Keep this runbook bounded to one producer/schema/verifier handoff.
-- Add nearby same-feature malformed-authority coverage for the selected row.
-- For code changes, run a fresh build and focused producer/verifier proof.
-- After acceptance, return to 734 for plan-owner repair of one matching
-  receiver packet.
+- Keep the runbook bounded to one Raw-BIR receiver packet.
+- Add nearby positive and malformed receiver coverage for the selected row.
+- For code changes, run a fresh build and focused backend receiver proof.
+- After acceptance, reassess source completion before selecting any further
+  receiver row.
 
 ## Steps
 
-### Step 1 - Select The Next Body-Parameter Authority Row
+### Step 7.44 - Receive DirectScalar Binary-Fmul LHS Parameter Authority
 
-Goal: identify one valid current-LIR body-parameter use that still lacks a
-734 receiver handoff after Step 7.43.
-
-Actions:
-
-- Inspect the existing body-parameter authority matrix and tests.
-- Exclude all rows already accepted through 734 Step 7.43.
-- Choose exactly one next row whose producer can carry native structured
-  authority without presentation recovery.
-- Record why later parameter rows and non-parameter families remain out of
-  scope.
-
-Completion check:
-
-- One selected row is named with its expected parameter tuple and consumer
-  relation.
-- No Raw-BIR or importer file is changed.
-
-### Step 2 - Publish And Verify The Selected Authority
-
-Goal: add native structured authority and verifier checks for the selected row.
+Goal: map the closed 855 binary-`fmul` LHS body-parameter authority into typed
+Raw BIR with transactional verification.
 
 Actions:
 
-- Add the smallest producer/schema carrier needed for the selected row.
-- Populate it from existing typed parameter and consumer facts.
-- Verify parameter value, owner, index, type, ABI, role, and consumer
-  coherence.
-- Reject missing, invalid, duplicate, foreign, mismatched, and
-  consumer-incoherent authority before printing or downstream use.
+- Inspect the existing body-parameter Raw-BIR receiver path and Step 7.43
+  unary-`fneg` receiver pattern.
+- Admit only the selected `DirectScalar` floating parameter LHS tuple and its
+  matching binary `fmul` consumer relation.
+- Store enough typed Raw-BIR authority to preserve parameter value, owner,
+  index, type, ABI, explicit LHS role, opcode, lhs identity, matching result
+  type, and nonselected scalar RHS coherence.
+- Reject missing, invalid, duplicate, foreign, owner/index/type/ABI/role,
+  non-`fmul`, LHS mismatch, type mismatch, and RHS consumer incoherence before
+  partial publication.
+- Prove positive and malformed cases with focused receiver coverage.
 
 Completion check:
 
-- Positive and malformed producer/verifier coverage passes.
-- No Raw-BIR receiver behavior is claimed.
-
-### Step 3 - Record The Handoff To 734
-
-Goal: make the accepted producer result executable by a later 734 receiver
-runbook.
-
-Actions:
-
-- Update the source idea with the exact selected row, accepted proof, and
-  commit reference.
-- State the exact 734 return action: repair 734 for one bounded Raw-BIR
-  receiver packet derived only from this handoff.
-- Preserve that all other parameter rows and semantic families remain
-  fail-closed and separately scoped.
-
-Completion check:
-
-- Fresh build and focused proof are recorded.
-- The handoff is specific enough for plan-owner to repair 734 without
-  rediscovering producer facts.
+- Fresh build and focused receiver proof pass.
+- `git diff --check` passes.
+- No Raw-BIR receipt is claimed for any row other than the closed 855
+  binary-`fmul` LHS handoff.
