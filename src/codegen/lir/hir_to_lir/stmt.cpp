@@ -306,7 +306,7 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const InlineAsmStmt& s)
       asm_args.push_back(llvm_ty(out_in_ts) + " " + out_in);
       ordinary_inputs.push_back(lir::LirInlineAsmValueBinding{
           lir::LirOperand(out_in),
-          lir::LirTypeRef::hir_inline_asm_type_text(llvm_ty(out_in_ts)),
+          lir::LirTypeRef(llvm_ty(out_in_ts)),
           lir::LirInlineAsmValueRole::ReadWrite, 0});
     }
   } else {
@@ -341,12 +341,12 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const InlineAsmStmt& s)
             ctx, output_ptrs[i], output_ts, output_ts, false);
         ordinary_inputs.push_back(lir::LirInlineAsmValueBinding{
             lir::LirOperand(old_value),
-            lir::LirTypeRef::hir_inline_asm_type_text(llvm_ty(output_ts)),
+            lir::LirTypeRef(llvm_ty(output_ts)),
             lir::LirInlineAsmValueRole::ReadWrite, i});
       }
       ordinary_results.push_back(lir::LirInlineAsmValueBinding{
           lir::LirOperand(fresh_tmp(ctx)),
-          lir::LirTypeRef::hir_inline_asm_type_text(llvm_ty(output_ts)),
+          lir::LirTypeRef(llvm_ty(output_ts)),
           is_read_write ? lir::LirInlineAsmValueRole::ReadWrite
                         : lir::LirInlineAsmValueRole::Output,
           i});
@@ -364,7 +364,7 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const InlineAsmStmt& s)
     asm_args.push_back(llvm_ty(in_ts) + " " + in);
     ordinary_inputs.push_back(lir::LirInlineAsmValueBinding{
         lir::LirOperand(in),
-        lir::LirTypeRef::hir_inline_asm_type_text(llvm_ty(in_ts)),
+        lir::LirTypeRef(llvm_ty(in_ts)),
         lir::LirInlineAsmValueRole::Input, constraint_index});
   }
   for (const auto& clobber : s.clobbers) {
@@ -380,7 +380,7 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const InlineAsmStmt& s)
   const std::string rendered_constraint_text =
       rendered_constraints.empty() ? constraints : join_asm_constraints(rendered_constraints);
   lir::LirInlineAsmOp inline_asm;
-  inline_asm.ret_type = lir::LirTypeRef::hir_inline_asm_type_text(ret_ty);
+  inline_asm.ret_type = lir::LirTypeRef(ret_ty);
   inline_asm.asm_text = asm_text;
   inline_asm.constraints = rendered_constraint_text;
   inline_asm.side_effects = s.has_side_effects;
@@ -410,7 +410,7 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const InlineAsmStmt& s)
       is_read_write ? lir::LirOperand(fresh_tmp(ctx)) : fresh_value(ctx);
   inline_asm.result = lir::LirOperand(semantic_result.str());
   inline_asm.ordinary_results.push_back(lir::LirInlineAsmValueBinding{
-      semantic_result, lir::LirTypeRef::hir_inline_asm_type_text(ret_ty),
+      semantic_result, lir::LirTypeRef(ret_ty),
       is_read_write ? lir::LirInlineAsmValueRole::ReadWrite
                     : lir::LirInlineAsmValueRole::Output,
       0});

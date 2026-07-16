@@ -90,15 +90,6 @@ class LirTypeRef {
     return LirTypeRef("i" + std::to_string(bit_width), LirTypeKind::Integer, bit_width);
   }
 
-  // Inline-assembly operands and results retain LLVM type text rendered from
-  // HIR TypeSpec. That text is runtime-derived rather than a closed builtin
-  // set, so keep this deprecated inventory boundary local to inline assembly.
-  [[nodiscard, deprecated(
-      "HIR TypeSpec-derived inline-assembly type text: audit this runtime-text compatibility boundary")]]
-  static LirTypeRef hir_inline_asm_type_text(std::string text) {
-    return LirTypeRef(std::move(text));
-  }
-
   // Aggregate, field, and signature type text rendered from HIR may not carry
   // a structured aggregate identity (and fields may be array-backed). Preserve
   // that runtime text through this local warning-inventory boundary.
