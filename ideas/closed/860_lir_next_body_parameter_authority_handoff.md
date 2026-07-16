@@ -134,3 +134,41 @@ Baseline failure evidence preserved for the blocker:
   same family plus two extra failures.
 - Supervisor rejected the candidate via
   `scripts/plan_review_state.py reject-baseline`.
+
+## Closure Record
+
+Disposition: capability complete for this bounded producer-side handoff.
+
+Accepted implementation: commit `ed64ebcf1` (`Publish fsub rhs parameter
+authority`).
+
+Selected row: exactly DirectScalar floating binary `fsub` RHS for fixture
+`double scalar_fsub_rhs(double x) { return 2.0 - x; }`.
+
+Accepted authority: current LIR now publishes native structured
+`LirScalarBinaryRhsParameterAuthority` for the selected RHS parameter tuple and
+consumer relation. The verifier rejects malformed authority before downstream
+use, with focused absent, invalid, duplicate, foreign owner, owner/index/type,
+ABI, role, and consumer-incoherent coverage for the selected row.
+
+Accepted proof:
+
+- Focused proof passed:
+  `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_function_signature_type_ref$'; } > test_after.log 2>&1`
+- Full suite passed:
+  `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure; } > test_after.log 2>&1`
+- Full-suite result: `3038/3038`.
+- `git diff --check` passed before commit.
+- Focused before/after guard was not applicable because the focused subset was
+  already green before and after; the checker reported no strict pass-count
+  increase rather than a new failure.
+
+Raw-BIR receiver status: no Raw-BIR container, importer, verifier, backend
+receiver, or receiver-test work landed under this idea.
+
+Handoff back to 734: resume parent
+`ideas/open/734_lir_to_new_bir_container_completeness.md` with one later
+Raw-BIR receiver packet for the DirectScalar floating binary `fsub` RHS
+authority published here. That packet should receive exactly this RHS
+parameter authority into typed Raw BIR and keep all other rows unsupported or
+separately scoped unless their own producer handoff has closed.
