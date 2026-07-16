@@ -8,32 +8,32 @@ Current Step Title: Select One Carrier-Backed Collector Seam
 
 ## Just Finished
 
-Supervisor accepted and committed `8c57acace`, completing the previous
-one-field packet that migrated only `LirInsertValueOp.agg` in
-`collect_inst_refs` from raw scanner collection to
-`collect_operand_ref(op.agg, refs)`.
+Completed Step 2/Step 3 for the selected one-field packet: migrated only
+`LirInsertValueOp.elem` in `collect_inst_refs` from raw `S(op.elem)` scanning
+to `collect_operand_ref(op.elem, refs)`, preserving all unselected scanner
+paths.
 
 ## Suggested Next
 
-Repair-current-route: execute the next one-field packet by migrating only
-`LirInsertValueOp.elem` in `collect_inst_refs` from `S(op.elem)` to
-`collect_operand_ref(op.elem, refs)`, then prove parity with the focused
-collector test.
+After this packet, supervisor should select the next exact carrier-backed
+collector field or route lifecycle repair if no ready field remains.
 
 ## Watchouts
 
-Do not close 845 yet. Do not perform a broad collector sweep. Leave
-`LirShuffleVectorOp.vec1`, `LirShuffleVectorOp.vec2`, inline asm, and residual
-raw/global text on their current scanner paths. Do not reconstruct references
-from rendered names or text. Do not change producers, verifier semantics, or
-BIR lowering unless the selected field is disproven during executor inspection.
-`LirInsertValueOp.agg` is already accepted; do not revisit it.
+Do not perform a broad collector sweep. Leave `LirInsertValueOp.agg` on
+`collect_operand_ref`, and leave `LirShuffleVectorOp.vec1`,
+`LirShuffleVectorOp.vec2`, inline asm, and residual raw/global text on their
+current scanner paths. Do not reconstruct references from rendered names or
+text. Do not change producers, verifier semantics, or BIR lowering unless
+`LirInsertValueOp.elem` is disproven during executor inspection.
 
 ## Proof
 
-Required proof for the next packet:
+Passed:
 
 ```
 { cmake --build build && ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure; } > test_after.log 2>&1
 git diff --check
 ```
+
+Proof log: `test_after.log`.
