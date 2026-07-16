@@ -8,11 +8,11 @@ Current Step Title: Delete mutable LIR type text escape hatches in small packets
 
 ## Just Finished
 
-Completed the next `plan.md` Step 2 deletion packet by removing
-`LirTypeRef::operator std::string&()`. Removed the remaining tests that used the
-mutable conversion as a stale-display injector; those corruptions are no longer
-publicly constructible after the accessor and conversion deletions. Kept the
-native invalid-layout and native-authority checks that remain meaningful.
+Rejected the hook-generated `test_baseline.new.log` candidate because it
+exposed a real regression in `backend_lir_native_vector_authority`. Repaired the
+required scalar-to-vector splat shuffle verifier so `mask_type` must mirror the
+module-owned vector-store lane count, and updated stale shape/mask tests to
+expect rejection where those facts are now verified.
 
 ## Suggested Next
 
@@ -29,6 +29,9 @@ classify current callsites before selecting one deletion packet.
   mutable text escape hatch.
 - Do not delete const `str()`, `runtime_text`, factories, const implicit
   conversions, or equality/classification helpers in the same packet.
+- Required scalar-to-vector splat shuffles now reject incoherent native
+  `mask_type` mirrors against vector-store lane count; do not weaken that
+  baseline repair.
 - Remaining `.str() =` lines in the unowned
   `tests/frontend/frontend_lir_call_type_ref_test.cpp` are `LirOperand`
   presentation mutations, not `LirTypeRef` mutations.
@@ -37,6 +40,11 @@ classify current callsites before selecting one deletion packet.
 
 Proof run:
 `cmake --build build` passed.
+Rejected baseline candidate:
+`python3 scripts/plan_review_state.py reject-baseline --delete-candidate`.
+Baseline-repair focused proof passed:
+`ctest --test-dir build -R '^backend_lir_native_vector_authority$'
+--output-on-failure`.
 `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure >
 test_after.log 2>&1` passed.
 Affected-test subset passed:

@@ -3991,7 +3991,8 @@ void verify_function_value_ownership(const LirModule& mod,
                       "must match the scalar-to-vector splat vector store fact");
         }
         if (authority.mask_lanes.size() != vector->lane_count ||
-            authority.result_shape.lane_count != vector->lane_count) {
+            authority.result_shape.lane_count != vector->lane_count ||
+            op.mask_type.str() != "<" + std::to_string(vector->lane_count) + " x i32>") {
           fail_verify("LirShuffleVectorOp.native_vector_authority.mask_lanes",
                       "must mirror the scalar-to-vector splat vector store lane count");
         }

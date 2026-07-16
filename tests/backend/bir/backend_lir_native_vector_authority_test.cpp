@@ -396,7 +396,8 @@ void test_native_vector_authority_verifier_boundary() {
   std::get<lir::LirShuffleVectorOp>(
       selected_shuffle_stale_result_shape.functions[0].blocks[0].insts[1])
       .native_vector_authority->result_shape.lane_count = 5;
-  lir::verify_module(selected_shuffle_stale_result_shape);
+  expect_rejected(std::move(selected_shuffle_stale_result_shape),
+                  "selected splat shuffle must reject stale result shape facts");
 
   auto selected_shuffle_missing_first_shape_mirror = selected_scalar_to_vector_splat_module();
   std::get<lir::LirShuffleVectorOp>(
@@ -543,7 +544,8 @@ void test_native_vector_authority_verifier_boundary() {
   auto stale_extract_zero_lanes = vector_authority_module();
   std::get<lir::LirExtractElementOp>(stale_extract_zero_lanes.functions[0].blocks[0].insts[1])
       .native_vector_authority->result_shape.lane_count = 0;
-  lir::verify_module(stale_extract_zero_lanes);
+  expect_rejected(std::move(stale_extract_zero_lanes),
+                  "extract carrier must reject stale result shape lanes");
 
   auto missing_second_shape = vector_authority_module();
   std::get<lir::LirShuffleVectorOp>(missing_second_shape.functions[0].blocks[0].insts[2])

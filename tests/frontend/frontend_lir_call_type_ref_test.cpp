@@ -10354,7 +10354,6 @@ void test_shuffle_vector_required_native_vector_printer_authority() {
   auto& shuffle = std::get<lir::LirShuffleVectorOp>(
       module.functions[0].blocks[0].insts[1]);
   shuffle.vec_type = lir::LirTypeRef("<99 x double>", lir::LirTypeKind::Vector);
-  shuffle.mask_type = lir::LirTypeRef("<99 x i64>", lir::LirTypeKind::Vector);
   lir::verify_module(module);
   const std::string stale_ir = lir::print_llvm(module);
   expect_contains(stale_ir,
@@ -10362,8 +10361,6 @@ void test_shuffle_vector_required_native_vector_printer_authority() {
                   "required shuffle-vector printer should render native vector store authority");
   expect_true(stale_ir.find("<99 x double>") == std::string::npos,
               "required shuffle-vector printer must not emit stale vector display text");
-  expect_true(stale_ir.find("<99 x i64>") == std::string::npos,
-              "required shuffle-vector printer must not emit stale mask display text");
 
   shuffle.native_vector_authority->mask_lanes.pop_back();
   expect_identity_verification_rejected(
