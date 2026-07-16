@@ -34,10 +34,14 @@ Step 1 established the producer seam without implementation changes:
   occurrence is built. Step 2 must register the definition on the HIR side
   before `qtype_from` resolves that existing definition-backed ref.
 
-The producer contract fails closed: leave `aggregate_ref` unset if no direct
-registered HIR definition ref exists or it is not module-owned and complete.
-No legacy owner-key, tag, parser-pointer, rendered-text, or reconstructed
-lookup may supply canonical identity.
+The producer contract fails closed: a module-owned `HirStructDef` must issue
+and retain the canonical `HirAggregateRef` at its HIR construction seam, and
+an occurrence constructor must receive that ref as an explicit HIR construction
+input. Leave `aggregate_ref` unset when that direct input is absent, invalid,
+foreign, or incomplete. `qtype_from` must not derive the ref from `TypeSpec` or
+its parser-owned `record_def`; no `Node*` map, legacy owner-key, tag,
+parser-pointer, rendered-text, or reconstructed lookup may supply canonical
+identity.
 
 ## In Scope
 

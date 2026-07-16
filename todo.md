@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/848_hir_aggregate_occurrence_canonical_ref_population.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Populate canonical refs for aggregate function signatures
+Current Step ID: 2a
+Current Step Title: Establish a direct HIR aggregate-ref construction input
 
 ## Just Finished
 
@@ -17,20 +17,24 @@ Current Step Title: Populate canonical refs for aggregate function signatures
 
 ## Suggested Next
 
-- Establish HIR-side definition registration before `qtype_from` resolves the
-  existing definition-backed ref, then populate supported function return and
-  parameter occurrences. Leave the ref unset when no direct registered,
-  module-owned, complete HIR ref exists.
+- Register the module-owned `HirStructDef` at its HIR construction seam and
+  retain its issued `HirAggregateRef` in a HIR-only carrier. Add an explicit
+  optional ref input to `qtype_from`; it may validate and copy only this input.
+  It must not derive canonical identity from `TypeSpec`, `record_def`, a
+  `Node*` map, owner keys, tags, or text. Leave the ref unset when the direct
+  input is absent, invalid, foreign, or incomplete.
 
 ## Watchouts
 
-- This blocker owns HIR occurrence fact production only. Do not migrate LIR
-  lowering or recover aggregate identity from legacy owner keys, tags, text, or
-  parser pointers.
+- This blocker owns HIR occurrence fact production only. Do not migrate LIR or
+  recover aggregate identity from legacy owner keys, tags, text, parser
+  pointers, or a Node-to-HIR map.
 - Fail closed for missing, invalid, foreign, non-module-owned, or incomplete
   refs; do not reconstruct identity.
 
 ## Proof
 
-- Lifecycle slice: structural/linkage inspection only. Code-bearing packets
-  must select and record fresh focused proof before acceptance.
+- Pre-change `ctest --test-dir build -j --output-on-failure -R
+  '^frontend_hir_tests$'` is in `test_before.log` and reproduces the missing
+  canonical HIR aggregate-ref failure. The code-bearing packet must select and
+  record fresh focused proof before acceptance.

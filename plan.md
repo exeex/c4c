@@ -81,15 +81,36 @@ definition-backed ref. If no direct registered ref exists, or it is not
 module-owned and complete, leave `aggregate_ref` unset; do not recover it from
 legacy owner/tag/parser/text state.
 
-### Step 2 - Populate canonical refs for aggregate function signatures
+### Step 2a - Establish a direct HIR aggregate-ref construction input
+
+Goal: create the legal HIR construction path before any signature occurrence
+receives a canonical ref.
+
+Actions:
+
+- Register each module-owned `HirStructDef` at its HIR construction seam and
+  retain the issued `HirAggregateRef` in a HIR-only definition/carrier path.
+- Extend `qtype_from` with an explicit optional canonical-ref input; it may
+  validate and copy only that direct input, never derive identity from
+  `TypeSpec` or `record_def`.
+- Require the input to be complete and `module_`-owned; otherwise leave
+  `QualType::aggregate_ref` unset.
+- Do not add a `Node* -> HirStructDef`/ref map and do not obtain a ref through
+  owner-key, tag, rendered-text, or parser-pointer lookup.
+
+Completion check: a direct, definition-issued, module-owned ref can reach
+`qtype_from` without parser-owned identity recovery; a fresh build and focused
+HIR proof pass.
+
+### Step 2b - Populate canonical refs for aggregate function signatures
 
 Goal: make supported aggregate function return and parameter occurrences carry
 the registered definition's canonical ref.
 
 Actions:
 
-- Attach the stable module/id ref at HIR construction from the registered
-  aggregate definition.
+- Pass only the Step 2a direct HIR construction input for supported function
+  return and parameter occurrences; do not add a lookup inside `qtype_from`.
 - Preserve legitimate supported aggregate forms within the producer's scope.
 - Add nearby coverage that observes propagation through both return and
   parameter occurrences.
