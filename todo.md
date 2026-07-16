@@ -1,28 +1,27 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/836_lir_remaining_aggregate_owner_rejection_decomposition_blocker.md
+Source Idea Path: ideas/open/837_lir_nominal_type_family_architecture.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Decompose the remaining aggregate-owner rejection families
+Current Step Title: Establish the evidence baseline and historical root-model map
 
 ## Just Finished
 
-- Lifecycle switch from rejected 831 Step 4: baseline is 3038/3038 and fresh
-  candidate is 3026/3038 (12 failed); the regression guard reports 10 new
-  classified failures and a decreased pass count.
+- Lifecycle-only promotion and user-priority switch from parked 836 Step 1 to
+  837 Step 1. No 837 evidence document or successor is accepted yet.
 
 ## Suggested Next
 
-- Execute Step 1 only: establish first owners for the residual structured-key,
-  matching-module-owner, and no-owner compatibility groups before editing code.
+- Execute Step 1 only: record the current evidence revision and produce the
+  evidence baseline plus historical blocker-to-root-model map.
 
 ## Watchouts
 
-- Do not claim baseline clearance, reopen closed 832/833/834 without direct
-  evidence, merge families by diagnostic text, or weaken ownerless rejection.
+- Do not edit code/tests, generate successors before Steps 1-3 accept, claim
+  classification as capability, or erase the parked 836 return obligation.
 
 ## Proof
 
-- Rejected supervisor gate: `test_baseline.log` 3038/3038 versus
-  `test_baseline.new.log` 3026/3038. No new proof has been run for 836.
+- Lifecycle structural check only. No implementation or test proof is required
+  or claimed for this switch.

@@ -63,3 +63,39 @@ as a 834 reopening would silently widen accepted work.
 - Reject reopening 832, 833, or 834 without direct first-owner evidence, or
   claiming full baseline clearance from focused proof.
 - Reject absorbing 831/830 scope or adjacent aggregate metadata redesign.
+
+## Resumption Record: user-priority switch to 837 architecture umbrella
+
+Status: parked by lifecycle switch to
+`ideas/open/837_lir_nominal_type_family_architecture.md`.
+
+- Switch reason: the user explicitly prioritized the nominal type-family
+  architecture umbrella before continuing this residual repair route. This is
+  a priority switch, not evidence that 837 satisfies, supersedes, or closes
+  836.
+- Last accepted progress: none inside 836 beyond lifecycle activation and the
+  incoming rejected-gate evidence. No 836 runbook step, implementation, or
+  proof has been accepted.
+- Interrupted step: Step 1, **Decompose the remaining aggregate-owner rejection
+  families**.
+- Durable carry-in evidence: parent 831 Step 4 compared accepted
+  `test_baseline.log` at 3038/3038 with `test_baseline.new.log` at 3026/3038.
+  The candidate had 12 failures; the regression guard reported 10 newly
+  classified failures and a decreased pass count. No fresh 836 proof exists.
+- Exact return point: resume 836 at unchanged Step 1. Reproduce current evidence
+  first, then identify separate first owners for the structured-key,
+  matching-module-owner, and no-owner compatibility groups before any code
+  edit. Do not infer that the old 3026/3038 candidate still reproduces after
+  the architecture initiative.
+- Remaining work: Step 1 first-owner decomposition, Step 2 smallest evidenced
+  native relation repair or ordered separately scoped successors, and Step 3
+  focused multi-path proof and return decision.
+- Parent return obligation: after 836 accepts its bounded route and proof,
+  reactivate `ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md`
+  at unchanged Step 4 for its comparable full-suite gate. Do not return
+  directly to 830 or 829.
+- Resume condition: after the 837 architecture initiative and its generated
+  priority successor work, resume 836 only if fresh current evidence still
+  reproduces an independently owned residual family. If the new architecture
+  changes the facts, plan-owner must reclassify from current evidence rather
+  than silently declaring 836 complete or superseded.
