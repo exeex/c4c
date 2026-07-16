@@ -1,148 +1,143 @@
-# LIR Direct HIR Family Construction and Array Composition Runbook
+# LIR Global, Extern Declaration, and Initializer Family Facts Runbook
 
 Status: Active
-Source Idea: ideas/open/843_lir_direct_hir_family_construction_array_composition.md
-Activated From: 866 remaining-authority ordering after bounded 842 closure
+Source Idea: ideas/open/844_lir_global_extern_initializer_family_facts.md
+Activated From: 866 remaining-authority ordering after bounded 843 closure
 
 ## Purpose
 
-Execute the next ordered producer/schema successor by replacing HIR-to-LIR
-semantic construction from `llvm_ty()` or rendered text with direct family facts
-from the HIR producer side.
+Execute the next ordered producer/schema successor by moving global and extern
+type facts away from parallel `TypeSpec`, runtime text, and optional-ref mirrors
+toward explicit family refs.
 
 ## Goal
 
-Migrate bounded HIR-to-LIR producer groups, `emit_rval_*`, and `coerce` toward
-producer-specific construction from `TypeSpec`, canonical owners/layout, vector
-facts, and signature facts while retaining arrays as recursive typed
-composition.
+Migrate global and extern declaration type facts to family refs while keeping
+initializer-text semantics separately owned and preserving legacy initializer
+compatibility until its named migration proves deletion.
 
 ## Core Rule
 
-This is producer construction and recursive array composition work. Do not
-parse printer output, migrate global/extern mirrors, run collector scans, or
-delete compatibility adapters whose named producer is not migrated.
+This is global/extern type-fact migration only. Do not redesign initializer
+text semantics, delete legacy scanners prematurely, expand 812/813 non-type
+string routing, or claim final rendering text as semantic type authority.
 
 ## Read First
 
-- `ideas/open/843_lir_direct_hir_family_construction_array_composition.md`
+- `ideas/open/844_lir_global_extern_initializer_family_facts.md`
 - `docs/lir_remaining_authority_owner_triage/ordering_and_closure.md`
-- Accepted 842 commits for explicit value-boundary prerequisites:
-  `464fa3b92`, `e54821000`, `7d9895dfe`, `577f8ea25`
-- Existing HIR-to-LIR lowering, `emit_rval_*`, `coerce`, array/aggregate,
-  vector, signature, and GEP verification tests
+- Accepted 843 commits for recursive array/GEP producer prerequisites:
+  `0803da789`, `3e7691199`, `67e5e8a69`, `c7d7267ce`
+- Existing global, extern declaration, initializer, verifier, printer, and
+  family-ref collection tests
 
 ## Current Targets And Scope
 
-- Bounded HIR-to-LIR producer groups where semantic type construction still
-  flows from `llvm_ty()` or rendered strings.
-- `emit_rval_*` and `coerce` paths that can be migrated to producer-owned
-  family facts without broad rewrites.
-- Recursive array composition: array length and typed element refs as facts,
-  including nested arrays and aggregate children.
-- GEP verification evidence that consumes typed element facts instead of
-  rendered-text recovery.
+- Global type facts currently held in `TypeSpec`, `llvm_type`, or optional
+  type-ref mirrors.
+- Extern declaration return/parameter type facts and their verifier/printer
+  consumers.
+- Family-ref collection for global and extern type facts.
+- Legacy initializer compatibility proof, without redesigning initializer-text
+  semantics.
 
 ## Non-Goals
 
-- Do not parse printer output or use rendered text as semantic authority.
-- Do not migrate global or extern initializer mirrors; idea 844 owns that
-  scope.
-- Do not perform collector/import-preparation scans; idea 845 owns that scope.
-- Do not delete runtime-text/rendered aggregate or array factories until the
-  exact named producer emits a family ref and named-consumer parity is proven.
-- Do not return to 734 without one exact accepted family construction handoff.
+- Do not migrate initializer-text semantics or non-type string policy.
+- Do not delete the legacy initializer scanner until its exact producer and
+  carrier migration are proven.
+- Do not absorb 812/813 string-routing work.
+- Do not return to 734 without one exact typed global or extern handoff.
 
 ## Execution Rules
 
-- Work in bounded producer groups; do not rewrite every lowering path at once.
-- For each code slice, run a fresh build plus focused scalar/vector/array,
-  nested aggregate/signature, or GEP proof matching the touched path.
-- Keep semantic producer construction separate from terminal compatibility
-  deletion.
-- Preserve parser/extern/asm adapters by named consumer until their own owner
-  accepts migration.
+- Work in bounded global or extern packets; do not rewrite both families at
+  once unless Step 1 proves a shared helper is the minimal safe slice.
+- For each code slice, run a fresh build plus focused global/extern lowering,
+  verifier/printer, collection, and initializer compatibility proof matching
+  the touched path.
+- Preserve final output rendering and initializer scanner compatibility until
+  named-consumer parity is proven.
+- Keep type facts separate from global policy identity and initializer payload
+  semantics.
 
 ## Steps
 
-### Step 1 - Inventory HIR construction authority users
+### Step 1 - Inventory global and extern type fact carriers
 
-Goal: identify exact HIR-to-LIR producer paths that still construct semantic
-family facts from `llvm_ty()` or rendered text, and select one bounded first
-producer group.
+Goal: identify current global/extern type carriers, verifier/printer paths,
+family-ref collection points, and initializer compatibility dependencies.
 
 Actions:
 
-- Trace `emit_rval_*`, `coerce`, array/aggregate construction, vector
-  construction, signature construction, and GEP element verification consumers.
-- Separate direct `TypeSpec`/owner/layout/vector/signature facts from
-  `llvm_ty()` and rendered-text recovery.
-- Select one bounded Step 2 producer target, preferably the smallest route that
-  proves recursive typed array or family construction without broad lowering
-  churn.
-- Record the valid scalar/vector/array/nested aggregate/signature cases,
-  malformed cases, rejected rendered-text authority, and proof command.
+- Trace global type facts through lowering, LIR schema, verifier, printer, and
+  collector/import-preparation seams.
+- Trace extern declaration return and parameter type facts through the same
+  surfaces.
+- Separate type facts from initializer payload text, global policy identity,
+  and non-type string semantics.
+- Select the first bounded Step 2 target and record valid/malformed/stale-text
+  proof needs.
 
 Completion check:
 
-- `todo.md` records the selected producer group, current authority users,
-  accepted and rejected construction inputs, proof command, and any missing
+- `todo.md` records the selected global or extern target, current carriers,
+  accepted and rejected authority inputs, proof command, and any missing
   evidence.
 - No implementation change is required for this step.
 
-### Step 2 - Add direct family construction for the selected producer
+### Step 2 - Add or complete the selected family-ref carrier
 
-Goal: make the selected producer emit semantic family refs from producer-owned
-facts rather than `llvm_ty()` or rendered output.
+Goal: make the selected global or extern type path publish explicit family refs
+from producer-owned type facts.
 
 Actions:
 
-- Add or reuse exact family construction helpers for the selected producer's
-  scalar, vector, aggregate, signature, or array facts.
-- Preserve compatibility mirrors only as parity text for unmigrated named
-  consumers.
-- Add focused positive, malformed, and wrong-authority coverage.
+- Add or complete the minimal carrier/API for the selected target.
+- Preserve old text fields only as compatibility mirrors for named consumers.
+- Add positive and wrong-authority coverage for stale text and missing family
+  refs.
 
 Completion check:
 
 - Fresh build passes.
-- Focused tests prove the selected producer constructs family refs directly
-  and rejects rendered-text or `llvm_ty()` authority for the covered path.
+- Focused tests prove the selected target publishes family refs and does not
+  recover semantic type authority from final rendering or initializer text.
 
-### Step 3 - Prove recursive array composition and GEP consumption
+### Step 3 - Migrate selected verifier, printer, and collection consumers
 
-Goal: ensure arrays remain typed recursive composition and GEP consumes typed
-element facts.
+Goal: move selected consumers to the family-ref carrier while preserving final
+output compatibility.
 
 Actions:
 
-- Add or migrate recursive array element/length facts for the selected route.
-- Cover nested arrays and aggregate children where the selected producer owns
-  those facts.
-- Update GEP verification or receipt evidence only for the named migrated path.
+- Migrate verifier checks for the selected target.
+- Migrate printer or final rendering only to consume family refs as semantic
+  input while preserving required compatibility output.
+- Migrate family-ref collection for the selected target.
 
 Completion check:
 
-- Fresh build and focused tests prove recursive array facts and GEP typed
-  element consumption for the selected route.
+- Fresh build and focused tests cover valid facts, malformed refs, stale text,
+  collection, and legacy initializer compatibility for the selected target.
 
-### Step 4 - Retire selected runtime-text construction escape hatches
+### Step 4 - Retire selected legacy type mirrors only with parity
 
-Goal: delete only the old runtime-text/rendered factory or conversion surface
-whose exact named producer and consumers have migrated.
+Goal: delete old type mirrors only where every selected named consumer has
+migrated.
 
 Actions:
 
-- Delete helpers, comparisons, or conversions only where the selected named
-  producer emits direct family refs and all named consumers have parity.
-- Document any exact typed aggregate/vector/array row that can later return to
+- Delete `llvm_type`, extern runtime-text, helper comparisons, or conversions
+  only for the exact selected target with proven parity.
+- Retain final rendering and initializer scanner compatibility unless their
+  own named migration is accepted.
+- Document any exact typed global or extern handoff that can later return to
   734.
-- Leave global/extern, collector, parser, asm, and unrelated producer families
-  untouched.
 
 Completion check:
 
-- Fresh build and focused regression prove no remaining selected named
-  consumer depends on the retired rendered-text construction surface.
-- Any 734 return condition names one exact typed aggregate/vector/array row and
-  excludes all other families.
+- Fresh build and focused regression prove no selected named consumer depends
+  on the retired legacy type mirror.
+- Any 734 return condition names one exact typed global or extern row and
+  excludes initializer text and non-type global policy semantics.
