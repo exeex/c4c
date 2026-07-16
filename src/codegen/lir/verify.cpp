@@ -2365,7 +2365,13 @@ const LirTypeRef* modeled_scalar_result_type(const LirInst& inst) {
   if (const auto* op = std::get_if<LirLoadOp>(&inst)) return &op->type_str;
   if (const auto* op = std::get_if<LirCastOp>(&inst)) return &op->to_type;
   if (const auto* op = std::get_if<LirCallOp>(&inst)) return &op->return_type;
-  if (const auto* op = std::get_if<LirBinOp>(&inst)) return &op->type_str;
+  if (const auto* op = std::get_if<LirBinOp>(&inst)) {
+    if (const LirCompactScalarType* compact_scalar =
+            compact_scalar_binop_type(*op, "LirBinOp.compact_scalar_type")) {
+      return &compact_scalar->type;
+    }
+    return &op->type_str;
+  }
   if (std::get_if<LirCmpOp>(&inst)) {
     static const LirTypeRef kBooleanType = LirTypeRef::integer(1);
     return &kBooleanType;

@@ -8,26 +8,18 @@ Current Step Title: Retire accepted scalar text escape hatches
 
 ## Just Finished
 
-Completed plan.md Step 3 for idea 841 with the bounded selected `LirBinOp`
-consumer migration. The binop verifier now uses `compact_scalar_type` as the
-semantic scalar source for floating opcode agreement, integer immediate width
-checks, and direct-scalar parameter authority matching when the compact carrier
-is present. The printer validates compact-scalar/type-text parity before
-rendering selected scalar binops and renders from the compact carrier after
-parity is proven.
-
-Kept `LirBinOp.type_str` as compatibility/rendering parity text and preserved
-the optional-carrier fallback for unmigrated/manual compatibility construction.
-Added focused coverage proving valid integer/floating scalar binops still
-verify/render and stale `type_str` text cannot override a mismatched compact
-scalar carrier.
+Completed plan.md Step 4 for idea 841 with one bounded retirement. The
+ordinary modeled-result path now uses `LirBinOp.compact_scalar_type` as the
+selected scalar result authority when the compact carrier is present, retiring
+that path's direct `LirBinOp.type_str` result-type source. Kept
+`LirBinOp.type_str` as compatibility/rendering parity text and preserved the
+fallback for unmigrated/manual compatibility construction.
 
 ## Suggested Next
 
-Execute Step 4 with one bounded retirement candidate: remove only the
-`LirBinOp` scalar text classification/comparison use that is now covered by
-the compact scalar carrier, leaving `type_str` compatibility text in place
-until every named consumer of that field has migrated.
+Supervisor review/commit for the Step 4 bounded retirement, then route to
+plan-owner for the next lifecycle disposition if Step 4 satisfies the active
+runbook.
 
 ## Watchouts
 
@@ -38,11 +30,14 @@ accepted receiver rows such as `LirAbsOp` selected-global/i32.
 The compact scalar carrier remains intentionally optional for compatibility and
 auto-derived from `LirBinOp.type_str` through aggregate initialization. Do not
 delete `LirBinOp.type_str` yet: it is still the compatibility/rendering parity
-field and other binop-adjacent paths may still reference it.
+field and other binop-adjacent paths may still reference it. This Step 4 slice
+only retired the modeled-result `LirBinOp.type_str` source; it did not migrate
+nonselected schemas, backend lowering, Raw-BIR receiver/importer/container
+files, or pointer/void ABI-leaf authority.
 
 ## Proof
 
-Step 3 implementation proof passed:
+Step 4 implementation proof passed:
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_'; } > test_after.log 2>&1`.
 
 Additional whitespace proof passed: `git diff --check`.
