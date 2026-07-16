@@ -1,23 +1,25 @@
 Status: Active
 Source Idea Path: ideas/open/866_lir_remaining_authority_owner_triage.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Build the current evidence bundle
+Current Step ID: 2
+Current Step Title: Classify remaining families by first owner
 
 # Current Packet
 
 ## Just Finished
 
-Lifecycle switched from concluded no-change 865 to successor umbrella 866.
-Idea 734 remains paused after accepted receiver commit `750b6b3ba`; 865
-produced no handoff because its selected `LirAbsOp` selected-global/i32 row is
-already received by `0c44e810ad`.
+Completed Step 1 by creating
+`docs/lir_remaining_authority_owner_triage/current_evidence.md`. The evidence
+records that 734 is accepted through Step 7.51 at `750b6b3ba`, that 865
+produced no handoff, that `LirAbsOp` selected-global/i32 is already received
+by `0c44e810ad`, and that accepted/stale rows must not be reopened.
 
 ## Suggested Next
 
-Execute Step 1 by creating `docs/lir_remaining_authority_owner_triage/` and a
-current-evidence document that records the accepted commits, rejected 865 row,
-accepted rows not to reopen, and broad remaining families to classify.
+Execute Step 2 by classifying CFG/PHI residuals, memory/VA,
+aggregate/vector, module/type/global/metadata, residual
+instruction/terminator, inline-assembly, generic residual sweeps, and stale
+overlapping open ideas by first owning layer.
 
 ## Watchouts
 
@@ -29,4 +31,6 @@ successors.
 
 ## Proof
 
-Lifecycle-only switch pending validation. Minimum proof: `git diff --check`.
+Docs-only Step 1 proof: `git diff --check`. No `test_after.log` was written
+because the delegated proof command is documentation-only and produces no
+test log.
