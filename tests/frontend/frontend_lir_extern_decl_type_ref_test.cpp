@@ -207,6 +207,16 @@ int main() {
   } catch (const c4c::codegen::lir::LirVerifyError&) {
   }
 
+  c4c::codegen::lir::LirModule wrong_struct_id = module;
+  wrong_struct_id.extern_decls.front().return_type =
+      c4c::codegen::lir::LirTypeRef::struct_type(
+          "%struct.Pair", module.struct_names.intern("%struct.Slot"));
+  try {
+    c4c::codegen::lir::verify_module(wrong_struct_id);
+    fail("verifier should reject an extern return with the wrong StructNameId");
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
+
   c4c::codegen::lir::LirModule text_fallback = module;
   text_fallback.extern_decls.front().return_type_str = "%struct.NotDeclared";
   try {

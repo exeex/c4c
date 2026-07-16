@@ -1,39 +1,25 @@
 Status: Active
 Source Idea Path: ideas/open/844_lir_global_extern_initializer_family_facts.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add or complete the selected extern family-ref carrier
+Current Step ID: 3
+Current Step Title: Migrate selected extern verifier/printer consumers
 
 # Current Packet
 
 ## Just Finished
 
-Completed repaired plan.md Step 1 inventory. Extern return facts currently flow
-from `record_extern_decl` through `ExternDeclInfo.return_type_str` and
-`ExternDeclInfo.return_type`, then finalize into
-`LirExternDecl.return_type_str` and `LirExternDecl.return_type`; verifier parity
-is `verify_extern_decl_shadows`, printer output still reads
-`return_type_str`, and aggregate return identity can carry `StructNameId`.
-Extern fixed parameter facts are not direct `LirExternDecl` fields; they live
-in `LirFunctionSignatureStoreEntry.fixed_param_type_refs` behind
-`function_signature_ref`.
-
-Selected repaired Step 2 target: complete the bounded extern aggregate return
-carrier for `LirExternDecl.return_type` first. Accepted authority input is the
-module-owned extern return `LirTypeRef` with `StructNameId` produced from the
-struct-name/declaration store. Compatibility mirror is
-`LirExternDecl.return_type_str`, which must remain final declaration output text
-until selected printer parity is proven. Rejected authority inputs are extern
-raw names, `LinkNameId` symbol identity, final declaration text alone,
-signature-store parameter facts, global initializer text, and collector/import
-receiver observations.
+Completed repaired plan.md Step 2 for the selected extern aggregate return
+target. The existing producer path already publishes `LirExternDecl.return_type`
+with `StructNameId` for known aggregate returns and verifier coverage already
+rejected missing structured carriers; this packet added focused wrong-authority
+coverage for a return carrier with the wrong `StructNameId`.
 
 ## Suggested Next
 
-Execute repaired plan.md Step 2 for the selected extern aggregate return
-target. Require/publish a structured `LirExternDecl.return_type` carrier for
-known aggregate returns while preserving `return_type_str` as compatibility
-output text.
+Execute repaired plan.md Step 3 for the selected extern aggregate return
+target. Move extern declaration printer/verifier behavior to treat
+`LirExternDecl.return_type` `StructNameId` as semantic authority while
+preserving normal declaration output compatibility.
 
 ## Watchouts
 
@@ -43,12 +29,11 @@ Raw-BIR receiver work, or non-type string routing. Extern parameter/signature
 store facts remain a later target because `LirExternDecl` has no direct
 parameter carrier today.
 
-Step 2 proof needs: positive struct/union extern returns, missing carrier for a
-known aggregate return, wrong `StructNameId`, stale `return_type_str` text that
-must not drive authority after the structured carrier is selected, nonaggregate
-return compatibility, and unchanged global initializer compatibility.
+Do not widen Step 3 into extern parameter/signature-store migration. Stale
+`return_type_str` should become compatibility text for selected aggregate
+returns only when the structured carrier remains valid; nonaggregate returns
+remain runtime-text compatibility.
 
 ## Proof
 
-Inventory proof command: `git diff --check`. Suggested focused code-packet
-proof: `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_extern_decl_type_ref$|^frontend_lir_global_label_address_initializer$'; } > test_after.log 2>&1`
+Step 2 proof command: `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_extern_decl_type_ref$|^frontend_lir_global_label_address_initializer$'; } > test_after.log 2>&1`
