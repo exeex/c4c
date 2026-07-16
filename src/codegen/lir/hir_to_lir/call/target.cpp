@@ -221,7 +221,8 @@ std::optional<LirCallSignature> structured_callee_signature(
 
 LirFunctionSignatureRef direct_callee_signature_ref(
     const LirModule* lir_module,
-    const CallTargetInfo& call_target) {
+    const CallTargetInfo& call_target,
+    const std::optional<LirCallSignature>& retained_signature) {
   if (!call_target.target_fn || call_target.target_fn->attrs.unspecified_params ||
       call_target.target_fn->attrs.variadic) {
     return LirFunctionSignatureRef::invalid();
@@ -241,6 +242,20 @@ LirFunctionSignatureRef direct_callee_signature_ref(
           std::any_of(signature->fixed_param_is_byval.begin(),
                       signature->fixed_param_is_byval.end(),
                       [](bool is_byval) { return is_byval; })) {
+        return LirFunctionSignatureRef::invalid();
+      }
+      if (!retained_signature.has_value() ||
+          retained_signature->return_type_ref.has_value() !=
+              signature->return_type_ref.has_value() ||
+          (retained_signature->return_type_ref.has_value() &&
+           *retained_signature->return_type_ref != *signature->return_type_ref) ||
+          retained_signature->return_ext_attr != signature->return_ext_attr ||
+          retained_signature->fixed_param_type_refs !=
+              signature->fixed_param_type_refs ||
+          retained_signature->is_variadic != signature->is_variadic ||
+          retained_signature->has_void_param_list !=
+              signature->has_void_param_list ||
+          retained_signature->has_unspecified_params) {
         return LirFunctionSignatureRef::invalid();
       }
       return function.function_signature_ref;
@@ -395,11 +410,14 @@ void publish_fixed_direct_call_argument0_authority(
 
 void StmtEmitter::emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
                                  const std::vector<OwnedLirTypedCallArg>& args) {
+  std::optional<LirCallSignature> callee_signature =
+      structured_callee_signature(mod_, module_, call_target);
   LirCallOp call = make_lir_call_op_with_return_type_ref(
       "", LirTypeRef(LirBuiltinType::Void), call_target.callee_val,
       call_target.callee_type_suffix, args, call_target.callee_link_name_id,
-      structured_callee_signature(mod_, module_, call_target));
-  call.callee_signature_ref = direct_callee_signature_ref(module_, call_target);
+      callee_signature);
+  call.callee_signature_ref =
+      direct_callee_signature_ref(module_, call_target, callee_signature);
   publish_fixed_direct_call_argument0_authority(ctx, call_target, call);
   emit_lir_op(ctx, std::move(call));
 }
@@ -434,8 +452,9 @@ LirOperand StmtEmitter::emit_call_with_result(
   LirCallOp call = make_lir_call_op_with_return_type_ref(
       result, std::move(return_type), call_target.callee_val,
       call_target.callee_type_suffix, args, call_target.callee_link_name_id,
-      std::move(callee_signature));
-  call.callee_signature_ref = direct_callee_signature_ref(module_, call_target);
+      callee_signature);
+  call.callee_signature_ref =
+      direct_callee_signature_ref(module_, call_target, callee_signature);
   publish_fixed_direct_call_argument0_authority(ctx, call_target, call);
   emit_lir_op(ctx, std::move(call));
   return result;

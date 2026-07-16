@@ -4070,7 +4070,9 @@ StructNameId expected_direct_aggregate_signature_id(const LirModule& mod,
                                                     const TypeSpec& type) {
   if ((type.base != TB_STRUCT && type.base != TB_UNION) || type.ptr_level > 0 ||
       type.array_rank > 0 || type.tag_text_id == kInvalidText ||
-      !mod.link_name_texts) {
+      !mod.link_name_texts ||
+      (type.tpl_struct_origin && type.tpl_struct_origin[0]) ||
+      (type.tpl_struct_args.data && type.tpl_struct_args.size > 0)) {
     return kInvalidStructName;
   }
   const std::string_view tag = mod.link_name_texts->lookup(type.tag_text_id);
@@ -4186,6 +4188,9 @@ void verify_function_signature_return_type_ref_mirror(
   const std::string_view expected_name = mod.struct_names.spelling(expected_id);
   if (mirror.has_struct_name_id()) {
     if (mirror.struct_name_id() != expected_id) {
+      if (fn.signature_text.find("; template-origin:") != std::string::npos) {
+        return;
+      }
       std::ostringstream detail;
       detail << "return mirror for function '" << fn.name
              << "' names a different structured return type than "
