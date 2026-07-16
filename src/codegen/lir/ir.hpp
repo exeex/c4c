@@ -687,6 +687,8 @@ struct LirBinOp {
   LirOperand rhs;             // SSA name or literal for right operand (empty for unary fneg)
   std::optional<LirScalarBinaryLhsParameterAuthority> scalar_lhs_parameter_authority;
   std::optional<LirScalarBinaryRhsParameterAuthority> scalar_rhs_parameter_authority;
+  std::optional<LirCompactScalarType> compact_scalar_type =
+      LirCompactScalarType::from_type_ref(type_str);
 };
 
 // Typed comparison operation (icmp/fcmp).

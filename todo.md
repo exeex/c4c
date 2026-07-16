@@ -1,57 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/841_lir_compact_scalar_abi_leaf_migration.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add the compact scalar authority carrier
+Current Step ID: 3
+Current Step Title: Migrate named scalar producers and consumers
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 inventory for idea 841. Current scalar authority is still
-spread across `LirTypeRef` kind/width/builtin mirrors plus scalar-only op
-fields such as `LirBinOp.type_str`, `LirCmpOp.type_str`,
-`LirCastOp.from_type`/`to_type`, `LirAbsOp.int_type`,
-`LirCallOp.return_type`, `LirCallArg.type_ref`, `LirSelectOp.type_str`,
-`LirRet.type_str`, signature return/parameter refs, and ABI leaf uses of
-pointer/void. Verifier and printer consume those refs through
-`require_module_type_ref`, operation-specific checks, and LLVM rendering.
-Raw-BIR compatibility still lowers many scalar rows through
-`lower_lir_type`, `lower_scalar_or_function_pointer_type`,
-`lower_integer_type`, and exact selected scalar receipt probes.
+Completed plan.md Step 2 for idea 841. Added `LirCompactScalarType` as the
+minimal compact scalar authority carrier/ref for true scalar integer widths and
+floating builtins `half`, `float`, `double`, `fp128`, and `x86_fp80`; attached
+it first to `LirBinOp` as a selected scalar-only mirror of `type_str`; and kept
+the existing `LirTypeRef` field as the rendering/compatibility mirror.
 
-Selected bounded Step 2 target: add the minimal compact scalar authority
-carrier/store/ref for true scalar builtins and wire it first to
-`LirBinOp.type_str` as a compatibility mirror owner for integer and floating
-binary ops. This target is small enough to prove at the producer/schema,
-verifier, printer, and current Raw-BIR compatibility boundary without
-reopening the accepted `LirAbsOp` selected-global/i32 receiver row from
-`0c44e810ad`.
-
-True scalar rows for this target: integer widths currently represented by
-`LirTypeRef::integer(...)` / `LirTypeKind::Integer` and floating builtins
-`half`, `float`, `double`, `fp128`, and `x86_fp80` when used by scalar binary
-ops. Pointer and void are ABI leaves only, not scalar members of this first
-carrier slice.
-
-Excluded families for Step 2: vector types and native vector store/refs,
-aggregate structs/unions/arrays/anonymous structs, function refs and call
-signature family migration, opaque/runtime text, pointer truthiness and pointer
-cast policy, void return/parameter ABI leaves, inline assembly template or
-constraint parsing, memory/VA/object/lifetime authority, Raw-BIR receiver
-handoffs under 734, and terminal deletion of scalar text escape hatches.
-
-Missing evidence: exact pointer/void ABI-leaf migration consumers remain
-separate evidence-needed followups after the scalar carrier exists; no opaque
-type is accepted as scalar.
+Added verifier checks so an attached `LirBinOp.compact_scalar_type` must mirror
+the selected scalar type exactly and rejects vector, aggregate, function,
+opaque, pointer, and void families. Added focused `frontend_lir_call_type_ref`
+coverage for positive integer and floating scalar binops plus those
+wrong-family rejection cases.
 
 ## Suggested Next
 
-Execute Step 2 by adding the compact scalar carrier/ref in the LIR type model
-and attaching it to `LirBinOp.type_str` as the selected scalar-only schema
-mirror. Keep existing `LirTypeRef` text/kind rendering as compatibility, and
-add focused wrong-family rejection for vector, aggregate, function, opaque,
-pointer, and void inputs to the selected binary-op scalar carrier.
+Execute Step 3 with one bounded named scalar producer/consumer migration. A
+coherent next packet is to migrate `LirBinOp` verifier/printer consumption from
+`type_str` checks to `compact_scalar_type` for the selected scalar binop path
+while keeping `type_str` as parity/rendering text and preserving unmigrated
+schemas.
 
 ## Watchouts
 
@@ -59,17 +34,17 @@ Do not implement 734 Raw-BIR receiver work in this idea. Do not assume opaque is
 scalar, do not parse rendered text as scalar authority, and do not reopen
 accepted receiver rows such as `LirAbsOp` selected-global/i32.
 
-For Step 2, do not migrate `LirCmpOp`, `LirCastOp`, `LirCallOp`,
-`LirSelectOp`, returns, signatures, or pointer/void ABI leaves in the same
-packet. `LirBinOp` may include both integer and floating scalar opcodes, but
-the carrier must reject vector/aggregate/function/opaque/pointer/void families
-before later schemas can rely on it.
+The Step 2 carrier is intentionally optional for compatibility and auto-derived
+from `LirBinOp.type_str` through aggregate initialization. Later Step 3 packets
+should tighten named producers/consumers one group at a time rather than
+requiring every raw/manual `LirBinOp` compatibility construction to migrate at
+once.
 
 ## Proof
 
-Step 1 inventory proof: `git diff --check`; passed as the documentation-only
-packet proof. No `test_after.log` was produced because the delegated proof
-command is a diff whitespace check and no implementation/test command was run.
+Step 2 implementation proof passed:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'; } > test_after.log 2>&1`.
 
-Suggested focused proof for Step 2 after code edits:
-`cmake --build build --target frontend_lir_call_type_ref_test && ctest --test-dir build --output-on-failure -R '^frontend_lir_call_type_ref$'`.
+Additional whitespace proof passed: `git diff --check`.
+
+Proof log path: `test_after.log`.

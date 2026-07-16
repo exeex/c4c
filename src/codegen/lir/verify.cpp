@@ -1177,6 +1177,14 @@ void verify_bin_op_authority(const LirBinOp& op) {
   if (!op.result.value_id()) return;
   const std::optional<LirBinaryOpcode> opcode = op.opcode.typed();
   if (!opcode) return;
+  if (op.compact_scalar_type) {
+    const auto selected_scalar =
+        LirCompactScalarType::from_type_ref(op.compact_scalar_type->type);
+    if (!selected_scalar || op.compact_scalar_type->type != op.type_str) {
+      fail_verify("LirBinOp.compact_scalar_type",
+                  "must mirror one selected integer or floating scalar binop type");
+    }
+  }
   const bool floating_opcode = is_floating_binary_opcode(*opcode);
   const bool floating_type = op.type_str.kind() == LirTypeKind::Floating;
   if (floating_opcode != floating_type) {

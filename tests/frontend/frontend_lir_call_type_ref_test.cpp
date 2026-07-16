@@ -9578,6 +9578,71 @@ float extract_sum_real(__complex__ float lhs, __complex__ float rhs) {
   }
 }
 
+void test_lir_binop_compact_scalar_type_authority_boundary() {
+  namespace lir = c4c::codegen::lir;
+
+  const auto make_module = [](lir::LirTypeRef type) {
+    lir::LirModule module;
+    lir::LirFunction function;
+    function.name = "compact_scalar_binop_authority";
+    function.signature_text = "define void @compact_scalar_binop_authority() {";
+    function.blocks.push_back(lir::LirBlock{});
+    function.blocks.back().insts.push_back(lir::LirBinOp{
+        lir::LirOperand::ssa("%out", lir::LirValueId{1}), "add", std::move(type),
+        lir::LirOperand::integer("1", 1), lir::LirOperand::integer("2", 2)});
+    module.functions.push_back(std::move(function));
+    return module;
+  };
+
+  lir::LirModule integer = make_module(lir::LirTypeRef::integer(32));
+  auto& integer_op =
+      std::get<lir::LirBinOp>(integer.functions[0].blocks[0].insts[0]);
+  expect_true(integer_op.compact_scalar_type &&
+                  integer_op.compact_scalar_type->type == lir::LirTypeRef::integer(32),
+              "integer LirBinOp should attach selected compact scalar type authority");
+  lir::verify_module(integer);
+
+  lir::LirModule floating = make_module(lir::LirTypeRef(lir::LirBuiltinType::Double));
+  auto& floating_op =
+      std::get<lir::LirBinOp>(floating.functions[0].blocks[0].insts[0]);
+  floating_op.opcode = lir::LirBinaryOpcode::FAdd;
+  expect_true(floating_op.compact_scalar_type &&
+                  floating_op.compact_scalar_type->type ==
+                      lir::LirTypeRef(lir::LirBuiltinType::Double),
+              "floating LirBinOp should attach selected compact scalar type authority");
+  lir::verify_module(floating);
+
+  const auto expect_wrong_family_rejected = [&](lir::LirTypeRef mirror,
+                                                lir::LirTypeRef carrier,
+                                                const std::string& message) {
+    lir::LirModule module = make_module(std::move(mirror));
+    auto& op = std::get<lir::LirBinOp>(module.functions[0].blocks[0].insts[0]);
+    op.compact_scalar_type = lir::LirCompactScalarType{std::move(carrier)};
+    expect_identity_verification_rejected(module, message);
+  };
+
+  expect_wrong_family_rejected(lir::LirTypeRef("<4 x i32>"),
+                               lir::LirTypeRef("<4 x i32>"),
+                               "vector carrier must not satisfy scalar binop authority");
+  expect_wrong_family_rejected(lir::LirTypeRef::anonymous_struct(
+                                   {lir::LirTypeRef::integer(32)}),
+                               lir::LirTypeRef::anonymous_struct(
+                                   {lir::LirTypeRef::integer(32)}),
+                               "aggregate carrier must not satisfy scalar binop authority");
+  expect_wrong_family_rejected(lir::LirTypeRef("i32 (i32)", lir::LirTypeKind::Function),
+                               lir::LirTypeRef("i32 (i32)", lir::LirTypeKind::Function),
+                               "function carrier must not satisfy scalar binop authority");
+  expect_wrong_family_rejected(lir::LirTypeRef("opaque.scalar", lir::LirTypeKind::Opaque),
+                               lir::LirTypeRef("opaque.scalar", lir::LirTypeKind::Opaque),
+                               "opaque carrier must not satisfy scalar binop authority");
+  expect_wrong_family_rejected(lir::LirTypeRef(lir::LirBuiltinType::Pointer),
+                               lir::LirTypeRef(lir::LirBuiltinType::Pointer),
+                               "pointer carrier must not satisfy scalar binop authority");
+  expect_wrong_family_rejected(lir::LirTypeRef(lir::LirBuiltinType::Void),
+                               lir::LirTypeRef(lir::LirBuiltinType::Void),
+                               "void carrier must not satisfy scalar binop authority");
+}
+
 }  // namespace
 
 int main() {
@@ -10135,6 +10200,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_builtin_popcount_call_narrow_result_use_identity_boundary();
   test_scalar_abs_result_use_identity_boundary();
   test_selected_aggregate_producer_authority_boundary();
+  test_lir_binop_compact_scalar_type_authority_boundary();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
   return 0;

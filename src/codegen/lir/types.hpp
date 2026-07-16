@@ -517,6 +517,27 @@ class LirTypeRef {
   std::shared_ptr<std::vector<LirTypeRef>> anonymous_struct_field_types_;
 };
 
+struct LirCompactScalarType {
+  LirTypeRef type;
+
+  [[nodiscard]] static std::optional<LirCompactScalarType> from_type_ref(
+      const LirTypeRef& type) {
+    if (type.kind() == LirTypeKind::Integer && type.integer_bit_width().has_value()) {
+      return LirCompactScalarType{type};
+    }
+    switch (type.builtin_type().value_or(LirBuiltinType::Void)) {
+      case LirBuiltinType::Half:
+      case LirBuiltinType::Float:
+      case LirBuiltinType::Double:
+      case LirBuiltinType::Fp128:
+      case LirBuiltinType::X86Fp80:
+        return LirCompactScalarType{type};
+      default:
+        return std::nullopt;
+    }
+  }
+};
+
 enum class LirBinaryOpcode : unsigned char {
   Add,
   Sub,
