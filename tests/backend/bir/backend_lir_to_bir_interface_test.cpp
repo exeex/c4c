@@ -14174,7 +14174,7 @@ void test_direct_scalar_binary_fadd_rhs_parameter_authority_receipt_and_rejectio
   rejected([](auto& candidate) { candidate.functions[0].signature_param_type_refs[0] = lir::LirTypeRef("float"); }, "fadd RHS signature type mismatch must reject transactionally");
   rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).scalar_rhs_parameter_authority->abi = lir::LirNativeBodyParameterAbi::DirectPointer; }, "fadd RHS ABI mismatch must reject transactionally");
   rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).scalar_rhs_parameter_authority->role = lir::LirScalarBinaryParameterRole::Lhs; }, "fadd RHS role mismatch must reject transactionally");
-  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).opcode = "fsub"; }, "non-fadd RHS authority consumer must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).opcode = "fdiv"; }, "non-fadd RHS authority consumer must reject transactionally");
   rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).rhs = lir::LirOperand::ssa("%other", lir::LirValueId{124}); }, "fadd RHS identity mismatch must reject transactionally");
   rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).type_str = lir::LirTypeRef("float"); }, "fadd RHS result type mismatch must reject transactionally");
   rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).lhs = lir::LirOperand::ssa("%missing-lhs", lir::LirValueId{124}); }, "fadd nonselected LHS must be a current-function scalar");
@@ -14267,7 +14267,7 @@ void test_direct_scalar_binary_fmul_rhs_parameter_authority_receipt_and_rejectio
   rejected([](auto& candidate) { candidate.functions[0].signature_param_type_refs[0] = lir::LirTypeRef("float"); }, "fmul RHS signature type mismatch must reject transactionally");
   rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).scalar_rhs_parameter_authority->abi = lir::LirNativeBodyParameterAbi::DirectPointer; }, "fmul RHS ABI mismatch must reject transactionally");
   rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).scalar_rhs_parameter_authority->role = lir::LirScalarBinaryParameterRole::Lhs; }, "fmul RHS role mismatch must reject transactionally");
-  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).opcode = "fsub"; }, "non-fmul RHS authority consumer must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).opcode = "fdiv"; }, "non-fmul RHS authority consumer must reject transactionally");
   rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).rhs = lir::LirOperand::ssa("%other", lir::LirValueId{104}); }, "fmul RHS identity mismatch must reject transactionally");
   rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).type_str = lir::LirTypeRef("float"); }, "fmul RHS result type mismatch must reject transactionally");
   rejected([](auto& candidate) {
@@ -14281,6 +14281,99 @@ void test_direct_scalar_binary_fmul_rhs_parameter_authority_receipt_and_rejectio
   rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).lhs = lir::LirOperand::ssa("%missing-lhs", lir::LirValueId{104}); }, "fmul nonselected LHS must be a current-function scalar");
   rejected([](auto& candidate) { std::get<lir::LirConstFloat>(candidate.functions[0].blocks[0].insts[0]).type = scalar_type(c4c::TB_FLOAT); }, "fmul nonselected LHS type mismatch must reject transactionally");
   rejected([](auto& candidate) { candidate.functions[0].blocks[0].insts.push_back(candidate.functions[0].blocks[0].insts[1]); }, "second fmul RHS authority row must reject transactionally");
+}
+
+void test_direct_scalar_binary_fsub_rhs_parameter_authority_receipt_and_rejections() {
+  const auto make_module = [] {
+    lir::LirModule module;
+    module.link_name_texts = std::make_shared<c4c::TextTable>();
+    module.link_names.attach_text_table(module.link_name_texts.get());
+    const auto owner = module.link_names.intern("direct_scalar_fsub_rhs_parameter_owner");
+    lir::LirFunction function;
+    function.name = "direct_scalar_fsub_rhs_parameter_owner";
+    function.return_type = scalar_type(c4c::TB_VOID);
+    function.signature_return_type_ref = lir::LirTypeRef("void");
+    function.link_name_id = owner;
+    function.params.emplace_back("%presentation-only", scalar_type(c4c::TB_DOUBLE));
+    function.signature_params.push_back({"%presentation-only-signature", scalar_type(c4c::TB_DOUBLE), false});
+    function.signature_param_type_refs.push_back(lir::LirTypeRef("double"));
+    function.native_body_parameter_definitions.push_back(
+        {lir::LirValueId{141}, 0, lir::LirTypeRef("double"), owner,
+         lir::LirNativeBodyParameterAbi::DirectScalar});
+    lir::LirBlock entry = return_block(0, "entry");
+    entry.insts.push_back(lir::LirConstFloat{
+        lir::LirValueId{142}, scalar_type(c4c::TB_DOUBLE), 2.5});
+    entry.insts.push_back(lir::LirBinOp{
+        lir::LirOperand::ssa("%fsub-result", lir::LirValueId{143}), "fsub",
+        lir::LirTypeRef("double"),
+        lir::LirOperand::ssa("%lhs", lir::LirValueId{142}),
+        lir::LirOperand::ssa("%presentation-only-rhs", lir::LirValueId{141}),
+        std::nullopt,
+        lir::LirScalarBinaryRhsParameterAuthority{
+            lir::LirValueId{141}, 0, lir::LirTypeRef("double"), owner,
+            lir::LirNativeBodyParameterAbi::DirectScalar,
+            lir::LirScalarBinaryParameterRole::Rhs}});
+    function.blocks.push_back(std::move(entry));
+    function.entry = lir::LirBlockId{0};
+    module.functions.push_back(std::move(function));
+    return module;
+  };
+
+  const auto module = make_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  const auto verified = raw.has_value()
+      ? bir::FoundationVerifier::verify(raw.value())
+      : bir::VerificationResult{};
+  expect(raw.has_value() && verified.ok(),
+         "direct-scalar binary fsub RHS parameter authority must publish verified Raw BIR: " +
+             (raw.has_value() ? (verified.errors.empty() ? "foundation verifier rejected it"
+                                                         : verified.errors[0].message)
+                              : (!raw.error().verification_errors.empty()
+                                     ? raw.error().verification_errors[0].message
+                                     : raw.error().detail)));
+  const auto view = raw.value().view();
+  const auto function = view.function(view.functions()[0]).value();
+  const auto insts = function.instructions(function.blocks()[0]).value();
+  expect(insts.size() == 1, "Raw BIR must retain only the selected fsub RHS instruction");
+  const auto instruction = function.instruction(insts[0]).value();
+  expect(instruction.binary() &&
+             instruction.binary()->opcode == bir::BinaryOpcode::FSub &&
+             instruction.binary()->type ==
+                 bir::Type{bir::TypeKind::F64, 64, "double"} &&
+             !instruction.binary()->direct_scalar_lhs &&
+             instruction.binary()->direct_scalar_rhs &&
+             instruction.binary()->direct_scalar_rhs->source_value_id == 141 &&
+             instruction.binary()->direct_scalar_rhs->parameter_index == 0 &&
+             instruction.binary()->direct_scalar_rhs->scalar_type ==
+                 bir::Type{bir::TypeKind::F64, 64, "double"} &&
+             instruction.operands().size() == 2 &&
+             function.value(instruction.operands()[0]).value().type ==
+                 bir::Type{bir::TypeKind::F64, 64, "double"} &&
+             instruction.operands()[1] == function.parameters()[0],
+         "Raw BIR must retain the exact typed binary fsub RHS parameter authority");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = make_module();
+    mutate(candidate);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value(), message + " (Raw rollback)");
+    expect(!bir::lower_lir_to_canonical_bir(candidate).has_value(), message + " (Canonical rollback)");
+  };
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).scalar_rhs_parameter_authority.reset(); }, "missing fsub RHS authority must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).scalar_rhs_parameter_authority->value = lir::LirValueId::invalid(); }, "invalid fsub RHS authority must reject transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].native_body_parameter_definitions.push_back(candidate.functions[0].native_body_parameter_definitions[0]); }, "duplicate fsub RHS parameter definition must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).scalar_rhs_parameter_authority->owner = candidate.link_names.intern("foreign_fsub_rhs_owner"); }, "foreign fsub RHS owner must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).scalar_rhs_parameter_authority->parameter_index = 1; }, "fsub RHS parameter index mismatch must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).scalar_rhs_parameter_authority->type = lir::LirTypeRef("float"); }, "fsub RHS authority type mismatch must reject transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].native_body_parameter_definitions[0].type = lir::LirTypeRef("float"); }, "fsub RHS definition type mismatch must reject transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].signature_param_type_refs[0] = lir::LirTypeRef("float"); }, "fsub RHS signature type mismatch must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).scalar_rhs_parameter_authority->abi = lir::LirNativeBodyParameterAbi::DirectPointer; }, "fsub RHS ABI mismatch must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).scalar_rhs_parameter_authority->role = lir::LirScalarBinaryParameterRole::Lhs; }, "fsub RHS role mismatch must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).opcode = "fdiv"; }, "non-fsub RHS authority consumer must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).rhs = lir::LirOperand::ssa("%other", lir::LirValueId{144}); }, "fsub RHS identity mismatch must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).type_str = lir::LirTypeRef("float"); }, "fsub RHS result type mismatch must reject transactionally");
+  rejected([](auto& candidate) { std::get<lir::LirBinOp>(candidate.functions[0].blocks[0].insts[1]).lhs = lir::LirOperand::ssa("%missing-lhs", lir::LirValueId{144}); }, "fsub nonselected LHS must be a current-function scalar");
+  rejected([](auto& candidate) { std::get<lir::LirConstFloat>(candidate.functions[0].blocks[0].insts[0]).type = scalar_type(c4c::TB_FLOAT); }, "fsub nonselected LHS type mismatch must reject transactionally");
+  rejected([](auto& candidate) { candidate.functions[0].blocks[0].insts.push_back(candidate.functions[0].blocks[0].insts[1]); }, "second fsub RHS authority row must reject transactionally");
 }
 
 void test_pointer_truthiness_parameter_authority_receipt_and_rejections() {
@@ -14859,6 +14952,7 @@ int main() {
   test_direct_scalar_binary_fsub_lhs_parameter_authority_receipt_and_rejections();
   test_direct_scalar_binary_fadd_rhs_parameter_authority_receipt_and_rejections();
   test_direct_scalar_binary_fmul_rhs_parameter_authority_receipt_and_rejections();
+  test_direct_scalar_binary_fsub_rhs_parameter_authority_receipt_and_rejections();
   test_pointer_truthiness_parameter_authority_receipt_and_rejections();
   test_fixed_direct_call_argument0_parameter_authority_receipt_and_rejections();
   test_store_backed_byval_aggregate_call_receipt_and_rejections();

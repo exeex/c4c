@@ -8,27 +8,27 @@ Current Step Title: Receive the one 860-authorized DirectScalar binary-fsub-RHS 
 
 ## Just Finished
 
-Reactivated 734 after closed 860 completed the producer-side DirectScalar
-floating binary-`fsub` RHS parameter-authority handoff. Accepted 734 Steps 1
-through 7.48 remain historical progress and must not be repeated.
+Completed `plan.md` Step 7.49: received the closed-860
+`LirBinOp.scalar_rhs_parameter_authority` DirectScalar floating binary-`fsub`
+RHS row into typed Raw BIR, preserving the original parameter tuple, RHS role,
+RHS operand identity, operation/type, and nonselected scalar LHS coherence.
 
 ## Suggested Next
 
-Execute `plan.md` Step 7.49 only: receive the closed-860
-`LirBinOp.scalar_rhs_parameter_authority` floating `fsub` RHS DirectScalar
-parameter-use row into typed Raw BIR, preserving the handed-off parameter tuple
-and binary consumer coherence.
+Select the next unopened 734 receiver row after Step 7.49, without repeating
+the accepted DirectScalar binary-`fsub` RHS parameter-authority slice.
 
 ## Watchouts
 
-Do not edit LIR producer authority, repeat Step 7.48, receive another
-parameter-use row, recover authority from presentation text, or absorb
-memory/VA, aggregate/vector, module/type/global/metadata, residual
-instruction/terminator, inline-assembly, ABI-expanded or aggregate parameters,
-generic parameter sweeps, or any other family.
+RHS `fadd`, `fmul`, and now `fsub` are all admitted DirectScalar floating RHS
+authority rows, so neighboring negative tests for those rows must use a still
+unsupported operator such as `fdiv`, not another admitted RHS row.
 
 ## Proof
 
-No proof has run for Step 7.49 yet. Expected proof starts with a fresh build,
-focused backend LIR-to-BIR receiver test, `git diff --check`, and broader
-backend proof if shared importer or verifier code is touched.
+Passed the delegated proof:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$'; } > test_after.log 2>&1`.
+
+Supervisor broader backend proof also passed:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; }`
+with `6/6` backend tests passing.

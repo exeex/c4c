@@ -1686,6 +1686,18 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
           function_data.link_name_ &&
       direct_scalar_rhs->parameter_index < function_data.parameters_.size() &&
       function_data.parameters_[direct_scalar_rhs->parameter_index] == spec.rhs;
+  const bool exact_direct_scalar_rhs_fsub = spec.opcode == BinaryOpcode::FSub &&
+      floating_type(spec.type) && lhs && rhs &&
+      lhs.value().get().type == spec.type && rhs.value().get().type == spec.type &&
+      direct_scalar_rhs && direct_scalar_rhs->source_value_id != 0 &&
+      direct_scalar_rhs->scalar_type == spec.type &&
+      direct_scalar_rhs->owner.valid() &&
+      direct_scalar_rhs->owner.epoch == parent_->data_->epoch_ &&
+      direct_scalar_rhs->owner.slot < parent_->data_->link_names_.size() &&
+      parent_->data_->link_names_[direct_scalar_rhs->owner.slot].spelling ==
+          function_data.link_name_ &&
+      direct_scalar_rhs->parameter_index < function_data.parameters_.size() &&
+      function_data.parameters_[direct_scalar_rhs->parameter_index] == spec.rhs;
   const bool exact_sext_add = spec.opcode == BinaryOpcode::Add && spec.type == i64 &&
       lhs && rhs && lhs.value().get().type == i64 && rhs.value().get().type == i64;
   const bool exact_mul = spec.opcode == BinaryOpcode::Mul && spec.type == i32 &&
@@ -1735,6 +1747,7 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
        !exact_direct_scalar_fadd && !exact_direct_scalar_fsub &&
        !exact_direct_scalar_fmul && !exact_direct_scalar_rhs_add &&
        !exact_direct_scalar_rhs_fadd &&
+       !exact_direct_scalar_rhs_fsub &&
        !exact_direct_scalar_rhs_fmul) ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
@@ -1742,12 +1755,14 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       !exact_direct_scalar_fadd && !exact_direct_scalar_fsub &&
       !exact_direct_scalar_fmul && !exact_direct_scalar_rhs_add &&
       !exact_direct_scalar_rhs_fadd &&
+      !exact_direct_scalar_rhs_fsub &&
       !exact_direct_scalar_rhs_fmul && !lhs_def)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   if (!exact_direct_scalar_add && !exact_direct_scalar_fneg &&
       !exact_direct_scalar_fadd && !exact_direct_scalar_fsub &&
       !exact_direct_scalar_fmul && !exact_direct_scalar_rhs_add &&
       !exact_direct_scalar_rhs_fadd &&
+      !exact_direct_scalar_rhs_fsub &&
       !exact_direct_scalar_rhs_fmul && (!lhs_producer ||
       (exact_fadd && !std::holds_alternative<CallNode>(lhs_producer.value().get().payload)) ||
       (exact_fmul && [&] {

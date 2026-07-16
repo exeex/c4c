@@ -3952,8 +3952,25 @@ Result<void, ImportError> validate_function(const LirModule& module,
             selected_scalar_rhs_type->kind != TypeKind::Integer &&
             scalar_rhs_fmul_lhs && scalar_rhs_fmul_lhs_value != source_values.end() &&
             scalar_rhs_fmul_lhs_value->second == *selected_scalar_rhs_type;
+        const bool selected_scalar_rhs_fsub = scalar_rhs_authority &&
+            scalar_rhs_definition != function.native_body_parameter_definitions.end() &&
+            scalar_rhs_definition_count == 1 &&
+            scalar_rhs_authority->abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar &&
+            scalar_rhs_authority->role == codegen::lir::LirScalarBinaryParameterRole::Rhs &&
+            scalar_rhs_authority->owner == function.link_name_id &&
+            scalar_rhs_authority->parameter_index < function.signature_param_type_refs.size() &&
+            function.signature_param_type_refs[scalar_rhs_authority->parameter_index] ==
+                scalar_rhs_authority->type &&
+            bin->rhs.value_id() && *bin->rhs.value_id() == scalar_rhs_authority->value &&
+            bin->type_str == scalar_rhs_authority->type &&
+            bin->opcode.typed() == std::optional{codegen::lir::LirBinaryOpcode::FSub} &&
+            selected_scalar_rhs_type && is_local_scalar_load_type(*selected_scalar_rhs_type) &&
+            selected_scalar_rhs_type->kind != TypeKind::Integer &&
+            scalar_rhs_fmul_lhs && scalar_rhs_fmul_lhs_value != source_values.end() &&
+            scalar_rhs_fmul_lhs_value->second == *selected_scalar_rhs_type;
         const bool selected_scalar_rhs =
-            selected_scalar_rhs_add || selected_scalar_rhs_fadd || selected_scalar_rhs_fmul;
+            selected_scalar_rhs_add || selected_scalar_rhs_fadd ||
+            selected_scalar_rhs_fsub || selected_scalar_rhs_fmul;
         if (scalar_authority && (!selected_scalar_lhs || ++selected_scalar_body_parameter_lhs_count != 1))
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
                             "direct scalar body-parameter binary requires the one exact typed LHS authority row");
@@ -3982,7 +3999,10 @@ Result<void, ImportError> validate_function(const LirModule& module,
         const bool direct_scalar_lhs_fadd = selected_scalar_lhs_fadd;
         const bool direct_scalar_lhs_fsub = selected_scalar_lhs_fsub;
         const bool direct_scalar_lhs_fmul = selected_scalar_lhs_fmul;
-        const bool add = selected_scalar_lhs_add || selected_scalar_rhs || exact_normalized_i32_add(
+        const bool direct_scalar_rhs_fadd = selected_scalar_rhs_fadd;
+        const bool direct_scalar_rhs_fsub = selected_scalar_rhs_fsub;
+        const bool direct_scalar_rhs_fmul = selected_scalar_rhs_fmul;
+        const bool add = selected_scalar_lhs_add || selected_scalar_rhs_add || exact_normalized_i32_add(
             *bin, source_values, selected_global_i32_load_results) ||
             exact_native_i32_cttz_add(
                 *bin, source_values, native_i32_cttz_results) ||
@@ -4021,11 +4041,14 @@ Result<void, ImportError> validate_function(const LirModule& module,
             : direct_scalar_lhs_fadd ? *selected_scalar_lhs_type
             : direct_scalar_lhs_fsub ? *selected_scalar_lhs_type
             : direct_scalar_lhs_fmul ? *selected_scalar_lhs_fmul_type
+            : direct_scalar_rhs_fadd ? *selected_scalar_rhs_type
+            : direct_scalar_rhs_fsub ? *selected_scalar_rhs_type
+            : direct_scalar_rhs_fmul ? *selected_scalar_rhs_type
             : (fadd || fmul || fpext_fmul || sitofp_fmul || uitofp_fmul) ? Type{TypeKind::F64, 64, "double"}
             : float_fmul ? Type{TypeKind::F32, 32, "float"}
             : (sext_add || (ffs_add && bin->type_str.integer_bit_width() == 64)) ? Type{TypeKind::Integer, 64, "i64"}
                        : Type{TypeKind::Integer, 32, "i32"};
-        if ((!fneg && !direct_scalar_lhs_fadd && !direct_scalar_lhs_fsub && !direct_scalar_lhs_fmul && !fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !wide_ffs_trunc_add && !float_fmul && !add && !ctz_direct_add && !ctz_trunc_add && !clz_direct_add && !clz_trunc_add && !ctpop_direct_add && !ctpop_trunc_add && !mul && !sext_add && !ffs_add) ||
+        if ((!fneg && !direct_scalar_lhs_fadd && !direct_scalar_lhs_fsub && !direct_scalar_lhs_fmul && !direct_scalar_rhs_fadd && !direct_scalar_rhs_fsub && !direct_scalar_rhs_fmul && !fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !wide_ffs_trunc_add && !float_fmul && !add && !ctz_direct_add && !ctz_trunc_add && !clz_direct_add && !clz_trunc_add && !ctpop_direct_add && !ctpop_trunc_add && !mul && !sext_add && !ffs_add) ||
             !source_values.emplace(bin->result.value_id()->value, result_type).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
@@ -6042,6 +6065,9 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 const bool direct_scalar_rhs_fadd = scalar_rhs_authority &&
                     bin->opcode.typed() ==
                     std::optional{codegen::lir::LirBinaryOpcode::FAdd};
+                const bool direct_scalar_rhs_fsub = scalar_rhs_authority &&
+                    bin->opcode.typed() ==
+                    std::optional{codegen::lir::LirBinaryOpcode::FSub};
                 const bool float_fmul = bin->opcode.typed() ==
                     std::optional{codegen::lir::LirBinaryOpcode::FMul} &&
                     scalar_fptrunc_results.count(bin->lhs.value_id()->value) == 1;
@@ -6083,12 +6109,13 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 const bool sext_add = add && lhs_id && scalar_sext_results.count(lhs_id->value) == 1;
                 const auto lhs = bin->lhs.value_id()
                     ? source_values.find(bin->lhs.value_id()->value) : source_values.end();
-                if (((!scalar_rhs_authority || direct_scalar_rhs_fadd || direct_scalar_rhs_fmul) &&
+                if (((!scalar_rhs_authority || direct_scalar_rhs_fadd ||
+                      direct_scalar_rhs_fsub || direct_scalar_rhs_fmul) &&
                      lhs == source_values.end()) ||
                     (fadd && !direct_scalar_lhs_fadd && !direct_scalar_rhs_fadd &&
                      native_floating_call_results.count(
                         bin->lhs.value_id()->value) == 0) ||
-                    (!fneg && !direct_scalar_lhs_fadd && !direct_scalar_lhs_fsub && !direct_scalar_lhs_fmul && !direct_scalar_rhs_fadd && !direct_scalar_rhs_fmul && !fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !wide_ffs_trunc_add && !float_fmul && !sext_add && !abs_add && !cttz_add && !ctz_trunc_add && !clz_direct_add && !clz_trunc_add && !ctpop_direct_add && !add && normalized_i32_add_results.count(
+                    (!fneg && !direct_scalar_lhs_fadd && !direct_scalar_lhs_fsub && !direct_scalar_lhs_fmul && !direct_scalar_rhs_fadd && !direct_scalar_rhs_fsub && !direct_scalar_rhs_fmul && !fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !wide_ffs_trunc_add && !float_fmul && !sext_add && !abs_add && !cttz_add && !ctz_trunc_add && !clz_direct_add && !clz_trunc_add && !ctpop_direct_add && !add && normalized_i32_add_results.count(
                         bin->lhs.value_id()->value) == 0)) {
                   edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
                                            name, block.label,
@@ -6132,7 +6159,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   rhs_value = reserved.value();
                 }
                 ValueId lhs_value{};
-                if (scalar_rhs_authority && !direct_scalar_rhs_fadd && !direct_scalar_rhs_fmul) {
+                if (scalar_rhs_authority && !direct_scalar_rhs_fadd &&
+                    !direct_scalar_rhs_fsub && !direct_scalar_rhs_fmul) {
                   auto reserved = function_builder.reserve_value(Type{TypeKind::Integer, 32, "i32"});
                   if (!reserved || !function_builder.define_int_constant(reserved.value(), 1)) {
                     edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction, name,
@@ -6174,7 +6202,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   const auto scalar_type = lower_lir_type(module, scalar_rhs_authority->type);
                   direct_scalar_rhs = DirectScalarBodyParameterBinaryRhs{
                       scalar_rhs_authority->value.value, scalar_rhs_authority->parameter_index,
-                      (direct_scalar_rhs_fadd || direct_scalar_rhs_fmul) ? *scalar_type : Type{TypeKind::Integer, 32, "i32"},
+                      (direct_scalar_rhs_fadd || direct_scalar_rhs_fsub ||
+                       direct_scalar_rhs_fmul) ? *scalar_type : Type{TypeKind::Integer, 32, "i32"},
                       owner->second};
                 }
                 auto appended = function_builder.append(
@@ -6184,6 +6213,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                     : direct_scalar_lhs_fsub ? BinaryOpcode::FSub
                                     : direct_scalar_lhs_fmul ? BinaryOpcode::FMul
                                     : direct_scalar_rhs_fadd ? BinaryOpcode::FAdd
+                                    : direct_scalar_rhs_fsub ? BinaryOpcode::FSub
                                     : direct_scalar_rhs_fmul ? BinaryOpcode::FMul
                                     : (fmul || fpext_fmul || sitofp_fmul || uitofp_fmul || float_fmul) ? BinaryOpcode::FMul
                                     : add ? BinaryOpcode::Add : BinaryOpcode::Mul,
@@ -6191,6 +6221,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                     : direct_scalar_lhs_fadd ? direct_scalar_lhs->scalar_type
                                     : direct_scalar_lhs_fsub ? direct_scalar_lhs->scalar_type
                                     : direct_scalar_rhs_fadd ? direct_scalar_rhs->scalar_type
+                                    : direct_scalar_rhs_fsub ? direct_scalar_rhs->scalar_type
                                     : fadd ? Type{TypeKind::F64, 64, "double"}
                                     : direct_scalar_lhs_fmul ? direct_scalar_lhs->scalar_type
                                     : direct_scalar_rhs_fmul ? direct_scalar_rhs->scalar_type
