@@ -215,6 +215,8 @@ struct CallSpec {
   std::optional<std::uint32_t> source_result_id;
   std::optional<DirectScalarBodyParameterFixedDirectCallArgument>
       direct_scalar_argument;
+  std::optional<DirectZeroArgScalarFloatingCallResult>
+      direct_zero_arg_scalar_floating_result;
 };
 
 struct BinarySpec {

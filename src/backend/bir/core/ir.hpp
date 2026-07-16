@@ -305,10 +305,28 @@ struct DirectScalarBodyParameterFixedDirectCallArgument {
   LinkNameId owner{};
 };
 
+enum class DirectZeroArgScalarFloatingCallRole : std::uint8_t {
+  Invalid,
+  ResultIntoFloatingBinaryLhs,
+};
+
+// Receipt of one producer-authorized direct zero-argument scalar floating call
+// result consumed as the LHS of a downstream floating binary operation.
+struct DirectZeroArgScalarFloatingCallResult {
+  std::uint32_t source_result_id = 0;
+  LinkNameId owner{};
+  LinkNameId callee{};
+  Type return_type{TypeKind::Void};
+  DirectZeroArgScalarFloatingCallRole role =
+      DirectZeroArgScalarFloatingCallRole::Invalid;
+};
+
 struct CallNode {
   FunctionId callee{};
   std::optional<DirectScalarBodyParameterFixedDirectCallArgument>
       direct_scalar_argument;
+  std::optional<DirectZeroArgScalarFloatingCallResult>
+      direct_zero_arg_scalar_floating_result;
 };
 
 enum class BinaryOpcode : std::uint8_t { FAdd, FSub, FMul, FNeg, Add, Mul };

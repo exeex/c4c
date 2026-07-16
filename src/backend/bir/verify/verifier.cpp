@@ -1119,10 +1119,42 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
              direct_scalar->scalar_type ==
                  callee.value().get().signature_
                      .parameter_types[direct_scalar->argument_index]);
-        if (!exact_arguments || !exact_result || !exact_direct_scalar)
+        const auto* direct_floating =
+            call->direct_zero_arg_scalar_floating_result
+                ? &*call->direct_zero_arg_scalar_floating_result
+                : nullptr;
+        const bool exact_direct_floating = !direct_floating ||
+            (exact_signature && instruction.operands.empty() &&
+             instruction.results.size() == 1 &&
+             floating_type(callee.value().get().signature_.return_type) &&
+             direct_floating->source_result_id != 0 &&
+             direct_floating->owner.valid() &&
+             direct_floating->owner.epoch == module.epoch_ &&
+             direct_floating->owner.slot < module.link_names_.size() &&
+             module.link_names_[direct_floating->owner.slot].spelling ==
+                 function.link_name_ &&
+             direct_floating->callee.valid() &&
+             direct_floating->callee.epoch == module.epoch_ &&
+             direct_floating->callee.slot < module.link_names_.size() &&
+             module.link_names_[direct_floating->callee.slot].spelling ==
+                 callee.value().get().link_name_ &&
+             direct_floating->return_type ==
+                 callee.value().get().signature_.return_type &&
+             direct_floating->role ==
+                 DirectZeroArgScalarFloatingCallRole::
+                     ResultIntoFloatingBinaryLhs &&
+             [&] {
+               const auto value =
+                   function.values_.get(function_id, instruction.results[0]);
+               return value && value.value().get().source_id &&
+                      value.value().get().source_id->value ==
+                          direct_floating->source_result_id;
+             }());
+        if (!exact_arguments || !exact_result || !exact_direct_scalar ||
+            !exact_direct_floating)
           report(result, VerificationRule::ValueDefinition, function_id,
                  inst_id,
-                 "call must target one module-owned nonvariadic function with exact ordered operands, result arity, and retained direct-scalar argument authority");
+                 "call must target one module-owned nonvariadic function with exact ordered operands, result arity, and retained direct-scalar/direct-floating authority");
       }
       if (const auto* binary = std::get_if<BinaryNode>(&instruction.payload)) {
         const Type f64{TypeKind::F64, 64, "double"};

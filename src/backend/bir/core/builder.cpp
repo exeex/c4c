@@ -1501,13 +1501,37 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
         authority.scalar_type != signature.parameter_types[authority.argument_index])
       return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   }
+  if (spec.direct_zero_arg_scalar_floating_result) {
+    const auto& authority = *spec.direct_zero_arg_scalar_floating_result;
+    if (!spec.source_result_id ||
+        authority.source_result_id != *spec.source_result_id ||
+        authority.source_result_id == 0 || !spec.arguments.empty() ||
+        !floating_type(signature.return_type) ||
+        authority.return_type != signature.return_type ||
+        authority.role != DirectZeroArgScalarFloatingCallRole::
+                              ResultIntoFloatingBinaryLhs ||
+        !authority.owner.valid() ||
+        authority.owner.epoch != parent_->data_->epoch_ ||
+        authority.owner.slot >= parent_->data_->link_names_.size() ||
+        parent_->data_->link_names_[authority.owner.slot].spelling !=
+            function_data.link_name_ ||
+        !authority.callee.valid() ||
+        authority.callee.epoch != parent_->data_->epoch_ ||
+        authority.callee.slot >= parent_->data_->link_names_.size() ||
+        parent_->data_->link_names_[authority.callee.slot].spelling !=
+            callee.value().get().link_name_)
+      return Result<BuildResult, BuildError>::failure(
+          BuildError::UnsupportedOpcode);
+  }
   if (spec.source_result_id &&
       function_data.values_by_source_id_.count(*spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::DuplicateSourceValue);
 
   detail::InstData instruction;
   instruction.opcode = Opcode::Call;
-  instruction.payload = CallNode{spec.callee, spec.direct_scalar_argument};
+  instruction.payload =
+      CallNode{spec.callee, spec.direct_scalar_argument,
+               spec.direct_zero_arg_scalar_floating_result};
   instruction.operands = std::move(spec.arguments);
   auto inserted =
       function_data.insts_.emplace(function_, std::move(instruction));

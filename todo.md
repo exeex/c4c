@@ -8,27 +8,26 @@ Current Step Title: Receive the one 863-authorized direct floating call-result a
 
 ## Just Finished
 
-Reactivated 734 after closed 863 completed the producer-side direct
-zero-argument scalar floating call-result authority handoff. Accepted 734
-Steps 1 through 7.49 remain historical progress and must not be repeated.
+Completed `plan.md` Step 7.50 receiver work: typed Raw BIR now receives the
+closed-863 direct zero-argument scalar floating call-result authority row,
+retains the result/owner/callee/return-type/role tuple, and requires the exact
+downstream floating binary LHS consumer before publication.
 
 ## Suggested Next
 
-Execute `plan.md` Step 7.50 only: receive the closed-863 direct
-zero-argument scalar floating `LirCallOp` result authority consumed as a
-downstream floating binary LHS into typed Raw BIR, preserving the handed-off
-result/owner/callee/return-type/role tuple and consumer coherence.
+Supervisor should review and decide the next 734 packet; Step 7.50 is locally
+complete and proved with the delegated focused backend interface test.
 
 ## Watchouts
 
-Do not edit LIR producer authority, repeat Step 7.49, receive another
-call-result or parameter-use row, recover authority from presentation text, or
-absorb memory/VA, aggregate/vector, module/type/global/metadata, CFG/PHI,
-residual instruction/terminator, inline-assembly, ABI-expanded or aggregate
-parameters, generic residual sweeps, or any other family.
+Producer-side LIR authority was not edited. `builder.hpp` carries the required
+`CallSpec` field for the new Raw-BIR call authority even though the delegated
+owned list omitted that header; it was already part of the in-progress local
+surface before this packet.
 
 ## Proof
 
-No proof has run for Step 7.50 yet. Expected proof starts with a fresh build,
-focused backend LIR-to-BIR receiver test, `git diff --check`, and broader
-backend proof if shared importer or verifier code is touched.
+Ran exactly:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$'; } > test_after.log 2>&1`
+
+Result: passed. Proof log: `test_after.log`.

@@ -10609,6 +10609,13 @@ void attach_direct_native_floating_function_signature_ref(
 lir::LirModule downstream_double_fadd_module() {
   auto module = direct_native_floating_call_module();
   auto& block = module.functions[0].blocks[0];
+  auto& call = std::get<lir::LirCallOp>(block.insts[0]);
+  call.direct_zero_arg_scalar_floating_call_authority =
+      lir::LirDirectZeroArgScalarFloatingCallAuthority{
+          lir::LirValueId{9}, module.functions[0].link_name_id,
+          call.direct_callee_link_name_id, lir::LirTypeRef("double"),
+          lir::LirDirectZeroArgScalarFloatingCallRole::
+              ResultIntoFloatingBinaryLhs};
   block.insts.push_back(lir::LirConstFloat{
       lir::LirValueId{10}, scalar_type(c4c::TB_DOUBLE), 1.25});
   block.insts.push_back(lir::LirBinOp{
@@ -10637,6 +10644,19 @@ void test_downstream_double_fadd_receipt_and_rejections() {
     const auto fmul = caller.instruction(insts[2]).value();
     const auto result = caller.value(fadd.results()[0]).value();
     expect(call.opcode() == bir::Opcode::Call && call.results().size() == 1 &&
+               call.call() &&
+               call.call()->direct_zero_arg_scalar_floating_result &&
+               call.call()
+                       ->direct_zero_arg_scalar_floating_result->source_result_id ==
+                   9 &&
+               call.call()->direct_zero_arg_scalar_floating_result->owner.valid() &&
+               call.call()->direct_zero_arg_scalar_floating_result->callee.valid() &&
+               call.call()
+                       ->direct_zero_arg_scalar_floating_result->return_type ==
+                   bir::Type{bir::TypeKind::F64, 64, "double"} &&
+               call.call()->direct_zero_arg_scalar_floating_result->role ==
+                   bir::DirectZeroArgScalarFloatingCallRole::
+                       ResultIntoFloatingBinaryLhs &&
                fadd.opcode() == bir::Opcode::Binary && fadd.binary() &&
                fadd.binary()->opcode == bir::BinaryOpcode::FAdd &&
                fadd.binary()->type == bir::Type{bir::TypeKind::F64, 64, "double"} &&
@@ -10660,8 +10680,16 @@ void test_downstream_double_fadd_receipt_and_rejections() {
 
   const auto module = downstream_double_fadd_module();
   const auto raw = bir::lower_lir_to_raw_bir(module);
-  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
-         "downstream double FAdd must publish verified Raw BIR");
+  const auto verified = raw.has_value()
+      ? bir::FoundationVerifier::verify(raw.value())
+      : bir::VerificationResult{};
+  expect(raw.has_value() && verified.ok(),
+         "downstream double FAdd must publish verified Raw BIR: " +
+             (raw.has_value() ? (verified.errors.empty() ? "foundation verifier rejected it"
+                                                         : verified.errors[0].message)
+                              : (!raw.error().verification_errors.empty()
+                                     ? raw.error().verification_errors[0].message
+                                     : raw.error().detail)));
   inspect(raw.value(), "Raw BIR");
   const auto canonical = bir::lower_lir_to_canonical_bir(module);
   expect(canonical.has_value(), "downstream double FAdd must canonicalize");
@@ -10681,6 +10709,45 @@ void test_downstream_double_fadd_receipt_and_rejections() {
                bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
            message + " (Canonical rollback)");
   };
+  rejected([](auto& candidate, auto&, auto&) {
+             std::get<lir::LirCallOp>(
+                 candidate.functions[0].blocks[0].insts[0])
+                 .direct_zero_arg_scalar_floating_call_authority.reset();
+           }, "missing direct floating call-result authority must reject");
+  rejected([](auto& candidate, auto&, auto&) {
+             std::get<lir::LirCallOp>(
+                 candidate.functions[0].blocks[0].insts[0])
+                 .direct_zero_arg_scalar_floating_call_authority->result =
+                 lir::LirValueId{77};
+           }, "stale direct floating call-result authority must reject");
+  rejected([](auto& candidate, auto&, auto&) {
+             std::get<lir::LirCallOp>(
+                 candidate.functions[0].blocks[0].insts[0])
+                 .direct_zero_arg_scalar_floating_call_authority->owner =
+                 candidate.link_names.intern("foreign_direct_floating_owner");
+           }, "foreign direct floating call-result owner must reject");
+  rejected([](auto& candidate, auto&, auto&) {
+             std::get<lir::LirCallOp>(
+                 candidate.functions[0].blocks[0].insts[0])
+                 .direct_zero_arg_scalar_floating_call_authority->callee =
+                 candidate.functions[0].link_name_id;
+           }, "direct floating call-result callee mismatch must reject");
+  rejected([](auto& candidate, auto&, auto&) {
+             std::get<lir::LirCallOp>(
+                 candidate.functions[0].blocks[0].insts[0])
+                 .direct_zero_arg_scalar_floating_call_authority->return_type =
+                 lir::LirTypeRef("float");
+           }, "direct floating call-result type mismatch must reject");
+  rejected([](auto& candidate, auto&, auto&) {
+             std::get<lir::LirCallOp>(
+                 candidate.functions[0].blocks[0].insts[0])
+                 .direct_zero_arg_scalar_floating_call_authority->role =
+                 lir::LirDirectZeroArgScalarFloatingCallRole::Invalid;
+           }, "direct floating call-result role mismatch must reject");
+  rejected([](auto& candidate, auto&, auto&) {
+             candidate.functions[0].blocks[0].insts.push_back(
+                 candidate.functions[0].blocks[0].insts[0]);
+           }, "duplicate direct floating call-result authority must reject");
   rejected([](auto&, auto& fadd, auto&) {
              fadd.lhs = lir::LirOperand::ssa("%missing", lir::LirValueId{77});
            }, "missing accepted direct-call result must reject");
