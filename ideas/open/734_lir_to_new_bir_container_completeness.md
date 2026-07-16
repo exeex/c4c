@@ -2650,3 +2650,36 @@ owns the required classification of remaining first-owner families before the
 next producer or receiver implementation route is selected. After 866 closes,
 reactivate 734 only if it names an exact accepted handoff and matching Raw-BIR
 receiver return row; otherwise follow the successor ordering recorded by 866.
+
+## Resumption Record: selected direct-local va_start authority completion
+
+Closed idea 867 accepted exactly one memory/VA/object/lifetime producer
+handoff in `docs/lir_memory_va_object_lifetime_authority/handoff_to_734.md`.
+The selected row is direct-local `LirVaStartOp` destination `va_list` pointer
+authority carried by `LirVaStartOp.ap_authority` when
+`requires_native_memory_va_authority` is true.
+
+The handed-off native tuple is the source `ap_ptr.value_id()` plus the local
+pointer authority fields `pointer_definition`, `object`, `owner`,
+`pointer_type`, `pointee_type`, and `live`. The receiver must require
+`ap_ptr.value_id()` to equal `local_pointer.pointer_definition` and must keep
+`verify_native_memory_va_authority` as the LIR verifier boundary for selected
+and unselected `va_start` forms.
+
+Accepted focused proof for the producer handoff is
+`{ cmake --build build && ctest --test-dir build -R '^backend_lir_selected_pointer_authority$' --output-on-failure; } > test_after.log 2>&1`
+with a successful build/no-op build and 1/1 passing test. No Raw-BIR receiver
+work landed in 867.
+
+Exact return action: reactivate 734 at Step 7.52 for one bounded Raw-BIR
+receiver packet only: receive the selected direct-local `LirVaStartOp`
+destination `va_list` authority into the minimum typed Raw-BIR container,
+importer dispatch, reachable verifier path, and transactional
+positive/negative coverage. Reject missing or invalid `ap_authority`, invalid
+or mismatched `ap_ptr` value id, foreign owner, dead local object, pointer or
+pointee type mismatch, canonical local pointer disagreement, and authority
+fields on unselected `va_start`. Do not repeat Step 7.51, edit LIR producer
+authority, receive `va_end`, `va_copy`, `va_arg`, memcpy, memset, local-object
+or VLA rows, prepared-BIR helper-home publication, target backend lowering, or
+any row derived from operand spelling, printer output, LLVM text, intrinsic
+names, rendered names, or testcase identity.
