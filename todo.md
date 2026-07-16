@@ -8,22 +8,19 @@ Current Step Title: Delete semantic string escape hatches
 
 ## Just Finished
 
-Completed Step 3 packet to remove selected direct scalar floating-call
-classification's rendered-text dependency in
-`src/codegen/lir/hir_to_lir/call/target.cpp`.
+Completed Step 3 packet to delete the remaining implicit string conversion
+escape hatches from `LirBinaryOpcodeRef` and `LirCmpPredicateRef` in
+`src/codegen/lir/types.hpp`.
 
-Replaced the zero-arg route's direct `return_type.str() == "double"/"float"/
-"x86_fp80"/"fp128"` checks with a native `LirTypeRef` predicate using
-`kind()` and `builtin_type()`. Replaced the one-arg `double(double)` route's
-local `LirTypeRef("double")` semantic probes with a native double predicate for
-the return type and fixed parameter type. The route boundaries remain zero-arg
-native `float`/`double`/`x86_fp80`/`fp128` and one-arg exactly
-`double(double)`.
+Removed both `operator const std::string&()` and `operator std::string_view()`
+from each wrapper while preserving explicit `.str()`, `typed()`, equality,
+concatenation, and stream output helpers. The compile-enforced proof found no
+direct users needing repair.
 
 ## Suggested Next
 
-Supervisor should review and commit this Step 3 call-target helper slice if
-accepted, then continue with the next remaining Step 3 string escape hatch
+Supervisor should review and commit this Step 3 opcode/predicate wrapper slice
+if accepted, then continue with the next remaining Step 3 string escape hatch
 candidate. Do not widen the next packet into Step 4 adapter removal.
 
 ## Watchouts
@@ -34,6 +31,9 @@ candidate. Do not widen the next packet into Step 4 adapter removal.
   mutable text escape hatch.
 - Do not restore const `LirTypeRef` implicit text conversions; use `.str()` or
   typed/native access at direct users.
+- Do not restore implicit `std::string` or `std::string_view` conversions on
+  `LirBinaryOpcodeRef` or `LirCmpPredicateRef`; direct users should call
+  `.str()` or use `typed()` as appropriate.
 - Do not add a renamed generic runtime-text factory; remaining text-backed
   constructions should stay behind named compatibility factories or explicit
   constructors until their own packet deletes them.
@@ -64,6 +64,8 @@ candidate. Do not widen the next packet into Step 4 adapter removal.
   `return_type.str() == "double"/"float"/"x86_fp80"/"fp128"` selected direct
   scalar floating classification, and no remaining local `LirTypeRef("double")`
   selected-route probes.
+- `src/codegen/lir/operands.hpp` still has separate string conversions on
+  operand refs; that is outside this packet.
 
 ## Proof
 

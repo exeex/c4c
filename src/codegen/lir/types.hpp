@@ -546,9 +546,6 @@ class LirBinaryOpcodeRef {
   [[nodiscard]] const std::string& str() const { return text_; }
   [[nodiscard]] std::optional<LirBinaryOpcode> typed() const { return opcode_; }
 
-  operator const std::string&() const { return text_; }
-  operator std::string_view() const { return text_; }
-
   [[nodiscard]] friend bool operator==(const LirBinaryOpcodeRef& lhs,
                                        const std::string& rhs) {
     return lhs.text_ == rhs;
@@ -673,9 +670,6 @@ class LirCmpPredicateRef {
 
   [[nodiscard]] const std::string& str() const { return text_; }
   [[nodiscard]] std::optional<LirCmpPredicate> typed() const { return predicate_; }
-
-  operator const std::string&() const { return text_; }
-  operator std::string_view() const { return text_; }
 
   [[nodiscard]] friend bool operator==(const LirCmpPredicateRef& lhs,
                                        const std::string& rhs) {
