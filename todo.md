@@ -8,15 +8,17 @@ Current Step Title: Obtain Comparable Baseline Proof And Return 830
 
 ## Just Finished
 
-Activated the resumed 831 Step 4 comparable-baseline gate after closed 836
-intentionally concluded with no current residual aggregate-owner reproduction.
-Steps 1 through 3 remain accepted historical work.
+Completed resumed Step 4. The current full-suite comparable-baseline candidate
+passes 3038/3038 and was accepted by `scripts/plan_review_state.py
+accept-baseline` against the previous accepted 3038/3038 baseline. This clears
+831's baseline blocker and authorizes returning 830 to unchanged Step 3.
 
 ## Suggested Next
 
-Generate a current full-suite `test_baseline.new.log`, compare it with the
-accepted `test_baseline.log`, and decide whether 831 can return 830 to
-unchanged Step 3 or must classify a new current blocker.
+Send the exhausted 831 runbook to lifecycle close. Closure should record the
+accepted full-suite gate and return
+`ideas/open/830_lir_direct_call_structured_argument_identity_prerequisite.md`
+to unchanged Step 3, then its existing Step 4 and 829 Step 2 continuation.
 
 ## Watchouts
 
@@ -29,4 +31,17 @@ unchanged Step 3 or must classify a new current blocker.
 
 ## Proof
 
-No resumed 831 Step 4 baseline proof has run yet.
+Accepted current full-suite comparable baseline:
+
+`python3 - <<'PY'
+from pathlib import Path
+import scripts.plan_review_state as prs
+prs.refresh_test_baseline_candidate(Path('test_baseline.log'), '', '')
+PY`
+
+Then:
+
+`python3 scripts/plan_review_state.py accept-baseline`
+
+Result: `test_baseline.log` records 3038/3038 passed for full-suite scope at
+commit `4be820759`.
