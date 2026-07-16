@@ -1,35 +1,29 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/838_lir_canonical_module_owned_aggregate_ref_store_convergence.md
+Source Idea Path: ideas/open/848_hir_aggregate_occurrence_canonical_ref_population.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Preserve recursive aggregate facts and all aggregate forms
+Current Step ID: 1
+Current Step Title: Locate the HIR definition-to-occurrence producer seam
 
 ## Just Finished
 
-- Plan Step 2 declaration/store fact capture completed: `build_type_decls`
-  snapshots each registered aggregate's ordered structured LIR field types,
-  packed/opaque flags, and direct/byte-storage/union layout kind into its
-  canonical module-owned store entry before recording the declaration. Focused
-  lowering coverage proves a nested typed aggregate child, direct padding,
-  union byte storage, packed byte storage, and the existing repeated/missing/
-  incomplete/foreign fail-closed cases.
+- Lifecycle switch from 838 Step 2: its accepted declaration/store fact capture
+  and exact LIR return point are durable in the source idea.
 
 ## Suggested Next
 
-- Continue Step 2 with one bounded aggregate occurrence producer migration,
-  using the store's captured declaration facts without widening into consumer
-  migration.
+- Inspect the HIR aggregate definition-registration and function-signature
+  `QualType` construction seams; establish the direct canonical-ref producer
+  contract before code changes.
 
 ## Watchouts
 
-- Fact capture is declaration/store-only: downstream consumers and legacy
-  owner-key/tag occurrence adapters remain untouched. Do not recover refs or
-  fields from tags, parser pointers, rendered text, or owner keys.
+- This blocker owns HIR occurrence fact production only. Do not migrate LIR
+  lowering or recover aggregate identity from legacy owner keys, tags, text, or
+  parser pointers.
 
 ## Proof
 
-- Fresh `cmake --build --preset default` plus
-  `ctest --test-dir build -j --output-on-failure -R '^backend_'` passed 6/6;
-  `test_after.log` is the proof log.
+- Lifecycle slice: structural/linkage inspection only. Code-bearing packets
+  must select and record fresh focused proof before acceptance.

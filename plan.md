@@ -1,120 +1,101 @@
-# LIR Canonical Module-Owned Aggregate Ref/Store Convergence Runbook
+# HIR Aggregate Occurrence Canonical Ref Population Runbook
 
 Status: Active
-Source Idea: ideas/open/838_lir_canonical_module_owned_aggregate_ref_store_convergence.md
-Activated from: closure of 837 A1 architecture umbrella handoff
+Source Idea: ideas/open/848_hir_aggregate_occurrence_canonical_ref_population.md
+Supersedes: 838 Step 2 pending upstream HIR producer prerequisite
 
 ## Purpose
 
-Implement the first nominal-family owner: stable aggregate identity from HIR
-occurrences through a module-owned LIR aggregate store, without absorbing the
-parked 836 route or adjacent nominal-family migrations.
+Close the upstream HIR producer gap that leaves aggregate occurrence
+`QualType::aggregate_ref` unset, so 838 can later enforce canonical LIR
+aggregate identity without fallback recovery.
 
 ## Goal
 
-Make aggregate-bearing occurrences use a stable canonical HIR aggregate
-reference and intern it exactly once into the owning LIR module's aggregate
-store.
+Attach definition-backed canonical `HirAggregateRef` values to supported
+aggregate `QualType` occurrences, beginning with function returns and
+parameters, and prove invalid/foreign/missing boundaries explicitly.
 
 ## Core Rule
 
-Aggregate identity comes from canonical HIR facts, never tags, parser pointers,
-rendered text, or reconstructed lookup keys. Preserve the three 836 failure
-groups as distinct evidence; do not complete 836 or change its 831 Step 4 return.
+Canonical occurrence identity must flow from registered HIR definitions. Do not
+reconstruct it from owner keys, tags, rendered text, parser pointers, or
+downstream LIR state.
 
 ## Read First
 
+- `ideas/open/848_hir_aggregate_occurrence_canonical_ref_population.md`
 - `ideas/open/838_lir_canonical_module_owned_aggregate_ref_store_convergence.md`
-- `docs/lir_nominal_type_family_architecture/current_lir_type_ref_responsibility_matrix.md`
-- `docs/lir_nominal_type_family_architecture/nominal_family_boundary_decisions.md`
-- `docs/lir_nominal_type_family_architecture/dependency_ordering.md`
-- `docs/lir_nominal_type_family_architecture/closure_trace.md`
-- `ideas/open/836_lir_remaining_aggregate_owner_rejection_decomposition_blocker.md`
-- `ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md`
+- HIR aggregate-definition registration and `QualType` construction seams
+- existing aggregate function-signature lowering coverage
 
 ## Scope
 
-- M4--M6: canonical aggregate identity, aggregate store facts, and bounded
-  aggregate-bearing lowering/consumer convergence.
-- `HirAggregateRef { ModuleId, HirAggregateId }` or a proven equivalent,
-  `LirAggregateRef`, and module/lowering-session mapping lifetime.
-- Named, anonymous, local, template, and typedef/alias aggregate forms;
-  ordered fields, layout, projections, and recursive typed children.
+- HIR aggregate occurrence production, definition linkage, and boundary
+  diagnostics/behavior needed to populate `QualType::aggregate_ref`.
+- Function return and parameter occurrences first; only adjacent occurrence
+  construction required to keep the producer contract coherent.
 
 ## Non-Goals
 
-- Do not close/resume 836 or 831, alter their return, or merge the incomplete,
-  unmatched-owner, and no-owner-compatibility groups.
-- Do not migrate function, vector, scalar, unions, generic verifier/printer,
-  collectors, globals, or universal-model deletion work.
-- Do not use runtime text, tags, parser pointers, reconstructed owner keys,
-  RTTI, universal-ID facades, or testcase-shaped exceptions.
+- Do not migrate `lir_owned_type_spec`, LIR aggregate store consumers,
+  verifiers/printers, or 838 Step 2's LIR producer work.
+- Do not add any legacy identity fallback or absorb 836/831 work.
 
 ## Execution Rules
 
-- Keep each packet buildable and record packet evidence in `todo.md`.
-- Register canonical definitions before occurrence lowering; unknown,
-  incomplete, stale, foreign, and wrong-module refs fail closed.
-- Preserve accepted 754/798/801/803 behavior. Delete legacy `record_def`,
-  owner-key, tag/text lookup, and duplicate metadata only after every named
-  declaration, field, call, verifier, printer, and receiver consumer migrates.
+- Keep a definition-backed module/id ref as the sole canonical authority.
+- Treat missing, invalid, and foreign refs as explicit fail-closed cases.
+- Keep packets narrow; build and run focused proof after each code-bearing
+  packet, with a proportional backend checkpoint before handoff.
 
 ## Ordered Steps
 
-### Step 1 - Establish the canonical aggregate identity and store seam
+### Step 1 - Locate the HIR definition-to-occurrence producer seam
 
-Goal: identify the current HIR canonical owner/index and introduce the smallest
-stable HIR-to-LIR aggregate ref/store contract.
-
-Actions:
-
-- Inspect aggregate definitions, occurrence lowering, owner keys, and module
-  ownership boundaries.
-- Add stable carrier and module-owned LIR aggregate store/ref with explicit
-  registration and mapping lifetime.
-- Prove repeated occurrences intern once without tag/text/key reconstruction.
-
-Completion check: fresh build plus focused lowering proof demonstrates one
-canonical definition-to-store mapping and explicit unknown/incomplete rejection.
-
-### Step 2 - Preserve recursive aggregate facts and all aggregate forms
-
-Goal: migrate kind, fields, layout, projections, and recursive children without
-flattening semantic structure.
+Goal: identify where aggregate definitions receive stable IDs and where
+aggregate `QualType` occurrences are created for function signatures.
 
 Actions:
 
-- Cover named, anonymous, local, template, and typedef/alias occurrences and
-  registration-before-use ordering.
-- Retain legitimate no-owner rendered compatibility only at its named consumer.
+- Trace registration, module association, and all relevant return/parameter
+  construction paths.
+- Specify the direct definition-backed source for `HirAggregateRef` and the
+  exact missing/invalid/foreign boundary behavior.
+- Add only diagnostic or focused coverage scaffolding needed to demonstrate the
+  current producer contract.
 
-Completion check: focused lowering, verifier, and printer coverage proves nested
-and repeated aggregate parity without competing operation-local authority.
+Completion check: the implementation seam and fail-closed contract are explicit
+without changing LIR lowering or using legacy recovery.
 
-### Step 3 - Enforce module ownership and migrate bounded consumers
+### Step 2 - Populate canonical refs for aggregate function signatures
 
-Goal: make justified consumers use canonical store facts and fail closed.
-
-Actions:
-
-- Migrate bounded declaration, field, call, verifier, printer, and receiver
-  consumers justified by the store seam.
-- Prove foreign, wrong-module, stale, and malformed rejection; retain only
-  named adapters with explicit deletion gates.
-
-Completion check: fresh build plus focused valid/invalid proof preserves
-754/798/801/803 seams and rejects cross-module/foreign refs.
-
-### Step 4 - Assess bounded convergence and hand off remaining work
-
-Goal: verify A1's contract and document exact remaining deletion gates.
+Goal: make supported aggregate function return and parameter occurrences carry
+the registered definition's canonical ref.
 
 Actions:
 
-- Confirm every introduced carrier has one owner and no text/key/tag recovery.
-- Run selected focused proof and the proportional shared-surface checkpoint.
-- Record remaining adapters without absorbing 836, later successors, 812/813,
-  or 797.
+- Attach the stable module/id ref at HIR construction from the registered
+  aggregate definition.
+- Preserve legitimate supported aggregate forms within the producer's scope.
+- Add nearby coverage that observes propagation through both return and
+  parameter occurrences.
 
-Completion check: source acceptance has supervisor-accepted proof or this route
-returns to plan-owner with exact unmet criteria.
+Completion check: focused tests show definition-backed canonical refs on both
+signature occurrence positions; a fresh build passes.
+
+### Step 3 - Prove boundary behavior and hand off to 838
+
+Goal: demonstrate that invalid producer inputs fail closed and record the exact
+downstream return.
+
+Actions:
+
+- Cover missing, invalid, and foreign/module-mismatched refs at the producer
+  boundary without fallback reconstruction.
+- Run the focused HIR/lowering proof and proportional backend checkpoint.
+- Record accepted evidence and state that 838 resumes only at its Step 2
+  `lir_owned_type_spec` function-signature occurrence-producer migration.
+
+Completion check: supervisor-accepted proof supports the 838 handoff and no
+LIR migration was absorbed.
