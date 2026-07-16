@@ -1,6 +1,6 @@
 # LIR Direct-Call Structured Argument Identity Prerequisite
 
-Status: Open
+Status: Closed
 Type: bounded native LIR construction/schema/verifier prerequisite
 Blocked Parent: `ideas/open/829_lir_next_body_parameter_authority_handoff.md`
 
@@ -98,3 +98,29 @@ Status: parked by lifecycle switch to
   at unchanged Step 3 solely to accept that gate. Then execute existing Step
   4 focused completion and return to 829 Step 2. Do not make an 830 code
   change while this blocker route is active.
+
+## Closure Disposition
+
+Closed as capability-complete for the bounded direct-call argument-1
+structured identity/type prerequisite. Steps 1 and 2 selected and implemented
+exactly one relation: argument 1 of a valid direct, non-variadic, specified
+two-parameter call carries native structured identity/type data produced at
+the LIR construction seam and checked by native verification. The accepted
+implementation is `f0fc85e4f` (`Preserve direct-call argument identity`).
+
+The Step 3 baseline blocker is cleared by closed 831: the current full-suite
+comparable baseline passed 3038/3038 and was accepted in `test_baseline.log`
+at commit `4be820759`. Step 4 focused completion proof passed:
+
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$' ) > test_after.log 2>&1 && git diff --check`
+
+Result: 1/1 tests passed and `git diff --check` passed.
+
+Return action: reactivate
+`ideas/open/829_lir_next_body_parameter_authority_handoff.md` at Step 2.
+The produced relation is sufficient for 829 to independently validate whether
+its existing current-function parameter-definition value/owner/index/type/ABI
+tuple can be published for the selected direct-call argument-1 consumer. This
+closure does not publish `FixedDirectCallArgument1` authority, body-parameter
+authority, Raw-BIR receipt, generic call arguments, other indices, or
+parser/presentation-derived identity.
