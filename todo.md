@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/846_lir_family_overloaded_verifier_dispatch_printer.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add The Bounded Family Overload
+Current Step ID: 5
+Current Step Title: Decide Next 846 Packet Or 847 Handoff
 
 # Current Packet
 
@@ -27,21 +27,26 @@ Required overload: a scalar integer/integer type-family type-ref requirement
 for `LirAbsOp.int_type`, using native semantic family authority and ownership
 checks rather than display-text parsing or rendered-printer output.
 
+Started the Step 2/Step 3 implementation packet locally after a stalled
+executor delegation. The code scope remains limited to the selected
+`LirAbsOp.int_type` verifier/printer consumer.
+
+Completed the selected `LirAbsOp.int_type` packet:
+
+- Added `render_integer_type_ref`, a bounded integer-family helper that checks
+  native `LirTypeRef` kind/width authority and renders from structured width
+  instead of reclassifying display text.
+- Migrated only the `LirAbsOp.int_type` verifier and printer callsites to the
+  bounded helper.
+- Added focused stale-display coverage proving scalar abs verification and
+  printing use native integer width authority, not mutable display text.
+
 ## Suggested Next
 
-Execute `plan.md` Step 2 for the selected `LirAbsOp.int_type` surface: add the
-bounded scalar integer type-ref requirement needed by the verifier/printer path,
-then prepare Step 3 to migrate only the selected `LirAbsOp.int_type` generic
-callsites.
-
-Expected code-changing proof candidates:
-- Fresh build for the touched LIR verifier/printer code.
-- Focused frontend same-feature coverage in
-  `tests/frontend/frontend_lir_call_type_ref_test.cpp` around scalar abs
-  authority.
-- Backend BIR abs receipt/rejection tests that prove valid receipt and
-  malformed/wrong-family rejection for abs authority.
-- `git diff --check`.
+Execute `plan.md` Step 5: inventory remaining universal classifier, renderer,
+mutable semantic string, and implicit conversion callers. Classify the next
+exact 846-owned consumer or record the handoff/blocker decision if no 846
+consumer is ready.
 
 ## Watchouts
 
@@ -52,14 +57,20 @@ Raw-BIR receipt, 734 receiver repair, or 797 convergence.
 
 Non-goals for the next packet: no broad verifier/printer rewrite, no generic
 helper deletion unless no semantic callers remain, no dispatch migration beyond
-the selected abs integer type-ref surface, no producer/carrier repair, and no
-expectation downgrade or testcase-shaped special case.
+one selected surface, no producer/carrier repair, and no expectation downgrade
+or testcase-shaped special case.
 
 ## Proof
 
 Step 1 proof is source trace and lifecycle state only. Planning-file check:
 `git diff --check`.
 
-Code-changing Step 2 through Step 4 packets need a fresh build, focused
-same-feature abs authority tests, backend BIR abs receipt/rejection coverage,
-and broader proof if shared verifier or printer infrastructure changes.
+Completed Step 2 through Step 4 proof:
+
+- `cmake --build build`
+- `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
+- `ctest --test-dir build -R '^backend_lir_to_bir_interface$' --output-on-failure`
+- `git diff --check`
+
+Step 5 is a trace/lifecycle decision unless it selects and records another
+bounded implementation packet.

@@ -9333,6 +9333,16 @@ long long lir_scalar_llabs_immediate_authority(void) {
       conflicting_type,
       "verifier should reject noninteger type on authoritative scalar abs");
 
+  lir::LirModule stale_display_type = lowered;
+  require_focused_abs(stale_display_type).first.int_type.str() = "double";
+  lir::verify_module(stale_display_type);
+  const std::string stale_display_ir = lir::print_llvm(stale_display_type);
+  expect_true(stale_display_ir.find("@llvm.abs.i32(i32 ") != std::string::npos,
+              "scalar abs printer should render integer type from native width authority");
+  expect_true(stale_display_ir.find("@llvm.abs.double(double ") ==
+                  std::string::npos,
+              "scalar abs printer must not recover type semantics from stale display text");
+
   lir::LirModule missing_argument = lowered;
   require_focused_abs(missing_argument).first.arg = lir::LirOperand{};
   expect_identity_verification_rejected(

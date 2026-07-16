@@ -2011,7 +2011,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
   if (const auto* op = std::get_if<LirAbsOp>(&inst)) {
     verify_result_operand(op->result, "LirAbsOp.result");
     verify_value_operand(op->arg, "LirAbsOp.arg");
-    require_module_type_ref(mod, op->int_type, "LirAbsOp.int_type");
+    (void)render_integer_type_ref(op->int_type, "LirAbsOp.int_type");
     verify_abs_op_authority(*op);
     return;
   }
@@ -5356,6 +5356,19 @@ const std::string& require_type_ref(const LirTypeRef& type,
     fail_verify(field, "void is not valid here");
   }
   return type.str();
+}
+
+std::string render_integer_type_ref(const LirTypeRef& type,
+                                    std::string_view field) {
+  if (type.empty()) fail_verify(field, "must not be empty");
+  if (type.kind() != LirTypeKind::Integer) {
+    fail_verify(field, "requires integer type authority");
+  }
+  const std::optional<unsigned> width = type.integer_bit_width();
+  if (!width.has_value()) {
+    fail_verify(field, "integer type authority requires a bit width");
+  }
+  return "i" + std::to_string(*width);
 }
 
 std::string_view render_binary_opcode(const LirBinaryOpcodeRef& opcode,

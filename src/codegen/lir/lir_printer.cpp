@@ -410,7 +410,8 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
     const auto& result =
         require_operand_kind(op->result, "LirAbsOp.result",
                              {LirOperandKind::SsaValue});
-    const auto& type = require_type_ref(op->int_type, "LirAbsOp.int_type");
+    const auto type = render_integer_type_ref(op->int_type,
+                                              "LirAbsOp.int_type");
     os << "  " << result << " = call " << type
        << " @llvm.abs." << type << "(" << type << " "
        << require_operand_kind(op->arg, "LirAbsOp.arg",
