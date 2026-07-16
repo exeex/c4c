@@ -1,6 +1,6 @@
 # Remaining LIR Aggregate-Owner Rejection Decomposition Blocker
 
-Status: Open
+Status: Closed
 Type: bounded LIR aggregate-owner residual-family decomposition prerequisite
 Blocked Parent: `ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md`, Step 4 comparable full-suite proof
 
@@ -99,3 +99,24 @@ Status: parked by lifecycle switch to
   reproduces an independently owned residual family. If the new architecture
   changes the facts, plan-owner must reclassify from current evidence rather
   than silently declaring 836 complete or superseded.
+
+## Closure Disposition
+
+Closed as intentionally concluded with no current residual repair route. After
+closed 837 and the later accepted nominal type-family successor work, the
+resumed Step 1 reproduction no longer shows the historical residual
+aggregate-owner failures. The fresh build plus focused current reproduction:
+
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_hir_tests|frontend_lir_global_type_ref|llvm_gcc_c_torture_src_(20090113_2|930719_1|931012_1|950512_1|961112_1|comp_goto_1|pr23604|pr28289|pr37780|pr43385|pr46909_2|pr51323|pr88714)_c)$' ) > test_after.log 2>&1`
+
+passed 15/15 and emitted no old `LIR-owned aggregate function type requires
+...` diagnostic. Therefore the structured-key, matching-module-owner, and
+no-owner compatibility residual groups named by the old 831 rejected gate are
+not currently visible on the representative evidence, and 836 has no honest
+Step 2 implementation packet or successor split to execute.
+
+This is not a comparable-baseline clearance and does not return directly to
+830. The parent return action remains: reactivate
+`ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md`
+at unchanged Step 4 so 831 can run its supervisor-owned comparable full-suite
+gate against the current tree.
