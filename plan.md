@@ -1,6 +1,6 @@
 # LIR Global Policy And Symbol-Identity Evidence Runbook
 
-Status: Active
+Status: Exhausted - Pending Plan-Owner Decision
 Source Idea: ideas/open/848_lir_global_policy_identity_evidence.md
 Activated after: ideas/open/734_lir_to_new_bir_container_completeness.md post-Step 7.52 close rejection
 
@@ -74,6 +74,8 @@ condition for later receiver work. It does not implement that receiver work.
 
 ### Step 1 - Inventory Global Policy And Identity Fields
 
+Status: Complete
+
 Goal: identify the exact in-scope `LirGlobal` fields and their producer-facing
 definitions.
 
@@ -89,6 +91,8 @@ Completion check:
   locations and explicit exclusions.
 
 ### Step 2 - Trace Producer, Verifier, And Receiver Routes
+
+Status: Complete
 
 Goal: answer the required diagnostic question for each field.
 
@@ -106,6 +110,8 @@ Completion check:
 
 ### Step 3 - Write Return And Dependency Conclusions
 
+Status: Complete
+
 Goal: define how the evidence affects 844, 734, and 797 without changing their
 scope.
 
@@ -122,6 +128,8 @@ Completion check:
 
 ### Step 4 - Validate Documentation Shape
 
+Status: Complete
+
 Goal: prove the research deliverable is complete and bounded.
 
 Actions:
@@ -135,3 +143,12 @@ Completion check:
 - Required files exist with the required shape, no extra files are present in
   the directory, `git diff --check` passes, and no implementation files are
   modified.
+
+Result:
+- Created `docs/lir_global_policy_identity_evidence/index.md`.
+- Created
+  `docs/lir_global_policy_identity_evidence/01_global_policy_identity_route.md`.
+- Recorded that Raw-BIR receiver coverage exists for global policy facts, but
+  LIR verifier evidence is missing for the policy/string-carried fields, so no
+  direct 734 receiver handoff is authorized by 848.
+- Proof passed with exact required-file listing and `git diff --check`.
