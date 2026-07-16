@@ -2232,6 +2232,38 @@ loop:
   stale_text_gep->element_type.str() = "[99 x i8]";
   stale_text_gep->local_object_authority->indexed_element_type->str() = "[99 x i8]";
   lir::verify_module(stale_array_text);
+  lir::LirModule stale_index_type_display = module;
+  lir::LirGepOp* stale_index_gep =
+      selected_local_immediate_gep(stale_index_type_display);
+  expect_true(stale_index_gep != nullptr &&
+                  stale_index_gep->indices.size() == 1 &&
+                  stale_index_gep->indices[0].is_authoritative(),
+              "selected local-array GEP should retain an authoritative index for stale type proof");
+  stale_index_gep->indices[0] = lir::LirGepIndex::typed(
+      lir::LirTypeRef("not-i64", lir::LirTypeKind::Integer, 64),
+      stale_index_gep->indices[0].value());
+  stale_index_gep->requires_native_local_gep_authority = false;
+  stale_index_gep->local_object_authority.reset();
+  lir::verify_module(stale_index_type_display);
+  const std::string stale_index_ir = lir::print_llvm(stale_index_type_display);
+  const std::size_t stale_index_function_pos =
+      stale_index_ir.find("define i32 @local_immediate_indexed_authority()");
+  expect_true(stale_index_function_pos != std::string::npos,
+              "selected integer GEP index proof should print its fixture function");
+  const std::size_t stale_index_gep_pos =
+      stale_index_ir.find("getelementptr ", stale_index_function_pos);
+  expect_true(stale_index_gep_pos != std::string::npos,
+              "selected integer GEP index proof should print a GEP instruction");
+  const std::size_t stale_index_gep_end =
+      stale_index_ir.find('\n', stale_index_gep_pos);
+  const std::string stale_index_gep_line = stale_index_ir.substr(
+      stale_index_gep_pos, stale_index_gep_end == std::string::npos
+                               ? std::string::npos
+                               : stale_index_gep_end - stale_index_gep_pos);
+  expect_contains(stale_index_gep_line, ", i64 0",
+                  "selected integer GEP index should render native type width");
+  expect_not_contains(stale_index_gep_line, "not-i64",
+                      "selected integer GEP index should not render stale type text");
   const auto reject_selected_local_gep = [&](const auto& base, auto mutate,
                                              const std::string& message) {
     lir::LirModule candidate = base;

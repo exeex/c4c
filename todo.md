@@ -258,6 +258,33 @@ packet:
   alloca renders from native integer width authority rather than mutable
   display text.
 
+Started the Step 5 selected authoritative integer GEP index packet. 846 still
+owns authoritative integer `LirGepOp.indices.type` verifier/printer rendering:
+
+- `src/codegen/lir/verify.cpp` still verifies authoritative GEP index type refs
+  with `require_module_type_ref(mod, index.type_ref(),
+  "LirGepOp.indices.type")` before the integer-family check.
+- `src/codegen/lir/lir_printer.cpp` still renders authoritative GEP index type
+  refs with `require_type_ref(idx.type_ref(), "LirGepOp.indices.type")`.
+- `LirGepIndex::typed(...)`, `idx.is_authoritative()`, `idx.type_ref()`, and
+  `idx.value()` already publish the selected native integer index facts.
+- The packet must migrate only authoritative integer GEP index type rendering
+  and preserve raw/presentation GEP indices, non-integer GEP index types, GEP
+  element type, alloca/load/store/cast/phi/call/return/vector/va_arg/switch,
+  and universal API behavior.
+
+Completed the selected authoritative integer GEP index
+`LirGepOp.indices.type` packet:
+
+- Reused `render_integer_type_ref` for authoritative integer GEP index verifier
+  and printer branches.
+- Preserved raw/presentation GEP indices, non-integer index validation,
+  element type rendering, and unrelated LIR consumer surfaces on their existing
+  paths.
+- Added focused stale-display coverage proving an authoritative integer GEP
+  index renders from native integer width authority rather than mutable display
+  text.
+
 ## Suggested Next
 
 Execute `plan.md` Step 5: inventory remaining universal classifier, renderer,
@@ -271,6 +298,11 @@ Do not delete universal-model APIs yet; idea 847 owns terminal deletion after
 846 gates are accepted. Do not parse display text, runtime text, diagnostics,
 or printer output as semantic state. Do not absorb producer/store construction,
 Raw-BIR receipt, 734 receiver repair, or 797 convergence.
+
+For the GEP index packet, local-object GEP authority still compares the full
+indexed element/index facts; the stale-display proof intentionally drops the
+local-object-specific authority from the mutated copy so it isolates the
+selected generic authoritative GEP index rendering path.
 
 Non-goals for the next packet: no broad verifier/printer rewrite, no generic
 helper deletion unless no semantic callers remain, no dispatch migration beyond
@@ -292,6 +324,13 @@ For the floating binop packet, do not migrate unselected `LirBinOp.type_str`,
 casts, load/store, vector, aggregate, or non-builtin floating surfaces.
 
 ## Proof
+
+Completed authoritative integer GEP index packet proof:
+
+- `cmake --build build`
+- `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
+  recorded in `test_after.log`
+- `git diff --check`
 
 Step 1 proof is source trace and lifecycle state only. Planning-file check:
 `git diff --check`.

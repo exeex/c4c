@@ -1774,12 +1774,14 @@ void verify_authoritative_gep(const LirModule& mod, const LirGepOp& op) {
       fail_verify("LirGepOp.indices",
                   "authoritative GEP cannot mix raw compatibility indices");
     }
-    require_module_type_ref(mod, index.type_ref(),
-                            "LirGepOp.indices.type");
     if (index.type_ref().kind() != LirTypeKind::Integer) {
+      require_module_type_ref(mod, index.type_ref(),
+                              "LirGepOp.indices.type");
       fail_verify("LirGepOp.indices.type",
                   "authoritative GEP index type must be integer");
     }
+    (void)render_integer_type_ref(index.type_ref(),
+                                  "LirGepOp.indices.type");
 
     require_operand_kind(index.value(), "LirGepOp.indices.value",
                          {LirOperandKind::SsaValue,

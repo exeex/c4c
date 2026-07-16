@@ -550,7 +550,11 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
     for (const auto& idx : op->indices) {
       os << ", ";
       if (idx.is_authoritative()) {
-        os << require_type_ref(idx.type_ref(), "LirGepOp.indices.type")
+        os << (idx.type_ref().kind() == LirTypeKind::Integer
+                   ? render_integer_type_ref(idx.type_ref(),
+                                             "LirGepOp.indices.type")
+                   : require_type_ref(idx.type_ref(),
+                                      "LirGepOp.indices.type"))
            << " "
            << require_operand_kind(
                   idx.value(), "LirGepOp.indices.value",
