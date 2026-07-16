@@ -4752,6 +4752,109 @@ int truthiness_comparison_native(int value) {
   }, "duplicate native truthiness parameter definition must fail closed");
 }
 
+void test_native_direct_pointer_truthiness_parameter_authority() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule lowered = lower_lir_module_for_target(R"c(
+int pointer_truthiness_helper(int value) { return value; }
+int pointer_truthiness_native(int *value) {
+  if (value) return 11;
+  return 22;
+}
+)c", "x86_64-linux-gnu");
+  const auto require_comparison = [](lir::LirModule& module) -> lir::LirCmpOp& {
+    lir::LirFunction& function = require_function(module, "pointer_truthiness_native");
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* comparison = std::get_if<lir::LirCmpOp>(&inst);
+            comparison && comparison->pointer_truthiness_parameter_authority) {
+          return *comparison;
+        }
+      }
+    }
+    fail("native pointer truthiness fixture should contain the selected comparison");
+  };
+  const auto require_cast = [](lir::LirModule& module, const lir::LirCmpOp& comparison)
+      -> lir::LirCastOp& {
+    lir::LirFunction& function = require_function(module, "pointer_truthiness_native");
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* cast = std::get_if<lir::LirCastOp>(&inst);
+            cast && comparison.lhs.value_id() && cast->result.value_id() &&
+            *cast->result.value_id() == *comparison.lhs.value_id()) {
+          return *cast;
+        }
+      }
+    }
+    fail("native pointer truthiness fixture should contain the selected ptrtoint");
+  };
+  const auto require_function_authority = [](lir::LirModule& module)
+      -> lir::LirFunction& { return require_function(module, "pointer_truthiness_native"); };
+
+  lir::LirCmpOp& comparison = require_comparison(lowered);
+  lir::LirCastOp& cast = require_cast(lowered, comparison);
+  const auto& authority = *comparison.pointer_truthiness_parameter_authority;
+  expect_true(cast.kind == lir::LirCastKind::PtrToInt &&
+                  cast.operand.value_id() && authority.value == *cast.operand.value_id() &&
+                  authority.type.kind() == lir::LirTypeKind::Pointer &&
+                  authority.abi == lir::LirNativeBodyParameterAbi::DirectPointer &&
+                  authority.role == lir::LirPointerTruthinessParameterRole::PointerTruthiness &&
+                  comparison.predicate.typed() == lir::LirCmpPredicate::Ne &&
+                  comparison.type_str == lir::LirTypeRef::integer(64) &&
+                  comparison.rhs.integer_immediate() &&
+                  comparison.rhs.integer_immediate()->value == 0,
+              "pointer truthiness authority should bind the original pointer parameter through ptrtoint");
+  lir::verify_module(lowered);
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    lir::LirModule malformed = lowered;
+    lir::LirCmpOp& candidate = require_comparison(malformed);
+    mutate(malformed, candidate, require_cast(malformed, candidate),
+           require_function_authority(malformed));
+    expect_identity_verification_rejected(malformed, message);
+  };
+  rejected([](auto&, auto& candidate, auto&, auto&) {
+    candidate.pointer_truthiness_parameter_authority.reset();
+  }, "native pointer truthiness without parameter authority must fail closed");
+  rejected([](auto&, auto& candidate, auto&, auto&) {
+    candidate.pointer_truthiness_parameter_authority->value = lir::LirValueId::invalid();
+  }, "native pointer truthiness with invalid parameter value must fail closed");
+  rejected([](auto& module, auto& candidate, auto&, auto&) {
+    candidate.pointer_truthiness_parameter_authority->owner =
+        require_function(module, "pointer_truthiness_helper").link_name_id;
+  }, "native pointer truthiness with foreign owner must fail closed");
+  rejected([](auto&, auto& candidate, auto&, auto&) {
+    candidate.pointer_truthiness_parameter_authority->parameter_index = 9;
+  }, "native pointer truthiness with invalid parameter index must fail closed");
+  rejected([](auto&, auto& candidate, auto&, auto&) {
+    candidate.pointer_truthiness_parameter_authority->type = lir::LirTypeRef::integer(64);
+  }, "native pointer truthiness with stale type must fail closed");
+  rejected([](auto&, auto& candidate, auto&, auto&) {
+    candidate.pointer_truthiness_parameter_authority->abi =
+        lir::LirNativeBodyParameterAbi::DirectScalar;
+  }, "native pointer truthiness with scalar ABI must fail closed");
+  rejected([](auto&, auto& candidate, auto&, auto&) {
+    candidate.pointer_truthiness_parameter_authority->role =
+        lir::LirPointerTruthinessParameterRole::Invalid;
+  }, "native pointer truthiness with invalid role must fail closed");
+  rejected([](auto&, auto& candidate, auto&, auto&) {
+    candidate.predicate = lir::LirCmpPredicate::Eq;
+  }, "native pointer truthiness with a non-ne predicate must fail closed");
+  rejected([](auto&, auto& candidate, auto&, auto&) {
+    candidate.rhs = lir::LirOperand::integer("1", 1);
+  }, "native pointer truthiness with nonzero RHS must fail closed");
+  rejected([](auto&, auto& candidate, auto& cast, auto&) {
+    cast.operand = lir::LirOperand::ssa("%foreign_ptr", lir::LirValueId{999});
+  }, "native pointer truthiness with incoherent ptrtoint operand must fail closed");
+  rejected([](auto&, auto&, auto& cast, auto&) {
+    cast.kind = lir::LirCastKind::Bitcast;
+  }, "native pointer truthiness with non-ptrtoint cast must fail closed");
+  rejected([](auto&, auto&, auto&, auto& function) {
+    function.native_body_parameter_definitions.push_back(
+        function.native_body_parameter_definitions.front());
+  }, "duplicate native pointer truthiness parameter definition must fail closed");
+}
+
 void test_local_and_parameter_rvalue_identity_route() {
   namespace lir = c4c::codegen::lir;
 
@@ -9785,6 +9888,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_structural_direct_call_argument1_identity();
   test_native_direct_scalar_switch_selector_authority();
   test_native_direct_scalar_truthiness_comparison_lhs_authority();
+  test_native_direct_pointer_truthiness_parameter_authority();
   test_indirect_branch_successor_identity_contract();
   test_global_store_identity_contract();
   test_global_load_identity_contract();

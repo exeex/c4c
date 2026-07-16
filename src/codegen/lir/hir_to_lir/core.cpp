@@ -1977,13 +1977,36 @@ lir::LirOperand StmtEmitter::to_bool_operand(FnCtx& ctx, lir::LirOperand val,
     };
   };
   if (ty == "ptr") {
-    const lir::LirOperand as_int(fresh_tmp(ctx));
+    const lir::LirOperand as_int = fresh_value(ctx);
     emit_lir_op(ctx, lir::LirCastOp{as_int, lir::LirCastKind::PtrToInt,
                                     lir::LirTypeRef(lir::LirBuiltinType::Pointer), val,
                                     lir::LirTypeRef::integer(64)});
+    std::optional<lir::LirPointerTruthinessParameterAuthority> pointer_authority;
+    if (ctx.lir_function != nullptr && val.value_id()) {
+      const auto definition = std::find_if(
+          ctx.lir_function->native_body_parameter_definitions.begin(),
+          ctx.lir_function->native_body_parameter_definitions.end(),
+          [&](const auto& candidate) {
+            return candidate.value == *val.value_id() &&
+                   candidate.type.kind() == lir::LirTypeKind::Pointer &&
+                   candidate.owner == ctx.lir_function->link_name_id &&
+                   candidate.abi == lir::LirNativeBodyParameterAbi::DirectPointer;
+          });
+      if (definition != ctx.lir_function->native_body_parameter_definitions.end()) {
+        pointer_authority = lir::LirPointerTruthinessParameterAuthority{
+            .value = definition->value,
+            .parameter_index = definition->parameter_index,
+            .type = definition->type,
+            .owner = definition->owner,
+            .abi = definition->abi,
+            .role = lir::LirPointerTruthinessParameterRole::PointerTruthiness,
+        };
+      }
+    }
     emit_lir_op(ctx, lir::LirCmpOp{result, false, lir::LirCmpPredicate::Ne,
                                    lir::LirTypeRef::integer(64), as_int,
-                                   lir::LirOperand::integer("0", 0)});
+                                   lir::LirOperand::integer("0", 0),
+                                   std::nullopt, pointer_authority});
   } else if (ty == "i1") {
     emit_lir_op(ctx, lir::LirCmpOp{result, false, lir::LirCmpPredicate::Ne,
                                    lir::LirTypeRef::integer(1), val,

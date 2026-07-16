@@ -6,7 +6,7 @@ Current Step Title: Publish DirectPointer Truthiness Parameter Authority
 
 # Current Packet
 
-## Just Finished
+## Completed Trace
 
 Completed Step 1 trace. Existing accepted body-parameter authority rows cover:
 direct pointer GEP base; DirectScalar binary LHS/RHS; DirectScalar return
@@ -24,30 +24,34 @@ DirectScalar-only and the comparison LHS is the `PtrToInt` result, not the
 original parameter value. Therefore this is a producer/schema/verifier packet,
 not a 734 receiver row.
 
-## Active Packet
+## Just Finished
 
-Publish only the selected DirectPointer truthiness parameter authority for the
-pointer `to_bool_operand` route, preserving the existing `PtrToInt` lowering
-shape as a checked consumer relation.
+Completed Step 2. LIR now publishes a native DirectPointer truthiness
+parameter authority tuple for the selected `StmtEmitter::to_bool_operand`
+pointer route. The accepted tuple preserves the original current-function
+pointer parameter `LirValueId`, owner, parameter index, pointer type,
+`DirectPointer` ABI, and explicit `PointerTruthiness` role while the consumer
+remains the existing `PtrToInt` plus `icmp ne i64 <ptr-int>, 0` lowering.
 
-## Work Items
+The verifier rejects missing, invalid, duplicate, foreign,
+owner/index/type/ABI/role, non-`PtrToInt`, nonzero-RHS, non-`ne`, and
+consumer-incoherent authority without recovering the original parameter from
+rendered pointer text, cast spelling, or comparison text.
 
-- Add a bounded native LIR carrier for a DirectPointer parameter used as
-  truthiness-comparison input. It must preserve the original parameter
-  `LirValueId`, owner, parameter index, pointer type, `DirectPointer` ABI, and
-  an explicit pointer-truthiness role.
-- Populate that carrier only in `StmtEmitter::to_bool_operand` when the input
-  value is a native current-function DirectPointer parameter and the emitted
-  consumer is the existing `PtrToInt` plus `icmp ne i64 <ptr-int>, 0` route.
-- Add verifier checks that reject missing, invalid, duplicate, foreign,
-  owner/index/type/ABI/role, and consumer-incoherent authority. The verifier
-  must not infer the original parameter from the rendered pointer name, the
-  `PtrToInt` text, or the comparison spelling.
-- Add focused same-feature positive and malformed-authority coverage near the
-  existing frontend body-parameter authority tests.
+## Suggested Next
+
+Return to the 853 source completion gate. If accepted, record the exact
+one-row handoff to 734 for a future typed Raw-BIR receiver. Do not edit Raw
+BIR/importer code in 853.
 
 ## Proof
 
-Run a fresh build plus focused producer proof:
+Passed matching focused regression proof:
+
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$' ) > test_before.log 2>&1`
 
 `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$' ) > test_after.log 2>&1 && git diff --check`
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: before 1/1, after 1/1, no new failures; `git diff --check` passed.

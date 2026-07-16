@@ -3116,6 +3116,79 @@ void verify_function_value_ownership(const LirModule& mod,
                   "must exactly mirror one native direct-scalar parameter definition");
     }
   };
+  const auto verify_pointer_truthiness_parameter_authority = [&](const LirCmpOp& op) {
+    const LirInst* lhs_definition_inst = nullptr;
+    if (op.lhs.kind() == LirOperandKind::SsaValue && op.lhs.value_id()) {
+      const auto found = definition_insts.find(op.lhs.value_id()->value);
+      if (found != definition_insts.end()) lhs_definition_inst = found->second;
+    }
+    const auto* ptr_to_int =
+        lhs_definition_inst ? std::get_if<LirCastOp>(lhs_definition_inst) : nullptr;
+    const auto pointer_definition =
+        !op.is_float && op.predicate.typed() == LirCmpPredicate::Ne &&
+                op.type_str == LirTypeRef::integer(64) && ptr_to_int &&
+                ptr_to_int->kind == LirCastKind::PtrToInt &&
+                ptr_to_int->from_type.kind() == LirTypeKind::Pointer &&
+                ptr_to_int->to_type == LirTypeRef::integer(64) &&
+                ptr_to_int->operand.kind() == LirOperandKind::SsaValue &&
+                ptr_to_int->operand.value_id() && op.rhs.integer_immediate() &&
+                op.rhs.integer_immediate()->value == 0
+            ? std::find_if(function.native_body_parameter_definitions.begin(),
+                           function.native_body_parameter_definitions.end(),
+                           [&](const auto& definition) {
+                             return definition.value == *ptr_to_int->operand.value_id() &&
+                                    definition.type.kind() == LirTypeKind::Pointer &&
+                                    definition.abi ==
+                                        LirNativeBodyParameterAbi::DirectPointer;
+                           })
+            : function.native_body_parameter_definitions.end();
+    if (!op.pointer_truthiness_parameter_authority) {
+      if (pointer_definition != function.native_body_parameter_definitions.end()) {
+        fail_verify("LirCmpOp.pointer_truthiness_parameter_authority",
+                    "is required when LirCmpOp compares a native direct-pointer parameter PtrToInt against zero");
+      }
+      return;
+    }
+    const auto& authority = *op.pointer_truthiness_parameter_authority;
+    constexpr std::string_view field = "LirCmpOp.pointer_truthiness_parameter_authority";
+    const bool unique_owner = authority.owner != kInvalidLinkName &&
+        authority.owner == function.link_name_id &&
+        std::count_if(mod.functions.begin(), mod.functions.end(), [&](const LirFunction& candidate) {
+          return candidate.link_name_id == authority.owner;
+        }) == 1;
+    if (!authority.value.valid() || !unique_owner ||
+        authority.parameter_index >= function.params.size() ||
+        authority.abi != LirNativeBodyParameterAbi::DirectPointer ||
+        authority.role != LirPointerTruthinessParameterRole::PointerTruthiness ||
+        !ptr_to_int || ptr_to_int->kind != LirCastKind::PtrToInt ||
+        ptr_to_int->from_type.kind() != LirTypeKind::Pointer ||
+        ptr_to_int->to_type != LirTypeRef::integer(64) ||
+        ptr_to_int->operand.kind() != LirOperandKind::SsaValue ||
+        !ptr_to_int->operand.value_id() ||
+        *ptr_to_int->operand.value_id() != authority.value ||
+        op.is_float || op.predicate.typed() != LirCmpPredicate::Ne ||
+        op.type_str != LirTypeRef::integer(64) ||
+        op.lhs.kind() != LirOperandKind::SsaValue || !op.lhs.value_id() ||
+        !op.rhs.integer_immediate() || op.rhs.integer_immediate()->value != 0 ||
+        authority.type.kind() != LirTypeKind::Pointer) {
+      fail_verify(field,
+                  "requires one native direct-pointer current-function truthiness binding");
+    }
+    const auto matches = std::count_if(
+        function.native_body_parameter_definitions.begin(),
+        function.native_body_parameter_definitions.end(), [&](const auto& definition) {
+          return definition.value == authority.value &&
+                 definition.parameter_index == authority.parameter_index &&
+                 definition.type == authority.type && definition.owner == authority.owner &&
+                 definition.abi == authority.abi;
+        });
+    if (matches != 1 || authority.parameter_index >= function.params.size() ||
+        function.params[authority.parameter_index].second.ptr_level == 0 ||
+        function.params[authority.parameter_index].second.array_rank != 0) {
+      fail_verify(field,
+                  "must exactly mirror one native direct-pointer parameter definition");
+    }
+  };
   const auto verify_fixed_direct_call_argument_parameter_authority =
       [&](const LirCallOp& call, const std::size_t argument_index,
           const LirFixedDirectCallArgumentParameterRole role,
@@ -3243,6 +3316,7 @@ void verify_function_value_ownership(const LirModule& mod,
       }
       if (const auto* op = std::get_if<LirCmpOp>(&inst)) {
         verify_truthiness_lhs_parameter_authority(*op);
+        verify_pointer_truthiness_parameter_authority(*op);
       }
       if (const auto* call = std::get_if<LirCallOp>(&inst)) {
         verify_fixed_direct_call_argument_parameter_authority(

@@ -585,6 +585,11 @@ enum class LirTruthinessComparisonLhsParameterRole : uint8_t {
   TruthinessComparisonLhs,
 };
 
+enum class LirPointerTruthinessParameterRole : uint8_t {
+  Invalid,
+  PointerTruthiness,
+};
+
 // Native authority for exactly a direct plain scalar current-function
 // parameter used as the LHS of this binary operation.  The operand spelling
 // is a checked display mirror only; all selection facts live here.
@@ -622,6 +627,20 @@ struct LirTruthinessComparisonLhsParameterAuthority {
       LirTruthinessComparisonLhsParameterRole::Invalid;
 };
 
+// Native authority for exactly a direct pointer current-function parameter
+// used as a truthiness condition through the existing PtrToInt + icmp-ne-zero
+// lowering. The comparison LHS is the cast result; this tuple preserves the
+// original parameter value and required consumer shape.
+struct LirPointerTruthinessParameterAuthority {
+  LirValueId value = LirValueId::invalid();
+  uint32_t parameter_index = 0;
+  LirTypeRef type;
+  LinkNameId owner = kInvalidLinkName;
+  LirNativeBodyParameterAbi abi = LirNativeBodyParameterAbi::Invalid;
+  LirPointerTruthinessParameterRole role =
+      LirPointerTruthinessParameterRole::Invalid;
+};
+
 // Typed binary arithmetic/bitwise/unary operation.
 // Covers: add, sub, mul, sdiv, udiv, srem, urem, fadd, fsub, fmul, fdiv, frem,
 //         and, or, xor, shl, lshr, ashr, fneg.
@@ -645,6 +664,8 @@ struct LirCmpOp {
   LirOperand rhs;                 // SSA name or literal for right operand
   std::optional<LirTruthinessComparisonLhsParameterAuthority>
       truthiness_lhs_parameter_authority;
+  std::optional<LirPointerTruthinessParameterAuthority>
+      pointer_truthiness_parameter_authority;
 };
 
 // PHI incoming authority. `value` selects the native value, `predecessor`
