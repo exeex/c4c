@@ -1,109 +1,94 @@
-# LIR-To-New-BIR Container Completeness Runbook
+# LIR Next Non-Body-Parameter Authority Handoff Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Resumed After: closed 863 direct zero-argument scalar floating call-result
-authority handoff
+Source Idea: ideas/open/864_lir_next_non_body_parameter_authority_handoff.md
+Switched From: ideas/open/734_lir_to_new_bir_container_completeness.md after
+accepted Step 7.50
 
 ## Purpose
 
-Resume idea 734 from its accepted post-Step 7.49 state and receive exactly the
-closed 863 non-body-parameter handoff into typed Raw BIR.
+Select and publish exactly one next producer-side non-body-parameter authority
+row so idea 734 can later receive one more typed Raw-BIR row.
 
 ## Goal
 
-Implement one bounded Raw-BIR receiver packet for direct zero-argument scalar
-floating `LirCallOp` result authority consumed as the LHS of a downstream
-floating binary operation.
+Create one bounded LIR producer/schema/verifier handoff for the next valid
+current-LIR semantic row not already accepted by 734 through Step 7.50.
 
 ## Core Rule
 
-Receive only structured LIR authority from the accepted 863 handoff. Do not
-recover semantic identity from text, names, rendered operands, signatures,
-diagnostics, compatibility mirrors, `monostate`, or testcase shape.
+Publish native structured authority only. Do not recover identity, type, role,
+opcode, operand relation, or consumer coherence from text, names, rendered
+operands, signatures, diagnostics, compatibility mirrors, `monostate`, or
+testcase shape.
 
 ## Read First
 
+- `ideas/open/864_lir_next_non_body_parameter_authority_handoff.md`
 - `ideas/open/734_lir_to_new_bir_container_completeness.md`
 - `ideas/closed/863_lir_next_non_body_parameter_authority_handoff.md`
-- Accepted 734 Step 7.49 receiver commit `44edfbacd`
-- 863 implementation commit `36f860ea3`
-- Existing Raw-BIR direct call-result and floating binary receiver patterns
-  from accepted 734 work
+- Accepted 734 Step 7.50 receiver commit `72a368b06`
 
 ## Current Targets And Scope
 
-- Preserve accepted 734 Steps 1 through 7.49 as historical work.
-- Add only the typed Raw-BIR destination, importer dispatch, reachable verifier
-  path, and transactional coverage needed for the 863-authorized row.
-- The selected row is a direct zero-argument scalar floating `LirCallOp`
-  result consumed as the LHS of a downstream floating binary operation.
-- Preserve the handed-off native result `LirValueId`, current-function owner
-  `LinkNameId`, direct callee `LinkNameId`, exact floating `LirTypeRef`, and
-  role `ResultIntoFloatingBinaryLhs`.
+- Inspect the remaining current-LIR semantic surface after accepted 734 Step
+  7.50.
+- Select exactly one non-body-parameter row that can be published with native
+  structured authority.
+- Add only the producer/schema/verifier carrier and focused coverage for that
+  one row.
+- Hand off the exact selected row, fields, malformed matrix, and 734 return
+  action.
 
 ## Non-Goals
 
-- Do not edit LIR producer/schema/verifier authority for this row; 863 owns
-  that producer-side prerequisite.
-- Do not repeat Step 7.49 or reopen accepted body-parameter receipts.
-- Do not receive another call-result row, call-argument row, floating binary
-  parameter-use row, or generic ordinary-value row.
+- Do not edit Raw-BIR containers, builders, views, importer dispatch, verifier,
+  or backend receiver tests.
+- Do not reopen accepted 734 receiver rows through Step 7.50.
+- Do not select a function-body parameter row, multiple rows, a generic
+  residual sweep, or final 797 convergence.
 - Do not absorb memory/VA, aggregate/vector, module/type/global/metadata, CFG/
-  PHI, residual instruction/terminator, inline-assembly, ABI-expanded or
-  aggregate parameters, body-parameter rows, generic residual sweeps, or any
-  other family.
-- Do not weaken unsupported diagnostics, expectation contracts, or no-partial-
-  publication behavior.
+  PHI, instruction/terminator, or inline-assembly families unless exactly one
+  selected row from one family is the bounded handoff.
 
 ## Execution Rules
 
-- Keep the packet receiver-side only and tied to the exact 863 handoff tuple.
-- Reuse existing typed Raw-BIR receiver conventions where they match direct
-  call-result identity and floating binary consumer coherence.
-- Reject malformed authority before any partial Raw-BIR publication.
-- Add nearby same-feature positive and malformed receiver coverage for absent
-  authority, stale result, foreign owner, callee incoherence, type
-  incoherence, role incoherence, and consumer incoherence.
-- Keep nonselected rows fail-closed without presentation recovery.
-- For code changes, run a fresh build, focused receiver proof, and
-  `git diff --check`. Escalate to broader backend proof if shared importer or
-  verifier code is touched.
+- Keep selection evidence explicit: name the chosen current-LIR row and why it
+  is valid, unaccepted by 734, and producer-ready.
+- Verify malformed authority before printing or downstream use.
+- Keep nonselected families fail-closed and separately scoped.
+- For code changes, run a fresh build, focused producer/verifier proof, and
+  `git diff --check`. Escalate to broader proof if shared verifier or producer
+  code is touched.
 
 ## Steps
 
-### Step 7.50 - Receive the one 863-authorized direct floating call-result authority row
+### Step 1 - Select and hand off one next non-body-parameter authority row
 
-Goal: consume exactly the 863 direct zero-argument scalar floating call-result
-handoff in typed Raw BIR.
+Goal: produce exactly one structured LIR authority handoff for 734.
 
 Primary targets:
 
-- Raw-BIR receiver container/builder/view surface for the selected direct
-  floating call-result relation.
-- LIR-to-Raw-BIR importer dispatch for the structured
-  `LirDirectZeroArgScalarFloatingCallAuthority` tuple.
-- Reachable Raw-BIR verifier checks and transactional malformed-input
-  coverage.
+- LIR producer/schema surface for the selected row.
+- LIR verifier checks for positive and malformed authority.
+- Focused producer/verifier tests for the selected row.
+- Source idea closure note naming the 734 return action.
 
 Actions:
 
-- Inspect accepted Step 7.49 and adjacent direct call-result / floating binary
-  receiver patterns before editing.
-- Add only the destination and importer handling needed for direct
-  zero-argument scalar floating `LirCallOp` result authority with role
-  `ResultIntoFloatingBinaryLhs`.
-- Preserve and verify the native result `LirValueId`, owner `LinkNameId`,
-  direct callee `LinkNameId`, matching floating `LirTypeRef`, explicit role,
-  and downstream floating binary LHS consumer coherence.
-- Add positive and malformed receiver coverage matching the 863 handoff's
-  malformed matrix.
-- Keep all nonselected rows fail-closed without presentation recovery.
+- Inspect the post-Step 7.50 remaining matrix and select one valid non-body-
+  parameter row with native structured authority potential.
+- Add the minimal authority carrier and publication path for that row.
+- Add verifier rejection for absent, invalid, duplicate, foreign, owner/type/
+  role-incoherent, and consumer-incoherent forms as applicable.
+- Add focused coverage for the positive row and nearby malformed matrix.
+- Update the 864 source idea on closure with the selected tuple, proof, and
+  exact 734 receiver return action.
 
 Completion check:
 
+- Exactly one row is selected and handed off.
 - Fresh build passes.
-- Focused receiver proof passes for the Raw-BIR importer path.
+- Focused producer/verifier proof passes.
 - `git diff --check` passes.
-- The packet does not modify LIR producer authority, repeat accepted Steps 1
-  through 7.49, or admit any row beyond the selected 863 handoff.
+- No Raw-BIR receiver work or presentation recovery lands in this idea.
