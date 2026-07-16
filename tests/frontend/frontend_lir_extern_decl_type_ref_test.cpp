@@ -150,6 +150,49 @@ void expect_type_ref_structured_equality_uses_name_id(
               "runtime text should remain an explicit unstructured compatibility boundary");
 }
 
+void expect_extern_byval_parameter_printer_uses_signature_store() {
+  c4c::codegen::lir::LirModule module = make_struct_module();
+  const c4c::LinkNameId extern_big_id =
+      module.link_names.intern("extern_big");
+  const c4c::StructNameId big_id =
+      module.struct_names.intern("%struct.Big");
+  c4c::codegen::lir::LirStructDecl big_decl;
+  big_decl.name_id = big_id;
+  big_decl.fields.push_back({c4c::codegen::lir::LirTypeRef::integer(64)});
+  module.type_decls.push_back("%struct.Big = type { i64 }");
+  module.record_struct_decl(std::move(big_decl));
+
+  module.record_extern_decl("extern_big", "i32", extern_big_id);
+  c4c::codegen::lir::LirCallSignature signature;
+  signature.return_type_ref = c4c::codegen::lir::LirTypeRef::integer(32);
+  signature.fixed_param_types = {"ptr byval(%struct.StaleTextOnly) align 1"};
+  signature.fixed_param_type_refs = {
+      c4c::codegen::lir::LirTypeRef::struct_type("%struct.Big", big_id)};
+  const c4c::codegen::lir::LirFunctionSignatureRef signature_ref =
+      module.register_extern_function_signature("extern_big", extern_big_id,
+                                                signature);
+
+  const auto it = module.extern_decl_link_name_map.find(extern_big_id);
+  expect_true(it != module.extern_decl_link_name_map.end(),
+              "link-backed extern declaration should remain map-owned");
+  c4c::codegen::lir::LirExternDecl decl;
+  decl.name = "stale_raw_extern_big";
+  decl.return_type_str = "i32";
+  decl.return_type = c4c::codegen::lir::LirTypeRef::integer(32);
+  decl.link_name_id = extern_big_id;
+  decl.function_signature_ref = signature_ref;
+  module.extern_decls.push_back(std::move(decl));
+
+  c4c::codegen::lir::verify_module(module);
+  const std::string llvm_ir = c4c::codegen::lir::print_llvm(module);
+  expect_true(llvm_ir.find("declare i32 @extern_big(ptr byval(%struct.Big))") !=
+                  std::string::npos,
+              "extern byval aggregate declaration should render parameters from the signature store");
+  expect_true(llvm_ir.find("%struct.StaleTextOnly") == std::string::npos &&
+                  llvm_ir.find("stale_raw_extern_big") == std::string::npos,
+              "extern byval aggregate declaration should not recover authority from stale text");
+}
+
 }  // namespace
 
 int main() {
@@ -184,6 +227,7 @@ int main() {
   expect_true(llvm_ir.find("declare %struct.Pair @extern_pair(...)") !=
                   std::string::npos,
               "printer should keep using return_type_str for extern declarations");
+  expect_extern_byval_parameter_printer_uses_signature_store();
 
   c4c::codegen::lir::LirModule structured_identity = module;
   structured_identity.extern_decls.front().return_type.str() =

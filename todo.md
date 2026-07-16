@@ -1,41 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/844_lir_global_extern_initializer_family_facts.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Migrate selected parameter verifier/printer consumers
+Current Step ID: 4
+Current Step Title: Retire selected parameter legacy mirrors only with parity
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan.md Step 2 for the selected link-backed extern fixed aggregate
-byval parameter family-ref carrier. `register_extern_function_signature` now
-publishes extern fixed parameter byval bits into the nominal signature store;
-direct extern calls whose `callee_signature_ref` resolves through
-`extern_decl_link_name_map[LinkNameId].function_signature_ref` now require
-matching structured aggregate `fixed_param_type_refs[index]` plus
-`fixed_param_is_byval[index] == true`; retained-signature-free lowering can use
-the store instead of stale rendered call/declaration text.
+Completed plan.md Step 3 for the selected link-backed extern fixed aggregate
+byval parameter form. The extern declaration printer now renders the selected
+fixed aggregate byval parameter list from `LirExternDecl.function_signature_ref`
+and the nominal `LirFunctionSignatureStoreEntry` carrier when present, while
+legacy extern declarations without the selected structured carrier keep the
+existing `(...)` compatibility output.
 
 ## Suggested Next
 
-Execute plan.md Step 3 for the selected extern aggregate byval parameter form:
-migrate the selected verifier/printer declaration consumer path to render or
-check extern fixed parameter facts from the structured signature-store carrier
-while preserving existing declaration output compatibility. Keep the next
-packet bounded to the already-selected extern aggregate byval parameter form
-and do not widen into returns, initializer text, collector-only receiver work,
-Raw-BIR import work, varargs policy, or non-type string routing.
+Execute plan.md Step 4 for the selected extern aggregate byval parameter form:
+retire or demote only selected parameter text mirrors if all named verifier,
+printer, and backend consumers have migrated. If final declaration text,
+`callee_type_suffix`, `args_str`, or retained signature text remains required
+as compatibility/output text for unselected forms, record a bounded no-code
+retirement conclusion instead of deleting it.
 
 ## Watchouts
 
 The corrected proof route for this build is the three-test interface/frontend
 subset below; the old `ctest -R backend_lir_to_bir_notes_test` route matches
-zero tests and must not be treated as proof. Step 2 deliberately did not add
-direct `LirExternDecl` parameter fields; the nominal signature store served as
-the selected carrier. Next work should preserve the same scope boundary and
-avoid treating final declaration text, `callee_type_suffix`, or `args_str` as
-semantic authority.
+zero tests and must not be treated as proof. Step 3 deliberately did not add
+direct `LirExternDecl` parameter fields. Keep Step 4 inside the same selected
+extern aggregate byval parameter form and do not widen into return facts,
+initializer text, collector-only receiver work, Raw-BIR import work, varargs
+policy, nonaggregate declaration rendering, or non-type string routing.
 
 ## Proof
 

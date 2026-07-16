@@ -77,6 +77,55 @@ std::string render_extern_return_type(const LirModule& mod,
   return decl.return_type.render_llvm();
 }
 
+std::string render_signature_store_param(const LirTypeRef& type,
+                                         bool is_byval) {
+  if (!is_byval) return render_type_ref_for_signature(type);
+  return "ptr byval(" + render_type_ref_for_signature(type) + ")";
+}
+
+std::optional<std::string> render_selected_extern_param_list_from_store(
+    const LirModule& mod,
+    const LirExternDecl& decl) {
+  if (!decl.function_signature_ref.valid()) return std::nullopt;
+  const LirFunctionSignatureStoreEntry* signature =
+      mod.find_function_signature(decl.function_signature_ref);
+  if (!signature ||
+      signature->fixed_param_is_byval.size() !=
+          signature->fixed_param_type_refs.size()) {
+    return std::nullopt;
+  }
+
+  bool has_selected_aggregate_byval = false;
+  for (std::size_t index = 0; index < signature->fixed_param_type_refs.size();
+       ++index) {
+    if (signature->fixed_param_is_byval[index] &&
+        signature->fixed_param_type_refs[index].has_struct_name_id()) {
+      has_selected_aggregate_byval = true;
+      break;
+    }
+  }
+  if (!has_selected_aggregate_byval) return std::nullopt;
+
+  std::ostringstream out;
+  out << "(";
+  bool need_comma = false;
+  if (!signature->has_void_param_list) {
+    for (std::size_t index = 0; index < signature->fixed_param_type_refs.size();
+         ++index) {
+      if (need_comma) out << ", ";
+      out << render_signature_store_param(signature->fixed_param_type_refs[index],
+                                          signature->fixed_param_is_byval[index]);
+      need_comma = true;
+    }
+    if (signature->is_variadic) {
+      if (need_comma) out << ", ";
+      out << "...";
+    }
+  }
+  out << ")";
+  return out.str();
+}
+
 const LirTypeRef& require_phi_boundary_render_type(const LirPhiOp& op) {
   if (!op.boundary_value_type) {
     throw LirVerifyError(LirVerifyErrorKind::Malformed,
@@ -857,10 +906,12 @@ std::string print_llvm(const LirModule& mod) {
 
   // External function declarations.
   for (const auto& ed : mod.extern_decls) {
+    const std::string params =
+        render_selected_extern_param_list_from_store(mod, ed).value_or("(...)");
     out << "declare " << render_ext_attr(ed.return_ext_attr)
         << render_extern_return_type(mod, ed) << " "
         << llvm_global_sym(resolve_extern_decl_name(ed, mod.link_names))
-        << "(...)\n";
+        << params << "\n";
   }
   if (!mod.extern_decls.empty()) out << "\n";
 
