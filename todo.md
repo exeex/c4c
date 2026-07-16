@@ -8,25 +8,32 @@ Current Step Title: Delete semantic string escape hatches
 
 ## Just Finished
 
-Completed Step 3 packet to delete call-argument native preservation that used
-direct `arg == source_operand.str()` / `call_operand.str() != arg`
-display-text equality as semantic authority in
-`src/codegen/lir/hir_to_lir/call/args.cpp`.
+Completed Step 3 packet to delete ternary incoming operand native preservation
+that used direct `source.str() == coerced.str()` display-text equality as
+semantic authority in `src/codegen/lir/hir_to_lir/expr/misc.cpp`.
 
-Call argument preservation now keeps native value/immediate authority only on
-the selected fixed-integer or current-function direct-scalar paths when typed
-facts match the emitted call argument type. Other normalized argument text is
-rebuilt as display-only operand text without promoting the spelling to native
-authority.
+Ternary PHI incoming preservation now keeps native value authority only when
+the source operand already has a native value ID and the source expression type
+matches the ternary result type. Otherwise it uses the coerced operand without
+treating matching rendered text as authority.
 
 ## Suggested Next
 
-Supervisor should review and commit this Step 3 call-argument preservation slice
-if accepted, then select the next remaining Step 3 semantic string escape hatch
-candidate. Do not widen the next packet into Step 4 adapter removal.
+Supervisor should review and commit this Step 3 ternary incoming operand
+authority slice if accepted, then select the next remaining Step 3 semantic
+string escape hatch candidate. Do not widen the next packet into Step 4 adapter
+removal.
 
 ## Watchouts
 
+- `src/codegen/lir/hir_to_lir/expr/misc.cpp` no longer contains direct
+  `source.str() == coerced.str()` authority checks for ternary PHI incoming
+  source retention. Do not reintroduce display-text equality as semantic
+  authority there.
+- Ternary same-type source retention intentionally keys only on native value ID
+  plus source/result typed facts. `coerce_operand(...)` may return raw
+  display-only text for no-op/non-cast coercions, so requiring coerced native
+  authority would drop valid fneg/xor producer IDs from same-type PHI inputs.
 - `src/codegen/lir/hir_to_lir/call/args.cpp` no longer contains direct
   `arg == source_operand.str()` or `call_operand.str() != arg` authority
   checks. Do not reintroduce display-text equality as semantic authority for

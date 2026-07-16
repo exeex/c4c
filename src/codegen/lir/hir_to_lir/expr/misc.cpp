@@ -303,8 +303,7 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, con
   auto retain_same_type_source_authority = [&](const LirOperand& source,
                                                const TypeSpec& source_spec,
                                                const LirOperand& coerced) -> LirOperand {
-    if (source.value_id() && llvm_value_ty(mod_, source_spec) == res_ty &&
-        source.str() == coerced.str()) {
+    if (source.value_id() && llvm_value_ty(mod_, source_spec) == res_ty) {
       return source;
     }
     return coerced;
