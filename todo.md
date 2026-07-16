@@ -8,23 +8,17 @@ Current Step Title: Write direct-local va_start 734 handoff
 
 ## Just Finished
 
-Completed `plan.md` Step 3 for the selected direct-local `va_start` native
-pointer authority seam as a no-code verification evidence step. Existing
-`verify_native_memory_va_authority` coverage already enforces the selected
-contract through `verify_pointer`: current-function local object ownership,
-`ap_ptr` value-id agreement with `ap_authority.local_pointer.pointer_definition`,
-modeled pointer definition, canonical pointer fact agreement, pointer type,
-pointee type, and liveness. Existing focused tests cover direct-local
-`va_start` positive population, missing selected authority rejection, and
-rejection of authority fields on unselected `va_start`.
+Completed `plan.md` Step 4 for the selected direct-local `va_start` native
+pointer authority seam. Added
+`docs/lir_memory_va_object_lifetime_authority/handoff_to_734.md`, naming the
+exact LIR producer fields, verifier checks, accepted positive case, malformed
+rejections, proof command, and one future 734 receiver row.
 
 ## Suggested Next
 
-Start `plan.md` Step 4 for the selected seam only: write the handoff document
-naming the exact future 734 receiver row for `LirVaStartOp` direct-local
-destination `va_list` authority. The handoff must name the LIR fields,
-producer, verifier checks, accepted positive case, rejected malformed cases,
-and exclude Raw-BIR receiver/importer work.
+Send the exhausted runbook to plan-owner for semantic disposition of idea 867:
+close if the direct-local `LirVaStartOp` handoff satisfies the source
+criteria, or repair/switch only if another in-scope requirement remains.
 
 ## Watchouts
 
@@ -38,8 +32,8 @@ only: receive the typed Raw-BIR container for selected direct-local
 
 ## Proof
 
-No-code Step 3 verification evidence. Focused proof run:
+Accepted focused proof:
 `{ cmake --build build && ctest --test-dir build -R '^backend_lir_selected_pointer_authority$' --output-on-failure; } > test_after.log 2>&1`
 
 Result: passed; `test_after.log` contains a successful build/no-op build and
-1/1 passing test. Run `git diff --check` before committing.
+1/1 passing test. Step 4 document-only update also requires `git diff --check`.
