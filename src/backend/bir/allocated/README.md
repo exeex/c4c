@@ -44,6 +44,23 @@ Exact current projection, copy-resolution fingerprint, C2 layout, C3-C8 plans,
 C9 binding, E1/E2/E3, D5 lineage, and deterministic frame-action requirement
 draft inputs. No predecessor-only or equal-looking product is accepted.
 
+### Non-local-return homes and frame obligations
+
+E4 consumes the final exact `ExceptionalBoundaryAllocationFacts`, assignment,
+and explicit E3 spill state. Every memory-resident exceptional survivor maps to
+one stable frame object or an already-authoritative B5 semantic object whose
+lifetime covers the checkpoint and continuation. The frame draft records object
+class, size/alignment, non-overlap/sharing proof, base/region, lifetime, and the
+exact store/reload actions that use it. A volatile or escaped semantic object
+cannot be silently merged with a compiler spill object.
+
+Any frame base, adjustment, save/restore, or dynamic-stack action required to
+keep those homes addressable across the non-local transfer must already be in
+the bounded E4 action draft and materialized before final projection/E1.
+Unwind/non-local incompatibility, unstable addressability, absent lifetime,
+missing home, or a request for another spill/reassignment fails E4. E4 cannot
+repair E2/E3 or defer an action to F1.
+
 ## Ordered Behavior
 
 1. Freeze/validate the exact D5-resolved candidate and all predecessor keys.
@@ -93,6 +110,10 @@ work, one-record realizability, final projection/E1 keys, non-mutating E2/E3
 validation, and all products exact-current. It rejects any repair request,
 unresolved/unknown vocabulary, stale product, active editor, or partial module.
 Success atomically mints both outputs; failure mints neither.
+For every exceptional boundary the gate also proves exact-current boundary
+lineage, no live clobbered register-only value, complete explicit store/reload
+coverage, stable addressable homes with sufficient lifetime, and all required
+frame actions present exactly once.
 
 ## Analysis Preservation and Invalidation
 
@@ -123,6 +144,9 @@ Absent. Prospective frame-action names are planning vocabulary, not production
 Prove every assigned/copy/spill/opaque/frame row, exact action multiplicity,
 materialize-before-project/E1 order, non-mutating E2/E3, stale products,
 failure atomicity, no repair, and same-revision dual capability binding.
+Include non-local-return home lifetime/addressability, semantic-object versus
+spill-object separation, exact store/reload/action coverage, and strict F1
+apply-only rejection of any missing realization.
 
 ## Open Questions
 

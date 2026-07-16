@@ -40,6 +40,24 @@ including every value/def/use, call/asm clobber, `ParallelCopy`, `EdgeCopy`,
 Exact CFG, value-flow, memory/effects, current projection, C2 alias units/pools,
 call/clobber requirements, D5 edge-copy plan, and E3 spill state when present.
 
+### Exceptional-boundary allocation facts
+
+E1 consumes exact B4/B5 non-local boundary products plus the current C3/C4
+target/call rule versions and derives immutable
+`ExceptionalBoundaryAllocationFacts` for the same graph revision. Each entry
+names the checkpoint occurrence, continuation program point, complete live-in/
+live-out identities, exact clobbered alias units, values forbidden from
+register-only survival, required memory-resident object identities, and every
+required pre-boundary store and post-boundary reload use. It references B3 CFG
+facts but introduces no edge, reachability, or dominance authority.
+
+Every identity observable after non-local return is covered exactly once as
+unaffected, legally fixed, memory-resident, or explicitly reloaded. A value in
+a clobbered unit cannot remain live across the boundary. Volatile and escaped
+objects retain their B5 semantic memory identities; E1 may add allocation
+constraints but cannot replace them with spill objects. Missing, unknown,
+stale, or overlapping classifications reject E1.
+
 ## Ordered Behavior
 
 1. Validate the exact revision and all predecessor keys.
@@ -56,6 +74,7 @@ This analysis matrix creates facts only; it does not lower nodes or tags.
 |---|---|---|---|---|---|
 | ordinary pseudo value def/use | retain graph | exact live range, allowed requirement/domain, interference | none | stable value/node IDs are keys | missing role/use rejects |
 | call/inline-asm clobber/fixed requirement | retain graph | exact blocked alias units, fixed/tied/group constraints | none | unchanged | unbound clobber/constraint rejects |
+| non-local-return boundary | retain graph | exact clobbers, live identities, memory-residency and store/reload obligations | none | exact B4/B5 boundary provenance | uncovered or register-only survivor rejects |
 | `ParallelCopy`/`EdgeCopy` | retain graph | simultaneous source-before-destination semantics and copy interference | none | transfer endpoint IDs remain distinct | sequentialized inference rejects |
 | `CopyScratch` | retain graph | finite live interval, nonspillable/nonalias/disjoint requirement and pressure | none | explicit scratch ID is allocation identity | hidden/unbounded scratch rejects |
 | retry `Spill`/`Reload` and spill objects | retain graph | explicit defs/uses/memory effects and pressure changes | none | exact E3 IDs/objects are keys | implicit spill state rejects |
@@ -77,6 +96,9 @@ target/layout, projection, D5/E3 lineage, algorithms, and total coverage digest.
 Validate every admitted def/use/clobber/copy/scratch exactly once, reciprocal
 interference, alias-unit consistency, deterministic pressure, and complete keys.
 Publish all-or-nothing; no graph capability is created.
+For non-local boundaries validation also proves complete exact-key coverage and
+that every clobbered live identity is either unavailable after return or has an
+explicit memory/reload route exposed to E2/E3/E4.
 
 ## Analysis Preservation and Invalidation
 
@@ -101,6 +123,9 @@ Absent. Existing liveness/legacy allocation code is not this keyed product.
 
 Prove all roles, loops/edges/calls/asm, simultaneous copies, scratch pressure,
 retry spill nodes, stale keys, deterministic bounds, and exact E3-to-E1 return.
+Include complete exceptional-boundary classification, exact target/call-rule
+keys, clobbered survivors, semantic-memory identity preservation, and missing
+store/reload routes.
 
 ## Open Questions
 

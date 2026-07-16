@@ -40,6 +40,15 @@ The requested victim must be an ordinary spillable identity.
 Exact E1/E2/current projection, CFG/value-flow/effects, D5 edge-copy plan, and
 bounded retry state. Missing/stale/compatible-looking inputs reject.
 
+For an E2 request rooted in an exceptional-boundary obligation, the request
+names the exact E1 boundary entry and all required store/reload program points.
+E3 inserts explicit stores before the checkpoint and reload definitions at the
+named continuation before their covered uses, using one fresh spill object for
+the ordinary spillable value. It must not insert an exceptional CFG edge, move
+a store past the checkpoint, reuse a pre-boundary register value on the
+continuation, or turn a B5 volatile/escaped semantic object into a spill object.
+Failure to find legal explicit placements is terminal for that candidate.
+
 ## Ordered Behavior
 
 1. Validate exact keys, victim spillability, progress witness, and retry bound.
@@ -59,6 +68,7 @@ bounded retry state. Missing/stale/compatible-looking inputs reject.
 | `ParallelCopy`/`EdgeCopy` | retain unresolved semantics | transfer/endpoints/edge provenance | none | none | preserve | early resolution forbidden |
 | `CopyScratch` | retain unchanged | nonspillable/nonalias requirement | none | none | preserve | selection as victim is hard failure |
 | call/asm clobber/fixed/group identity | retain; spill only if E2 request proves ordinary spillability under constraints | exact roles/constraints | explicit spill actions if legal | none | fresh actions, identity unchanged | illegal victim rejects |
+| exceptional-boundary eviction | retain checkpoint/control | exact boundary and memory obligations | explicit pre-boundary spill and post-boundary reload definitions | direct clobbered continuation uses | fresh action/value IDs; exact E1 provenance | implicit, late, partial, or topology-changing placement rejects |
 | control/effect nodes | retain except explicit insertion points | control/effects | spill/reload effects only | none | existing IDs preserved | CFG semantic change rejects |
 | unknown/illegal/omitted/premature frame/machine kind | reject candidate | none | none | none | no staging | `SpillRewriteCoverageInvalid` |
 
@@ -80,6 +90,9 @@ The private assigned-candidate gate checks exact victim/progress, spill object/
 action coverage, types/effects/def-use/CFG, copy/scratch preservation, no scratch
 spill, current projection, and no concrete frame/machine facts. No public stage
 is minted.
+Exceptional rewrites additionally require one-to-one coverage of the E1
+store/reload obligations and proof that no stale register-only continuation use
+survives. As for every E3 mutation, success returns exclusively to fresh E1.
 
 ## Analysis Preservation and Invalidation
 
@@ -109,6 +122,9 @@ Absent. Legacy spill code does not implement this explicit bounded retry.
 Prove ordinary victim insertion/RAUW, scratch/nonspillable rejection, copy
 preservation, progress monotonicity/bound/cycle failure, fresh projection, and
 the sole `E3 -> E1` edge.
+Also prove exact exceptional placements, no fabricated CFG, no semantic-object
+substitution, complete continuation RAUW, and terminal failure on illegal
+placement.
 
 ## Open Questions
 

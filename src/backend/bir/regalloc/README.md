@@ -38,6 +38,16 @@ is unchanged. Any admitted graph identity absent from E1 is failure.
 Exact E1, C2, projection, call/asm constraints, D5 scratch rules, and on retry
 E3 spill state. No compatible or reconstructed pool/pressure input.
 
+E1's exact `ExceptionalBoundaryAllocationFacts` are correctness constraints,
+not profitability hints. E2 rejects an assignment that keeps a value only in a
+clobbered register unit across a non-local boundary, coalesces identities across
+incompatible boundary states, omits required memory residency, or evicts a
+volatile/escaped semantic object into a substitute spill identity. When an
+ordinary spillable value needs a pre-boundary store and post-boundary reload,
+E2 emits one normal progress-ranked eviction request for E3. It cannot insert
+actions, choose frame placement, weaken the obligation, or special-case the
+boundary outside versioned policy and stable tie-break rules.
+
 ## Ordered Behavior
 
 1. Validate all keys and total E1-to-graph identity coverage.
@@ -56,6 +66,7 @@ E3 spill state. No compatible or reconstructed pool/pressure input.
 | ordinary spillable identity | retain graph | legal home or deterministic progress-ranked eviction request | none | unchanged | no candidate may be ordinary failure/eviction |
 | `ParallelCopy`/`EdgeCopy` endpoints | retain graph | endpoint homes/coalescing facts respecting simultaneous semantics | none | endpoints remain distinct | sequential shortcut rejects |
 | call/asm clobber-sensitive identity | retain graph | home outside exact live clobber units or fixed as required | none | unchanged | clobber conflict rejects |
+| non-local-boundary survivor | retain graph | legal unaffected home or exact memory-residency/eviction decision satisfying E1 | none | boundary identity unchanged | register-only clobbered home or missing route rejects |
 | retry spill/reload identity | retain graph | normal assignment/interference treatment | none | exact E3 identity | hidden preassignment rejects |
 | unknown/uncovered identity or premature frame/machine input | reject allocation | none | none | none | `AllocationCoverageInvalid` |
 
@@ -74,6 +85,9 @@ eviction request with progress witness for E3; or structured failure. No graph.
 Validate total assignments, legal domains, alias/interference, ties/groups,
 clobbers, scratch nonspillability/nonalias, and exact keys. Partial assignments
 never publish or accompany eviction.
+Validation includes every exceptional boundary entry and forbids a complete
+assignment that leaves any required survivor without a legal home or explicit
+E3 realization route.
 
 ## Analysis Preservation and Invalidation
 

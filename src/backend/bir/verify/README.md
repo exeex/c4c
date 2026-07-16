@@ -405,6 +405,16 @@ repair `PseudoBir`.
 
 ### Allocated profile and E4 publication
 
+Non-local-return verification is cumulative and stage-local. B4 requires one
+exact `NonLocalSsaBoundary` per registered checkpoint and rejects forbidden
+post-return visibility or invented CFG/phi facts. B5 requires matching
+`NonLocalMemoryBoundary` coverage, explicit volatile/escaped memory identity,
+ordered pre-checkpoint effects, and legal post-return observation. E1 requires
+exact target/call-rule-keyed exceptional allocation coverage; E2 rejects
+clobbered register-only survivors and missing residency decisions; E3 accepts
+only explicit exact-point store/reload realization and returns to fresh E1.
+No verifier reconstructs a missing predecessor product or repairs the graph.
+
 E4 is one terminal publication transaction for phase E, not an allocation
 repair pass. After frame-action materialization, final projection and E1 are
 freshly recomputed; E2 assignment and E3 spill checks are non-mutating
@@ -1233,6 +1243,11 @@ callee or a link-name fallback (`CallCalleeInvalid`). For both:
   a `returns_twice` call are not optimized under ordinary single-return
   assumptions. Setjmp/longjmp behavior is expressed by these semantic flags,
   never inferred from a callee spelling;
+- Raw verification records only closed return behavior and ordinary instruction
+  order. It does not fabricate a local exceptional edge. B4/B5 later publish
+  exact-revision non-local visibility/memory products, and E1 combines those
+  products with target/call clobbers; missing products fail at their consuming
+  stage rather than being reconstructed by an allocator;
 - by-value aggregate intent lives in typed per-argument attributes
   (object type/size/alignment), not a register class, stack offset, copy slot,
   or move plan;

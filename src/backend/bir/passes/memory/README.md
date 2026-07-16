@@ -39,6 +39,27 @@ Fresh exact-B4 `MemoryEffects` and `Provenance` products plus their declared
 CFG/dominance/value-flow dependencies. `Unknown` may prevent an optimization,
 but cannot invent alias/provenance or permit an unsafe effect rewrite.
 
+### Non-local memory visibility
+
+B5 consumes every exact-B4 `NonLocalSsaBoundary` and the matching
+`MemoryEffects` result. For each boundary it publishes an immutable
+`NonLocalMemoryBoundary` keyed by the exact B5 revision. The record names the
+checkpoint and continuation, every retained semantic object identity, its
+volatile/address-escape/modification status, the memory effects that must be
+ordered before the checkpoint, and the post-return accesses that require an
+observable memory version. It contains no successor, predecessor, reachability,
+dominance, liveness, assignment, or frame fact.
+
+B5 preserves volatile accesses as explicit volatile memory operations and
+keeps every address-escaped or otherwise post-return-observable object in
+explicit memory form across the boundary. A required store must occur before
+the checkpoint; a post-return observation must be an explicit access to the
+retained identity, not reuse of stale register-only SSA state. An object marked
+`PostReturnIndeterminate` may be accessed only in a source-semantically legal
+way; B5 cannot manufacture a stable pre-checkpoint value. Unknown escape,
+unknown modification, or incomplete effect coverage fails closed when safety
+cannot be proved.
+
 ## Ordered Behavior
 
 1. Validate B4 proof and exact analysis keys.
@@ -48,6 +69,8 @@ but cannot invent alias/provenance or permit an unsafe effect rewrite.
    mutation summary.
 5. Recompute affected analyses and whole-graph SSA, then atomically advance B5
    or discard the candidate.
+6. Recompute and validate all non-local memory-boundary records on that final
+   candidate and publish them only under its exact B5 key.
 
 ## NodeKind/Tag Lowering Matrix
 
@@ -82,6 +105,9 @@ Verify complete matrix coverage, memory payload/type/role/effect consistency,
 atomic ordering/scope, exact def-use, unchanged CFG, and whole-graph SSA after
 every replacement. No target/preparation/pseudo/allocation/frame/machine fact
 is admitted. The framework advances only the complete green checkpoint.
+Each non-local boundary must also have complete retained-object/effect coverage,
+explicit pre-checkpoint ordering, legal post-return accesses, and no hidden
+register-only observable state.
 
 ## Analysis Preservation and Invalidation
 
@@ -108,6 +134,9 @@ Absent. Core memory kinds and MemoryEffects/Provenance design are not this pass.
 
 Prove each access/effect/atomic row, conservative unknown behavior, exact
 analysis keys, SSA re-proof, rollback/invalidation, and target-fact exclusion.
+Include volatile, escaped, modified and indeterminate objects at a returns-twice
+boundary, stale/missing boundary products, and rejection of implicit stores or
+loads.
 
 ## Open Questions
 

@@ -43,6 +43,39 @@ Fresh exact-B3 `Cfg`, `Dominance`, and `PublicationValueFlow` products with
 complete dependency fingerprints. Unknown dominance or incomplete value-flow
 is failure, not a reason to publish partial SSA.
 
+### Non-local control-transfer safety
+
+For every call whose closed `CallEffects` says `ReturnsTwice`, and every other
+registered non-local-return checkpoint, B4 derives one immutable
+`NonLocalSsaBoundary` record. The record is keyed by the exact B3 revision and
+names the call/checkpoint instruction, its ordinary continuation instruction,
+the definitions visible immediately before the checkpoint, definitions created
+or modified after it, and the values whose source semantics permit observation
+after a non-local return. Equivalent registered boundaries use the same schema;
+callee spelling such as `setjmp` or `longjmp` is never authority.
+
+The record is an instruction-point visibility fact, not an edge or successor.
+B3 remains the sole owner of ordinary terminator-derived topology. B4 must not
+invent an exceptional predecessor, phi input, dominance relation, or synthetic
+block. Instead it applies these closed rules while planning SSA construction:
+
+- a value whose post-return observation is permitted must be represented by a
+  definition available on both ordinary and non-local continuations or by an
+  explicit addressable memory identity admitted for B5;
+- a volatile or address-escaped source object is never promoted to
+  register-only state across the boundary;
+- a non-volatile automatic object whose source semantics make a modification
+  indeterminate after non-local return is marked `PostReturnIndeterminate`; its
+  prior SSA value cannot be silently reused as a known value;
+- a definition made only after the checkpoint cannot feed a use on the
+  non-local continuation; and
+- ambiguity about escape, modification, volatility, continuation identity, or
+  source observability rejects B4 rather than selecting ordinary single-return
+  SSA assumptions.
+
+These prospective record/diagnostic names are documentation vocabulary, not
+claims of landed APIs or `NodeKind` entries.
+
 ## Ordered Behavior
 
 1. Validate B3 capability and all exact analysis keys.
@@ -53,6 +86,8 @@ is failure, not a reason to publish partial SSA.
    uses, and delete redundant phis only through total typed mappings.
 5. Recompute CFG/dominance/value-flow on the candidate, prove whole-graph SSA,
    and atomically advance B4 or discard it.
+6. Derive and validate every `NonLocalSsaBoundary` against the final candidate;
+   publish it only with the same exact B4 revision and SSA proof.
 
 ## NodeKind/Tag Lowering Matrix
 
@@ -88,6 +123,10 @@ SSA value, complete reciprocal def-use, definition dominance, same-block order,
 one typed phi incoming per exact predecessor edge including multiplicity, no
 hidden special-value path, and unchanged CFG topology. Only this whole-graph
 proof establishes dynamic SSA.
+For every registered non-local checkpoint it additionally proves unique
+instruction-point coverage, exact continuation order, no post-checkpoint-only
+definition visible after non-local return, no forbidden register-only promotion,
+and no ordinary CFG or phi fact fabricated from the boundary record.
 
 ## Analysis Preservation and Invalidation
 
@@ -107,6 +146,8 @@ failure publishes no partial function, proof token, analysis, or checkpoint.
 B3 supplies exact canonical CFG. B5 receives only the complete B4 checkpoint
 and may rely on dynamic SSA because it names B4's proof, never because a kind
 has `SsaEligible`. D5 later owns SSA removal.
+It also receives exact-revision `NonLocalSsaBoundary` records; B5 may strengthen
+their memory consequences but cannot change their value visibility or topology.
 
 ## Implementation State
 
@@ -118,6 +159,9 @@ support do not implement dynamic B4 construction/proof.
 Prove diamonds, loops, parallel edges, unreachable policy, same-block ordering,
 phi insertion/elimination, `NeverSsa` negatives, stale analyses, rollback, and
 the distinction between static eligibility and dynamic proof.
+Also prove returns-twice ordinary versus non-local continuation visibility,
+volatile/address-escaped retention, indeterminate-value rejection, missing or
+duplicate boundary coverage, stale keys, and absence of fabricated CFG edges.
 
 ## Open Questions
 

@@ -3,33 +3,36 @@
 Status: Active
 Source Idea Path: ideas/open/803_bir_exceptional_control_allocation_and_frame_design_completion.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define non-local control-transfer safety
+Current Step ID: 3
+Current Step Title: Define `asm goto` instruction-point SSA snapshots
 
 ## Just Finished
 
-- Completed plan Step 1: inventoried every affected owner and published one
-  normative provisional placement/conflict matrix covering all six idea 803
-  design areas without changing the A1-F3 spine or F1 boundary.
+- Completed plan Step 2: defined the exact-revision B4/B5 non-local visibility
+  and retained-memory contracts, E1 exceptional allocation facts, E2/E3
+  assignment and explicit rewrite duties, E4 home/frame closure, cumulative
+  fail-closed verification, and one complete B3-through-F1 scenario.
 
 ## Suggested Next
 
-- Execute plan Step 2 and define non-local control-transfer safety across the
-  now-fixed B4/B5 -> E1/E2/E3 -> E4 owner chain.
+- Execute plan Step 3 and define `asm goto` instruction-point SSA snapshots
+  while preserving B3's sole ownership of topology and edge occurrences.
 
 ## Watchouts
 
 - Documentation-only: do not modify code, tests, build files, scripts,
   generated artifacts, binaries, canonical regression logs, or unrelated
   lifecycle sources.
-- Keep exceptional-boundary facts immutable and revision-keyed; they cannot
-  become a second CFG authority or an allocator-only special case.
-- The Step 1 matrix intentionally does not choose the Step 4 promotion policy
-  or close the detailed contracts reserved for Steps 2-7.
+- Reuse Step 2's exact-key, no-reconstruction, and stage-local fail-closed
+  pattern, but do not conflate non-local-return facts with `asm goto` edges.
+- Step 3 must preserve duplicate successor-slot occurrence identity and split
+  topology (B3) from instruction-point value visibility (B4).
 
 ## Proof
 
 - Documentation-only proof: `git diff --check`; Markdown-only changed-path
-  audit; affected-owner inventory; focused A1-F3/F1 checks; and validation of
-  changed relative Markdown links. No build/runtime test applies, and canonical
-  regression logs were not created or modified.
+  audit; changed relative-link validation; and focused audits for registered
+  non-local boundaries, exact-revision products, volatile/escape/indeterminate
+  memory identity, E1 clobber/reload exposure, E2 prohibition, E3 realization
+  and sole retry, E4 home/frame closure, fail-closed verification, and strict
+  apply-only F1. No build/runtime test applies; canonical logs were untouched.
