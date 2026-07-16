@@ -10,14 +10,6 @@ using namespace stmt_emitter_detail;
 
 namespace {
 
-[[deprecated(
-    "HIR-rendered AArch64 fixed-vector call-argument ABI source type text: "
-    "audit this runtime-text compatibility boundary")]]
-LirTypeRef hir_rendered_aarch64_vector_call_argument_abi_source_type_text(
-    std::string rendered_text) {
-  return LirTypeRef(std::move(rendered_text));
-}
-
 StructNameId call_aggregate_structured_name_id(const c4c::hir::Module& mod,
                                                const lir::LirModule* module,
                                                const std::string& rendered_text,
@@ -373,8 +365,7 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
   if (fixed_param_ts && llvm_cc::aarch64_fixed_vector_passed_as_i32(*fixed_param_ts, mod_)) {
     const std::string packed = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirCastOp{packed, lir::LirCastKind::Bitcast,
-                                    hir_rendered_aarch64_vector_call_argument_abi_source_type_text(
-                                        llvm_value_ty(mod_, out_arg_ts)),
+                                    LirTypeRef(llvm_value_ty(mod_, out_arg_ts)),
                                     arg, lir::LirTypeRef(lir::LirBuiltinType::I32)});
     return {{{"i32", packed}}, false};
   }
