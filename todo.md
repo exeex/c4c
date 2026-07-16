@@ -8,18 +8,15 @@ Current Step Title: Select One Carrier-Backed Collector Seam
 
 ## Just Finished
 
-Closure rejected after the accepted `LirInsertElementOp.vec` packet because
-the source idea still has durable in-scope aggregate/vector collector
-migration remaining. Accepted commits in this sequence migrated
-`LirExtractValueOp.agg`, `LirExtractElementOp.vec`,
-`LirInsertElementOp.elem`, and `LirInsertElementOp.vec`.
+Completed plan step 1 packet migrating only `LirInsertValueOp.agg` in
+`collect_inst_refs` from raw scanner collection to
+`collect_operand_ref(op.agg, refs)`. `LirInsertValueOp.elem` remains on the
+raw scanner path.
 
 ## Suggested Next
 
-Execute the next one-field carrier-backed collector packet:
-`LirInsertValueOp.agg` in `collect_inst_refs`. Replace only the raw
-`S(op.agg)` in the `LirInsertValueOp` arm with
-`collect_operand_ref(op.agg, refs)`.
+After proof, hand back to supervisor for the next one-field carrier-backed
+collector packet selection.
 
 ## Watchouts
 
@@ -32,11 +29,11 @@ unless the selected field is disproven during executor inspection.
 
 ## Proof
 
-Required implementation proof for the next packet:
+Proof completed for this packet:
 
 ```
 { cmake --build build && ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure; } > test_after.log 2>&1
 git diff --check
 ```
 
-Proof log path: `test_after.log`.
+Result: passed. Proof log path: `test_after.log`.
