@@ -2059,7 +2059,12 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
     return;
   }
   if (const auto* op = std::get_if<LirStoreOp>(&inst)) {
-    require_module_type_ref(mod, op->type_str, "LirStoreOp.type_str", true);
+    if (op->requires_native_store_authority &&
+        op->type_str.kind() == LirTypeKind::Integer) {
+      (void)render_integer_type_ref(op->type_str, "LirStoreOp.type_str");
+    } else {
+      require_module_type_ref(mod, op->type_str, "LirStoreOp.type_str", true);
+    }
     verify_store_value_operand(op->val, "LirStoreOp.val");
     verify_pointer_operand(op->ptr, "LirStoreOp.ptr");
     verify_global_store_authority(mod, *op);

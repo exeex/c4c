@@ -482,7 +482,13 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
   } else if (const auto* op = std::get_if<LirStoreOp>(&inst)) {
     const std::string direct = resolve_direct_label_address(function, op->val,
                                                             link_names);
-    os << "  store " << require_type_ref(op->type_str, "LirStoreOp.type_str", true)
+    const auto type = op->requires_native_store_authority &&
+                              op->type_str.kind() == LirTypeKind::Integer
+                          ? render_integer_type_ref(op->type_str,
+                                                    "LirStoreOp.type_str")
+                          : require_type_ref(op->type_str,
+                                             "LirStoreOp.type_str", true);
+    os << "  store " << type
        << " "
        << (direct.empty() ? require_operand_kind(op->val, "LirStoreOp.val",
                                {LirOperandKind::SsaValue,

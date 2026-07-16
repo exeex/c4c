@@ -2077,6 +2077,52 @@ loop:
                       scalar_store->local_object_authority->pointer_definition &&
                   scalar_store->type_str == scalar_store->local_object_authority->pointee_type,
               "selected local scalar declaration store should retain native immediate and matching local authority");
+  lir::LirModule stale_store_type_display = module;
+  lir::LirStoreOp* stale_type_store =
+      selected_local_scalar_store(stale_store_type_display);
+  expect_true(stale_type_store != nullptr && stale_type_store->local_object_authority,
+              "selected local scalar store should remain mutable for stale type proof");
+  const lir::LirValueId stale_store_pointer =
+      stale_type_store->local_object_authority->pointer_definition;
+  stale_type_store->type_str.str() = "not-i32";
+  stale_type_store->local_object_authority->pointee_type.str() = "not-i32";
+  for (auto& function : stale_store_type_display.functions) {
+    for (auto& inst : function.alloca_insts) {
+      if (auto* op = std::get_if<lir::LirAllocaOp>(&inst);
+          op && op->local_object_authority &&
+          op->local_object_authority->pointer_definition == stale_store_pointer) {
+        op->local_object_authority.reset();
+      }
+    }
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* op = std::get_if<lir::LirLoadOp>(&inst);
+            op && op->local_object_authority &&
+            op->local_object_authority->pointer_definition == stale_store_pointer) {
+          op->local_object_authority.reset();
+        }
+      }
+    }
+  }
+  lir::verify_module(stale_store_type_display);
+  const std::string stale_store_ir = lir::print_llvm(stale_store_type_display);
+  const std::size_t stale_function_pos =
+      stale_store_ir.find("define i32 @local_scalar_store_authority()");
+  expect_true(stale_function_pos != std::string::npos,
+              "selected integer store proof should print its fixture function");
+  const std::size_t stale_store_pos =
+      stale_store_ir.find("store ", stale_function_pos);
+  expect_true(stale_store_pos != std::string::npos,
+              "selected integer store proof should print a store instruction");
+  const std::size_t stale_store_end = stale_store_ir.find('\n', stale_store_pos);
+  const std::string stale_store_line = stale_store_ir.substr(
+      stale_store_pos, stale_store_end == std::string::npos
+                           ? std::string::npos
+                           : stale_store_end - stale_store_pos);
+  expect_contains(stale_store_line, "store i32 7, ptr ",
+                  "selected integer store should render native type width");
+  expect_not_contains(stale_store_line, "not-i32",
+                      "selected integer store should not render stale type text");
 
   const auto reject_selected_store = [&](const auto& base, auto mutate,
                                          const std::string& message) {

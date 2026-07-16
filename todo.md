@@ -206,6 +206,32 @@ Completed the selected native integer scalar load `LirLoadOp.type_str` packet:
   global load renders from native integer width authority rather than mutable
   display text.
 
+Completed Step 5 inventory for the next 846 packet. 846 still owns selected
+native integer scalar store `LirStoreOp.type_str` verifier/printer rendering:
+
+- `src/codegen/lir/verify.cpp` still verifies `LirStoreOp.type_str` with
+  `require_module_type_ref(mod, op->type_str, "LirStoreOp.type_str", true)`.
+- `src/codegen/lir/lir_printer.cpp` still renders stores with
+  `require_type_ref(op->type_str, "LirStoreOp.type_str", true)`.
+- `LirStoreOp.requires_native_store_authority`, native store value authority,
+  and local store authority checks already publish the selected native integer
+  store facts.
+- The packet must migrate only selected native integer scalar stores and
+  preserve raw compatibility, global store compatibility, pointer, aggregate,
+  load, cast, gep, phi, call, return, vector, va_arg, switch, and universal API
+  behavior.
+
+Completed the selected native integer scalar store `LirStoreOp.type_str`
+packet:
+
+- Reused `render_integer_type_ref` for only authoritative integer store
+  verifier and printer branches.
+- Preserved raw compatibility stores and non-integer store types on the
+  existing generic paths.
+- Added focused stale-display coverage proving a selected native integer local
+  store renders from native integer width authority rather than mutable display
+  text.
+
 ## Suggested Next
 
 Execute `plan.md` Step 5: inventory remaining universal classifier, renderer,
@@ -318,6 +344,15 @@ printer branch for the next bounded packet. Completed return packet proof:
 
 Step 5 trace selected the native integer scalar `LirLoadOp.type_str` verifier
 and printer branch for the next bounded packet. Completed load packet proof:
+
+- `cmake --build build`
+- `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
+- `git diff --check`
+
+Proof log: `test_after.log`.
+
+Step 5 trace selected the native integer scalar `LirStoreOp.type_str` verifier
+and printer branch for the next bounded packet. Completed store packet proof:
 
 - `cmake --build build`
 - `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
