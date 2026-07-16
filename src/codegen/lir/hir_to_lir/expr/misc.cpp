@@ -402,11 +402,17 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const IndexExpr&, const E
       elem_ts.vector_bytes = 0;
       const LirOperand tmp = fresh_value(ctx);
       const lir::LirNativeVectorShape shape{static_cast<uint32_t>(base_ts.vector_lanes), llvm_ty(elem_ts)};
+      const lir::LirVectorRef vector_ref =
+          module_->register_vector({static_cast<uint32_t>(base_ts.vector_lanes),
+                                    lir::LirTypeRef(llvm_ty(elem_ts))});
+      lir::LirNativeVectorAuthority authority{
+          ctx.lir_function->link_name_id, *tmp.value_id(),
+          vec.value_id() ? std::optional<lir::LirValueId>(*vec.value_id()) : std::nullopt,
+          std::nullopt, std::nullopt, shape, shape, std::nullopt,
+          lir::LirNativeVectorIndex{ix, lir::LirTypeRef::integer(32)}, {}};
+      authority.vector_ref = vector_ref;
       emit_lir_op(ctx, lir::LirExtractElementOp{tmp, llvm_ty(base_ts), vec, "i32", ix,
-          lir::LirNativeVectorAuthority{ctx.lir_function->link_name_id, *tmp.value_id(),
-              vec.value_id() ? std::optional<lir::LirValueId>(*vec.value_id()) : std::nullopt,
-              std::nullopt, std::nullopt, shape, shape, std::nullopt,
-              lir::LirNativeVectorIndex{ix, lir::LirTypeRef::integer(32)}, {}}});
+                                                std::move(authority)});
       return tmp.str();
     }
   }

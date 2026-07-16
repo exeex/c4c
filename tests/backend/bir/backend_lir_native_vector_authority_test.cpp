@@ -105,6 +105,8 @@ lir::LirModule vector_authority_module() {
           lir::LirNativeVectorIndex{
               lir::LirOperand::ssa("%index", lir::LirValueId{4}), lir::LirTypeRef::integer(32)}),
   });
+  attach_vector_store_ref(module, *std::get<lir::LirExtractElementOp>(block.insts.back())
+                                .native_vector_authority);
   block.insts.push_back(lir::LirShuffleVectorOp{
       .result = lir::LirOperand::ssa("%shuffle", lir::LirValueId{7}),
       .vec_type = vector_type,
@@ -410,6 +412,53 @@ void test_native_vector_authority_verifier_boundary() {
       .native_vector_authority->second_vector_shape->element_type = lir::LirTypeRef::integer(64);
   expect_rejected(std::move(selected_shuffle_second_shape_element_mismatch),
                   "selected splat shuffle second shape element must mirror vector-store element type");
+
+  auto extract_missing_vector_ref = vector_authority_module();
+  std::get<lir::LirExtractElementOp>(extract_missing_vector_ref.functions[0].blocks[0].insts[1])
+      .native_vector_authority->vector_ref.reset();
+  expect_rejected(std::move(extract_missing_vector_ref),
+                  "direct vector extract must reject a missing vector store ref");
+
+  auto extract_foreign_vector_ref = vector_authority_module();
+  std::get<lir::LirExtractElementOp>(extract_foreign_vector_ref.functions[0].blocks[0].insts[1])
+      .native_vector_authority->vector_ref = lir::LirVectorRef{999};
+  expect_rejected(std::move(extract_foreign_vector_ref),
+                  "direct vector extract must reject a non-vector-store ref");
+
+  auto extract_zero_store_lanes = vector_authority_module();
+  auto& zero_store_extract = std::get<lir::LirExtractElementOp>(
+      extract_zero_store_lanes.functions[0].blocks[0].insts[1]);
+  extract_zero_store_lanes.vector_store[zero_store_extract.native_vector_authority->vector_ref->value]
+      .lane_count = 0;
+  expect_rejected(std::move(extract_zero_store_lanes),
+                  "direct vector extract must reject malformed zero vector-store lanes");
+
+  auto extract_empty_store_element = vector_authority_module();
+  auto& empty_store_extract = std::get<lir::LirExtractElementOp>(
+      extract_empty_store_element.functions[0].blocks[0].insts[1]);
+  extract_empty_store_element
+      .vector_store[empty_store_extract.native_vector_authority->vector_ref->value]
+      .element_type = lir::LirTypeRef{};
+  expect_rejected(std::move(extract_empty_store_element),
+                  "direct vector extract must reject malformed empty vector-store element type");
+
+  auto extract_store_lane_mismatch = vector_authority_module();
+  auto& lane_store_extract = std::get<lir::LirExtractElementOp>(
+      extract_store_lane_mismatch.functions[0].blocks[0].insts[1]);
+  extract_store_lane_mismatch
+      .vector_store[lane_store_extract.native_vector_authority->vector_ref->value]
+      .lane_count = 5;
+  expect_rejected(std::move(extract_store_lane_mismatch),
+                  "direct vector extract must reject vector-store lane mismatch");
+
+  auto extract_store_element_mismatch = vector_authority_module();
+  auto& element_store_extract = std::get<lir::LirExtractElementOp>(
+      extract_store_element_mismatch.functions[0].blocks[0].insts[1]);
+  extract_store_element_mismatch
+      .vector_store[element_store_extract.native_vector_authority->vector_ref->value]
+      .element_type = lir::LirTypeRef::integer(64);
+  expect_rejected(std::move(extract_store_element_mismatch),
+                  "direct vector extract must reject vector-store element mismatch");
 
   auto missing_owner = vector_authority_module();
   std::get<lir::LirInsertElementOp>(missing_owner.functions[0].blocks[0].insts[0])

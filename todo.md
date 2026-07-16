@@ -8,20 +8,19 @@ Current Step Title: Migrate Bounded Vector Operation Consumers
 
 ## Just Finished
 
-Completed a third bounded `plan.md` Step 3 packet for the selected
-scalar-to-vector splat shuffle seam. The required `LirShuffleVectorOp`
-verifier path now consumes the accepted `LirVectorRef` fact for the poison
-second operand's vector shape compatibility mirror, while keeping the poison
-token and absent second-use evidence as structured compatibility validation.
-Nearby verifier coverage now rejects non-poison second operands, invented
-second-use evidence, missing second-vector shape, and vector-store-backed
-second-shape lane or element mismatches for required scalar-splat shuffles.
+Completed a fourth bounded `plan.md` Step 3 packet for direct vector indexing.
+`LirExtractElementOp` lowering now registers a module-owned `LirVectorRef`, and
+the verifier consumes that vector-store fact for direct vector index lane and
+element shape validation while keeping row-local shape fields as compatibility
+mirrors. Nearby verifier coverage now rejects missing, out-of-range, zero-lane,
+empty-element, lane-mismatched, and element-mismatched extract vector-store
+facts.
 
 ## Suggested Next
 
 Select the next bounded Step 3 packet only after supervisor review. A likely
-candidate is the next vector operation family, such as bounded
-`LirExtractElementOp` vector-store consumption, but it remains separate from
+candidate is a narrow parity/broader proof decision for migrated Step 3
+consumers before moving to mirror retirement, but that remains separate from
 this packet.
 
 ## Watchouts
@@ -31,8 +30,9 @@ this packet.
   unmigrated paths.
 - Store-backed checks now apply only to required `LirInsertElementOp` and the
   required scalar-splat `LirShuffleVectorOp` first-vector/result shape and
-  mask lane-count/`mask_type` and poison second-shape paths. ExtractElement and
-  nonselected producers are intentionally unchanged.
+  mask lane-count/`mask_type` and poison second-shape paths, plus direct
+  `LirExtractElementOp` vector index shape. Nonselected producers are
+  intentionally unchanged.
 - Aggregate vector elements now fail closed unless their typed element ref is
   backed by an accepted aggregate-store fact from the 838 route; do not add a
   separate aggregate owner for vector work.
