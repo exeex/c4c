@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/846_lir_family_overloaded_verifier_dispatch_printer.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Decide Next 846 Packet Or 847 Handoff
+Current Step ID: 2
+Current Step Title: Add The Bounded Family Overload
 
 # Current Packet
 
@@ -86,12 +86,27 @@ Completed the selected integer `LirCmpOp.type_str` packet:
 - Added focused stale-display coverage proving integer compare printing uses
   native integer width authority rather than mutable display text.
 
+Completed Step 5 inventory for the next 846 packet. 846 still owns a generic
+integer scalar renderer inside the already selected `LirBinOp`
+`compact_scalar_type` carrier:
+
+- `compact_scalar_binop_type` already validates the carrier with
+  `LirCompactScalarType::from_type_ref` and requires it to mirror
+  `LirBinOp.type_str`.
+- `src/codegen/lir/lir_printer.cpp` still renders the selected compact scalar
+  carrier with generic `require_type_ref(*type, "LirBinOp.compact_scalar_type",
+  true)`.
+- The next packet must migrate only the integer compact-scalar rendering branch
+  to native width authority and preserve floating compact scalar rendering.
+- Focused compact-scalar wrong-family/stale-mirror coverage already exists in
+  `tests/frontend/frontend_lir_call_type_ref_test.cpp`.
+
 ## Suggested Next
 
-Execute `plan.md` Step 5: inventory remaining universal classifier, renderer,
-mutable semantic string, and implicit conversion callers. Classify the next
-exact 846-owned consumer or record the handoff/blocker decision if no 846
-consumer is ready.
+Execute `plan.md` Step 2 and Step 3 for only the integer
+`LirBinOp.compact_scalar_type` rendering branch. Reuse or extend the bounded
+scalar integer type-ref requirement as appropriate, while leaving floating
+compact scalar rendering and unselected `LirBinOp.type_str` callers untouched.
 
 ## Watchouts
 
@@ -108,6 +123,10 @@ aggregate, load/store, or cast type refs in the select packet.
 
 For the compare packet, do not migrate floating compares, `LirBinOp`, vector,
 aggregate, load/store, or cast type refs.
+
+For the binop packet, do not migrate floating compact scalar rendering,
+unselected `LirBinOp.type_str`, vector, aggregate, load/store, or cast type
+refs.
 
 ## Proof
 
@@ -131,6 +150,14 @@ Completed select packet proof:
 
 Next Step 5 decision is trace/lifecycle state unless it selects and records
 another bounded implementation packet.
+
+Step 5 trace selected the integer `LirBinOp.compact_scalar_type` rendering
+branch for the next bounded packet. Expected code-changing proof for that
+packet:
+
+- `cmake --build build`
+- `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
+- `git diff --check`
 
 Step 5 trace selected the integer branch of `LirCmpOp.type_str` for the next
 bounded packet. Completed integer compare packet proof:
