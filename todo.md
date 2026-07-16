@@ -1,37 +1,32 @@
 Status: Active
-Source Idea Path: ideas/open/865_lir_next_non_body_parameter_authority_handoff.md
+Source Idea Path: ideas/open/866_lir_remaining_authority_owner_triage.md
 Source Plan Path: plan.md
 Current Step ID: 1
-Current Step Title: Trace and select one next non-body-parameter authority row
+Current Step Title: Build the current evidence bundle
 
 # Current Packet
 
 ## Just Finished
 
-Plan-owner rejected closure for 734 after accepted Step 7.51 because the source
-completion gate remains unmet. Idea 734 is parked after receiver commit
-`750b6b3ba`, and this active runbook now owns the separate producer-side
-blocker for exactly one next non-body-parameter authority handoff.
+Lifecycle switched from concluded no-change 865 to successor umbrella 866.
+Idea 734 remains paused after accepted receiver commit `750b6b3ba`; 865
+produced no handoff because its selected `LirAbsOp` selected-global/i32 row is
+already received by `0c44e810ad`.
 
 ## Suggested Next
 
-Trace current LIR producer/verifier behavior, choose exactly one valid
-non-body-parameter row not already accepted by 734 through Step 7.51, and
-record its native authority tuple plus malformed matrix before implementation.
+Execute Step 1 by creating `docs/lir_remaining_authority_owner_triage/` and a
+current-evidence document that records the accepted commits, rejected 865 row,
+accepted rows not to reopen, and broad remaining families to classify.
 
 ## Watchouts
 
-Do not edit Raw-BIR/importer receiver code, reopen accepted Step 7.50 or 7.51
-call-result receipts, reopen fixed direct-call argument 0/1 parameter
-receipts, choose a function-body parameter row, recover authority from
-presentation text, or absorb memory/VA, aggregate/vector,
-module/type/global/metadata, CFG/PHI, residual instruction/terminator,
-inline-assembly, final convergence, generic residual sweeps, or any other
-family.
+Do not implement code or tests in this umbrella. Do not reopen the accepted
+`LirAbsOp` selected-global/i32 receipt, direct-call argument 0/1 receipts,
+body-parameter receipts, local-object/VLA receipts, or accepted call-result
+rows. Stale open ideas need reconciliation before they can become current 734
+successors.
 
 ## Proof
 
-Pending for 865. Required proof after implementation: fresh build, focused
-producer/verifier proof for the selected row, `git diff --check`, and any
-matching regression guard required by touched shared LIR verifier or producer
-code.
+Lifecycle-only switch pending validation. Minimum proof: `git diff --check`.

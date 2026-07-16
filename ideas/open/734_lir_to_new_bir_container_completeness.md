@@ -2615,3 +2615,22 @@ not repeat Step 7.51 or receive another call-result row, parameter-use row,
 memory/VA, aggregate/vector, module/type/global/metadata, CFG/PHI, residual
 instruction/terminator, inline-assembly, generic residual sweep, or any other
 form without its separately scoped first-owner handoff.
+
+## Resumption Update: 865 concluded without handoff
+
+Idea `ideas/closed/865_lir_next_non_body_parameter_authority_handoff.md` is
+intentionally concluded as no-change. Its selected scalar integer `LirAbsOp`
+selected-global/i32 row is already received by commit `0c44e810ad` through
+`selected_global_i32_abs_module` /
+`test_selected_global_i32_abs_receipt_and_rejections`; it must not be reopened
+as a new producer handoff or 734 receiver packet. The 865 repair found no
+bounded replacement row within its one-row non-body-parameter scope.
+
+Resumption record: Steps 1 through 7.51 remain accepted historical work, most
+recently receiver commit `750b6b3ba`. The interrupted point remains source
+completion reassessment after Step 7.51, with no further 734 receiver row
+authorized. Successor `ideas/open/866_lir_remaining_authority_owner_triage.md`
+owns the required classification of remaining first-owner families before the
+next producer or receiver implementation route is selected. After 866 closes,
+reactivate 734 only if it names an exact accepted handoff and matching Raw-BIR
+receiver return row; otherwise follow the successor ordering recorded by 866.

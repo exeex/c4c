@@ -1,6 +1,6 @@
 # LIR Next Non-Body-Parameter Authority Handoff
 
-Status: Open
+Status: Closed - intentionally concluded, no producer handoff published
 Type: producer/schema/verifier handoff for one next non-body-parameter LIR row
 Parent Source: ideas/open/734_lir_to_new_bir_container_completeness.md
 
@@ -62,6 +62,32 @@ without a separately accepted producer-side handoff.
   remain unsupported or separately scoped.
 - Supervisor-selected focused proof and any required matching regression guard
   are accepted.
+
+## Closure Disposition
+
+This route is intentionally concluded as no-change. Step 1 selected the scalar
+integer `LirAbsOp` selected-global/i32 result-use row, but executor repair
+proved that commit `0c44e810ad` already receives that row through
+`selected_global_i32_abs_module` /
+`test_selected_global_i32_abs_receipt_and_rejections` in
+`tests/backend/bir/backend_lir_to_bir_interface_test.cpp`. Reopening that row
+would violate this idea's own reject signal against rows already accepted by
+734 through Step 7.51 or later receiver history.
+
+The re-evaluation also found no bounded replacement row inside this idea's
+one-row non-body-parameter scope. Fixed direct-call arguments, body-parameter
+rows, zero-argument floating call-result, the `double(double)` call-result,
+local-object rows, VLA stack-save/restore rows, CFG/PHI rows, memory/VA rows,
+aggregate/vector rows, module/type/global/metadata rows, residual
+instruction/terminator rows, inline-assembly rows, and generic residual sweeps
+either have accepted receiver history, are explicitly excluded here, or need a
+separately scoped first-owner classification before any producer handoff.
+
+Successor: `ideas/open/866_lir_remaining_authority_owner_triage.md` owns the
+post-Step-7.51 classification needed to select ordered first-owner follow-up
+ideas without pretending that 865 produced a handoff. Parent idea 734 remains
+paused after accepted receiver commit `750b6b3ba`; no Raw-BIR receiver return
+row is authorized from 865.
 
 ## Reviewer Reject Signals
 
