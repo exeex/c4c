@@ -1991,7 +1991,7 @@ static void collect_inst_refs(const LirInst& inst, LirGlobalRefs& refs) {
         collect_operand_ref(incoming.value, refs);
       }
     } else if constexpr (std::is_same_v<T, LirSelectOp>) {
-      S(op.cond); S(op.true_val); S(op.false_val);
+      collect_operand_ref(op.cond, refs); S(op.true_val); S(op.false_val);
     } else if constexpr (std::is_same_v<T, LirExtractValueOp>) {
       S(op.agg);
     } else if constexpr (std::is_same_v<T, LirInsertValueOp>) {

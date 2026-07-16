@@ -8,21 +8,18 @@ Current Step Title: Select One Carrier-Backed Collector Seam
 
 ## Just Finished
 
-Close rejected after accepted commit `8d08d4ef9`: durable in-scope collector
-migration work remains.
+Completed plan Steps 1-3 for the one-field `LirSelectOp.cond` packet in
+`collect_inst_refs`.
 
-Repaired the current route to target `LirSelectOp.cond` in `collect_inst_refs`.
+`LirSelectOp.cond` now uses `collect_operand_ref(op.cond, refs)`, preserving
+semantic `LinkNameId` identity before stale rendered text while keeping legacy
+raw condition text compatibility. `LirSelectOp.true_val` and
+`LirSelectOp.false_val` remain on raw scanning.
 
 ## Suggested Next
 
-Execute the next one-field collector migration for plan Steps 1-3:
-`LirSelectOp.cond` in `collect_inst_refs`.
-
-Step 1 should confirm `LirSelectOp.cond` has the existing semantic carrier
-needed to replace raw `S(op.cond)` scanning with
-`collect_operand_ref(op.cond, refs)`. If confirmed, keep the implementation
-packet limited to that exact field and leave every other raw scanner path
-unchanged.
+Supervisor should select any next packet. No follow-on field was selected by
+this executor slice.
 
 ## Watchouts
 
@@ -36,6 +33,13 @@ non-authoritative.
 ## Proof
 
 Required proof for the next packet:
+
+```
+{ cmake --build build && ctest --test-dir build -R '^frontend_hir_tests$' --output-on-failure; } > test_after.log 2>&1
+git diff --check
+```
+
+Latest proof for this packet passed:
 
 ```
 { cmake --build build && ctest --test-dir build -R '^frontend_hir_tests$' --output-on-failure; } > test_after.log 2>&1
