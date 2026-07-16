@@ -134,21 +134,34 @@ std::optional<BirFunctionLowerer::PhiBlockPlanMap> BirFunctionLowerer::collect_p
       PhiLoweringPlan plan{
           .result_name = phi->result.str(),
           .type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(phi->type_str.str())),
+          .boundary_type_ref = phi->boundary_value_type
+                                   ? std::optional<c4c::codegen::lir::LirTypeRef>(
+                                         phi->boundary_value_type->type)
+                                   : std::nullopt,
       };
       if (const auto phi_type = lower_scalar_or_function_pointer_type(plan.type_text);
           phi_type.has_value()) {
         plan.kind = PhiLoweringPlan::Kind::ScalarValue;
         plan.type = *phi_type;
       } else {
-        // Step 4 no-id compatibility bridge: CFG PHI lowering owns aggregate
-        // PHI planning from LirPhiOp::type_str. The limitation is that
-        // PhiLoweringPlan currently stores only rendered type text, so
-        // aggregate PHI slot alignment still uses the aggregate.cpp
-        // selected-layout fence instead of a StructNameId-bearing LirTypeRef
-        // lookup. Remove this once PHI aggregate plans retain structured
-        // type identity.
-        const auto aggregate_layout =
-            lower_byval_aggregate_layout(plan.type_text, type_decls_, &structured_layouts_);
+        std::optional<AggregateTypeLayout> aggregate_layout;
+        if (plan.boundary_type_ref && plan.boundary_type_ref->has_struct_name_id()) {
+          const auto lookup = lir_to_bir_detail::lookup_backend_aggregate_type_ref_layout_result(
+              *plan.boundary_type_ref, type_decls_, structured_layouts_);
+          if (!lookup.used_structured_layout ||
+              (lookup.layout.kind != AggregateTypeLayout::Kind::Struct &&
+               lookup.layout.kind != AggregateTypeLayout::Kind::Array) ||
+              lookup.layout.size_bytes == 0 || lookup.layout.align_bytes == 0) {
+            return std::nullopt;
+          }
+          aggregate_layout = lookup.layout;
+        } else {
+          // Legacy no-id compatibility only: hand-built or inline aggregate PHI
+          // LIR can lack a StructNameId-bearing boundary type ref. Metadata
+          // bearing refs above must resolve structurally and fail closed.
+          aggregate_layout =
+              lower_byval_aggregate_layout(plan.type_text, type_decls_, &structured_layouts_);
+        }
         if (!aggregate_layout.has_value()) {
           return std::nullopt;
         }

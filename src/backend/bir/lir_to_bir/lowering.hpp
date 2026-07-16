@@ -403,8 +403,10 @@ class BirFunctionLowerer {
     // Route-local SSA result spelling carried into generated BIR names/slots.
     std::string result_name;
     bir::TypeKind type = bir::TypeKind::Void;
-    // Compatibility LIR type text retained until aggregate layout resolution.
+    // Compatibility LIR type text retained for generated aggregate slot state.
     std::string type_text;
+    // Structured PHI boundary type identity; absent only for legacy hand-built LIR.
+    std::optional<c4c::codegen::lir::LirTypeRef> boundary_type_ref;
     std::size_t aggregate_align_bytes = 0;
     std::vector<std::pair<std::string, c4c::codegen::lir::LirOperand>> incomings;
   };

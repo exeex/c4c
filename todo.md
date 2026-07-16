@@ -8,81 +8,43 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed Step 4 no-code audit packet for the requested LIR-to-BIR bridge
-comments only. No implementation files were edited.
+Completed Step 4 owner-boundary conversion for aggregate PHI planning in
+`src/backend/bir/lir_to_bir/cfg.cpp` and
+`src/backend/bir/lir_to_bir/lowering.hpp`.
 
-Classification:
-- `aggregate.cpp`: retained output/no-id compatibility with aggregate-slot
-  owner. `selected_aggregate_type_layout(...)`,
-  `lower_byval_aggregate_layout(...)`, `collect_aggregate_params()`, and
-  `append_local_aggregate_copy_from_slots(...)` still own rendered aggregate
-  slot state, legacy byval params, and aggregate copy planning until
-  `LocalAggregateSlots` and byval copy state carry structured type refs or an
-  explicit no-id marker.
-- `call_abi.cpp`: retained output/no-id compatibility with call ABI owner.
-  `lower_signature_aggregate_layout(...)`,
-  `parse_function_signature_params(...)`,
-  `lower_return_info_from_function(...)`,
-  `lower_function_params_with_layouts(...)`, and
-  `lower_function_params_fallback(...)` still own hand-built legacy LIR and
-  non-enforced target signature parsing until signature return/param metadata
-  is mandatory at this boundary.
-- `calling.cpp`: retained output/no-id compatibility with call lowering owner.
-  The legacy raw no-ref call-arg byval fallback is fenced to args with no
-  type-ref carrier and no structured ABI payload; direct callee raw-name and
-  variadic aggregate `va_arg` comments remain owned by LinkNameId and variadic
-  aggregate type-ref threading respectively.
-- `types.cpp`: retained output/no-id compatibility with central aggregate
-  layout resolver owner. The raw `TypeDeclMap` fallback is still the central
-  no-id route for callers that do not carry `StructNameId`; metadata-bearing
-  refs already fail closed through
-  `lookup_backend_aggregate_type_ref_layout_result(...)`.
-- `memory/provenance.cpp`: retained output/no-id compatibility with provenance
-  owner. Scalar-subobject checks still receive rendered aggregate text from
-  `GlobalInfo`, `LocalSlotAddress`, and `PointerAddress`; imported-function
-  raw symbol lookups are Step 3 LinkNameId fences, not Step 4 aggregate layout
-  removal candidates.
-- `memory/intrinsics.cpp`: retained output/no-id compatibility with intrinsic
-  memory owner. Local memset/memcpy leaf views still derive from
-  `LocalAggregateSlots` and pointer slot state without aggregate
-  `LirTypeRef/StructNameId` metadata.
-- `cfg.cpp`: retained output/no-id compatibility with CFG owner. Aggregate PHI
-  planning still stores rendered `LirPhiOp::type_str` in `PhiLoweringPlan`
-  and uses the aggregate selected-layout fence for slot alignment.
-- `call_abi.cpp`, `calling.cpp`, and `ir.hpp`: no universal/raw fallback comment
-  in the audited scope was already safely removable without first changing an
-  owner boundary. The relevant `ir.hpp` comments describe compatibility/output
-  payloads and context carriers only; no implementation action belongs there in
-  this packet.
+`PhiLoweringPlan` now carries the PHI `boundary_value_type` as a structured
+`LirTypeRef`. Aggregate PHI layout/alignment planning prefers
+`lookup_backend_aggregate_type_ref_layout_result(...)` when that ref has a
+`StructNameId`, and metadata-bearing refs now fail closed instead of falling
+back through rendered `type_str`. The retained text fallback is documented as
+legacy no-id compatibility for hand-built or inline aggregate PHI LIR only.
 
 ## Suggested Next
 
-No clearly removable code packet was identified under the requested Step 4
-audit scope. Suggested Next: choose one owner-boundary conversion instead of a
-deletion pass, starting with `src/backend/bir/lir_to_bir/cfg.cpp`
-`plan_phi_lowering(...)`: thread structured aggregate type identity from
-`LirPhiOp` into `PhiLoweringPlan` so aggregate PHI slot alignment can stop
-using rendered `type_str`. Focused proof command:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|verify_tests_)'; } > test_after.log 2>&1`.
+Suggested Next: choose the next single owner-boundary conversion from the
+retained Step 4 fallback set, likely local aggregate slot state or byval copy
+state, and thread a structured aggregate type ref or explicit no-id marker
+before removing another rendered-text layout bridge.
 
 ## Watchouts
 
-- Treat all retained comments above as owner-boundary work, not immediate
-  deletion candidates.
-- Do not delete central raw-text layout fallbacks before the named callers carry
-  structured identity or an explicit no-id legacy marker; that would turn
-  hand-built/output compatibility into silent backend loss rather than escape
-  hatch deletion.
-- `calling.cpp` raw no-ref byval fallback is already restricted by structured
-  arg/type-ref and ABI-payload checks; removing it requires first making
-  metadata mandatory for legacy hand-built calls.
-- `memory/provenance.cpp` imported-function raw symbol lookups are LinkNameId
-  compatibility fences from Step 3, not aggregate layout bridges.
-- Closed Step 3 evidence is still relevant as a guardrail: do not restore
-  mutable `LirTypeRef::str()`, mutable `LirOperand::str()`, or implicit LIR
-  string conversions while converting retained Step 4 owners.
+- `PhiLoweringPlan::type_text` is still intentionally retained for generated
+  aggregate slot state; this packet only moved aggregate PHI layout/alignment
+  selection off rendered text when structured PHI metadata exists.
+- PHI refs without `StructNameId` still use the legacy text path for no-id or
+  inline aggregate cases. Do not widen that fallback back to metadata-bearing
+  refs.
+- The exact backend subset selected by the supervisor ran cleanly, but it did
+  not include frontend/verify PHI metadata producers.
 
 ## Proof
 
-No build required for this no-code audit packet. `test_after.log` was not
-updated.
+Ran exactly:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
+
+Result: passed. `test_after.log` contains `100% tests passed, 0 tests failed
+out of 6`.
+
+Supplemental PHI producer/verifier smoke also passed:
+`ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|verify_tests_)'`
+reported 12/12 passing after the fresh build.
