@@ -219,6 +219,36 @@ std::optional<LirCallSignature> structured_callee_signature(
   return sig;
 }
 
+LirFunctionSignatureRef direct_callee_signature_ref(
+    const LirModule* lir_module,
+    const CallTargetInfo& call_target) {
+  if (!call_target.target_fn || call_target.target_fn->attrs.unspecified_params ||
+      call_target.target_fn->attrs.variadic) {
+    return LirFunctionSignatureRef::invalid();
+  }
+  if (call_target.target_fn->linkage.is_extern &&
+      call_target.target_fn->blocks.empty()) {
+    return LirFunctionSignatureRef::invalid();
+  }
+  if (!lir_module || call_target.callee_link_name_id == kInvalidLinkName) {
+    return LirFunctionSignatureRef::invalid();
+  }
+  for (const LirFunction& function : lir_module->functions) {
+    if (function.link_name_id == call_target.callee_link_name_id) {
+      const LirFunctionSignatureStoreEntry* signature =
+          lir_module->find_function_signature(function.function_signature_ref);
+      if (!signature ||
+          std::any_of(signature->fixed_param_is_byval.begin(),
+                      signature->fixed_param_is_byval.end(),
+                      [](bool is_byval) { return is_byval; })) {
+        return LirFunctionSignatureRef::invalid();
+      }
+      return function.function_signature_ref;
+    }
+  }
+  return LirFunctionSignatureRef::invalid();
+}
+
 }  // namespace
 
 const Function* StmtEmitter::find_local_target_function(
@@ -369,6 +399,7 @@ void StmtEmitter::emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
       "", LirTypeRef(LirBuiltinType::Void), call_target.callee_val,
       call_target.callee_type_suffix, args, call_target.callee_link_name_id,
       structured_callee_signature(mod_, module_, call_target));
+  call.callee_signature_ref = direct_callee_signature_ref(module_, call_target);
   publish_fixed_direct_call_argument0_authority(ctx, call_target, call);
   emit_lir_op(ctx, std::move(call));
 }
@@ -404,6 +435,7 @@ LirOperand StmtEmitter::emit_call_with_result(
       result, std::move(return_type), call_target.callee_val,
       call_target.callee_type_suffix, args, call_target.callee_link_name_id,
       std::move(callee_signature));
+  call.callee_signature_ref = direct_callee_signature_ref(module_, call_target);
   publish_fixed_direct_call_argument0_authority(ctx, call_target, call);
   emit_lir_op(ctx, std::move(call));
   return result;

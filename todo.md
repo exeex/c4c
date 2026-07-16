@@ -8,25 +8,24 @@ Current Step Title: Migrate call composition to signature refs
 
 ## Just Finished
 
-- Step 2 is complete enough to advance: declarations and definitions now carry
-  valid `LirFunctionSignatureRef` store refs; verifier checks compare stored
-  return type, return extension ABI, fixed params, variadic state, void-list
-  state, and byval facts against structured declaration/definition mirrors;
-  printer rendering for declarations and definitions is store-backed and ignores
-  stale `signature_text` spelling once a store ref exists. Nearby coverage
-  includes zero-parameter/explicit-void, fixed, variadic, aggregate
-  return/parameter, byval, stale structured mirror rejection, stale
-  `signature_text` non-authority, and missing/mismatched aggregate name-id
-  rejection. Recent accepted proof is recorded below.
+- Step 3 fixed direct-call signature-ref slice completed: `LirCallOp` now has
+  an opt-in `callee_signature_ref`, supported non-extern/non-variadic/
+  non-unspecified/non-byval direct calls populate it from the resolved callee
+  function's module-owned `LirFunctionSignatureRef`, and verifier checks prove
+  the call ref names the same module function/store signature as the retained
+  structured call signature. Nearby coverage now proves a fixed aggregate
+  direct call carries the nominal ref, stale or missing refs reject for that
+  supported shape, and no-prototype direct calls remain on compatibility
+  metadata.
 
 ## Suggested Next
 
-- Begin Step 3 with the smallest bounded direct-call slice: identify supported
-  direct-call construction paths that still derive semantic call signatures
-  from parsed call text or `args_str`, route one fixed-signature call path
-  through `LirFunctionSignatureRef`, and add nearby verifier/lowering coverage
-  proving the call composes a legal store ref without claiming 829/830 argument
-  value identity.
+- Continue Step 3 with the next bounded call-composition slice: either migrate
+  another supported direct-call signature shape through `callee_signature_ref`
+  or move one verifier/printer/reference consumer from retained
+  `callee_signature`/`args_str` compatibility toward the nominal ref. Keep
+  extern declarations, no-prototype, variadic, byval, and 829/830 argument
+  value identity as explicit later gates unless the packet owns one of them.
 
 ## Watchouts
 

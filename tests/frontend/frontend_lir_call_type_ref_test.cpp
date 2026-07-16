@@ -9230,9 +9230,16 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   expect_type_ref_structured_equality_uses_name_id(lir_module);
   c4c::codegen::lir::LirFunction& call_pair = require_function(lir_module, "call_pair");
   c4c::codegen::lir::LirCallOp& direct_call = require_call_to(call_pair, "@make_pair");
+  const c4c::codegen::lir::LirFunction& make_pair =
+      require_function(lir_module, "make_pair");
 
   expect_struct_type_ref(lir_module, direct_call.return_type, "%struct.Pair",
                          "call return mirror");
+  expect_true(direct_call.callee_signature_ref.valid(),
+              "metadata-rich direct call should carry a nominal callee signature ref");
+  expect_eq(std::to_string(direct_call.callee_signature_ref.value),
+            std::to_string(make_pair.function_signature_ref.value),
+            "direct call signature ref should name the resolved callee store ref");
   expect_true(direct_call.callee_signature.has_value(),
               "metadata-rich direct call should carry structured callee signature");
   expect_true(direct_call.callee_signature->return_type_ref.has_value(),
@@ -9396,6 +9403,8 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
       require_call_to(call_no_proto, "@no_proto");
   expect_true(no_proto_call.callee_signature.has_value(),
               "metadata-rich direct no-prototype call should carry callee signature");
+  expect_true(!no_proto_call.callee_signature_ref.valid(),
+              "direct no-prototype call should remain on compatibility signature metadata");
   expect_true(no_proto_call.callee_signature->has_unspecified_params,
               "direct no-prototype call should carry unspecified-parameter-list state");
   expect_true(!no_proto_call.callee_signature->has_void_param_list,
@@ -9451,6 +9460,30 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
       require_call_to(require_function(stale_direct_suffix, "call_pair"), "@make_pair");
   stale_direct_call.callee_type_suffix = "(ptr)";
   c4c::codegen::lir::verify_module(stale_direct_suffix);
+
+  c4c::codegen::lir::LirModule missing_direct_signature_ref = lir_module;
+  c4c::codegen::lir::LirCallOp& missing_direct_signature_ref_call =
+      require_call_to(require_function(missing_direct_signature_ref, "call_pair"),
+                      "@make_pair");
+  missing_direct_signature_ref_call.callee_signature_ref =
+      c4c::codegen::lir::LirFunctionSignatureRef::invalid();
+  try {
+    c4c::codegen::lir::verify_module(missing_direct_signature_ref);
+    fail("verifier should reject a direct call missing its callee signature ref");
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
+
+  c4c::codegen::lir::LirModule stale_direct_signature_ref = lir_module;
+  c4c::codegen::lir::LirCallOp& stale_direct_signature_ref_call =
+      require_call_to(require_function(stale_direct_signature_ref, "call_pair"),
+                      "@make_pair");
+  stale_direct_signature_ref_call.callee_signature_ref =
+      require_function(stale_direct_signature_ref, "consume_big").function_signature_ref;
+  try {
+    c4c::codegen::lir::verify_module(stale_direct_signature_ref);
+    fail("verifier should reject a direct call with a stale callee signature ref");
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
 
   c4c::codegen::lir::LirModule mismatched_indirect_sig = lir_module;
   c4c::codegen::lir::LirCallOp& mismatched_indirect_call =

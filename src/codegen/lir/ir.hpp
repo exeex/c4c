@@ -483,6 +483,16 @@ struct LirGepOp {
   bool requires_native_local_gep_authority = false;
 };
 
+struct LirFunctionSignatureRef {
+  uint32_t value = std::numeric_limits<uint32_t>::max();
+  [[nodiscard]] constexpr bool valid() const {
+    return value != std::numeric_limits<uint32_t>::max();
+  }
+  [[nodiscard]] static constexpr LirFunctionSignatureRef invalid() {
+    return LirFunctionSignatureRef{};
+  }
+};
+
 struct LirCallSignature {
   std::optional<LirTypeRef> return_type_ref;
   LirExtAttr return_ext_attr = LirExtAttr::None;
@@ -559,6 +569,8 @@ struct LirCallOp {
   std::optional<LirZeroCountBehavior> zero_count_behavior;
   // Opt-in standalone native result ownership; compatibility calls remain false.
   bool requires_native_result_authority = false;
+  LirFunctionSignatureRef callee_signature_ref =
+      LirFunctionSignatureRef::invalid();
 };
 
 enum class LirScalarBinaryParameterRole : uint8_t {
@@ -978,16 +990,6 @@ struct LirSignatureParam {
   std::string name;
   TypeSpec type{};
   bool is_byval = false;
-};
-
-struct LirFunctionSignatureRef {
-  uint32_t value = std::numeric_limits<uint32_t>::max();
-  [[nodiscard]] constexpr bool valid() const {
-    return value != std::numeric_limits<uint32_t>::max();
-  }
-  [[nodiscard]] static constexpr LirFunctionSignatureRef invalid() {
-    return LirFunctionSignatureRef{};
-  }
 };
 
 // The sole pointer/object authority introduced for the selected fixed-aggregate

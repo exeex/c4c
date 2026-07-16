@@ -536,8 +536,99 @@ void verify_direct_zero_arg_scalar_floating_result_call(const LirModule& mod,
   }
 }
 
+const LirFunction* find_unique_function_by_link_name(const LirModule& mod,
+                                                     LinkNameId link_name_id,
+                                                     std::string_view field) {
+  const LirFunction* found = nullptr;
+  for (const LirFunction& function : mod.functions) {
+    if (function.link_name_id != link_name_id) continue;
+    if (found) {
+      fail_verify(field,
+                  "direct call signature ref requires a unique module Function LinkNameId");
+    }
+    found = &function;
+  }
+  return found;
+}
+
+void verify_call_callee_signature_ref(const LirModule& mod,
+                                      const LirCallOp& call) {
+  constexpr std::string_view field = "LirCallOp.callee_signature_ref";
+  if (!call.callee_signature_ref.valid()) {
+    if (call.direct_callee_link_name_id != kInvalidLinkName &&
+        call.callee_signature.has_value() &&
+        !call.callee_signature->has_unspecified_params) {
+      const LirFunction* callee = find_unique_function_by_link_name(
+          mod, call.direct_callee_link_name_id, field);
+      const LirFunctionSignatureStoreEntry* signature =
+          callee && callee->function_signature_ref.valid()
+              ? mod.find_function_signature(callee->function_signature_ref)
+              : nullptr;
+      const bool has_byval_param =
+          signature &&
+          std::any_of(signature->fixed_param_is_byval.begin(),
+                      signature->fixed_param_is_byval.end(),
+                      [](bool is_byval) { return is_byval; });
+      if (signature && !callee->is_declaration && !signature->is_variadic &&
+          !has_byval_param) {
+        std::ostringstream detail;
+        detail << "direct module call with structured signature must carry a callee signature ref"
+               << " for callee '" << call.callee.str() << "'";
+        fail_verify(field, detail.str());
+      }
+    }
+    return;
+  }
+
+  if (call.direct_callee_link_name_id == kInvalidLinkName) {
+    fail_verify(field, "callee signature ref requires a direct module callee");
+  }
+  const LirFunction* callee = find_unique_function_by_link_name(
+      mod, call.direct_callee_link_name_id, field);
+  if (!callee) {
+    fail_verify(field,
+                "callee signature ref requires a matching module Function LinkNameId");
+  }
+  if (callee->function_signature_ref.value != call.callee_signature_ref.value) {
+    fail_verify(field,
+                "callee signature ref must match the resolved module Function signature ref");
+  }
+
+  const LirFunctionSignatureStoreEntry* signature =
+      mod.find_function_signature(call.callee_signature_ref);
+  if (!signature || !signature->return_type_ref.has_value()) {
+    fail_verify(field,
+                "callee signature ref must name a module-owned function signature");
+  }
+
+  if (call.callee_signature.has_value()) {
+    const LirCallSignature& retained = *call.callee_signature;
+    if (retained.return_type_ref.has_value() !=
+            signature->return_type_ref.has_value() ||
+        (retained.return_type_ref.has_value() &&
+         *retained.return_type_ref != *signature->return_type_ref) ||
+        retained.return_ext_attr != signature->return_ext_attr ||
+        retained.fixed_param_type_refs != signature->fixed_param_type_refs ||
+        retained.is_variadic != signature->is_variadic ||
+        retained.has_void_param_list != signature->has_void_param_list ||
+        retained.has_unspecified_params) {
+      std::ostringstream detail;
+      detail << "callee signature ref disagrees with retained structured call signature"
+             << " for callee '" << call.callee.str() << "'";
+      fail_verify(field, detail.str());
+    }
+  }
+
+  if (*signature->return_type_ref != call.return_type ||
+      call.return_ext_attr != signature->return_ext_attr) {
+    fail_verify(field,
+                "callee signature ref return facts must match call-site return facts");
+  }
+}
+
 void verify_call_callee_signature(const LirModule& mod, const LirCallOp& call,
                                   bool structured_authority_complete) {
+  verify_call_callee_signature_ref(mod, call);
   if (!call.callee_signature.has_value()) return;
 
   const LirCallSignature& sig = *call.callee_signature;
