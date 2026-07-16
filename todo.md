@@ -8,29 +8,32 @@ Current Step Title: Delete migrated mirrors and assess convergence
 
 ## Just Finished
 
-- Completed Step 4 printer/reference slice: LIR reachability collection now
-  treats `LirFunctionSignatureRef` as the nominal function-signature authority
-  and avoids scanning retained `signature_text` when a store ref is present;
-  direct calls with complete structured argument authority collect operand
-  references from `LirCallArg` facts instead of reparsing `args_str`. Focused
-  printer coverage now proves declaration/definition variadic state and direct
-  call signature suffixes render from stored signature facts despite stale
-  retained text mirrors.
+- Completed Step 5 deletion-gate slice: migrated store-backed fixed direct-call
+  verifier/import consumers no longer depend on duplicate `arg_type_refs` for
+  argument type authority; they validate through `LirFunctionSignatureRef` and
+  `LirCallArg::type_ref`. Added stale duplicate `arg_type_refs` coverage that
+  proves store-backed direct integer calls ignore the mirror while structured
+  argument/store mismatches still fail through existing checks.
 
 ## Suggested Next
 
-- Execute Step 5: delete migrated semantic mirrors only where every named
-  declaration, call, verifier, printer, and collector consumer has already
-  moved to stored signature/value facts, preserving raw compatibility adapters
-  that are still required.
+- Return Step 5 to supervisor/plan-owner for convergence assessment: remaining
+  mirror deletion gates need an owner decision because their named consumers
+  still include legacy/raw or later-idea authority paths.
 
 ## Watchouts
 
+- `signature_text` still has named final-output/header compatibility users in
+  the printer, verifier, and aggregate/back-end ABI paths for legacy/no-store
+  functions; deleting the field is not yet an in-scope Step 5 code deletion.
+- `args_str` and parsed-call construction still have named raw compatibility,
+  inline-asm, and legacy call parsing/rewrite users. Removing them would cross
+  raw adapter or later body/argument identity ownership.
+- The `arg_type_refs` field still has named verifier/import/native intrinsic
+  consumers outside the migrated fixed direct-call slice; this packet deleted
+  only the migrated consumer dependency on that duplicate mirror.
 - Do not absorb 829/830 body-use or argument identity, scalar/vector/union
   migration, or generic value-carrier work.
-- Do not derive semantic signatures from rendered text, `signature_text`,
-  `args_str`, parsed call strings, duplicate `arg_type_refs`, or testcase
-  spelling.
 - Native integer intrinsics still deliberately lower to BIR intrinsic call
   payloads carrying link-name identity, not ordinary direct `CallNode` targets;
   future packets should keep that distinction unless their source idea says
@@ -60,10 +63,6 @@ Current Step Title: Delete migrated mirrors and assess convergence
   argument routes and declaration/import signature composition; aggregate
   producer migration, body parameter authority, and unrestricted value carrier
   work remain out of scope.
-- Step 4 did not delete `signature_text`, `args_str`, parsed call construction,
-  or duplicate `arg_type_refs`; those remain Step 5 deletion gates. Collector
-  fallback scans still exist for legacy functions/calls without nominal store
-  refs or complete structured argument facts.
 
 ## Proof
 

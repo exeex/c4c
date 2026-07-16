@@ -498,10 +498,11 @@ bool has_complete_direct_void_integer_ssa_authority(const LirModule& mod,
          call.result.empty() && !call.result.has_authority();
 }
 
-// Once every argument has the two native type mirrors and a fixed signature
-// supplies the corresponding native parameter mirrors, presentation text is
-// deliberately not part of type validation.  Older producers can still use
-// the raw path below while they fill these mirrors incrementally.
+// Once every argument has native type authority and a fixed signature supplies
+// the corresponding native parameter refs, presentation text and duplicate
+// argument-type mirrors are deliberately not part of type validation. Older
+// producers can still use the raw path below while they fill these facts
+// incrementally.
 bool has_complete_fixed_call_type_authority(const LirModule& mod,
                                             const LirCallOp& call) {
   const LirFunctionSignatureStoreEntry* store_signature =
@@ -524,13 +525,11 @@ bool has_complete_fixed_call_type_authority(const LirModule& mod,
                             : nullptr;
   if (!fixed_param_type_refs || has_unspecified_params || is_variadic ||
       has_void_param_list ||
-      fixed_param_type_refs->size() != call.structured_args.size() ||
-      call.arg_type_refs.size() != call.structured_args.size()) {
+      fixed_param_type_refs->size() != call.structured_args.size()) {
     return false;
   }
   for (size_t index = 0; index < call.structured_args.size(); ++index) {
-    if (call.structured_args[index].type_ref != call.arg_type_refs[index] ||
-        call.arg_type_refs[index] != (*fixed_param_type_refs)[index]) {
+    if (call.structured_args[index].type_ref != (*fixed_param_type_refs)[index]) {
       return false;
     }
   }
@@ -765,6 +764,20 @@ void verify_call_callee_signature(const LirModule& mod, const LirCallOp& call,
     }
   }
 
+  if (!has_unspecified_params && !is_variadic && !has_void_param_list &&
+      fixed_param_type_refs().size() == call.structured_args.size()) {
+    for (size_t index = 0; index < call.structured_args.size(); ++index) {
+      const LirTypeRef& structured_type = call.structured_args[index].type_ref;
+      if (structured_type.empty()) continue;
+      require_module_type_ref(mod, structured_type,
+                              "LirCallOp.structured_args.type_ref");
+      if (structured_type != fixed_param_type_refs()[index]) {
+        fail_verify("LirCallOp.structured_args.type_ref",
+                    "structured argument type must match fixed parameter type");
+      }
+    }
+  }
+
   if (structured_authority_complete) {
     for (size_t index = 0; index < fixed_param_type_refs().size(); ++index) {
       const auto verify_native_param_type = [&](const LirTypeRef& type,
@@ -784,12 +797,9 @@ void verify_call_callee_signature(const LirModule& mod, const LirCallOp& call,
       verify_native_param_type(
           fixed_param_type_refs()[index],
           "LirCallOp.callee_signature.fixed_param_type_refs", "parameter");
-      verify_native_param_type(call.arg_type_refs[index], "LirCallOp.arg_type_refs",
-                               "argument");
       verify_native_param_type(call.structured_args[index].type_ref,
                                "LirCallOp.structured_args.type_ref", "argument");
-      if (call.arg_type_refs[index] != fixed_param_type_refs()[index] ||
-          call.structured_args[index].type_ref != fixed_param_type_refs()[index]) {
+      if (call.structured_args[index].type_ref != fixed_param_type_refs()[index]) {
         fail_verify("LirCallOp.structured_args.type_ref",
                     "structured argument type must match fixed parameter type");
       }

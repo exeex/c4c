@@ -684,8 +684,7 @@ bool exact_direct_integer_call(
       !return_ref || *return_ref != call.return_type ||
       return_ext_attr != LirExtAttr::None || is_variadic ||
       has_unspecified_params || has_void_param_list ||
-      fixed_param_type_refs.size() != call.structured_args.size() ||
-      call.arg_type_refs.size() != call.structured_args.size())
+      fixed_param_type_refs.size() != call.structured_args.size())
     return false;
   std::vector<Type> parameter_types;
   parameter_types.reserve(fixed_param_type_refs.size());
@@ -705,7 +704,6 @@ bool exact_direct_integer_call(
       const bool global_pointer =
           argument.operand.kind() == codegen::lir::LirOperandKind::Global;
       if (!parameter_ref.has_struct_name_id() ||
-          call.arg_type_refs[index] != parameter_ref ||
           argument.type_ref != parameter_ref ||
           argument.ext_attr != LirExtAttr::None ||
           (!current_pointer && !global_pointer))
@@ -717,7 +715,6 @@ bool exact_direct_integer_call(
     if (!parameter_type || !is_integer_type(*parameter_type) ||
         (stored_signature == nullptr &&
          call.callee_signature->fixed_param_types[index] != parameter_ref.str()) ||
-        call.arg_type_refs[index] != parameter_ref ||
         argument.type != parameter_ref.str() || argument.type_ref != parameter_ref ||
         argument.ext_attr != LirExtAttr::None)
       return false;

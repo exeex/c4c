@@ -10422,6 +10422,24 @@ void test_direct_integer_call_receipt_and_rejections() {
          "direct integer call must ignore retained text when signature ref resolves");
   inspect(raw_stale_text.value(), "Raw BIR stale-text direct integer call");
 
+  auto stale_arg_type_refs = direct_integer_call_module();
+  attach_direct_integer_function_signature_ref(stale_arg_type_refs);
+  auto& stale_arg_type_call = std::get<lir::LirCallOp>(
+      stale_arg_type_refs.functions[0].blocks[0].insts[1]);
+  stale_arg_type_call.callee =
+      lir::LirOperand::global("@direct_integer_target",
+                              stale_arg_type_call.direct_callee_link_name_id);
+  stale_arg_type_call.callee_signature.reset();
+  stale_arg_type_call.arg_type_refs = {lir::LirTypeRef::integer(1),
+                                       lir::LirTypeRef::integer(64)};
+  const auto raw_stale_arg_type_refs =
+      bir::lower_lir_to_raw_bir(stale_arg_type_refs);
+  expect(raw_stale_arg_type_refs.has_value() &&
+             bir::FoundationVerifier::verify(raw_stale_arg_type_refs.value()).ok(),
+         "store-backed direct integer call must ignore duplicate arg_type_refs after structured argument migration");
+  inspect(raw_stale_arg_type_refs.value(),
+          "Raw BIR stale-arg-type-ref direct integer call");
+
   const auto make_variadic_decl_module = [] {
     auto module = direct_integer_call_module();
     attach_direct_integer_function_signature_ref(module);

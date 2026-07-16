@@ -9440,8 +9440,8 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
       c4c::codegen::lir::LirTypeRef::struct_type("%struct.StaleMirrorText", pair_id);
   try {
     c4c::codegen::lir::verify_module(incoherent_native_arg);
-    fail("verifier should reject an incoherent native call argument type mirror");
   } catch (const c4c::codegen::lir::LirVerifyError&) {
+    fail("verifier should ignore stale duplicate arg_type_refs when structured argument and signature refs agree");
   }
 
   c4c::codegen::lir::LirModule mismatched_return_name = lir_module;
@@ -9458,11 +9458,11 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   c4c::codegen::lir::LirModule mismatched_arg_name = lir_module;
   c4c::codegen::lir::LirCallOp& mismatched_arg_call =
       require_call_to(require_function(mismatched_arg_name, "call_pair"), "@make_pair");
-  mismatched_arg_call.arg_type_refs[0] =
-      mismatched_arg_call.arg_type_refs[0].with_struct_name_id(slot_id);
+  mismatched_arg_call.structured_args[0].type_ref =
+      c4c::codegen::lir::LirTypeRef::integer(64);
   try {
     c4c::codegen::lir::verify_module(mismatched_arg_name);
-    fail("verifier should reject a call argument with mismatched StructNameId");
+    fail("verifier should reject a structured call argument type mismatch");
   } catch (const c4c::codegen::lir::LirVerifyError&) {
   }
 
@@ -9710,7 +9710,8 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   c4c::codegen::lir::LirModule missing_arg_name = lir_module;
   c4c::codegen::lir::LirCallOp& missing_arg_call =
       require_call_to(require_function(missing_arg_name, "call_pair"), "@make_pair");
-  missing_arg_call.arg_type_refs[0] = c4c::codegen::lir::LirTypeRef("%struct.Pair");
+  missing_arg_call.structured_args[0].type_ref =
+      c4c::codegen::lir::LirTypeRef("%struct.Pair");
   try {
     c4c::codegen::lir::verify_module(missing_arg_name);
     fail("verifier should reject a known struct call argument without StructNameId");
