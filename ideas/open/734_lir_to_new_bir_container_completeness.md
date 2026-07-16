@@ -1,7 +1,7 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (resumed after closed 825's accepted DirectScalar switch-selector
-parameter-authority handoff; Step 7.38 receiver packet active)
+Status: Open (resumed after closed 856's accepted DirectScalar binary-`fmul`
+RHS parameter-authority handoff; Step 7.45 receiver packet active)
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -1936,3 +1936,36 @@ repair its runbook only for that matching typed Raw-BIR receiver row. Do not
 repeat Step 7.44 or receive another parameter, memory/VA, aggregate/vector,
 module/type/global, instruction/terminator, or inline-assembly form without
 its separately scoped first-owner handoff.
+
+## Resumption Record: binary fmul RHS parameter authority completion
+
+Closed idea 856 completed the next body-parameter producer prerequisite with
+accepted implementation `a23031c8f` and lifecycle close `94ffc9d30`. It
+publishes only `LirBinOp.scalar_rhs_parameter_authority` for a current-function
+`DirectScalar` floating parameter used as the RHS of binary floating multiply
+`fmul`.
+
+The LIR authority tuple includes the original parameter `LirValueId`, current
+`LirFunction.link_name_id` owner, parameter index, matching floating
+`LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`, and explicit
+`LirScalarBinaryParameterRole::Rhs`. The consumer relation is binary
+`LirBinOp` opcode `fmul`, with `rhs` equal to the same parameter SSA/value,
+`type_str` matching the authority type, and `lhs` a nonselected scalar
+operand.
+
+Malformed coverage rejects omitted/missing, invalid, duplicate definition,
+foreign owner, wrong index, wrong type, wrong ABI, wrong role, non-`fmul`, RHS
+mismatch, type mismatch, selected-LHS incoherence, and duplicate selected
+consumer forms. Accepted proof is the focused
+`^frontend_lir_function_signature_type_ref$` producer/verifier proof with
+regression guard and `git diff --check`, plus broader `^frontend_lir_` 7/7
+before/after shared-verifier guard.
+
+Exact return action: repair and execute one bounded Step 7.45 Raw-BIR receiver
+packet. Consume only the handed-off `DirectScalar` binary-`fmul` RHS parameter
+authority row; preserve the parameter tuple and binary consumer coherence in
+typed Raw BIR, importer dispatch, reachable verifier path, and transactional
+positive/negative coverage. Do not repeat Step 7.44, claim Raw-BIR receipt
+from 856, receive another body-parameter row, or absorb memory/VA,
+aggregate/vector, module/type/global/metadata, residual instruction/terminator,
+inline-assembly, or any other family.
