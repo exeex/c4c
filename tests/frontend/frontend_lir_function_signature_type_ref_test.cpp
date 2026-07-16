@@ -119,6 +119,15 @@ void expect_verify_rejects(const c4c::codegen::lir::LirModule& module,
   }
 }
 
+void expect_print_rejects(const c4c::codegen::lir::LirModule& module,
+                          const std::string& msg) {
+  try {
+    (void)c4c::codegen::lir::print_llvm(module);
+    fail(msg);
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
+}
+
 void expect_struct_type_ref(
     const c4c::codegen::lir::LirModule& module,
     const c4c::codegen::lir::LirTypeRef& type_ref,
@@ -256,6 +265,12 @@ c4c::codegen::lir::LirAggregateStoreEntry& require_aggregate_store_entry_by_name
       });
   expect_true(it != module.aggregate_store.end(), msg);
   return *it;
+}
+
+std::string aggregate_decl_prefix(std::string_view llvm_ir) {
+  const std::size_t end = llvm_ir.find("\n\n");
+  return end == std::string_view::npos ? std::string(llvm_ir)
+                                       : std::string(llvm_ir.substr(0, end));
 }
 
 void expect_byval_signature_refs(
@@ -1066,6 +1081,43 @@ int defined_void_params(void) {
               "fixture should declare Pair for structured verifier checks");
   expect_true(big_id != c4c::kInvalidStructName,
               "fixture should declare Big for mismatch verifier checks");
+
+  c4c::codegen::lir::LirModule reordered_struct_decls = lir_module;
+  std::reverse(reordered_struct_decls.struct_decls.begin(),
+               reordered_struct_decls.struct_decls.end());
+  reordered_struct_decls.struct_decl_index.clear();
+  for (std::size_t index = 0; index < reordered_struct_decls.struct_decls.size();
+       ++index) {
+    reordered_struct_decls.struct_decl_index.emplace(
+        reordered_struct_decls.struct_decls[index].name_id, index);
+  }
+  expect_eq(aggregate_decl_prefix(c4c::codegen::lir::print_llvm(reordered_struct_decls)),
+            aggregate_decl_prefix(llvm_ir),
+            "printer should render aggregate declarations from canonical store order");
+
+  c4c::codegen::lir::LirModule missing_printer_store = lir_module;
+  remove_aggregate_store_entry_by_name(missing_printer_store, pair_id);
+  expect_print_rejects(
+      missing_printer_store,
+      "printer should reject missing canonical store facts before falling back to struct_decls");
+
+  c4c::codegen::lir::LirModule no_owner_struct_decl;
+  no_owner_struct_decl.link_name_texts = std::make_shared<c4c::TextTable>();
+  no_owner_struct_decl.struct_names.attach_text_table(
+      no_owner_struct_decl.link_name_texts.get());
+  const c4c::StructNameId legacy_id =
+      no_owner_struct_decl.struct_names.intern("%struct.Legacy");
+  c4c::codegen::lir::LirStructDecl legacy_decl;
+  legacy_decl.name_id = legacy_id;
+  c4c::codegen::lir::LirStructField legacy_field;
+  legacy_field.type = c4c::codegen::lir::LirTypeRef("i32");
+  legacy_decl.fields.push_back(std::move(legacy_field));
+  no_owner_struct_decl.type_decls.push_back("%struct.Legacy = type { i32 }");
+  no_owner_struct_decl.record_struct_decl(std::move(legacy_decl));
+  expect_true(c4c::codegen::lir::print_llvm(no_owner_struct_decl)
+                      .find("%struct.Legacy = type { i32 }") !=
+                  std::string::npos,
+              "printer should preserve no-owner structured declaration compatibility");
 
   c4c::codegen::lir::LirModule stale_return_text = lir_module;
   require_mutable_function(stale_return_text, "declared_pair", true)
