@@ -8,32 +8,35 @@ Current Step Title: Select One Carrier-Backed Collector Seam
 
 ## Just Finished
 
-Completed plan Step 1 one-field packet for `LirInsertElementOp.vec` in
-`collect_inst_refs`: raw `S(op.vec)` scanning was replaced with
-`collect_operand_ref(op.vec, refs)` only. `LirInsertElementOp.elem` remains on
-`collect_operand_ref(op.elem, refs)`.
+Closure rejected after the accepted `LirInsertElementOp.vec` packet because
+the source idea still has durable in-scope aggregate/vector collector
+migration remaining. Accepted commits in this sequence migrated
+`LirExtractValueOp.agg`, `LirExtractElementOp.vec`,
+`LirInsertElementOp.elem`, and `LirInsertElementOp.vec`.
 
 ## Suggested Next
 
-After proof, select the next one-field carrier-backed aggregate/vector
-collector seam; supervisor still owns the next packet choice.
+Execute the next one-field carrier-backed collector packet:
+`LirInsertValueOp.agg` in `collect_inst_refs`. Replace only the raw
+`S(op.agg)` in the `LirInsertValueOp` arm with
+`collect_operand_ref(op.agg, refs)`.
 
 ## Watchouts
 
-Do not close 845 yet. Do not perform a broad collector sweep. `LirInsertValueOp`,
-unselected vector operands, inline asm, and residual raw/global text remain on
-their current scanner paths. Do not reconstruct references from rendered names
-or text.
+Do not close 845 yet. Do not perform a broad collector sweep. Leave
+`LirInsertValueOp.elem`, `LirShuffleVectorOp.vec1`,
+`LirShuffleVectorOp.vec2`, inline asm, and residual raw/global text on their
+current scanner paths. Do not reconstruct references from rendered names or
+text. Do not change producers, verifier semantics, tests, or BIR lowering
+unless the selected field is disproven during executor inspection.
 
 ## Proof
 
-Required implementation proof for this packet passed:
+Required implementation proof for the next packet:
 
 ```
-{ cmake --build build && ctest --test-dir build -R '^backend_lir_native_vector_authority$' --output-on-failure; } > test_after.log 2>&1
+{ cmake --build build && ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure; } > test_after.log 2>&1
 git diff --check
 ```
 
 Proof log path: `test_after.log`.
-
-Both commands passed.
