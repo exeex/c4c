@@ -1,45 +1,40 @@
 Status: Active
-Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
+Source Idea Path: ideas/open/853_lir_next_body_parameter_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 7.41
-Current Step Title: Receive The One 829-Authorized Body-Parameter Argument-1 Row
+Current Step ID: 1
+Current Step Title: Trace The Next Body-Parameter Candidate
 
 # Current Packet
 
-## Just Finished
+## Goal
 
-Completed Step 7.41. Raw BIR now receives closed 829's
-`FixedDirectCallArgument1` DirectScalar body-parameter authority row, preserving
-the selected source value, owner, parameter index, argument index, scalar type,
-and direct-call argument/signature coherence through the call node. The
-receiver keeps the accepted argument-0 row and rejects malformed argument-1
-authority transactionally.
+Trace the next valid function-body parameter-use row after accepted 734 Step
+7.41 and decide whether the route can publish one native structured authority
+tuple directly or needs a narrower prerequisite.
 
-## Suggested Next
+## Scope
 
-Return to the 734 source completion gate. Do not infer source completion from
-this bounded receiver row alone; reassess the no-omission matrix and identify
-the next first-owner blocker or receiver-ready row.
+- Preserve accepted 734 Steps 1 through 7.41, most recently `380ee782f`.
+- Do not edit Raw BIR, importer, builder, or receiver/verifier code.
+- Do not repeat accepted DirectPointer or DirectScalar GEP, binary-LHS,
+  binary-RHS, ReturnValue, switch-selector, truthiness-comparison-LHS,
+  fixed-direct-call argument-0, or fixed-direct-call argument-1 rows.
+- Do not infer identity, type, owner, ABI, role, or consumer coherence from
+  text, names, rendered operands, diagnostics, signatures, compatibility
+  mirrors, or testcase shape.
 
-## Watchouts
+## Work Items
 
-- Do not edit LIR producer/schema/verifier publication for this packet.
-- Do not recover identity from text, names, rendered operands, diagnostics,
-  signature strings, or compatibility mirrors.
-- Do not receive any other body-parameter form, call argument index, generic
-  call, variadic/indirect/unspecified call, ABI conversion, memory/VA,
-  aggregate/vector, module/type/global/metadata, residual
-  instruction/terminator, or inline-assembly family.
-- Closed 829 makes no Raw-BIR receipt claim; this packet owns that receipt.
+- Inventory existing LIR body-parameter authority carriers and accepted
+  producer/receiver rows.
+- Trace remaining produced function-body parameter uses and identify the first
+  bounded semantic relation with native current-function value, owner,
+  parameter index, type, ABI, role, and consumer relation evidence.
+- If the candidate lacks structured producer authority, record the exact
+  narrower prerequisite instead of implementing.
+- Update this packet with the selected Step 2 producer/verifier route or the
+  prerequisite lifecycle action.
 
 ## Proof
 
-Passed matching focused regression proof:
-
-`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$' ) > test_before.log 2>&1`
-
-`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$' ) > test_after.log 2>&1 && git diff --check`
-
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
-
-Result: before 1/1, after 1/1, no new failures; `git diff --check` passed.
+Read-only trace packet; no build required unless the trace runs local probes.

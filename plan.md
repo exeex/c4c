@@ -1,104 +1,83 @@
-# LIR-To-New-BIR Body-Parameter Argument-1 Receipt Runbook
+# LIR Next Body-Parameter Authority Handoff Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
+Source Idea: ideas/open/853_lir_next_body_parameter_authority_handoff.md
 
 ## Purpose
 
-Resume 734 after closed 829 supplied the next exact body-parameter authority
-handoff. Receive exactly that one fixed-direct-call argument-1 DirectScalar
-body-parameter row into typed Raw BIR without reopening prior receiver rows.
+Advance the 734 no-omission queue after accepted Step 7.41 by selecting the
+next native function-body parameter-use authority row outside Raw BIR.
 
 ## Goal
 
-Add the Raw-BIR destination, importer dispatch, reachable verifier path, and
-transactional malformed-authority coverage for the one 829-authorized
-`LirCallOp.structured_args[1]` body-parameter authority tuple.
+Trace current LIR parameter-use production after the accepted
+fixed-direct-call argument-1 row, choose exactly one next receiver-relevant
+semantic relation, and prepare the bounded producer/schema/verifier packet
+that can later hand a typed tuple back to 734.
 
 ## Core Rule
 
-Consume only native structured LIR authority. Do not reconstruct parameter
-identity, type, role, call coherence, or signature facts from text, names,
-rendered operands, diagnostics, signature strings, or compatibility mirrors.
+Authority must come from native structured LIR facts. Do not infer parameter
+identity, type, role, ownership, ABI, or consumer coherence from text, names,
+rendered operands, diagnostics, signature strings, compatibility mirrors, or
+testcase shape.
 
 ## Read First
 
+- `ideas/open/853_lir_next_body_parameter_authority_handoff.md`
 - `ideas/open/734_lir_to_new_bir_container_completeness.md`
 - `ideas/closed/829_lir_next_body_parameter_authority_handoff.md`
-- `ideas/closed/830_lir_direct_call_structured_argument_identity_prerequisite.md`
-- Prior Step 7.40 receiver commit `6609d92d4`
-- Current Raw-BIR call-argument containers, importer dispatch, reachable
-  verifier checks, and `backend_lir_to_bir_interface` coverage
+- Existing LIR body-parameter authority carriers and verifier checks
+- Current `frontend_lir_call_type_ref` and nearby parameter-authority coverage
 
 ## Current Targets And Scope
 
-- Preserve accepted 734 Steps 1 through 7.40.
-- Receive only the closed-829 tuple: current-function `DirectScalar`
-  parameter 1 value, owner, parameter index, type, ABI, and explicit
-  `FixedDirectCallArgument1` role, used unchanged as
-  `LirCallOp.structured_args[1]` for a direct, non-variadic, specified
-  two-parameter call.
-- Preserve the closed-830 call argument/type/signature coherence prerequisite
-  as producer evidence; do not reimplement it.
-- Add same-feature positive and malformed-authority receiver coverage.
+- Preserve accepted 734 Steps 1 through 7.41 and all closed parameter
+  handoffs through 829.
+- Select one next valid function-body parameter-use row only if its native
+  current-function value, owner, parameter index, type, ABI, role, and
+  consumer relation can be represented and verifier-checked without recovery.
+- Keep Raw-BIR containers, importer dispatch, Raw-BIR verifier, and receiver
+  tests out of this producer route.
 
 ## Non-Goals
 
-- Do not edit LIR producers, schemas, or verifier authority publication.
-- Do not receive argument 0 again or reopen accepted DirectPointer,
-  DirectScalar GEP, binary-LHS, binary-RHS, ReturnValue, switch-selector,
-  truthiness-comparison-LHS, or fixed-direct-call-argument-0 rows.
-- Do not receive other parameter forms, other argument indices, generic calls,
-  variadic/indirect/unspecified calls, ABI conversion, Raw-BIR families beyond
-  this row, memory/VA, aggregate/vector, module/type/global/metadata,
+- Do not reopen accepted DirectPointer or DirectScalar GEP, binary-LHS,
+  binary-RHS, ReturnValue, switch-selector, truthiness-comparison-LHS,
+  fixed-direct-call argument-0, or fixed-direct-call argument-1 rows.
+- Do not receive any Raw-BIR row.
+- Do not admit generic parameter identity, ABI conversion, declaration-only
+  authority, memory/VA, aggregate/vector, module/type/global/metadata,
   residual instruction/terminator, or inline-assembly forms.
-
-## Working Model
-
-Step 7.40 already proved the argument-0 call-argument parameter receiver
-pattern. Step 7.41 should extend the Raw-BIR receiving boundary only where the
-role/index-specific authority differs, while preserving fail-closed behavior
-for missing, invalid, duplicate, foreign, owner/index/type/ABI/role, and
-consumer-incoherent input.
 
 ## Execution Rules
 
-- Keep implementation bounded to backend Raw-BIR containers/importer/verifier
-  and nearby backend interface tests.
-- Preserve module-transactional behavior: malformed selected input publishes
-  nothing.
-- Run a fresh build plus focused backend receiver proof.
-- Use matching before/after focused or backend regression logs before
-  accepting code.
-- After acceptance, send the exhausted runbook back to plan-owner for an
-  explicit 734 close/repair/successor decision.
+- Keep Step 1 read-only except for lifecycle trace notes in `todo.md`.
+- If no receiver-ready candidate has native structured authority, record the
+  exact missing producer prerequisite instead of shaping a testcase.
+- Later implementation may change only the selected producer/schema/verifier
+  seam and nearby focused tests.
+- Run fresh build plus focused same-feature proof for implementation packets.
 
 ## Steps
 
-### Step 7.41 - Receive The One 829-Authorized Body-Parameter Argument-1 Row
+### Step 1 - Trace The Next Body-Parameter Candidate
 
-Goal: receive exactly closed 829's fixed-direct-call argument-1 DirectScalar
-body-parameter authority tuple into typed Raw BIR.
+Goal: identify the next valid function-body parameter-use row after accepted
+fixed-direct-call argument-1 receipt and decide whether it is producer-ready or
+blocked by a narrower prerequisite.
 
 Actions:
 
-- Inspect the Step 7.40 argument-0 Raw-BIR destination, importer, verifier,
-  and tests to identify the minimal role/index-specific extension point.
-- Add or extend the typed Raw-BIR call-argument destination for the argument-1
-  body-parameter tuple without replacing the native authority source.
-- Import only `LirCallOp.structured_args[1]` when the closed-829 authority is
-  present, valid, current-function-owned, DirectScalar, role-matched, and
-  coherent with the direct fixed callee parameter 1.
-- Add reachable verifier checks for the received tuple and transactional
-  rollback on malformed selected input.
-- Add focused positive and malformed receiver coverage for missing, invalid,
-  duplicate, foreign, owner/index/type/ABI/role, and consumer-incoherent
-  authority where not already covered by the shared Step 7.40 path.
+- Inventory current LIR body-parameter authority carriers and accepted
+  receiver rows so the next candidate does not duplicate prior work.
+- Trace current frontend/LIR production for remaining body-parameter uses and
+  select the first bounded relation with native value/type/owner/ABI/role
+  evidence.
+- Record either the exact Step 2 producer/verifier packet or the exact
+  separate prerequisite if the candidate still lacks structured authority.
 
 Completion check:
 
-- Fresh build passes.
-- Focused backend receiver proof passes.
-- Matching before/after focused or backend regression guard is non-regressing.
-- `todo.md` records the exact received tuple and asks plan-owner to decide the
-  next 734 lifecycle state.
+- `todo.md` names the selected row or blocker, its evidence, rejected
+  presentation-derived alternatives, and the next executable packet.
