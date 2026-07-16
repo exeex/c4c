@@ -3822,8 +3822,37 @@ Result<void, ImportError> validate_function(const LirModule& module,
             selected_scalar_lhs_type && is_local_scalar_load_type(*selected_scalar_lhs_type) &&
             selected_scalar_lhs_type->kind != TypeKind::Integer &&
             bin->rhs.empty() && !bin->rhs.has_authority();
+        const auto* scalar_lhs_fmul_rhs = bin->rhs.value_id();
+        const auto scalar_lhs_fmul_rhs_value = scalar_lhs_fmul_rhs
+            ? source_values.find(scalar_lhs_fmul_rhs->value)
+            : source_values.end();
+        const bool selected_scalar_lhs_fmul = scalar_authority &&
+            scalar_definition != function.native_body_parameter_definitions.end() &&
+            scalar_definition_count == 1 &&
+            scalar_authority->abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar &&
+            scalar_authority->role == codegen::lir::LirScalarBinaryParameterRole::Lhs &&
+            scalar_authority->owner == function.link_name_id &&
+            scalar_authority->parameter_index < function.signature_param_type_refs.size() &&
+            function.signature_param_type_refs[scalar_authority->parameter_index] == scalar_authority->type &&
+            bin->lhs.value_id() && *bin->lhs.value_id() == scalar_authority->value &&
+            bin->type_str == scalar_authority->type &&
+            bin->opcode.typed() == std::optional{codegen::lir::LirBinaryOpcode::FMul} &&
+            selected_scalar_lhs_type && is_local_scalar_load_type(*selected_scalar_lhs_type) &&
+            selected_scalar_lhs_type->kind != TypeKind::Integer &&
+            scalar_lhs_fmul_rhs && scalar_lhs_fmul_rhs_value != source_values.end() &&
+            scalar_lhs_fmul_rhs_value->second == *selected_scalar_lhs_type;
         const bool selected_scalar_lhs =
-            selected_scalar_lhs_add || selected_scalar_lhs_fneg;
+            selected_scalar_lhs_add || selected_scalar_lhs_fneg ||
+            selected_scalar_lhs_fmul;
+        const auto selected_scalar_lhs_fmul_type = [&]() -> std::optional<Type> {
+          if (!selected_scalar_lhs_fmul || !selected_scalar_lhs_type)
+            return std::nullopt;
+          if (selected_scalar_lhs_type->spelling == "float")
+            return Type{TypeKind::F32, 32, "float"};
+          if (selected_scalar_lhs_type->spelling == "double")
+            return Type{TypeKind::F64, 64, "double"};
+          return *selected_scalar_lhs_type;
+        }();
         const auto scalar_rhs_definition = scalar_rhs_authority
             ? std::find_if(function.native_body_parameter_definitions.begin(),
                            function.native_body_parameter_definitions.end(), [&](const auto& definition) {
@@ -3878,6 +3907,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
         const bool wide_ffs_trunc_add = exact_downstream_i32_fptosi_add(
             *bin, source_values, wide_ffs_trunc_results);
         const bool fneg = selected_scalar_lhs_fneg;
+        const bool direct_scalar_lhs_fmul = selected_scalar_lhs_fmul;
         const bool add = selected_scalar_lhs_add || selected_scalar_rhs || exact_normalized_i32_add(
             *bin, source_values, selected_global_i32_load_results) ||
             exact_native_i32_cttz_add(
@@ -3914,11 +3944,12 @@ Result<void, ImportError> validate_function(const LirModule& module,
         const bool sext_add = exact_downstream_i64_sext_add(
             *bin, source_values, scalar_sext_results);
         const Type result_type = fneg ? *selected_scalar_lhs_type
+            : direct_scalar_lhs_fmul ? *selected_scalar_lhs_fmul_type
             : (fadd || fmul || fpext_fmul || sitofp_fmul || uitofp_fmul) ? Type{TypeKind::F64, 64, "double"}
             : float_fmul ? Type{TypeKind::F32, 32, "float"}
             : (sext_add || (ffs_add && bin->type_str.integer_bit_width() == 64)) ? Type{TypeKind::Integer, 64, "i64"}
                        : Type{TypeKind::Integer, 32, "i32"};
-        if ((!fneg && !fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !wide_ffs_trunc_add && !float_fmul && !add && !ctz_direct_add && !ctz_trunc_add && !clz_direct_add && !clz_trunc_add && !ctpop_direct_add && !ctpop_trunc_add && !mul && !sext_add && !ffs_add) ||
+        if ((!fneg && !direct_scalar_lhs_fmul && !fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !wide_ffs_trunc_add && !float_fmul && !add && !ctz_direct_add && !ctz_trunc_add && !clz_direct_add && !clz_trunc_add && !ctpop_direct_add && !ctpop_trunc_add && !mul && !sext_add && !ffs_add) ||
             !source_values.emplace(bin->result.value_id()->value, result_type).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
@@ -5919,7 +5950,10 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                     std::optional{codegen::lir::LirBinaryOpcode::FNeg};
                 const bool fmul = bin->opcode.typed() ==
                     std::optional{codegen::lir::LirBinaryOpcode::FMul} &&
-                    downstream_double_fadd_results.count(bin->lhs.value_id()->value) == 1;
+                    !scalar_authority && downstream_double_fadd_results.count(bin->lhs.value_id()->value) == 1;
+                const bool direct_scalar_lhs_fmul = scalar_authority &&
+                    bin->opcode.typed() ==
+                    std::optional{codegen::lir::LirBinaryOpcode::FMul};
                 const bool float_fmul = bin->opcode.typed() ==
                     std::optional{codegen::lir::LirBinaryOpcode::FMul} &&
                     scalar_fptrunc_results.count(bin->lhs.value_id()->value) == 1;
@@ -5964,7 +5998,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 if ((!scalar_rhs_authority && lhs == source_values.end()) ||
                     (fadd && native_floating_call_results.count(
                         bin->lhs.value_id()->value) == 0) ||
-                    (!fneg && !fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !wide_ffs_trunc_add && !float_fmul && !sext_add && !abs_add && !cttz_add && !ctz_trunc_add && !clz_direct_add && !clz_trunc_add && !ctpop_direct_add && !ctpop_trunc_add && !add && normalized_i32_add_results.count(
+                    (!fneg && !direct_scalar_lhs_fmul && !fadd && !fmul && !fpext_fmul && !sitofp_fmul && !uitofp_fmul && !fptosi_add && !fptoui_add && !wide_ffs_trunc_add && !float_fmul && !sext_add && !abs_add && !cttz_add && !ctz_trunc_add && !clz_direct_add && !clz_trunc_add && !ctpop_direct_add && !ctpop_trunc_add && !add && normalized_i32_add_results.count(
                         bin->lhs.value_id()->value) == 0)) {
                   edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
                                            name, block.label,
@@ -5972,7 +6006,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   return Result<void, BuildError>::failure(BuildError::InvalidValue);
                 }
                 ValueId rhs_value{};
-                if (!fneg && (scalar_rhs_authority || fadd || fmul || fpext_fmul || sitofp_fmul || uitofp_fmul || float_fmul)) {
+                if (!fneg && (scalar_rhs_authority || direct_scalar_lhs_fmul || fadd || fmul || fpext_fmul || sitofp_fmul || uitofp_fmul || float_fmul)) {
                   const auto rhs = source_values.find(bin->rhs.value_id()->value);
                   if (rhs == source_values.end()) {
                     edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
@@ -6028,10 +6062,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                              block.label, "validated scalar parameter owner disappeared"};
                     return Result<void, BuildError>::failure(BuildError::InvalidNameId);
                   }
+                  const auto scalar_type = lower_lir_type(module, scalar_authority->type);
+                  const Type retained_type = direct_scalar_lhs_fmul &&
+                          scalar_type && scalar_type->spelling == "float"
+                      ? Type{TypeKind::F32, 32, "float"}
+                      : direct_scalar_lhs_fmul && scalar_type &&
+                              scalar_type->spelling == "double"
+                          ? Type{TypeKind::F64, 64, "double"}
+                          : *scalar_type;
                   direct_scalar_lhs = DirectScalarBodyParameterBinaryLhs{
                       scalar_authority->value.value, scalar_authority->parameter_index,
-                      *lower_lir_type(module, scalar_authority->type),
-                      owner->second};
+                      retained_type, owner->second};
                 }
                 if (scalar_rhs_authority) {
                   const auto owner = imported_link_names.find(scalar_rhs_authority->owner);
@@ -6048,10 +6089,12 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                     blocks.at(block.id.value),
                     BinarySpec{fneg ? BinaryOpcode::FNeg
                                     : fadd ? BinaryOpcode::FAdd
+                                    : direct_scalar_lhs_fmul ? BinaryOpcode::FMul
                                     : (fmul || fpext_fmul || sitofp_fmul || uitofp_fmul || float_fmul) ? BinaryOpcode::FMul
                                     : add ? BinaryOpcode::Add : BinaryOpcode::Mul,
                                fneg ? *lower_lir_type(module, scalar_authority->type)
                                     : fadd ? Type{TypeKind::F64, 64, "double"}
+                                    : direct_scalar_lhs_fmul ? direct_scalar_lhs->scalar_type
                                     : fmul ? Type{TypeKind::F64, 64, "double"}
                                     : fpext_fmul ? Type{TypeKind::F64, 64, "double"}
                                     : sitofp_fmul ? Type{TypeKind::F64, 64, "double"}
@@ -6065,6 +6108,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   edit_error = builder_failure(name, block.label,
                                                fadd ? "append double FAdd"
                                                     : fneg ? "append direct scalar FNeg"
+                                                    : direct_scalar_lhs_fmul ? "append direct scalar FMul"
                                                     : fmul ? "append double FMul"
                                                     : fpext_fmul ? "append FPExt double FMul"
                                                     : sitofp_fmul ? "append SIToFP double FMul"

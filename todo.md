@@ -9,26 +9,29 @@ Current Step Title: Receive DirectScalar Binary-Fmul LHS Parameter Authority
 
 ## Just Finished
 
-Closed 855 as the producer/verifier handoff for one selected
-`LirBinOp.scalar_lhs_parameter_authority` row: a current-function
-`DirectScalar` floating parameter used as the LHS of binary floating `fmul`.
-734 is resumed after accepted Step 7.43 for only the matching typed Raw-BIR
-receiver packet.
+Completed `plan.md` Step 7.44 by receiving the closed-855
+`LirBinOp.scalar_lhs_parameter_authority` tuple into typed Raw BIR for a
+current-function `DirectScalar` floating parameter used as binary `fmul` LHS.
+The receiver preserves LirValueId 91, owner
+`direct_scalar_fmul_lhs_parameter_owner`, parameter index 0, `float` type,
+`DirectScalar` ABI, explicit `Lhs` role, opcode `fmul`, LHS identity, matching
+Raw-BIR `F32` result type, and coherent nonselected scalar RHS value 92.
 
 ## Suggested Next
 
-Execute `plan.md` Step 7.44. Receive only the closed 855 binary-`fmul` LHS
-parameter authority row into typed Raw BIR with transactional positive and
-malformed coverage.
+Select the next bounded 734 receiver row after Step 7.44; do not extend this
+packet into adjacent DirectScalar parameter families.
 
 ## Watchouts
 
-Do not repeat Step 7.43, claim Raw-BIR receipt from 855, receive another
-parameter row, or recover authority from presentation fields. Later parameter,
-memory/VA, aggregate/vector, module/type/global, instruction/terminator, and
-inline-assembly forms remain out of scope.
+Step 7.44 deliberately admits only the closed-855 binary-`fmul` LHS parameter
+authority row. Missing, invalid, duplicate, foreign, owner/index/type/ABI/role,
+non-`fmul`, LHS mismatch, result type mismatch, RHS incoherence, and
+duplicate-consumer cases reject transactionally before publication.
 
 ## Proof
 
-Run a fresh build plus focused backend receiver proof selected by the
-supervisor, followed by `git diff --check`.
+Passed:
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$' ) > test_after.log 2>&1 && git diff --check`
+
+Proof log: `test_after.log`.
