@@ -3,23 +3,24 @@
 Status: Active
 Source Idea Path: ideas/open/839_lir_nominal_function_signature_call_composition.md
 Source Plan Path: plan.md
-Current Step ID: 3B
-Current Step Title: Add raw extern signature-store adapter entries
+Current Step ID: 3C
+Current Step Title: Split byval store authority from retained ABI metadata
 
 ## Just Finished
 
-- Step 3B completed: raw extern declaration facts now carry a named one-way
-  `LirFunctionSignatureRef` adapter entry built from structured extern call
-  signature facts, and migrated direct-call consumers can resolve those refs
-  through the module signature store. Backend LIR coverage proves a raw extern
-  fixed integer direct call imports through the adapter-backed BIR declaration
-  target, while stale store facts or a missing extern adapter ref fail closed.
+- Step 3C completed: fixed aggregate/byval direct-call composition now uses
+  module `LirFunctionSignatureRef` store facts for parameter authority while
+  retained ABI-shaped byval metadata remains only a verifier/import
+  compatibility check for existing argument/layout handling. Backend LIR
+  coverage proves store-backed byval calls import with and without retained
+  `callee_signature`, while retained/store disagreement, store/call parameter
+  mismatch, and wrong aggregate alternatives fail closed.
 
 ## Suggested Next
 
-- Continue repaired Step 3 at Step 3C: split fixed aggregate/byval call
-  composition so module signature-store facts are authoritative while retained
-  ABI metadata remains verifier-local compatibility only.
+- Continue repaired Step 3 toward Step 4 readiness: migrate printer/reference
+  collector observation of nominal function-signature facts without restoring
+  rendered signature text as semantic authority.
 
 ## Watchouts
 
@@ -49,14 +50,14 @@ Current Step Title: Add raw extern signature-store adapter entries
 - Step 3A admitted only variadic declaration/callee signature facts. Variadic
   body-use, va_list lowering, variadic argument value identity, and runtime
   helper work remain out of scope under source 839.
-- Step 3C may split store-backed signature authority from retained
-  verifier-local ABI metadata, but must return to plan-owner if it requires
-  aggregate producer migration, body parameter authority, or unrestricted value
-  carrier work.
 - The raw extern adapter is intentionally narrow: it creates function-signature
   facts for LinkNameId-backed extern function declarations and direct-call
   verification/import, not broader global/extern initializer or type-fact
   migration.
+- Byval call support remains limited to existing selected pointer/global
+  argument routes and declaration/import signature composition; aggregate
+  producer migration, body parameter authority, and unrestricted value carrier
+  work remain out of scope.
 
 ## Proof
 

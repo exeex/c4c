@@ -454,6 +454,33 @@ std::optional<std::vector<Type>> lower_function_parameter_types(
   return lowered;
 }
 
+std::optional<std::vector<Type>> lower_store_backed_function_parameter_types(
+    const LirModule& module,
+    const codegen::lir::LirFunctionSignatureStoreEntry& signature) {
+  if (signature.fixed_param_is_byval.size() !=
+      signature.fixed_param_type_refs.size())
+    return std::nullopt;
+  const bool has_byval =
+      std::any_of(signature.fixed_param_is_byval.begin(),
+                  signature.fixed_param_is_byval.end(),
+                  [](bool is_byval) { return is_byval; });
+  if (!has_byval) return std::nullopt;
+  std::vector<Type> lowered;
+  lowered.reserve(signature.fixed_param_type_refs.size());
+  for (std::size_t index = 0; index < signature.fixed_param_type_refs.size();
+       ++index) {
+    if (signature.fixed_param_is_byval[index]) {
+      if (!signature.fixed_param_type_refs[index].has_struct_name_id()) {
+        return std::nullopt;
+      }
+      lowered.push_back(Type{TypeKind::Pointer});
+      continue;
+    }
+    return std::nullopt;
+  }
+  return lowered;
+}
+
 bool variadic_declaration_signature_store_matches(
     const LirModule& module, const LirFunction& function) {
   if (!function.is_declaration || !function.signature_is_variadic ||
@@ -480,6 +507,34 @@ bool variadic_declaration_signature_store_matches(
   LirFunction fixed_prefix = function;
   fixed_prefix.signature_is_variadic = false;
   return lower_function_parameter_types(module, fixed_prefix).has_value();
+}
+
+bool byval_declaration_signature_store_matches(
+    const LirModule& module, const LirFunction& function) {
+  if (!function.is_declaration || function.signature_is_variadic ||
+      function.signature_has_void_param_list)
+    return false;
+  const auto* stored =
+      module.find_function_signature(function.function_signature_ref);
+  if (stored == nullptr || stored->is_variadic ||
+      stored->has_void_param_list != function.signature_has_void_param_list ||
+      stored->return_ext_attr != function.signature_return_ext_attr ||
+      stored->return_type_ref.has_value() !=
+          function.signature_return_type_ref.has_value() ||
+      (stored->return_type_ref.has_value() &&
+       *stored->return_type_ref != *function.signature_return_type_ref) ||
+      stored->fixed_param_type_refs != function.signature_param_type_refs ||
+      stored->fixed_param_is_byval.size() != function.signature_params.size())
+    return false;
+  bool has_byval = false;
+  for (std::size_t index = 0; index < function.signature_params.size();
+       ++index) {
+    if (stored->fixed_param_is_byval[index] !=
+        function.signature_params[index].is_byval)
+      return false;
+    has_byval = has_byval || stored->fixed_param_is_byval[index];
+  }
+  return has_byval;
 }
 
 const codegen::lir::LirFunctionSignatureStoreEntry* resolved_call_signature(
@@ -616,9 +671,14 @@ bool exact_direct_integer_call(
   const auto& fixed_param_type_refs = stored_signature != nullptr
                                           ? stored_signature->fixed_param_type_refs
                                           : call.callee_signature->fixed_param_type_refs;
+  const auto* fixed_param_is_byval =
+      stored_signature != nullptr ? &stored_signature->fixed_param_is_byval : nullptr;
   if (stored_signature == nullptr &&
       call.callee_signature->fixed_param_types.size() !=
           fixed_param_type_refs.size())
+    return false;
+  if (fixed_param_is_byval != nullptr &&
+      fixed_param_is_byval->size() != fixed_param_type_refs.size())
     return false;
   if (!return_type || !is_integer_type(*return_type) ||
       !return_ref || *return_ref != call.return_type ||
@@ -632,6 +692,27 @@ bool exact_direct_integer_call(
   for (std::size_t index = 0; index < call.structured_args.size(); ++index) {
     const auto& parameter_ref = fixed_param_type_refs[index];
     const auto& argument = call.structured_args[index];
+    const bool parameter_is_byval =
+        fixed_param_is_byval != nullptr && (*fixed_param_is_byval)[index];
+    if (parameter_is_byval) {
+      const auto* value_id = argument.operand.value_id();
+      const auto found = value_id ? source_values.find(value_id->value)
+                                  : source_values.end();
+      const bool current_pointer =
+          argument.operand.kind() == codegen::lir::LirOperandKind::SsaValue &&
+          value_id && value_id->valid() && found != source_values.end() &&
+          found->second.kind == TypeKind::Pointer;
+      const bool global_pointer =
+          argument.operand.kind() == codegen::lir::LirOperandKind::Global;
+      if (!parameter_ref.has_struct_name_id() ||
+          call.arg_type_refs[index] != parameter_ref ||
+          argument.type_ref != parameter_ref ||
+          argument.ext_attr != LirExtAttr::None ||
+          (!current_pointer && !global_pointer))
+        return false;
+      parameter_types.push_back(Type{TypeKind::Pointer});
+      continue;
+    }
     const auto parameter_type = lower_lir_type(module, parameter_ref);
     if (!parameter_type || !is_integer_type(*parameter_type) ||
         (stored_signature == nullptr &&
@@ -663,7 +744,31 @@ bool exact_direct_integer_call(
     if (target.link_name_id != call.direct_callee_link_name_id) continue;
     const auto target_return = lower_signature_type(
         module, target.return_type, target.signature_return_type_ref);
-    const auto target_params = lower_function_parameter_types(module, target);
+    auto target_params = lower_function_parameter_types(module, target);
+    if (!target_params && stored_signature != nullptr &&
+        target.function_signature_ref.value == call.callee_signature_ref.value &&
+        stored_signature->fixed_param_is_byval.size() ==
+            stored_signature->fixed_param_type_refs.size()) {
+      std::vector<Type> store_params;
+      store_params.reserve(stored_signature->fixed_param_type_refs.size());
+      bool supported = true;
+      for (std::size_t index = 0;
+           index < stored_signature->fixed_param_type_refs.size(); ++index) {
+        if (stored_signature->fixed_param_is_byval[index] &&
+            stored_signature->fixed_param_type_refs[index].has_struct_name_id()) {
+          store_params.push_back(Type{TypeKind::Pointer});
+          continue;
+        }
+        const auto lowered =
+            lower_lir_type(module, stored_signature->fixed_param_type_refs[index]);
+        if (!lowered) {
+          supported = false;
+          break;
+        }
+        store_params.push_back(*lowered);
+      }
+      if (supported) target_params.emplace(std::move(store_params));
+    }
     if (!target_return || *target_return != *return_type || !target_params ||
         *target_params != parameter_types || target.signature_is_variadic)
       return false;
@@ -2502,11 +2607,13 @@ Result<void, ImportError> validate_function(const LirModule& module,
   const bool admitted_variadic_declaration =
       function.signature_is_variadic &&
       variadic_declaration_signature_store_matches(module, function);
+  const bool admitted_byval_declaration =
+      byval_declaration_signature_store_matches(module, function);
   if (function.signature_is_variadic && !admitted_variadic_declaration)
     return fail<void>(ImportErrorCode::UnsupportedVariadicFunction, name, {},
                       "variadic declarations require matching module "
                       "function-signature store facts");
-  if (!admitted_variadic_declaration &&
+  if (!admitted_variadic_declaration && !admitted_byval_declaration &&
       !lower_function_parameter_types(module, function))
     return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
                       "function parameters are outside exact zero, void-list, "
@@ -4436,8 +4543,21 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                 function.signature_return_type_ref);
     FunctionSignature signature;
     signature.return_type = imported_return_type;
-    signature.parameter_types =
-        *lower_function_parameter_types(module, function);
+    const auto* stored_function_signature =
+        module.find_function_signature(function.function_signature_ref);
+    auto parameter_types = stored_function_signature != nullptr
+        ? lower_store_backed_function_parameter_types(module,
+                                                      *stored_function_signature)
+        : std::optional<std::vector<Type>>{};
+    if (!parameter_types) {
+      parameter_types = lower_function_parameter_types(module, function);
+    }
+    if (!parameter_types) {
+      return fail<RawBir>(ImportErrorCode::UnsupportedFunctionParameters,
+                          name, {},
+                          "function parameters are outside store-backed byval or scalar receipt");
+    }
+    signature.parameter_types = std::move(*parameter_types);
     auto created = builder.create_function(
         std::move(signature), name, function.is_declaration,
         FunctionMetadata{function.is_internal,
@@ -4479,14 +4599,20 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
     signature.is_variadic = signature_entry->is_variadic;
     signature.parameter_types.reserve(
         signature_entry->fixed_param_type_refs.size());
-    for (const auto& param_ref : signature_entry->fixed_param_type_refs) {
-      const auto param_type = lower_lir_type(module, param_ref);
-      if (!param_type) {
-        return fail<RawBir>(ImportErrorCode::UnsupportedOrdinaryInstruction,
-                            declaration.name, {},
-                            "extern declaration signature adapter parameter type is unsupported");
+    const auto extern_params =
+        lower_store_backed_function_parameter_types(module, *signature_entry);
+    if (extern_params) {
+      signature.parameter_types = *extern_params;
+    } else {
+      for (const auto& param_ref : signature_entry->fixed_param_type_refs) {
+        const auto param_type = lower_lir_type(module, param_ref);
+        if (!param_type) {
+          return fail<RawBir>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                              declaration.name, {},
+                              "extern declaration signature adapter parameter type is unsupported");
+        }
+        signature.parameter_types.push_back(*param_type);
       }
-      signature.parameter_types.push_back(*param_type);
     }
     auto created = builder.create_function(std::move(signature),
                                            declaration.name, true,

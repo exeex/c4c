@@ -13820,6 +13820,146 @@ void test_fixed_direct_call_argument0_parameter_authority_receipt_and_rejections
   rejected([](auto& candidate) { std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0]).callee_signature.reset(); std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0]).structured_args[0].type_ref = lir::LirTypeRef::integer(64); }, "store-backed fixed direct-call argument parameter mismatch must reject transactionally");
 }
 
+void test_store_backed_byval_aggregate_call_receipt_and_rejections() {
+  const auto make_module = [] {
+    lir::LirModule module;
+    auto texts = std::make_shared<c4c::TextTable>();
+    module.link_name_texts = texts;
+    module.link_names.attach_text_table(texts.get());
+    module.struct_names.attach_text_table(texts.get());
+    const auto caller_owner = module.link_names.intern("byval_store_caller");
+    const auto callee_owner = module.link_names.intern("byval_store_callee");
+    const auto big_id = module.struct_names.intern("%struct.ByvalStoreBig");
+    const auto other_id = module.struct_names.intern("%struct.ByvalStoreOther");
+
+    lir::LirStructDecl big_decl;
+    big_decl.name_id = big_id;
+    big_decl.fields = {{lir::LirTypeRef::integer(64)},
+                       {lir::LirTypeRef::integer(64)}};
+    module.record_struct_decl(std::move(big_decl));
+    lir::LirStructDecl other_decl;
+    other_decl.name_id = other_id;
+    other_decl.fields = {{lir::LirTypeRef::integer(32)}};
+    module.record_struct_decl(std::move(other_decl));
+
+    const auto big_type =
+        lir::LirTypeRef::struct_type("%struct.ByvalStoreBig", big_id);
+
+    lir::LirFunction callee;
+    callee.name = "byval_store_callee";
+    callee.link_name_id = callee_owner;
+    callee.is_declaration = true;
+    callee.signature_text =
+        "declare i32 @byval_store_callee(ptr byval(%struct.ByvalStoreBig) align 8 %presentation-byval-param)";
+    callee.return_type = scalar_type(c4c::TB_INT);
+    callee.signature_return_type_ref = lir::LirTypeRef::integer(32);
+    auto byval_param_type = scalar_type(c4c::TB_STRUCT);
+    byval_param_type.ptr_level = 1;
+    byval_param_type.inner_rank = -1;
+    callee.params.emplace_back("%presentation-byval-param", byval_param_type);
+    callee.signature_params.push_back(
+        {"%presentation-byval-param", byval_param_type, true});
+    callee.signature_param_type_refs.push_back(big_type);
+    lir::LirFunctionSignatureStoreEntry callee_store;
+    callee_store.return_type_ref = lir::LirTypeRef::integer(32);
+    callee_store.fixed_param_type_refs = {big_type};
+    callee_store.fixed_param_is_byval = {true};
+    const lir::LirFunctionSignatureRef callee_signature_ref =
+        module.register_function_signature(std::move(callee_store));
+    callee.function_signature_ref = callee_signature_ref;
+
+    lir::LirFunction caller = void_definition("byval_store_caller", {
+        return_block(0, "entry")});
+    caller.link_name_id = caller_owner;
+    caller.return_type = scalar_type(c4c::TB_INT);
+    caller.signature_return_type_ref = lir::LirTypeRef::integer(32);
+    lir::LirFunctionSignatureStoreEntry caller_store;
+    caller_store.return_type_ref = lir::LirTypeRef::integer(32);
+    caller.function_signature_ref =
+        module.register_function_signature(std::move(caller_store));
+    caller.alloca_insts.push_back(lir::LirAllocaOp{
+        lir::LirOperand::ssa("%byval.aggregate", lir::LirValueId{41}),
+        big_type, {}, 0,
+        lir::LirCurrentFunctionLocalObjectPointer{
+            lir::LirValueId{41}, lir::LirObjectId{7}, caller_owner,
+            lir::LirTypeRef(lir::LirBuiltinType::Pointer), big_type, true}});
+    lir::LirCallOp call;
+    call.result = lir::LirOperand::ssa("%byval.result", lir::LirValueId{42});
+    call.return_type = lir::LirTypeRef::integer(32);
+    call.callee = lir::LirOperand::global("@byval_store_callee", callee_owner);
+    call.direct_callee_link_name_id = callee_owner;
+    call.callee_signature = lir::LirCallSignature{
+        lir::LirTypeRef::integer(32), lir::LirExtAttr::None,
+        {"ptr byval(%struct.ByvalStoreBig) align 8"}, {big_type},
+        false, false, false};
+    call.callee_signature_ref = callee_signature_ref;
+    call.arg_type_refs = {big_type};
+    call.structured_args.push_back({
+        "%struct.ByvalStoreBig",
+        lir::LirOperand::ssa("%byval.aggregate", lir::LirValueId{41}),
+        big_type});
+    caller.blocks[0].insts.push_back(std::move(call));
+    caller.blocks[0].terminator = lir::LirRet{
+        lir::LirOperand::ssa("%byval.result", lir::LirValueId{42}),
+        lir::LirTypeRef::integer(32)};
+    module.functions = {std::move(callee), std::move(caller)};
+    return module;
+  };
+
+  const auto module = make_module();
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         "store-backed byval aggregate call must publish verified Raw BIR: " +
+             (raw.has_value() ? std::string("foundation verifier rejected it")
+                              : raw.error().detail));
+  const auto canonical = bir::lower_lir_to_canonical_bir(module);
+  expect(canonical.has_value(),
+         "store-backed byval aggregate call should canonicalize");
+
+  auto no_retained = make_module();
+  auto& no_retained_call =
+      std::get<lir::LirCallOp>(no_retained.functions[1].blocks[0].insts[0]);
+  no_retained_call.callee_signature.reset();
+  const auto raw_no_retained = bir::lower_lir_to_raw_bir(no_retained);
+  expect(raw_no_retained.has_value() &&
+             bir::FoundationVerifier::verify(raw_no_retained.value()).ok(),
+         "fixed byval aggregate call must compose from the module signature store without retained callee_signature");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = make_module();
+    mutate(candidate);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value(),
+           message + " (Raw rollback)");
+    expect(!bir::lower_lir_to_canonical_bir(candidate).has_value(),
+           message + " (Canonical rollback)");
+  };
+  rejected([](auto& candidate) {
+             auto& call =
+                 std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0]);
+             call.callee_signature->fixed_param_type_refs[0] =
+                 lir::LirTypeRef::integer(64);
+           },
+           "retained/store byval parameter disagreement must reject");
+  rejected([](auto& candidate) {
+             auto& call =
+                 std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0]);
+             candidate.function_signature_store[call.callee_signature_ref.value]
+                 .fixed_param_type_refs[0] = lir::LirTypeRef::integer(64);
+           },
+           "store/call byval parameter mismatch must reject");
+  rejected([](auto& candidate) {
+             auto& call =
+                 std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0]);
+             const c4c::StructNameId other_id =
+                 candidate.struct_names.find("%struct.ByvalStoreOther");
+             candidate.function_signature_store[call.callee_signature_ref.value]
+                 .fixed_param_type_refs[0] =
+                     lir::LirTypeRef::struct_type("%struct.ByvalStoreOther",
+                                                  other_id);
+           },
+           "wrong-module byval aggregate alternative must reject");
+}
+
 }  // namespace
 
 int main() {
@@ -13935,5 +14075,6 @@ int main() {
   test_switch_selector_parameter_authority_receipt_and_rejections();
   test_truthiness_comparison_lhs_parameter_authority_receipt_and_rejections();
   test_fixed_direct_call_argument0_parameter_authority_receipt_and_rejections();
+  test_store_backed_byval_aggregate_call_receipt_and_rejections();
   return 0;
 }
