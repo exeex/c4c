@@ -1,6 +1,6 @@
 # LIR Next Non-Body-Parameter Authority Handoff
 
-Status: Open
+Status: Closed
 Type: producer/schema/verifier handoff for one next non-body-parameter LIR row
 Parent Source: ideas/open/734_lir_to_new_bir_container_completeness.md
 Supersedes No-Change Route: ideas/closed/862_lir_next_body_parameter_authority_handoff.md
@@ -83,3 +83,41 @@ family before 734 can receive another Raw-BIR row.
 - Reject broad LIR schema churn, target-lowering behavior, final convergence,
   or unrelated memory/VA, aggregate/vector, module/type/global/metadata, CFG/
   PHI, instruction/terminator, or inline-assembly work.
+
+## Closure
+
+Disposition: capability complete for this bounded producer/schema/verifier
+handoff.
+
+Implementation commit: `36f860ea3` (`Publish direct floating call result
+authority`).
+
+Selected row: direct zero-argument scalar floating `LirCallOp` result
+authority for the selected result consumed as the LHS of a downstream floating
+binary operation.
+
+Published authority carrier:
+`LirDirectZeroArgScalarFloatingCallAuthority`, carrying the native result
+`LirValueId`, current-function owner `LinkNameId`, direct callee `LinkNameId`,
+exact floating `LirTypeRef`, and role `ResultIntoFloatingBinaryLhs`.
+
+Verifier and focused coverage reject malformed authority before downstream
+use, including absent authority, stale result, foreign owner, callee
+incoherence, type incoherence, role incoherence, and consumer incoherence.
+
+Accepted proof:
+
+- Focused producer/verifier proof passed:
+  `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_(function_signature_type_ref|extern_decl_type_ref|global_type_ref|call_type_ref)$'; } > test_after.log 2>&1`
+- Full suite passed after the slice:
+  `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure; } > test_after.log 2>&1`
+  with `3038/3038` tests passing.
+- `git diff --check` passed before commit.
+
+No Raw-BIR receiver, importer, container, verifier, or backend work landed in
+this idea.
+
+734 return action: create the later Raw-BIR receiver packet for direct
+zero-argument scalar floating call-result authority consumed as a downstream
+floating binary LHS. Receive only the structured result/owner/callee/return
+type/role tuple for this selected row and keep nonselected rows fail-closed.
