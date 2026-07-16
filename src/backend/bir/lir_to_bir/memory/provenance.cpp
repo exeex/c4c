@@ -13,6 +13,7 @@ using lir_to_bir_detail::compute_aggregate_type_layout;
 using lir_to_bir_detail::GlobalInfo;
 using lir_to_bir_detail::is_known_function_global_address;
 using lir_to_bir_detail::is_known_raw_function_symbol;
+using lir_to_bir_detail::lookup_backend_aggregate_type_ref_layout_result;
 using lir_to_bir_detail::type_size_bytes;
 
 static LinkNameId link_name_id_for_global(
@@ -117,8 +118,10 @@ static ScalarSubobjectAddressability classify_scalar_subobject_addressability(
     std::int64_t byte_offset,
     bir::TypeKind stored_type,
     std::string_view type_text,
+    const std::optional<c4c::codegen::lir::LirTypeRef>* type_ref,
     bir::TypeKind access_type,
     const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
     bool allow_opaque_ptr_base) {
   if (byte_offset < 0) {
     return ScalarSubobjectAddressability::Rejected;
@@ -147,17 +150,37 @@ static ScalarSubobjectAddressability classify_scalar_subobject_addressability(
       (type_text.empty() || type_text == "ptr" || type_text == "i8")) {
     return ScalarSubobjectAddressability::OpaqueCompatibility;
   }
+  if (type_ref != nullptr && type_ref->has_value() && (*type_ref)->has_struct_name_id()) {
+    if (structured_layouts == nullptr) {
+      return ScalarSubobjectAddressability::Rejected;
+    }
+    const auto lookup =
+        lookup_backend_aggregate_type_ref_layout_result(**type_ref, type_decls, *structured_layouts);
+    const auto& layout = lookup.layout;
+    if (!lookup.used_structured_layout ||
+        layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
+        layout.size_bytes == 0 ||
+        static_cast<std::size_t>(byte_offset) >= layout.size_bytes) {
+      return ScalarSubobjectAddressability::Rejected;
+    }
+    const auto scalar_facts = resolve_scalar_layout_facts_at_byte_offset(
+        (*type_ref)->str(), static_cast<std::size_t>(byte_offset), type_decls, *structured_layouts);
+    if (!scalar_facts.has_value() || scalar_facts->object_size_bytes == 0 ||
+        scalar_facts->target_byte_offset != static_cast<std::size_t>(byte_offset)) {
+      return ScalarSubobjectAddressability::Rejected;
+    }
+    return access_size <= scalar_facts->remaining_object_bytes
+               ? ScalarSubobjectAddressability::Accepted
+               : ScalarSubobjectAddressability::Rejected;
+  }
   if (can_cover_scalar_access_with_byte_storage(byte_offset, access_size, type_text, type_decls)) {
     return ScalarSubobjectAddressability::Accepted;
   }
 
-  // Step 4 no-id compatibility bridge: provenance scalar-subobject checks
-  // still receive only rendered aggregate type text from GlobalInfo,
-  // LocalSlotAddress, and PointerAddress state. This path may validate byte
-  // offsets through legacy type declarations, but it cannot recover a
-  // metadata-rich structured layout miss because no LirTypeRef/StructNameId
-  // carrier reaches this helper. Remove this bridge once provenance address
-  // state carries structured type refs alongside its route-local spelling.
+  // Step 4 no-id compatibility bridge: this fallback is now limited to
+  // provenance callers that have no StructNameId-bearing LirTypeRef, such as
+  // globals or legacy local/pointer address state. Metadata-bearing local and
+  // pointer addresses return above and fail closed on structured lookup misses.
   const auto scalar_facts = resolve_scalar_layout_facts_at_byte_offset(
       type_text, static_cast<std::size_t>(byte_offset), type_decls);
   if (!scalar_facts.has_value() || scalar_facts->object_size_bytes == 0 ||
@@ -172,11 +195,20 @@ static ScalarSubobjectAddressability classify_scalar_subobject_addressability(
 static bool can_address_scalar_subobject(std::int64_t byte_offset,
                                          bir::TypeKind stored_type,
                                          std::string_view type_text,
+                                         const std::optional<c4c::codegen::lir::LirTypeRef>* type_ref,
                                          bir::TypeKind access_type,
                                          const BirFunctionLowerer::TypeDeclMap& type_decls,
+                                         const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts,
                                          bool allow_opaque_ptr_base) {
   return is_scalar_subobject_addressable(classify_scalar_subobject_addressability(
-      byte_offset, stored_type, type_text, access_type, type_decls, allow_opaque_ptr_base));
+      byte_offset,
+      stored_type,
+      type_text,
+      type_ref,
+      access_type,
+      type_decls,
+      structured_layouts,
+      allow_opaque_ptr_base));
 }
 
 static bir::MemoryAccessProvenance pointer_value_memory_provenance(
@@ -497,8 +529,10 @@ static std::optional<GlobalAddress> resolve_linear_addressed_global_scalar_acces
   if (!can_address_scalar_subobject(static_cast<std::int64_t>(address.byte_offset),
                                     bir::TypeKind::Void,
                                     global_it->second.type_text,
+                                    nullptr,
                                     accessed_type,
                                     type_decls,
+                                    nullptr,
                                     false)) {
     return std::nullopt;
   }
@@ -889,8 +923,10 @@ std::optional<bool> BirFunctionLowerer::try_lower_pointer_provenance_store(
   if (!can_address_scalar_subobject(local_slot_ptr_it->second.byte_offset,
                                     local_slot_ptr_it->second.value_type,
                                     local_slot_ptr_it->second.type_text,
+                                    &local_slot_ptr_it->second.type_ref,
                                     value_type,
                                     type_decls,
+                                    &structured_layouts_,
                                     false)) {
     return false;
   }
@@ -914,8 +950,10 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_store(
       static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
       addressed_ptr_it->second.value_type,
       addressed_ptr_it->second.type_text,
+      &addressed_ptr_it->second.type_ref,
       value_type,
       type_decls,
+      &structured_layouts_,
       true);
   if (addressability == ScalarSubobjectAddressability::OpaqueCompatibility &&
       !is_runtime_pointer_value_opaque_compatibility_access(addressed_ptr_it->second,
@@ -1020,8 +1058,10 @@ std::optional<bool> BirFunctionLowerer::try_lower_pointer_provenance_load(
   if (!can_address_scalar_subobject(local_slot_ptr_it->second.byte_offset,
                                     local_slot_ptr_it->second.value_type,
                                     local_slot_ptr_it->second.type_text,
+                                    &local_slot_ptr_it->second.type_ref,
                                     value_type,
                                     type_decls,
+                                    &structured_layouts_,
                                     false)) {
     return false;
   }
@@ -1064,8 +1104,10 @@ std::optional<bool> BirFunctionLowerer::try_lower_addressed_pointer_load(
                 static_cast<std::int64_t>(addressed_ptr_it->second.byte_offset),
                 addressed_ptr_it->second.value_type,
                 addressed_ptr_it->second.type_text,
+                &addressed_ptr_it->second.type_ref,
                 value_type,
                 type_decls,
+                &structured_layouts_,
                 true);
   if (addressability == ScalarSubobjectAddressability::OpaqueCompatibility &&
       !is_runtime_pointer_value_opaque_compatibility_access(addressed_ptr_it->second,

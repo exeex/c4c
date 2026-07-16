@@ -8,36 +8,30 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed Step 4 local aggregate memory identity repair for the direct
-local-slot chain feeding intrinsic fill/copy and local pointer reconstruction.
+Completed Step 4 provenance boundary repair for scalar subobject
+addressability.
 
-`LocalSlotAddress` and `PointerAddress` now carry the existing
-`LocalAggregateSlots::type_ref` metadata when an address is derived from a
-metadata-bearing aggregate carrier. `memory/intrinsics.cpp` now resolves local
-aggregate memset/memcpy layouts through structured `LirTypeRef` lookup when
-that carrier is present, and fails closed on structured misses instead of
-recovering through rendered type spelling. `memory/local_slots.cpp` now uses
-the same structured local aggregate layout path when materializing HFA
-aggregate stores, publishing local aggregate pointer addresses, and rebuilding
-aggregate views from loaded local pointer slot state.
+`memory/provenance.cpp` now threads `LocalSlotAddress::type_ref` and
+`PointerAddress::type_ref` into the scalar subobject classifier. When a
+StructNameId-bearing type ref reaches that boundary, the classifier uses the
+structured backend layout table and rejects structured lookup misses instead
+of falling back through rendered type spelling. The rendered
+`TypeDeclMap` scalar-facts bridge remains only for provenance callers that
+still have no metadata-bearing type ref, such as globals and legacy/no-id
+local or pointer address state.
 
 ## Suggested Next
 
-Suggested Next: keep Step 4 active and run a bounded provenance/central-layout
-packet that either threads the new `PointerAddress::type_ref` into scalar
-subobject provenance classification or records the exact no-id boundaries that
-still cannot receive structured layout context. Include the central
-`types.cpp` raw `TypeDeclMap` fallback in that same audit only where it is
-directly exercised by the remaining provenance helper.
+Suggested Next: supervisor review/commit for the Step 4 local aggregate
+provenance slice, then decide whether any remaining no-id-only global or
+legacy provenance paths need separate source intent before continuing the
+universal model string escape-hatch deletion.
 
 ## Watchouts
 
-- `memory/provenance.cpp` still classifies scalar subobject addressability with
-  only rendered type text and `TypeDeclMap`; its current helper signatures do
-  not receive `BackendStructuredLayoutTable`, so fully consuming
-  `PointerAddress::type_ref` there is a separate plumbing packet.
-- Raw text fallbacks remain legitimate for legacy/no-id local address state
-  where `type_ref` is absent. Do not relabel metadata-bearing misses as no-id.
+- The central `types.cpp` raw `TypeDeclMap` fallback is still indirectly
+  exercised by this helper only when no StructNameId-bearing type ref reaches
+  provenance. Metadata-bearing local and pointer addresses bypass that route.
 - Do not reopen already classified call ABI, global, aggregate-parameter,
   memory/addressing, or local GEP comments unless this local memory repair
   exposes a direct contradiction.
