@@ -1,6 +1,6 @@
 # LIR Next Body Parameter Authority Handoff
 
-Status: Open
+Status: Closed
 Type: producer/schema/verifier handoff for one next function-body parameter-use row
 Parent Source: ideas/open/734_lir_to_new_bir_container_completeness.md
 
@@ -75,3 +75,42 @@ producer-side handoff.
 - Reject broad LIR schema churn, ABI redesign, target-lowering behavior, or
   unrelated memory/VA, aggregate/vector, module/type/global/metadata,
   instruction/terminator, or inline-assembly work.
+
+## Closure Record
+
+Close accepted. Implementation commit `80d8a339c` proves exactly one selected
+producer-side body-parameter row:
+`LirBinOp.scalar_rhs_parameter_authority` for a current-function
+`DirectScalar` floating parameter used as the RHS of binary floating `fadd`,
+with producer shape `return 2.0 + x;`.
+
+The accepted native tuple is the original parameter `LirValueId`, current
+`LirFunction.link_name_id` owner, parameter index, matching floating
+`LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`, and explicit
+`LirScalarBinaryParameterRole::Rhs`. The selected consumer relation is
+`LirBinOp` opcode `fadd`; `rhs` is the same parameter SSA/value as the
+authority tuple; `type_str` matches the authority type; `lhs` is a nonselected
+scalar operand.
+
+The existing emitter already publishes the carrier. The verifier now admits
+selected floating `fadd` or `fmul` RHS authority, requires a nonselected scalar
+LHS, and rejects duplicate selected floating-`fadd` RHS consumers in the
+current function. Neighboring `fmul` RHS malformed coverage uses nonselected
+`fsub` instead of now-selected `fadd`.
+
+Malformed coverage rejects omitted/missing, invalid, duplicate definition,
+foreign owner, wrong index, wrong type, wrong ABI, wrong role, non-`fadd`, RHS
+mismatch, type mismatch, selected-LHS incoherence, and duplicate selected
+consumer forms.
+
+Accepted proof is the focused
+`^frontend_lir_function_signature_type_ref$` producer/verifier proof with
+`git diff --check` and regression guard 1/1, plus the broader matching
+`^frontend_lir_` before/after guard with 7/7 passing on both sides. No Raw-BIR
+receiver work landed in this idea.
+
+Exact 734 return action: reactivate
+`ideas/open/734_lir_to_new_bir_container_completeness.md` for a future bounded
+Raw-BIR receiver packet that receives only this selected binary-`fadd` RHS
+DirectScalar parameter-use row into typed Raw BIR. Do not start Raw-BIR
+receiver implementation from this producer handoff.
