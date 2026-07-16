@@ -9681,6 +9681,17 @@ void test_lir_binop_compact_scalar_type_authority_boundary() {
   const std::string floating_ir = lir::print_llvm(floating);
   expect_true(floating_ir.find("fadd double 1, 2") != std::string::npos,
               "floating LirBinOp should render through compact scalar parity text");
+  floating_op.type_str = lir::LirTypeRef(lir::LirBuiltinType::Double);
+  floating_op.compact_scalar_type->type = lir::LirTypeRef(lir::LirBuiltinType::Double);
+  floating_op.type_str.str() = "float";
+  floating_op.compact_scalar_type->type.str() = "float";
+  const std::string stale_floating_carrier_ir = lir::print_llvm(floating);
+  expect_true(stale_floating_carrier_ir.find("fadd double 1, 2") !=
+                  std::string::npos,
+              "floating LirBinOp compact scalar render should use native builtin authority");
+  expect_true(stale_floating_carrier_ir.find("fadd float 1, 2") ==
+                  std::string::npos,
+              "floating LirBinOp compact scalar render must not recover semantics from stale text");
 
   lir::LirModule stale_text = make_module(lir::LirTypeRef::integer(32));
   auto& stale_text_op =

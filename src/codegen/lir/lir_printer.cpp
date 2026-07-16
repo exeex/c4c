@@ -579,7 +579,11 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
     const auto rendered_type =
         type->kind() == LirTypeKind::Integer
             ? render_integer_type_ref(*type, "LirBinOp.compact_scalar_type")
-            : require_type_ref(*type, "LirBinOp.compact_scalar_type", true);
+            : (type->kind() == LirTypeKind::Floating
+                   ? render_floating_type_ref(*type,
+                                              "LirBinOp.compact_scalar_type")
+                   : require_type_ref(*type, "LirBinOp.compact_scalar_type",
+                                      true));
     os << "  "
        << require_operand_kind(op->result, "LirBinOp.result",
                                {LirOperandKind::SsaValue})
