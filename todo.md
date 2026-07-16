@@ -8,22 +8,31 @@ Current Step Title: Repair scalar LHS parameter authority baseline
 
 ## Just Finished
 
-Switched away from 860 before any Step 1 progress was accepted. The active
-packet is now the separately scoped scalar LHS parameter authority baseline
-blocker.
+Completed Step 1 - Repair scalar LHS parameter authority baseline. Updated the
+binary producer so floating scalar LHS authority is published only for selected
+`fadd`, `fsub`, and `fmul` binary consumers, floating scalar RHS authority is
+published only for selected `fadd` and `fmul` consumers, and duplicate selected
+floating `fadd`/`fsub` LHS rows are left unclaimed after the first publication.
+Adjusted verifier absence checks to require authority only for supported
+selected floating rows while keeping positive fail-closed authority validation.
 
 ## Suggested Next
 
-Diagnose `LirBinOp.scalar_lhs_parameter_authority`, repair valid nonselected
-scalar RHS handling without weakening DirectScalar contracts, and add focused
-positive/malformed coverage.
+Supervisor should run the broader regression/full-suite guard to confirm the
+remaining scalar authority baseline failures are cleared.
 
 ## Watchouts
 
-Do not select a new 860 body-parameter row, downgrade expectations,
-special-case listed tests, weaken accepted DirectScalar contracts, or edit
-Raw-BIR receiver surfaces unless a separate scoped idea is opened first.
+Focused coverage now includes unsupported `fdiv` LHS/RHS suppression and a
+generated duplicate `fsub` LHS fixture that publishes exactly one selected
+authority row. Existing verifier mutation tests still reject explicit unsupported
+authority and duplicate selected authority publication.
 
 ## Proof
 
-No proof has run for blocker Step 1 yet.
+Ran `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_function_signature_type_ref$'; } > test_after.log 2>&1`.
+The delegated proof passed.
+
+Supervisor reran the full-suite guard using `test_before.log` and
+`test_after.log`: before `3026/3038`, after `3038/3038`, no new failures,
+regression guard passed. Rolled `test_after.log` forward to `test_before.log`.

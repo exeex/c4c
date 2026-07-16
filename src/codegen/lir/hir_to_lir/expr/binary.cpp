@@ -31,6 +31,29 @@ LirOperand preserve_exact_binary_operand(const LirOperand& source,
   return source;
 }
 
+bool selected_floating_lhs_authority_opcode(std::string_view opcode) {
+  return opcode == "fadd" || opcode == "fsub" || opcode == "fmul";
+}
+
+bool selected_floating_rhs_authority_opcode(std::string_view opcode) {
+  return opcode == "fadd" || opcode == "fmul";
+}
+
+bool floating_lhs_authority_already_published(const FnCtx& ctx,
+                                              std::string_view opcode) {
+  if (opcode != "fadd" && opcode != "fsub") return false;
+  for (const auto& block : ctx.lir_blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* binary = std::get_if<LirBinOp>(&inst);
+      if (binary != nullptr && binary->scalar_lhs_parameter_authority &&
+          binary->opcode.str() == opcode) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 LirOperand StmtEmitter::emit_complex_binary_arith(FnCtx& ctx, BinaryOp op,
@@ -571,8 +594,16 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
             preserve_exact_binary_operand(source_lv, lv, type);
         const LirOperand rhs =
             preserve_exact_binary_operand(source_rv, rv, type);
+        const bool selected_floating_lhs =
+            !authoritative_scalar_floating ||
+            selected_floating_lhs_authority_opcode(instr);
+        const bool selected_floating_rhs =
+            !authoritative_scalar_floating ||
+            selected_floating_rhs_authority_opcode(instr);
         std::optional<lir::LirScalarBinaryLhsParameterAuthority> lhs_authority;
-        if (ctx.lir_function != nullptr && lhs.value_id() != nullptr) {
+        if (selected_floating_lhs && ctx.lir_function != nullptr &&
+            lhs.value_id() != nullptr &&
+            !floating_lhs_authority_already_published(ctx, instr)) {
           const auto definition = std::find_if(
               ctx.lir_function->native_body_parameter_definitions.begin(),
               ctx.lir_function->native_body_parameter_definitions.end(),
@@ -593,7 +624,8 @@ LirOperand StmtEmitter::emit_binary_rval_operand(FnCtx& ctx,
           }
         }
         std::optional<lir::LirScalarBinaryRhsParameterAuthority> rhs_authority;
-        if (ctx.lir_function != nullptr && rhs.value_id() != nullptr) {
+        if (selected_floating_rhs && !lhs_authority && ctx.lir_function != nullptr &&
+            rhs.value_id() != nullptr) {
           const auto definition = std::find_if(
               ctx.lir_function->native_body_parameter_definitions.begin(),
               ctx.lir_function->native_body_parameter_definitions.end(),

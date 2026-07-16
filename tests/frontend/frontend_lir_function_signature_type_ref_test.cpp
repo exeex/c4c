@@ -1032,6 +1032,58 @@ double scalar_fmul_lhs(double x) { return x * 2.0; }
               "direct scalar fmul LHS authority must mirror its current-function definition");
   c4c::codegen::lir::verify_module(module);
 
+  {
+    auto candidate = module;
+    auto& candidate_function = require_mutable_function(candidate, "scalar_fmul_lhs", false);
+    bool verified = false;
+    for (auto& block : candidate_function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate_binary = std::get_if<c4c::codegen::lir::LirBinOp>(&inst);
+            candidate_binary != nullptr &&
+            candidate_binary->opcode.typed() == c4c::codegen::lir::LirBinaryOpcode::FMul) {
+          const auto ordinary_rhs =
+              c4c::codegen::lir::LirOperand::ssa("%ordinary_fmul_rhs",
+                                                 c4c::codegen::lir::LirValueId{999997});
+          c4c::codegen::lir::LirBinOp ordinary_producer{
+              c4c::codegen::lir::LirOperand::ssa("%ordinary_fmul_rhs",
+                                                 c4c::codegen::lir::LirValueId{999997}),
+              "fadd",
+              candidate_binary->type_str,
+              candidate_binary->rhs,
+              candidate_binary->rhs};
+          candidate_binary->rhs = ordinary_rhs;
+          block.insts.push_back(ordinary_producer);
+          c4c::codegen::lir::verify_module(candidate);
+          verified = true;
+          break;
+        }
+      }
+      if (verified) break;
+    }
+    expect_true(verified, "mutable scalar fmul fixture should contain one fmul LirBinOp");
+  }
+
+  {
+    auto candidate = module;
+    auto& candidate_function = require_mutable_function(candidate, "scalar_fmul_lhs", false);
+    bool verified = false;
+    for (auto& block : candidate_function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate_binary = std::get_if<c4c::codegen::lir::LirBinOp>(&inst);
+            candidate_binary != nullptr &&
+            candidate_binary->opcode.typed() == c4c::codegen::lir::LirBinaryOpcode::FMul) {
+          candidate_binary->rhs = candidate_binary->lhs;
+          c4c::codegen::lir::verify_module(candidate);
+          verified = true;
+          break;
+        }
+      }
+      if (verified) break;
+    }
+    expect_true(verified,
+                "DirectScalar fmul LHS verifier must allow nonselected same-parameter RHS reuse");
+  }
+
   const auto rejects = [&](auto mutate, const std::string& message) {
     auto candidate = module;
     auto& candidate_function = require_mutable_function(candidate, "scalar_fmul_lhs", false);
@@ -1099,8 +1151,19 @@ double scalar_fmul_lhs(double x) { return x * 2.0; }
             binary.type_str = c4c::codegen::lir::LirTypeRef("float");
           },
           "DirectScalar fmul LHS verifier must reject type mismatch");
-  rejects([](auto&, auto&, auto& binary) { binary.rhs = binary.lhs; },
-          "DirectScalar fmul LHS verifier must reject selected RHS coherence");
+  rejects([](auto&, auto&, auto& binary) {
+            binary.rhs = binary.lhs;
+            const auto& lhs_authority = *binary.scalar_lhs_parameter_authority;
+            binary.scalar_rhs_parameter_authority =
+                c4c::codegen::lir::LirScalarBinaryRhsParameterAuthority{
+                    .value = lhs_authority.value,
+                    .parameter_index = lhs_authority.parameter_index,
+                    .type = lhs_authority.type,
+                    .owner = lhs_authority.owner,
+                    .abi = lhs_authority.abi,
+                    .role = c4c::codegen::lir::LirScalarBinaryParameterRole::Rhs};
+          },
+          "DirectScalar fmul LHS verifier must reject explicit selected RHS authority");
 }
 
 void test_direct_scalar_fadd_lhs_authority() {
@@ -1137,6 +1200,27 @@ double scalar_fadd_lhs(double x) { return x + 2.0; }
                   authority.role == c4c::codegen::lir::LirScalarBinaryParameterRole::Lhs,
               "direct scalar fadd LHS authority must mirror its current-function definition");
   c4c::codegen::lir::verify_module(module);
+
+  {
+    auto candidate = module;
+    auto& candidate_function = require_mutable_function(candidate, "scalar_fadd_lhs", false);
+    bool verified = false;
+    for (auto& block : candidate_function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate_binary = std::get_if<c4c::codegen::lir::LirBinOp>(&inst);
+            candidate_binary != nullptr &&
+            candidate_binary->opcode.typed() == c4c::codegen::lir::LirBinaryOpcode::FAdd) {
+          candidate_binary->rhs = candidate_binary->lhs;
+          c4c::codegen::lir::verify_module(candidate);
+          verified = true;
+          break;
+        }
+      }
+      if (verified) break;
+    }
+    expect_true(verified,
+                "DirectScalar fadd LHS verifier must allow nonselected same-parameter RHS reuse");
+  }
 
   const auto rejects = [&](auto mutate, const std::string& message) {
     auto candidate = module;
@@ -1207,8 +1291,19 @@ double scalar_fadd_lhs(double x) { return x + 2.0; }
             binary.type_str = c4c::codegen::lir::LirTypeRef("float");
           },
           "DirectScalar fadd LHS verifier must reject type mismatch");
-  rejects([](auto&, auto&, auto&, auto& binary) { binary.rhs = binary.lhs; },
-          "DirectScalar fadd LHS verifier must reject selected RHS coherence");
+  rejects([](auto&, auto&, auto&, auto& binary) {
+            binary.rhs = binary.lhs;
+            const auto& lhs_authority = *binary.scalar_lhs_parameter_authority;
+            binary.scalar_rhs_parameter_authority =
+                c4c::codegen::lir::LirScalarBinaryRhsParameterAuthority{
+                    .value = lhs_authority.value,
+                    .parameter_index = lhs_authority.parameter_index,
+                    .type = lhs_authority.type,
+                    .owner = lhs_authority.owner,
+                    .abi = lhs_authority.abi,
+                    .role = c4c::codegen::lir::LirScalarBinaryParameterRole::Rhs};
+          },
+          "DirectScalar fadd LHS verifier must reject explicit selected RHS authority");
   rejects([](auto&, auto&, auto& block, auto& binary) {
             auto duplicate = binary;
             duplicate.result = c4c::codegen::lir::LirOperand::ssa(
@@ -1252,6 +1347,27 @@ double scalar_fsub_lhs(double x) { return x - 2.0; }
                   authority.role == c4c::codegen::lir::LirScalarBinaryParameterRole::Lhs,
               "direct scalar fsub LHS authority must mirror its current-function definition");
   c4c::codegen::lir::verify_module(module);
+
+  {
+    auto candidate = module;
+    auto& candidate_function = require_mutable_function(candidate, "scalar_fsub_lhs", false);
+    bool verified = false;
+    for (auto& block : candidate_function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* candidate_binary = std::get_if<c4c::codegen::lir::LirBinOp>(&inst);
+            candidate_binary != nullptr &&
+            candidate_binary->opcode.typed() == c4c::codegen::lir::LirBinaryOpcode::FSub) {
+          candidate_binary->rhs = candidate_binary->lhs;
+          c4c::codegen::lir::verify_module(candidate);
+          verified = true;
+          break;
+        }
+      }
+      if (verified) break;
+    }
+    expect_true(verified,
+                "DirectScalar fsub LHS verifier must allow nonselected same-parameter RHS reuse");
+  }
 
   const auto rejects = [&](auto mutate, const std::string& message) {
     auto candidate = module;
@@ -1322,8 +1438,19 @@ double scalar_fsub_lhs(double x) { return x - 2.0; }
             binary.type_str = c4c::codegen::lir::LirTypeRef("float");
           },
           "DirectScalar fsub LHS verifier must reject type mismatch");
-  rejects([](auto&, auto&, auto&, auto& binary) { binary.rhs = binary.lhs; },
-          "DirectScalar fsub LHS verifier must reject selected RHS coherence");
+  rejects([](auto&, auto&, auto&, auto& binary) {
+            binary.rhs = binary.lhs;
+            const auto& lhs_authority = *binary.scalar_lhs_parameter_authority;
+            binary.scalar_rhs_parameter_authority =
+                c4c::codegen::lir::LirScalarBinaryRhsParameterAuthority{
+                    .value = lhs_authority.value,
+                    .parameter_index = lhs_authority.parameter_index,
+                    .type = lhs_authority.type,
+                    .owner = lhs_authority.owner,
+                    .abi = lhs_authority.abi,
+                    .role = c4c::codegen::lir::LirScalarBinaryParameterRole::Rhs};
+          },
+          "DirectScalar fsub LHS verifier must reject explicit selected RHS authority");
   rejects([](auto&, auto&, auto& block, auto& binary) {
             auto duplicate = binary;
             duplicate.result = c4c::codegen::lir::LirOperand::ssa(
@@ -1331,6 +1458,102 @@ double scalar_fsub_lhs(double x) { return x - 2.0; }
             block.insts.push_back(duplicate);
           },
           "DirectScalar fsub LHS verifier must reject duplicate consumer");
+}
+
+void test_direct_scalar_binary_parameter_lhs_preempts_rhs_authority() {
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+double scalar_fadd_parameter_pair(double x, double y) { return x + y; }
+)c");
+  const c4c::codegen::lir::LirModule module = c4c::codegen::lir::lower(hir_module);
+  const auto find_fadd = [](const auto& function) -> const c4c::codegen::lir::LirBinOp& {
+    for (const auto& block : function.blocks) {
+      for (const auto& inst : block.insts) {
+        if (const auto* binary = std::get_if<c4c::codegen::lir::LirBinOp>(&inst);
+            binary != nullptr &&
+            binary->opcode.typed() == c4c::codegen::lir::LirBinaryOpcode::FAdd) {
+          return *binary;
+        }
+      }
+    }
+    fail("two-parameter scalar floating add fixture should lower one fadd LirBinOp");
+  };
+  const auto& function = require_function(module, "scalar_fadd_parameter_pair", false);
+  const auto& binary = find_fadd(function);
+  expect_true(binary.scalar_lhs_parameter_authority.has_value(),
+              "two-parameter fadd must publish selected LHS authority");
+  expect_true(!binary.scalar_rhs_parameter_authority.has_value(),
+              "two-parameter fadd selected LHS row must not also publish RHS authority");
+  const auto& lhs_definition = function.native_body_parameter_definitions[0];
+  const auto& rhs_definition = function.native_body_parameter_definitions[1];
+  const auto& authority = *binary.scalar_lhs_parameter_authority;
+  expect_true(binary.lhs.value_id() && binary.rhs.value_id() &&
+                  authority.value == *binary.lhs.value_id() &&
+                  authority.value == lhs_definition.value &&
+                  *binary.rhs.value_id() == rhs_definition.value &&
+                  authority.parameter_index == lhs_definition.parameter_index &&
+                  authority.type == binary.type_str && authority.type == lhs_definition.type &&
+                  authority.owner == function.link_name_id &&
+                  authority.owner == lhs_definition.owner &&
+                  authority.abi == c4c::codegen::lir::LirNativeBodyParameterAbi::DirectScalar &&
+                  authority.role == c4c::codegen::lir::LirScalarBinaryParameterRole::Lhs,
+              "two-parameter fadd LHS authority must mirror only the LHS definition");
+  c4c::codegen::lir::verify_module(module);
+}
+
+void test_direct_scalar_unsupported_fdiv_suppresses_parameter_authority() {
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+double scalar_fdiv_lhs(double x) { return x / 2.0; }
+double scalar_fdiv_rhs(double x) { return 2.0 / x; }
+)c");
+  const c4c::codegen::lir::LirModule module = c4c::codegen::lir::lower(hir_module);
+  const auto expect_fdiv_unclaimed = [](const auto& function, const std::string& message) {
+    bool found = false;
+    for (const auto& block : function.blocks) {
+      for (const auto& inst : block.insts) {
+        if (const auto* binary = std::get_if<c4c::codegen::lir::LirBinOp>(&inst);
+            binary != nullptr &&
+            binary->opcode.typed() == c4c::codegen::lir::LirBinaryOpcode::FDiv) {
+          expect_true(!binary->scalar_lhs_parameter_authority.has_value() &&
+                          !binary->scalar_rhs_parameter_authority.has_value(),
+                      message);
+          found = true;
+        }
+      }
+    }
+    expect_true(found, message + " should contain an fdiv consumer");
+  };
+  expect_fdiv_unclaimed(require_function(module, "scalar_fdiv_lhs", false),
+                        "unsupported fdiv LHS parameter consumer must stay unclaimed");
+  expect_fdiv_unclaimed(require_function(module, "scalar_fdiv_rhs", false),
+                        "unsupported fdiv RHS parameter consumer must stay unclaimed");
+  c4c::codegen::lir::verify_module(module);
+}
+
+void test_direct_scalar_duplicate_fsub_lhs_publishes_first_authority_only() {
+  c4c::hir::Module hir_module = lower_hir_module(R"c(
+double scalar_duplicate_fsub_lhs(double x) { return (x - 1.0) + (x - 2.0); }
+)c");
+  const c4c::codegen::lir::LirModule module = c4c::codegen::lir::lower(hir_module);
+  const auto& function = require_function(module, "scalar_duplicate_fsub_lhs", false);
+  std::size_t fsub_count = 0;
+  std::size_t fsub_lhs_authority_count = 0;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* binary = std::get_if<c4c::codegen::lir::LirBinOp>(&inst);
+          binary != nullptr &&
+          binary->opcode.typed() == c4c::codegen::lir::LirBinaryOpcode::FSub) {
+        ++fsub_count;
+        if (binary->scalar_lhs_parameter_authority) ++fsub_lhs_authority_count;
+        expect_true(!binary->scalar_rhs_parameter_authority.has_value(),
+                    "duplicate fsub LHS fixture must not publish RHS authority");
+      }
+    }
+  }
+  expect_true(fsub_count == 2,
+              "duplicate fsub LHS fixture should lower two fsub consumers");
+  expect_true(fsub_lhs_authority_count == 1,
+              "duplicate fsub LHS fixture must publish exactly the first selected row");
+  c4c::codegen::lir::verify_module(module);
 }
 
 void test_direct_scalar_fmul_rhs_authority() {
@@ -1578,6 +1801,9 @@ int main() {
   test_direct_scalar_fmul_lhs_authority();
   test_direct_scalar_fadd_lhs_authority();
   test_direct_scalar_fsub_lhs_authority();
+  test_direct_scalar_binary_parameter_lhs_preempts_rhs_authority();
+  test_direct_scalar_unsupported_fdiv_suppresses_parameter_authority();
+  test_direct_scalar_duplicate_fsub_lhs_publishes_first_authority_only();
   test_direct_scalar_fmul_rhs_authority();
   test_direct_scalar_fadd_rhs_authority();
 
