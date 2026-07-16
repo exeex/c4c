@@ -8,27 +8,23 @@ Current Step Title: Select One Carrier-Backed Collector Seam
 
 ## Just Finished
 
-Completed the accepted `LirShuffleVectorOp.vec1` repair packet in commit
-`75100a96f`: migrated only the `collect_inst_refs` shuffle `vec1` field from
-raw `S(op.vec1)` scanning to `collect_operand_ref(op.vec1, refs)`.
-`LirShuffleVectorOp.vec2` remains on the raw scanner path.
+Completed the Step 1 `LirShuffleVectorOp.vec2` packet: migrated only the
+`collect_inst_refs` shuffle `vec2` field from raw `S(op.vec2)` scanning to
+`collect_operand_ref(op.vec2, refs)`. `LirShuffleVectorOp.vec1` remains on
+`collect_operand_ref`.
 
 ## Suggested Next
 
-Execute Step 1 for the repaired route: select exactly `LirShuffleVectorOp.vec2`
-in `collect_inst_refs` as the next one-field packet, then migrate only that
-field from raw `S(op.vec2)` scanning to `collect_operand_ref(op.vec2, refs)`.
+Select the next single carrier-backed collector seam under Step 1, preserving
+the existing raw scanner compatibility paths for unselected fields.
 
 ## Watchouts
 
-Do not perform a broad collector sweep. Leave `LirShuffleVectorOp.vec2`,
-`LirShuffleVectorOp.mask`, inline asm, and residual raw/global text on their
-current scanner paths until the selected `vec2` packet edits that one field.
-Leave `LirShuffleVectorOp.mask`, inline asm, and residual raw/global text on
-their current scanner paths after the packet. Do not reconstruct references
-from rendered names or text. Do not change producers, verifier semantics, or
-BIR lowering unless `LirShuffleVectorOp.vec2` is disproven during executor
-inspection.
+Do not perform a broad collector sweep. Leave `LirShuffleVectorOp.mask`, inline
+asm, and residual raw/global text on their current scanner paths after the
+packet. Do not reconstruct references from rendered names or text. Do not
+change producers, verifier semantics, or BIR lowering as part of the next
+collector seam packet.
 
 ## Proof
 
@@ -40,10 +36,3 @@ git diff --check
 ```
 
 Proof log: `test_after.log`.
-
-Required next proof after the `vec2` packet:
-
-```
-{ cmake --build build && ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure; } > test_after.log 2>&1
-git diff --check
-```

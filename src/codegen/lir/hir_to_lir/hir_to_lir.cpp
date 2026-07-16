@@ -2007,7 +2007,7 @@ static void collect_inst_refs(const LirInst& inst, LirGlobalRefs& refs) {
     } else if constexpr (std::is_same_v<T, LirExtractElementOp>) {
       collect_operand_ref(op.vec, refs);
     } else if constexpr (std::is_same_v<T, LirShuffleVectorOp>) {
-      collect_operand_ref(op.vec1, refs); S(op.vec2);
+      collect_operand_ref(op.vec1, refs); collect_operand_ref(op.vec2, refs);
     } else if constexpr (std::is_same_v<T, LirVaArgOp>) {
       S(op.ap_ptr);
     } else if constexpr (std::is_same_v<T, LirMemcpyOp>) {
