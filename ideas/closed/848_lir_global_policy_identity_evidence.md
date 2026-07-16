@@ -1,6 +1,6 @@
 # LIR Global Policy and Symbol-Identity Evidence
 
-Status: Open
+Status: Closed - evidence complete, no direct 734 handoff
 Type: Research and architecture documentation
 Parent: `ideas/open/813_lir_string_semantic_authority_completion_umbrella.md`
 Related:
@@ -119,3 +119,43 @@ and 797 remain downstream and deferred.
   797 receipt before the evidence identifies an exact handoff.
 - Reject testcase-shaped conclusions, expectation downgrades, helper renames,
   or classification-only changes claimed as capability progress.
+
+## Closure Note
+
+Close accepted as documentation/evidence complete. Commit `a777f8478` created
+the required docs directory and exactly the required files:
+
+- `docs/lir_global_policy_identity_evidence/index.md`
+- `docs/lir_global_policy_identity_evidence/01_global_policy_identity_route.md`
+
+The evidence traces `LirGlobal` linkage, visibility, qualifier policy, symbol
+identity, alignment, and initializer function-link references through producer
+lowering, LIR verification, printing, Raw-BIR importer validation, Raw-BIR
+builder storage, and existing tests.
+
+Conclusion: Raw BIR already has explicit receiver storage and rollback checks
+for global object identity and policy facts, but LIR still carries weak and
+visibility policy in `linkage_vis` and const/global policy in `qualifier`
+without a complete global-family verifier contract. Therefore 848 does not
+authorize a direct 734 receiver handoff. A later implementation owner is
+required if the project wants structured producer/verifier authority for these
+string-carried global policy fields.
+
+Return relation:
+
+- 844 can reuse the evidence as non-type global policy context outside its
+  closed type-fact route.
+- 734 remains downstream with no new receiver row authorized by this idea.
+- 797 must await either a later structured producer/verifier route or an
+  explicit evidence-backed no-change disposition for these fields.
+
+Accepted proof:
+
+```sh
+find docs/lir_global_policy_identity_evidence -maxdepth 1 -type f -printf '%f\n' | sort
+git diff --check
+```
+
+Result: PASS. The directory contained exactly
+`01_global_policy_identity_route.md` and `index.md`, and no implementation
+files were modified.
