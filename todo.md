@@ -8,32 +8,34 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed Step 4 variadic aggregate `va_arg` slot-state conversion.
+Completed Step 4 aggregate parameter alias slot metadata handoff.
 
-`lower_runtime_intrinsic_inst(...)` now threads the existing
-`LirVaArgOp::type_str` `LirTypeRef` into `declare_local_aggregate_slots(...)`
-for aggregate `va_arg` result slots. Metadata-bearing aggregate `va_arg` result
-refs now use structured layout lookup/fail-closed behavior; absent/no-id refs
-remain on the documented rendered-text fallback path.
+`collect_aggregate_params()` now preserves an optional
+`StructNameId`-bearing `function_.signature_param_type_refs[index]` on
+`AggregateParamInfo`, and `materialize_aggregate_param_aliases(...)` passes
+that ref into the existing layout-supplied
+`declare_local_aggregate_slots(...)` overload. Metadata-bearing aggregate
+parameters now attach structured type identity to their generated local
+aggregate slots; legacy/no-id parameters stay on the existing text/layout
+fallback.
 
 ## Suggested Next
 
-Suggested Next: migrate another remaining local aggregate slot construction path
-that already has structured type metadata available, excluding variadic
-aggregate `va_arg` unless the supervisor explicitly scopes follow-up validation
-or cleanup for that path.
+Suggested Next: choose the next remaining Step 4 adapter deletion packet with a
+structured ref already available at the slot declaration boundary, or move to
+supervisor review if the intended aggregate slot declaration paths are now
+covered.
 
 ## Watchouts
 
-- This packet deliberately did not broaden into call returns, aggregate params,
-  loads, allocas, or subobject/view construction paths.
-- `LirVaArgOp::type_str` may still be a no-id/text-only ref for legacy inputs;
-  those aggregate `va_arg` results continue through the documented no-id
-  fallback in `declare_local_aggregate_slots(...)`.
-- The aggregate layout probe in the `va_arg` aggregate path still uses
-  `lower_byval_aggregate_layout(va_arg.type_str.str(), ...)` before slot
-  declaration; this packet only migrated aggregate `va_arg` result slot
-  creation.
+- This packet deliberately did not broaden into call returns, variadic
+  `va_arg`, loads, allocas, or subobject/view construction paths.
+- Aggregate parameter layout selection is unchanged: `StructNameId` refs use
+  structured layout selection, while no-id/legacy parameters retain the
+  existing rendered-text layout fallback.
+- The supplied-layout `declare_local_aggregate_slots(...)` overload now records
+  the optional parameter ref on `LocalAggregateSlots` without changing the
+  previously selected layout.
 
 ## Proof
 

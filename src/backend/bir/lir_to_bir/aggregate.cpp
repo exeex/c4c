@@ -250,6 +250,11 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
     if (name.empty()) {
       return {};
     }
+    const std::optional<c4c::codegen::lir::LirTypeRef> structured_type_ref =
+        structured_params_complete && function_.signature_param_type_refs[index].has_struct_name_id()
+            ? std::optional<c4c::codegen::lir::LirTypeRef>{
+                  function_.signature_param_type_refs[index]}
+            : std::nullopt;
     const bool is_explicit_byval_param = parsed_param.is_byval;
     const bool type_ref_spells_byval =
         structured_params_complete &&
@@ -258,6 +263,7 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
       aggregate_params.emplace(std::move(name),
                                AggregateParamInfo{
                                    .type_text = normalized_type,
+                                   .type_ref = structured_type_ref,
                                    .layout = AggregateTypeLayout{},
                                });
       return aggregate_params;
@@ -287,6 +293,7 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
         aggregate_params.emplace(std::move(name),
                                  AggregateParamInfo{
                                      .type_text = normalized_type,
+                                     .type_ref = structured_type_ref,
                                      .layout = AggregateTypeLayout{},
                                  });
         return aggregate_params;
@@ -297,6 +304,7 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
     aggregate_params.emplace(std::move(name),
                              AggregateParamInfo{
                                  .type_text = normalized_type,
+                                 .type_ref = structured_type_ref,
                                  .layout = *layout,
                              });
   }
@@ -628,6 +636,7 @@ bool BirFunctionLowerer::materialize_aggregate_param_aliases(std::vector<bir::In
     }
     const auto slot_base = aggregate_param_slot_base(param_name);
     if (!declare_local_aggregate_slots(info.type_text,
+                                       info.type_ref,
                                        info.layout,
                                        slot_base,
                                        info.layout.align_bytes)) {

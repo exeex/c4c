@@ -414,6 +414,8 @@ class BirFunctionLowerer {
   struct AggregateParamInfo {
     // Compatibility LIR type text retained for byval aggregate layout.
     std::string type_text;
+    // Structured signature parameter identity; absent for legacy/no-id params.
+    std::optional<c4c::codegen::lir::LirTypeRef> type_ref;
     AggregateTypeLayout layout;
   };
 
