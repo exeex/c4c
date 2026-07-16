@@ -37,6 +37,16 @@ Idea 866 orders this as terminal deletion after M1-M15 replacements and all
 needed 734 receipts have accepted dispositions. It does not return directly to
 734; its return is a final valid-LIR disposition handoff to 797.
 
+## 846 Handoff
+
+Idea 846 closed after bounded native-authoritative verifier/printer consumer
+migrations accepted selected integer, vector, aggregate, scalar boundary, and
+memory/index rendering gates. The deletion pass here owns remaining generic
+helpers, mutable semantic string escape hatches, implicit string conversions,
+and expired compatibility adapters only after confirming each target no longer
+has selected semantic callers. Switch selector surfaces remain outside this
+handoff and are owned by ideas 821 and 822.
+
 ## Reviewer Reject Signals
 
 - Reject deletion before any named M1--M15 consumer/adaptor gate is met.
