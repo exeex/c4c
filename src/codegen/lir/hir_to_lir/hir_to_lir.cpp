@@ -99,10 +99,45 @@ TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, const QualType& hir_ty
   type.qualifier_segments = nullptr;
   type.qualifier_text_ids = nullptr;
   type.n_qualifier_segments = 0;
+  if (hir_type.aggregate_ref) {
+    if (hir_type.aggregate_owner_identity &&
+        !c4c::codegen::llvm_helpers::typespec_aggregate_owner_key(hir_type, mod)) {
+      throw std::runtime_error(
+          "LIR-owned aggregate function type requires coherent HIR owner metadata");
+    }
+    const LirAggregateRef aggregate_ref =
+        lir_module->find_aggregate_ref(mod, *hir_type.aggregate_ref);
+    if (!aggregate_ref.valid()) {
+      throw std::runtime_error(
+          "LIR-owned aggregate function type requires a registered HIR aggregate ref");
+    }
+    const LirAggregateStoreEntry* aggregate =
+        lir_module->find_aggregate(aggregate_ref);
+    if (!aggregate || aggregate->is_union != (type.base == TB_UNION)) {
+      throw std::runtime_error(
+          "LIR-owned aggregate function type has an incoherent HIR aggregate ref");
+    }
+    const std::string_view name =
+        lir_module->struct_names.spelling(aggregate->name_id);
+    constexpr std::string_view struct_prefix = "%struct.";
+    constexpr std::string_view union_prefix = "%union.";
+    if (type.base == TB_STRUCT && name.rfind(struct_prefix, 0) == 0) {
+      type.tag_text_id =
+          lir_module->link_name_texts->intern(std::string(name.substr(struct_prefix.size())));
+      return type;
+    }
+    if (type.base == TB_UNION && name.rfind(union_prefix, 0) == 0) {
+      type.tag_text_id =
+          lir_module->link_name_texts->intern(std::string(name.substr(union_prefix.size())));
+      return type;
+    }
+    throw std::runtime_error(
+        "LIR-owned aggregate function type requires a structured LIR aggregate name");
+  }
   const std::optional<HirRecordOwnerKey> owner_key =
       c4c::codegen::llvm_helpers::typespec_aggregate_owner_key(hir_type, mod);
   if (!owner_key) {
-    throw std::runtime_error("LIR-owned aggregate function type requires a structured owner key");
+    return type;
   }
   const SymbolName* owner_tag = mod.find_struct_def_tag_by_owner(*owner_key);
   if (!owner_tag || owner_tag->empty()) {
@@ -878,7 +913,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
         lir_module ? lir_module->struct_names.intern(sty) : kInvalidStructName;
     if (lir_module) {
       const std::optional<c4c::hir::HirAggregateRef> hir_ref =
-          mod.aggregate_ref_for_definition(sd);
+          sd.aggregate_ref ? sd.aggregate_ref : mod.aggregate_ref_for_definition(sd);
       if (!hir_ref || !hir_ref->complete()) {
         throw std::runtime_error(
             "aggregate definition lowering requires a registered complete HIR aggregate ref");
@@ -1802,7 +1837,9 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
   // or any later aggregate occurrences. This is the producer-side handoff;
   // build_type_decls consumes these refs without consulting legacy adapters.
   for (const auto& [_, definition] : hir_mod.struct_defs) {
-    (void)hir_mod.register_aggregate_definition(definition);
+    if (!definition.aggregate_ref) {
+      (void)hir_mod.register_aggregate_definition(definition);
+    }
   }
   module.type_decls = build_type_decls(hir_mod, &module);
   module.prefer_semantic_va_ops = options.preserve_semantic_va_ops;

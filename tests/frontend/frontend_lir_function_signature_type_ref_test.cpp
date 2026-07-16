@@ -189,6 +189,31 @@ void expect_struct_signature_refs(
                          "parameter type mirror");
 }
 
+void expect_signature_aggregate_registered(
+    const c4c::hir::Module& hir_module,
+    const c4c::codegen::lir::LirModule& lir_module,
+    std::string_view tag,
+    std::string_view expected_lir_name) {
+  const auto it = hir_module.struct_defs.find(std::string(tag));
+  expect_true(it != hir_module.struct_defs.end(),
+              "fixture should contain HIR aggregate definition: " + std::string(tag));
+  const std::optional<c4c::hir::HirAggregateRef> hir_ref =
+      it->second.aggregate_ref;
+  expect_true(hir_ref.has_value() && hir_ref->complete(),
+              "fixture HIR aggregate ref should be populated: " + std::string(tag));
+  const c4c::codegen::lir::LirAggregateRef lir_ref =
+      lir_module.find_aggregate_ref(hir_module, *hir_ref);
+  expect_true(lir_ref.valid(),
+              "signature aggregate ref should be interned in the LIR store: " +
+                  std::string(tag));
+  const c4c::codegen::lir::LirAggregateStoreEntry* entry =
+      lir_module.find_aggregate(lir_ref);
+  expect_true(entry != nullptr,
+              "signature aggregate store entry should be present: " + std::string(tag));
+  expect_eq(lir_module.struct_names.spelling(entry->name_id), expected_lir_name,
+            "signature aggregate store entry should retain the LIR declaration name");
+}
+
 void expect_byval_signature_refs(
     const c4c::codegen::lir::LirFunction& fn,
     std::string_view expected_param_text) {
@@ -266,38 +291,27 @@ void owned_param(struct StaleOwnedCompat input);
   c4c::hir::Function& return_fn =
       require_hir_function(hir_module, "owned_return", true);
   return_fn.return_type.spec = make_missing_owner_type();
+  return_fn.return_type.aggregate_ref.reset();
+  c4c::hir::HirAggregateOwnerIdentity missing_identity{};
+  missing_identity.namespace_context_id = missing_owner.namespace_context_id;
+  missing_identity.declaration_text_id = missing_owner.unqualified_text_id;
+  missing_identity.canonical_tag_text_id = missing_owner.unqualified_text_id;
+  return_fn.return_type.aggregate_owner_identity = missing_identity;
   c4c::hir::Function& param_fn =
       require_hir_function(hir_module, "owned_param", true);
   param_fn.params[0].type.spec = make_missing_owner_type();
+  param_fn.params[0].type.aggregate_ref.reset();
+  param_fn.params[0].type.aggregate_owner_identity = missing_identity;
 
-  const c4c::codegen::lir::LirModule lir_module =
-      c4c::codegen::lir::lower(hir_module);
-  const c4c::TextId stale_id =
-      hir_module.link_name_texts->find("StaleOwnedCompat");
-  const c4c::TextId missing_id =
-      hir_module.link_name_texts->find("MissingOwnedCompatOwner");
-  expect_true(stale_id != c4c::kInvalidText && missing_id != c4c::kInvalidText,
-              "fixture should carry both stale compatibility and missing owner text");
-
-  const auto& lowered_return =
-      require_function(lir_module, "owned_return", true);
-  expect_true(lowered_return.return_type.tag_text_id == missing_id,
-              "complete owner-key miss must not re-intern stale return compatibility");
-  expect_true(lowered_return.return_type.tag_text_id != stale_id,
-              "stale rendered return compatibility must stay retired after owner miss");
-  expect_true(lowered_return.return_type.record_def == nullptr,
-              "owned return type should still drop AST owner pointers for LIR storage");
-
-  const auto& lowered_param =
-      require_function(lir_module, "owned_param", true);
-  expect_eq(std::to_string(lowered_param.params.size()), "1",
-            "fixture should lower one owned parameter");
-  expect_true(lowered_param.params[0].second.tag_text_id == missing_id,
-              "complete owner-key miss must not re-intern stale parameter compatibility");
-  expect_true(lowered_param.params[0].second.tag_text_id != stale_id,
-              "stale rendered parameter compatibility must stay retired after owner miss");
-  expect_true(lowered_param.params[0].second.record_def == nullptr,
-              "owned parameter type should still drop AST owner pointers for LIR storage");
+  try {
+    (void)c4c::codegen::lir::lower(hir_module);
+    fail("missing canonical aggregate ref and incoherent owner metadata should reject");
+  } catch (const std::runtime_error& err) {
+    const std::string actual = err.what();
+    expect_true(actual.find("LIR-owned aggregate function type requires") !=
+                    std::string::npos,
+                "incoherent owned aggregate metadata should fail before stale compatibility can be re-interned");
+  }
 }
 
 void test_signature_type_ref_preserves_no_owner_compatibility_name_id() {
@@ -320,8 +334,11 @@ struct StaleNoOwnerCompat no_owner_return(void);
   no_owner_type.array_size = -1;
   no_owner_type.inner_rank = -1;
 
-  require_hir_function(hir_module, "no_owner_return", true).return_type.spec =
-      no_owner_type;
+  c4c::hir::QualType& no_owner_return_type =
+      require_hir_function(hir_module, "no_owner_return", true).return_type;
+  no_owner_return_type.spec = no_owner_type;
+  no_owner_return_type.aggregate_owner_identity.reset();
+  no_owner_return_type.aggregate_ref.reset();
 
   const c4c::codegen::lir::LirModule lir_module =
       c4c::codegen::lir::lower(hir_module);
@@ -823,6 +840,10 @@ int defined_void_params(void) {
   const c4c::codegen::lir::LirModule lir_module =
       c4c::codegen::lir::lower(hir_module);
   expect_type_ref_structured_equality_uses_name_id(lir_module);
+  expect_signature_aggregate_registered(hir_module, lir_module, "Pair",
+                                        "%struct.Pair");
+  expect_signature_aggregate_registered(hir_module, lir_module, "Big",
+                                        "%struct.Big");
 
   const auto& declared_pair = require_function(lir_module, "declared_pair", true);
   expect_single_logical_param(declared_pair, c4c::TB_STRUCT, 0,
