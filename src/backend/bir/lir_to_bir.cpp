@@ -2652,7 +2652,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
   const codegen::lir::LirTruthinessComparisonLhsParameterAuthority*
       selected_truthiness_lhs_parameter_authority = nullptr;
   const codegen::lir::LirFixedDirectCallArgumentParameterAuthority*
-      selected_fixed_direct_call_argument0_authority = nullptr;
+      selected_fixed_direct_call_argument_authority = nullptr;
   for (const auto& block : function.blocks) {
     const auto* ret = std::get_if<LirRet>(&block.terminator);
     if (!ret) continue;
@@ -2791,53 +2791,57 @@ Result<void, ImportError> validate_function(const LirModule& module,
   for (const auto& block : function.blocks) for (const auto& instruction : block.insts) {
     const auto* call = std::get_if<LirCallOp>(&instruction);
     if (!call) continue;
-    for (std::size_t index = 1; index < call->structured_args.size(); ++index) {
-      if (call->structured_args[index].fixed_direct_call_argument_parameter_authority)
+    for (std::size_t index = 0; index < call->structured_args.size(); ++index) {
+      const auto& argument = call->structured_args[index];
+      const auto* authority = argument.fixed_direct_call_argument_parameter_authority
+          ? &*argument.fixed_direct_call_argument_parameter_authority
+          : nullptr;
+      const auto* argument_value = argument.operand.value_id();
+      const auto matching_definition_count = authority ? std::count_if(
+          function.native_body_parameter_definitions.begin(),
+          function.native_body_parameter_definitions.end(), [&](const auto& definition) {
+            return definition.value == authority->value &&
+                definition.parameter_index == authority->parameter_index &&
+                definition.type == authority->type && definition.owner == authority->owner &&
+                definition.abi == authority->abi;
+          }) : 0;
+      const auto selected_definition = argument_value
+          ? std::find_if(function.native_body_parameter_definitions.begin(),
+                         function.native_body_parameter_definitions.end(), [&](const auto& definition) {
+                           return definition.value == *argument_value &&
+                               definition.type == argument.type_ref &&
+                               definition.abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar;
+                         }) : function.native_body_parameter_definitions.end();
+      if (!authority) {
+        if ((index == 0 || index == 1) &&
+            selected_definition != function.native_body_parameter_definitions.end())
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                            "direct scalar fixed direct-call argument requires its one typed authority row");
+        continue;
+      }
+      const auto expected_role = index == 0
+          ? codegen::lir::LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument0
+          : index == 1
+              ? codegen::lir::LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument1
+              : codegen::lir::LirFixedDirectCallArgumentParameterRole::Invalid;
+      const auto* call_fixed_params = call_fixed_param_type_refs(module, *call);
+      if (selected_fixed_direct_call_argument_authority || index > 1 ||
+          !authority->value.valid() ||
+          authority->owner != function.link_name_id ||
+          authority->parameter_index >= function.params.size() ||
+          authority->parameter_index >= function.signature_param_type_refs.size() ||
+          authority->abi != codegen::lir::LirNativeBodyParameterAbi::DirectScalar ||
+          authority->role != expected_role ||
+          !argument_value || *argument_value != authority->value ||
+          argument.type_ref != authority->type ||
+          function.signature_param_type_refs[authority->parameter_index] != authority->type ||
+          !call_fixed_params || call_fixed_params->size() <= index ||
+          (*call_fixed_params)[index] != authority->type ||
+          matching_definition_count != 1)
         return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
-                          "fixed direct-call parameter authority is limited to structured argument zero");
+                          "direct scalar fixed direct-call argument requires one exact typed authority row");
+      selected_fixed_direct_call_argument_authority = authority;
     }
-    const auto* authority = call->structured_args.empty() ||
-            !call->structured_args[0].fixed_direct_call_argument_parameter_authority
-        ? nullptr : &*call->structured_args[0].fixed_direct_call_argument_parameter_authority;
-    const auto* argument_value = call->structured_args.empty()
-        ? nullptr : call->structured_args[0].operand.value_id();
-    const auto matching_definition_count = authority ? std::count_if(
-        function.native_body_parameter_definitions.begin(),
-        function.native_body_parameter_definitions.end(), [&](const auto& definition) {
-          return definition.value == authority->value &&
-              definition.parameter_index == authority->parameter_index &&
-              definition.type == authority->type && definition.owner == authority->owner &&
-              definition.abi == authority->abi;
-        }) : 0;
-    const auto selected_definition = !call->structured_args.empty() && argument_value
-        ? std::find_if(function.native_body_parameter_definitions.begin(),
-                       function.native_body_parameter_definitions.end(), [&](const auto& definition) {
-                         return definition.value == *argument_value &&
-                             definition.type == call->structured_args[0].type_ref &&
-                             definition.abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar;
-                       }) : function.native_body_parameter_definitions.end();
-    if (!authority) {
-      if (selected_definition != function.native_body_parameter_definitions.end())
-        return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
-                          "direct scalar fixed direct-call argument requires its one typed authority row");
-      continue;
-    }
-    const auto* call_fixed_params = call_fixed_param_type_refs(module, *call);
-    if (selected_fixed_direct_call_argument0_authority || !authority->value.valid() ||
-        authority->owner != function.link_name_id ||
-        authority->parameter_index >= function.params.size() ||
-        authority->parameter_index >= function.signature_param_type_refs.size() ||
-        authority->abi != codegen::lir::LirNativeBodyParameterAbi::DirectScalar ||
-        authority->role != codegen::lir::LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument0 ||
-        !argument_value || *argument_value != authority->value ||
-        call->structured_args[0].type_ref != authority->type ||
-        function.signature_param_type_refs[authority->parameter_index] != authority->type ||
-        !call_fixed_params || call_fixed_params->empty() ||
-        (*call_fixed_params)[0] != authority->type ||
-        matching_definition_count != 1)
-      return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
-                        "direct scalar fixed direct-call argument requires one exact typed authority row");
-    selected_fixed_direct_call_argument0_authority = authority;
   }
   const LirMemcpyOp* overflow_memcpy = nullptr;
   const codegen::lir::LirAmd64SysVOverflowAggregateCarrier* overflow_carrier = nullptr;
@@ -3036,11 +3040,11 @@ Result<void, ImportError> validate_function(const LirModule& module,
       return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
                         "direct scalar truthiness parameter identity collided in the current-function source registry");
   }
-  if (selected_fixed_direct_call_argument0_authority) {
+  if (selected_fixed_direct_call_argument_authority) {
     const auto type = lower_lir_type(module,
-                                     selected_fixed_direct_call_argument0_authority->type);
+                                     selected_fixed_direct_call_argument_authority->type);
     if (!type || !source_values.emplace(
-                      selected_fixed_direct_call_argument0_authority->value.value,
+                      selected_fixed_direct_call_argument_authority->value.value,
                       *type).second)
       return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
                         "direct scalar fixed direct-call parameter identity collided in the current-function source registry");
@@ -4738,15 +4742,21 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   return &*compare->truthiness_lhs_parameter_authority;
             return static_cast<const codegen::lir::LirTruthinessComparisonLhsParameterAuthority*>(nullptr);
           }();
-          const auto selected_fixed_direct_call_argument0_authority = [&]() {
+          const auto selected_fixed_direct_call_argument_authority = [&]()
+              -> std::pair<
+                  const codegen::lir::LirFixedDirectCallArgumentParameterAuthority*,
+                  std::size_t> {
             for (const auto& block : function.blocks)
               for (const auto& instruction : block.insts)
                 if (const auto* call = std::get_if<LirCallOp>(&instruction);
-                    call && !call->structured_args.empty() &&
-                    call->structured_args[0].fixed_direct_call_argument_parameter_authority)
-                  return &*call->structured_args[0]
-                              .fixed_direct_call_argument_parameter_authority;
-            return static_cast<const codegen::lir::LirFixedDirectCallArgumentParameterAuthority*>(nullptr);
+                    call)
+                  for (std::size_t index = 0; index < call->structured_args.size(); ++index)
+                    if (call->structured_args[index]
+                            .fixed_direct_call_argument_parameter_authority)
+                      return {&*call->structured_args[index]
+                                    .fixed_direct_call_argument_parameter_authority,
+                              index};
+            return {nullptr, 0};
           }();
           const auto selected_scalar_body_parameter = selected_scalar_authority
               ? std::find_if(function.native_body_parameter_definitions.begin(),
@@ -4803,15 +4813,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                    parameter.abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar;
                              })
               : function.native_body_parameter_definitions.end();
-          const auto selected_fixed_direct_call_argument0_body_parameter =
-              selected_fixed_direct_call_argument0_authority
+          const auto selected_fixed_direct_call_argument_body_parameter =
+              selected_fixed_direct_call_argument_authority.first
               ? std::find_if(function.native_body_parameter_definitions.begin(),
                              function.native_body_parameter_definitions.end(),
                              [&](const auto& parameter) {
-                               return parameter.value == selected_fixed_direct_call_argument0_authority->value &&
-                                   parameter.parameter_index == selected_fixed_direct_call_argument0_authority->parameter_index &&
-                                   parameter.type == selected_fixed_direct_call_argument0_authority->type &&
-                                   parameter.owner == selected_fixed_direct_call_argument0_authority->owner &&
+                               const auto& authority =
+                                   *selected_fixed_direct_call_argument_authority.first;
+                               return parameter.value == authority.value &&
+                                   parameter.parameter_index == authority.parameter_index &&
+                                   parameter.type == authority.type &&
+                                   parameter.owner == authority.owner &&
                                    parameter.abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar;
                              })
               : function.native_body_parameter_definitions.end();
@@ -4866,12 +4878,12 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
               return Result<void, BuildError>::failure(BuildError::InvalidParameter);
             }
           }
-          if (selected_fixed_direct_call_argument0_body_parameter !=
+          if (selected_fixed_direct_call_argument_body_parameter !=
               function.native_body_parameter_definitions.end()) {
             auto parameter = function_builder.parameter(
-                selected_fixed_direct_call_argument0_body_parameter->parameter_index);
+                selected_fixed_direct_call_argument_body_parameter->parameter_index);
             if (!parameter || !source_values.emplace(
-                                  selected_fixed_direct_call_argument0_body_parameter->value.value,
+                                  selected_fixed_direct_call_argument_body_parameter->value.value,
                                   parameter.value()).second) {
               edit_error = ImportError{ImportErrorCode::UnsupportedFunctionParameters, name, {},
                                        "direct scalar fixed direct-call parameter failed authoritative Raw-BIR receipt"};
@@ -5683,12 +5695,13 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                     call->return_type.kind() == codegen::lir::LirTypeKind::Integer;
                 const bool native_floating_result =
                     call->return_type == codegen::lir::LirTypeRef("double");
-                std::optional<DirectScalarBodyParameterFixedDirectCallArgument0>
-                    direct_scalar_argument0;
-                if (!call->structured_args.empty() &&
-                    call->structured_args[0]
-                        .fixed_direct_call_argument_parameter_authority) {
-                  const auto& authority = *call->structured_args[0]
+                std::optional<DirectScalarBodyParameterFixedDirectCallArgument>
+                    direct_scalar_argument;
+                for (std::size_t index = 0; index < call->structured_args.size(); ++index) {
+                  if (!call->structured_args[index]
+                           .fixed_direct_call_argument_parameter_authority)
+                    continue;
+                  const auto& authority = *call->structured_args[index]
                                                .fixed_direct_call_argument_parameter_authority;
                   const auto owner = imported_link_names.find(authority.owner);
                   if (owner == imported_link_names.end()) {
@@ -5697,10 +5710,12 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                              "validated fixed direct-call parameter owner disappeared"};
                     return Result<void, BuildError>::failure(BuildError::InvalidNameId);
                   }
-                  direct_scalar_argument0 =
-                      DirectScalarBodyParameterFixedDirectCallArgument0{
+                  direct_scalar_argument =
+                      DirectScalarBodyParameterFixedDirectCallArgument{
                           authority.value.value, authority.parameter_index,
+                          static_cast<std::uint32_t>(index),
                           *lower_lir_type(module, authority.type), owner->second};
+                  break;
                 }
                 auto appended = function_builder.append(
                     blocks.at(block.id.value),
@@ -5708,7 +5723,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                              (integer_result || native_floating_result)
                                  ? std::optional<std::uint32_t>{call->result.value_id()->value}
                                  : std::nullopt,
-                             direct_scalar_argument0});
+                             direct_scalar_argument});
                 if (!appended) {
                   edit_error = builder_failure(name, block.label,
                                                "append call",

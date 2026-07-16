@@ -1103,17 +1103,22 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                     callee.value().get().signature_.return_type &&
                     value.value().get().source_id.has_value();
               }()));
-        const auto* direct_scalar = call->direct_scalar_argument0
-            ? &*call->direct_scalar_argument0 : nullptr;
+        const auto* direct_scalar = call->direct_scalar_argument
+            ? &*call->direct_scalar_argument : nullptr;
         const bool exact_direct_scalar = !direct_scalar ||
-            (exact_signature && !instruction.operands.empty() &&
+            (exact_signature && direct_scalar->argument_index < instruction.operands.size() &&
+             direct_scalar->argument_index <
+                 callee.value().get().signature_.parameter_types.size() &&
              direct_scalar->source_value_id != 0 && direct_scalar->owner.valid() &&
              direct_scalar->owner.epoch == module.epoch_ &&
              direct_scalar->owner.slot < module.link_names_.size() &&
              module.link_names_[direct_scalar->owner.slot].spelling == function.link_name_ &&
              direct_scalar->parameter_index < function.parameters_.size() &&
-             instruction.operands[0] == function.parameters_[direct_scalar->parameter_index] &&
-             direct_scalar->scalar_type == callee.value().get().signature_.parameter_types[0]);
+             instruction.operands[direct_scalar->argument_index] ==
+                 function.parameters_[direct_scalar->parameter_index] &&
+             direct_scalar->scalar_type ==
+                 callee.value().get().signature_
+                     .parameter_types[direct_scalar->argument_index]);
         if (!exact_arguments || !exact_result || !exact_direct_scalar)
           report(result, VerificationRule::ValueDefinition, function_id,
                  inst_id,

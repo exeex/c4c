@@ -286,19 +286,20 @@ struct DirectScalarBodyParameterTruthinessComparisonLhs {
   LinkNameId owner{};
 };
 
-// Receipt of the one producer-authorized direct-scalar current-function
-// parameter passed as structured argument zero of a fixed direct call.
-struct DirectScalarBodyParameterFixedDirectCallArgument0 {
+// Receipt of one producer-authorized direct-scalar current-function parameter
+// passed as a selected structured argument of a fixed direct call.
+struct DirectScalarBodyParameterFixedDirectCallArgument {
   std::uint32_t source_value_id = 0;
   std::uint32_t parameter_index = 0;
+  std::uint32_t argument_index = 0;
   Type scalar_type{TypeKind::Void};
   LinkNameId owner{};
 };
 
 struct CallNode {
   FunctionId callee{};
-  std::optional<DirectScalarBodyParameterFixedDirectCallArgument0>
-      direct_scalar_argument0;
+  std::optional<DirectScalarBodyParameterFixedDirectCallArgument>
+      direct_scalar_argument;
 };
 
 enum class BinaryOpcode : std::uint8_t { FAdd, FMul, Add, Mul };

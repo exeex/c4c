@@ -13736,7 +13736,7 @@ void test_truthiness_comparison_lhs_parameter_authority_receipt_and_rejections()
 }
 
 void test_fixed_direct_call_argument0_parameter_authority_receipt_and_rejections() {
-  const auto make_module = [] {
+  const auto make_module = [](const std::size_t argument_index = 0) {
     lir::LirModule module;
     module.link_name_texts = std::make_shared<c4c::TextTable>();
     module.link_names.attach_text_table(module.link_name_texts.get());
@@ -13750,10 +13750,19 @@ void test_fixed_direct_call_argument0_parameter_authority_receipt_and_rejections
     callee.params.emplace_back("%target-param", scalar_type(c4c::TB_INT));
     callee.signature_params.push_back({"%target-param", scalar_type(c4c::TB_INT), false});
     callee.signature_param_type_refs.push_back(lir::LirTypeRef::integer(32));
+    if (argument_index == 1) {
+      callee.params.emplace_back("%target-param1", scalar_type(c4c::TB_INT));
+      callee.signature_params.push_back({"%target-param1", scalar_type(c4c::TB_INT), false});
+      callee.signature_param_type_refs.push_back(lir::LirTypeRef::integer(32));
+    }
     lir::LirFunctionSignatureStoreEntry callee_signature_store;
     callee_signature_store.return_type_ref = lir::LirTypeRef::integer(32);
     callee_signature_store.fixed_param_type_refs.push_back(lir::LirTypeRef::integer(32));
     callee_signature_store.fixed_param_is_byval.push_back(false);
+    if (argument_index == 1) {
+      callee_signature_store.fixed_param_type_refs.push_back(lir::LirTypeRef::integer(32));
+      callee_signature_store.fixed_param_is_byval.push_back(false);
+    }
     callee.function_signature_ref =
         module.register_function_signature(std::move(callee_signature_store));
     callee.is_declaration = true;
@@ -13765,28 +13774,47 @@ void test_fixed_direct_call_argument0_parameter_authority_receipt_and_rejections
     caller.params.emplace_back("%presentation-only", scalar_type(c4c::TB_INT));
     caller.signature_params.push_back({"%presentation-only", scalar_type(c4c::TB_INT), false});
     caller.signature_param_type_refs.push_back(lir::LirTypeRef::integer(32));
+    if (argument_index == 1) {
+      caller.params.emplace_back("%presentation-only1", scalar_type(c4c::TB_INT));
+      caller.signature_params.push_back({"%presentation-only1", scalar_type(c4c::TB_INT), false});
+      caller.signature_param_type_refs.push_back(lir::LirTypeRef::integer(32));
+    }
     caller.native_body_parameter_definitions.push_back(
-        {lir::LirValueId{81}, 0, lir::LirTypeRef::integer(32), caller_owner,
+        {lir::LirValueId{static_cast<std::uint32_t>(81 + argument_index)},
+         static_cast<std::uint32_t>(argument_index), lir::LirTypeRef::integer(32), caller_owner,
          lir::LirNativeBodyParameterAbi::DirectScalar});
     lir::LirBlock entry = return_block(0, "entry");
     lir::LirCallOp call;
-    call.result = lir::LirOperand::ssa("%presentation-result", lir::LirValueId{82});
+    call.result = lir::LirOperand::ssa("%presentation-result", lir::LirValueId{90});
     call.return_type = lir::LirTypeRef::integer(32);
     call.callee = lir::LirOperand::global("@presentation-target", callee_owner);
     call.direct_callee_link_name_id = callee_owner;
     call.arg_type_refs = {lir::LirTypeRef::integer(32)};
+    if (argument_index == 1) call.arg_type_refs.push_back(lir::LirTypeRef::integer(32));
     call.callee_signature = lir::LirCallSignature{
         lir::LirTypeRef::integer(32), lir::LirExtAttr::None, {"i32"},
         {lir::LirTypeRef::integer(32)}, false, false, false};
+    if (argument_index == 1) {
+      call.callee_signature->fixed_param_type_refs.push_back(lir::LirTypeRef::integer(32));
+    }
     call.callee_signature_ref = callee.function_signature_ref;
-    call.structured_args.push_back({"i32",
-        lir::LirOperand::ssa("%presentation-argument", lir::LirValueId{81}),
-        lir::LirTypeRef::integer(32)});
-    call.structured_args[0].fixed_direct_call_argument_parameter_authority =
+    if (argument_index == 1) {
+      call.structured_args.push_back(
+          {"i32", lir::LirOperand::integer("7", 7), lir::LirTypeRef::integer(32)});
+    }
+    call.structured_args.push_back(
+        {"i32",
+         lir::LirOperand::ssa("%presentation-argument",
+                              lir::LirValueId{static_cast<std::uint32_t>(81 + argument_index)}),
+         lir::LirTypeRef::integer(32)});
+    call.structured_args[argument_index].fixed_direct_call_argument_parameter_authority =
         lir::LirFixedDirectCallArgumentParameterAuthority{
-            lir::LirValueId{81}, 0, lir::LirTypeRef::integer(32), caller_owner,
+            lir::LirValueId{static_cast<std::uint32_t>(81 + argument_index)},
+            static_cast<std::uint32_t>(argument_index), lir::LirTypeRef::integer(32), caller_owner,
             lir::LirNativeBodyParameterAbi::DirectScalar,
-            lir::LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument0};
+            argument_index == 0
+                ? lir::LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument0
+                : lir::LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument1};
     entry.insts.push_back(std::move(call));
     caller.blocks.push_back(std::move(entry));
     caller.entry = lir::LirBlockId{0};
@@ -13801,13 +13829,35 @@ void test_fixed_direct_call_argument0_parameter_authority_receipt_and_rejections
   const auto view = raw.value().view();
   const auto function = view.function(view.functions()[1]).value();
   const auto call = function.instruction(function.instructions(function.blocks()[0]).value()[0]).value();
-  expect(call.call() && call.call()->direct_scalar_argument0 &&
-             call.call()->direct_scalar_argument0->source_value_id == 81 &&
-             call.call()->direct_scalar_argument0->parameter_index == 0 &&
-             call.call()->direct_scalar_argument0->scalar_type ==
+  expect(call.call() && call.call()->direct_scalar_argument &&
+             call.call()->direct_scalar_argument->source_value_id == 81 &&
+             call.call()->direct_scalar_argument->parameter_index == 0 &&
+             call.call()->direct_scalar_argument->argument_index == 0 &&
+             call.call()->direct_scalar_argument->scalar_type ==
                  bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
              call.operands().size() == 1 && call.operands()[0] == function.parameters()[0],
          "Raw BIR must retain the exact typed fixed direct-call argument-0 authority");
+
+  const auto argument1_module = make_module(1);
+  const auto argument1_raw = bir::lower_lir_to_raw_bir(argument1_module);
+  expect(argument1_raw.has_value() && bir::FoundationVerifier::verify(argument1_raw.value()).ok(),
+         "fixed direct-call argument-1 authority must publish verified Raw BIR: " +
+             (argument1_raw.has_value() ? "foundation verifier rejected it"
+                                        : argument1_raw.error().detail));
+  const auto argument1_view = argument1_raw.value().view();
+  const auto argument1_function = argument1_view.function(argument1_view.functions()[1]).value();
+  const auto argument1_call =
+      argument1_function.instruction(
+          argument1_function.instructions(argument1_function.blocks()[0]).value()[0]).value();
+  expect(argument1_call.call() && argument1_call.call()->direct_scalar_argument &&
+             argument1_call.call()->direct_scalar_argument->source_value_id == 82 &&
+             argument1_call.call()->direct_scalar_argument->parameter_index == 1 &&
+             argument1_call.call()->direct_scalar_argument->argument_index == 1 &&
+             argument1_call.call()->direct_scalar_argument->scalar_type ==
+                 bir::Type{bir::TypeKind::Integer, 32, "i32"} &&
+             argument1_call.operands().size() == 2 &&
+             argument1_call.operands()[1] == argument1_function.parameters()[1],
+         "Raw BIR must retain the exact typed fixed direct-call argument-1 authority");
 
   auto no_retained_signature = make_module();
   std::get<lir::LirCallOp>(no_retained_signature.functions[1].blocks[0].insts[0])
@@ -13836,6 +13886,78 @@ void test_fixed_direct_call_argument0_parameter_authority_receipt_and_rejections
   rejected([](auto& candidate) { std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0]).structured_args[0].type_ref = lir::LirTypeRef::integer(64); }, "fixed direct-call argument type mismatch must reject transactionally");
   rejected([](auto& candidate) { std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0]).callee_signature->fixed_param_type_refs[0] = lir::LirTypeRef::integer(64); }, "fixed callee parameter mismatch must reject transactionally");
   rejected([](auto& candidate) { std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0]).callee_signature.reset(); std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0]).structured_args[0].type_ref = lir::LirTypeRef::integer(64); }, "store-backed fixed direct-call argument parameter mismatch must reject transactionally");
+
+  const auto rejected_arg1 = [&](auto mutate, const std::string& message) {
+    auto candidate = make_module(1);
+    mutate(candidate);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value(), message + " (Raw rollback)");
+    expect(!bir::lower_lir_to_canonical_bir(candidate).has_value(),
+           message + " (Canonical rollback)");
+  };
+  rejected_arg1([](auto& candidate) {
+    std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0])
+        .structured_args[1]
+        .fixed_direct_call_argument_parameter_authority.reset();
+  }, "missing fixed direct-call argument-1 authority must reject transactionally");
+  rejected_arg1([](auto& candidate) {
+    std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0])
+        .structured_args[1]
+        .fixed_direct_call_argument_parameter_authority->value =
+            lir::LirValueId::invalid();
+  }, "invalid fixed direct-call argument-1 authority must reject transactionally");
+  rejected_arg1([](auto& candidate) {
+    candidate.functions[1].native_body_parameter_definitions.push_back(
+        candidate.functions[1].native_body_parameter_definitions[0]);
+  }, "duplicate fixed direct-call argument-1 definition must reject transactionally");
+  rejected_arg1([](auto& candidate) {
+    std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0])
+        .structured_args[1]
+        .fixed_direct_call_argument_parameter_authority->owner =
+            candidate.link_names.intern("foreign_fixed_direct_call_owner");
+  }, "foreign fixed direct-call argument-1 owner must reject transactionally");
+  rejected_arg1([](auto& candidate) {
+    std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0])
+        .structured_args[1]
+        .fixed_direct_call_argument_parameter_authority->parameter_index = 0;
+  }, "fixed direct-call argument-1 parameter index mismatch must reject transactionally");
+  rejected_arg1([](auto& candidate) {
+    std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0])
+        .structured_args[1]
+        .fixed_direct_call_argument_parameter_authority->type =
+            lir::LirTypeRef::integer(64);
+  }, "fixed direct-call argument-1 parameter type mismatch must reject transactionally");
+  rejected_arg1([](auto& candidate) {
+    std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0])
+        .structured_args[1]
+        .fixed_direct_call_argument_parameter_authority->abi =
+            lir::LirNativeBodyParameterAbi::DirectPointer;
+  }, "fixed direct-call argument-1 ABI mismatch must reject transactionally");
+  rejected_arg1([](auto& candidate) {
+    std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0])
+        .structured_args[1]
+        .fixed_direct_call_argument_parameter_authority->role =
+            lir::LirFixedDirectCallArgumentParameterRole::FixedDirectCallArgument0;
+  }, "fixed direct-call argument-1 role mismatch must reject transactionally");
+  rejected_arg1([](auto& candidate) {
+    std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0])
+        .structured_args[1]
+        .operand = lir::LirOperand::ssa("%other", lir::LirValueId{83});
+  }, "fixed direct-call argument-1 value mismatch must reject transactionally");
+  rejected_arg1([](auto& candidate) {
+    std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0])
+        .structured_args[1]
+        .type_ref = lir::LirTypeRef::integer(64);
+  }, "fixed direct-call argument-1 argument type mismatch must reject transactionally");
+  rejected_arg1([](auto& candidate) {
+    std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0])
+        .callee_signature->fixed_param_type_refs[1] = lir::LirTypeRef::integer(64);
+  }, "fixed direct-call argument-1 callee parameter mismatch must reject transactionally");
+  rejected_arg1([](auto& candidate) {
+    auto& call =
+        std::get<lir::LirCallOp>(candidate.functions[1].blocks[0].insts[0]);
+    call.callee_signature.reset();
+    call.structured_args[1].type_ref = lir::LirTypeRef::integer(64);
+  }, "store-backed fixed direct-call argument-1 parameter mismatch must reject transactionally");
 }
 
 void test_store_backed_byval_aggregate_call_receipt_and_rejections() {
