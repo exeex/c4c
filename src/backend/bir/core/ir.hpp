@@ -164,6 +164,7 @@ enum class Opcode : std::uint8_t {
   AllocaAuthority,
   StackSaveAuthority,
   StackRestoreAuthority,
+  VaStartAuthority,
 };
 
 struct InlineAsmNode {
@@ -480,13 +481,25 @@ struct StackRestoreAuthorityNode {
   bool live = false;
 };
 
+// Receipt of the producer-selected direct-local va_start destination.  The
+// va_list pointer is retained as source identity plus exact local authority.
+struct VaStartAuthorityNode {
+  SourceValueId ap{};
+  SourceValueId pointer_definition{};
+  SourceObjectId object{};
+  LinkNameId owner{};
+  Type pointer_type{TypeKind::Pointer};
+  Type pointee_type{};
+  bool live = false;
+};
+
 using InstPayload =
     std::variant<InlineAsmNode, StoreNode, LoadNode, GetElementPtrNode,
     AbsNode, CallNode, BinaryNode, CompareNode, SelectNode, SelectedMemcpyNode,
     Amd64SysVOverflowAggregateMemcpyNode,
     IntrinsicCallNode, CastNode, PhiNode, AllocaAuthorityNode,
     LocalLoadAuthorityNode, LocalStoreAuthorityNode, LocalArrayGepAuthorityNode,
-    StackSaveAuthorityNode, StackRestoreAuthorityNode>;
+    StackSaveAuthorityNode, StackRestoreAuthorityNode, VaStartAuthorityNode>;
 
 class BlockView;
 class FunctionView;

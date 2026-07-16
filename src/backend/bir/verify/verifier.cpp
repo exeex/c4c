@@ -78,6 +78,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
       return std::holds_alternative<StackSaveAuthorityNode>(instruction.payload);
     case Opcode::StackRestoreAuthority:
       return std::holds_alternative<StackRestoreAuthorityNode>(instruction.payload);
+    case Opcode::VaStartAuthority:
+      return std::holds_alternative<VaStartAuthorityNode>(instruction.payload);
     case Opcode::Abs:
       return std::holds_alternative<AbsNode>(instruction.payload);
     case Opcode::Call:
@@ -1046,6 +1048,45 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         if (!exact)
           report(result, VerificationRule::ValueDefinition, function_id, inst_id,
                  "stack restore must consume the matching live typed VLA stack-save checkpoint authority");
+      }
+      if (const auto* va_start =
+              std::get_if<VaStartAuthorityNode>(&instruction.payload)) {
+        const ValueDef* pointer = nullptr;
+        const AllocaAuthorityNode* alloca = nullptr;
+        if (instruction.operands.size() == 1) {
+          const auto resolved = function.values_.get(function_id, instruction.operands.front());
+          if (resolved) {
+            pointer = &resolved.value().get();
+            if (const auto* definition = std::get_if<InstResultDef>(&pointer->definition)) {
+              const auto producer = function.insts_.get(function_id, definition->instruction);
+              if (producer)
+                alloca = std::get_if<AllocaAuthorityNode>(&producer.value().get().payload);
+            }
+          }
+        }
+        const bool owner_resolves = va_start->owner.valid() &&
+            va_start->owner.epoch == module.epoch_ &&
+            va_start->owner.slot < module.link_names_.size();
+        const bool exact = va_start->ap.valid() &&
+            va_start->pointer_definition.valid() && va_start->object.valid() &&
+            va_start->ap == va_start->pointer_definition &&
+            va_start->ap.owner == function_id &&
+            va_start->object.owner == function_id && owner_resolves &&
+            va_start->pointer_type == Type{TypeKind::Pointer} &&
+            is_well_formed(va_start->pointee_type) &&
+            va_start->pointee_type.kind != TypeKind::Void && va_start->live &&
+            pointer && pointer->source_id == va_start->pointer_definition &&
+            pointer->type == va_start->pointer_type && alloca &&
+            alloca->result == va_start->pointer_definition &&
+            alloca->pointer_definition == va_start->pointer_definition &&
+            alloca->object.owner == va_start->object.owner &&
+            alloca->object.value == va_start->object.value &&
+            alloca->owner == va_start->owner &&
+            alloca->pointer_type == va_start->pointer_type &&
+            alloca->pointee_type == va_start->pointee_type && alloca->live;
+        if (!exact)
+          report(result, VerificationRule::ValueDefinition, function_id, inst_id,
+                 "va_start must consume one live typed direct-local va_list pointer/object authority");
       }
       if (const auto* abs = std::get_if<AbsNode>(&instruction.payload)) {
         const Type i32{TypeKind::Integer, 32, "i32"};

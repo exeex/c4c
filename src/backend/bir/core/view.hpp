@@ -47,6 +47,9 @@ class InstView {
   const StackRestoreAuthorityNode* stack_restore_authority() const noexcept {
     return std::get_if<StackRestoreAuthorityNode>(&data_->payload);
   }
+  const VaStartAuthorityNode* va_start_authority() const noexcept {
+    return std::get_if<VaStartAuthorityNode>(&data_->payload);
+  }
   const AbsNode* abs() const noexcept {
     return std::get_if<AbsNode>(&data_->payload);
   }

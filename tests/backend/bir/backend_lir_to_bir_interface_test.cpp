@@ -13556,6 +13556,74 @@ void test_selected_vla_stack_save_receipt_and_rejections() {
          "dynamic VLA allocation must remain transactionally rejected");
 }
 
+void test_selected_direct_local_va_start_authority_receipt_and_rejections() {
+  lir::LirModule module;
+  auto texts = std::make_shared<c4c::TextTable>();
+  module.link_name_texts = texts;
+  module.link_names.attach_text_table(texts.get());
+  const auto owner = module.link_names.intern("typed_va_start_owner");
+  const lir::LirTypeRef va_list_type("{ i32, i32, ptr, ptr }");
+  const lir::LirCurrentFunctionLocalObjectPointer va_list{
+      lir::LirValueId{41}, lir::LirObjectId{7}, owner,
+      lir::LirTypeRef(lir::LirBuiltinType::Pointer), va_list_type, true};
+  lir::LirBlock entry = return_block(0, "entry");
+  entry.insts.push_back(lir::LirVaStartOp{
+      lir::LirOperand::ssa("%misleading.va.ap", lir::LirValueId{41}), true,
+      lir::LirMemoryVaPointerAuthority{va_list}});
+  lir::LirFunction function = void_definition("typed_va_start_owner", {entry});
+  function.link_name_id = owner;
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      lir::LirOperand::ssa("%misleading.va.alloca", lir::LirValueId{41}),
+      va_list_type, {}, 0, va_list});
+  module.functions.push_back(std::move(function));
+
+  const auto raw = bir::lower_lir_to_raw_bir(module);
+  expect(raw.has_value() && bir::FoundationVerifier::verify(raw.value()).ok(),
+         std::string("one selected direct-local va_start authority must publish verified Raw BIR: ") +
+             (raw.has_value() ? "foundation verifier rejected it" : raw.error().detail));
+  const auto view = raw.value().view();
+  const auto function_view = view.function(view.functions()[0]).value();
+  const auto instructions = function_view.instructions(function_view.blocks()[0]).value();
+  const auto va_start = function_view.instruction(instructions[1]).value().va_start_authority();
+  expect(va_start && va_start->ap == bir::SourceValueId{function_view.id(), 41} &&
+             va_start->pointer_definition == bir::SourceValueId{function_view.id(), 41} &&
+             va_start->object.owner == function_view.id() && va_start->object.value == 7 &&
+             va_start->pointer_type == bir::Type{bir::TypeKind::Pointer} &&
+             va_start->pointee_type == bir::Type{bir::TypeKind::Struct, 0, "{ i32, i32, ptr, ptr }"} &&
+             va_start->live,
+         "Raw BIR va_start must retain typed source pointer and local-object authority only");
+
+  const auto rejected = [&](auto mutate, const std::string& message) {
+    auto candidate = module;
+    auto& va = std::get<lir::LirVaStartOp>(candidate.functions[0].blocks[0].insts[0]);
+    mutate(candidate, va);
+    expect(!bir::lower_lir_to_raw_bir(candidate).has_value() &&
+               !bir::lower_lir_to_canonical_bir(candidate).has_value(), message);
+  };
+  rejected([](auto&, auto& va) { va.requires_native_memory_va_authority = false; },
+           "unselected va_start carrying authority must reject transactionally");
+  rejected([](auto&, auto& va) { va.ap_authority.reset(); },
+           "selected va_start without authority must reject transactionally");
+  rejected([](auto&, auto& va) { va.ap_ptr = lir::LirOperand::integer("not-a-pointer", 0); },
+           "selected va_start with non-SSA ap pointer must reject transactionally");
+  rejected([](auto&, auto& va) { va.ap_ptr = lir::LirOperand::ssa("%wrong", lir::LirValueId{99}); },
+           "selected va_start ap pointer must equal its authority definition");
+  rejected([](auto&, auto& va) { va.ap_authority->local_pointer.pointer_definition = lir::LirValueId{99}; },
+           "selected va_start authority definition must match ap pointer");
+  rejected([](auto& candidate, auto& va) {
+             va.ap_authority->local_pointer.owner =
+                 candidate.link_names.intern("foreign_va_start_owner");
+           }, "foreign va_start owner must reject transactionally");
+  rejected([](auto&, auto& va) { va.ap_authority->local_pointer.object = lir::LirObjectId{8}; },
+           "selected va_start object must match its published local pointer");
+  rejected([](auto&, auto& va) { va.ap_authority->local_pointer.pointer_type = lir::LirTypeRef::integer(64); },
+           "selected va_start pointer authority must stay pointer-typed");
+  rejected([](auto&, auto& va) { va.ap_authority->local_pointer.pointee_type = lir::LirTypeRef::integer(64); },
+           "selected va_start pointee authority must match its published local pointer");
+  rejected([](auto&, auto& va) { va.ap_authority->local_pointer.live = false; },
+           "dead va_start authority must reject transactionally");
+}
+
 void test_selected_direct_static_local_array_gep_receipt_and_rejections() {
   lir::LirModule module;
   auto texts = std::make_shared<c4c::TextTable>();
@@ -15290,6 +15358,7 @@ int main() {
   test_label_address_gep_base_builder_contract();
   test_selected_global_array_gep_rejections();
   test_selected_vla_stack_save_receipt_and_rejections();
+  test_selected_direct_local_va_start_authority_receipt_and_rejections();
   test_selected_direct_static_local_array_gep_receipt_and_rejections();
   test_scalar_integer_return_receipt();
   test_scalar_integer_ssa_return_receipt();

@@ -3744,6 +3744,27 @@ Result<void, ImportError> validate_function(const LirModule& module,
                             "stack restore requires the one selected native live VLA checkpoint transition and matching saved-pointer authority");
         continue;
       }
+      if (const auto* va_start = std::get_if<codegen::lir::LirVaStartOp>(&instruction)) {
+        const auto* authority = va_start->ap_authority
+            ? &va_start->ap_authority->local_pointer : nullptr;
+        const auto* ap = va_start->ap_ptr.value_id();
+        const auto pointer_type = authority
+            ? lower_lir_type(module, authority->pointer_type) : std::optional<Type>{};
+        const auto pointee_type = authority
+            ? lower_lir_type(module, authority->pointee_type) : std::optional<Type>{};
+        const bool selected = va_start->requires_native_memory_va_authority && authority &&
+            va_start->ap_ptr.kind() == codegen::lir::LirOperandKind::SsaValue &&
+            ap && ap->valid() && *ap == authority->pointer_definition &&
+            authority->object.valid() && function.link_name_id != c4c::kInvalidLinkName &&
+            authority->owner == function.link_name_id &&
+            pointer_type == Type{TypeKind::Pointer} && pointee_type &&
+            is_well_formed(*pointee_type) && pointee_type->kind != TypeKind::Void &&
+            authority->live && source_values.count(ap->value) == 1;
+        if (!selected)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                            "va_start requires the selected direct-local live va_list pointer authority shape");
+        continue;
+      }
       if (const auto* gep = std::get_if<LirGepOp>(&instruction)) {
         const auto* overflow_result = gep->result.value_id();
         if (has_overflow_carrier && overflow_result &&
@@ -5900,6 +5921,38 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 if (!appended) {
                   edit_error = builder_failure(name, block.label,
                                                "append VLA stack-restore authority", appended.error());
+                  return Result<void, BuildError>::failure(appended.error());
+                }
+                continue;
+              }
+              if (const auto* va_start = std::get_if<codegen::lir::LirVaStartOp>(&instruction)) {
+                if (!va_start->requires_native_memory_va_authority)
+                  continue;
+                const auto ap = va_start->ap_ptr.value_id();
+                if (!ap || !va_start->ap_authority ||
+                    *ap != va_start->ap_authority->local_pointer.pointer_definition) {
+                  edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                      name, block.label, "selected va_start authority lost its direct-local pointer identity"};
+                  return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                }
+                const auto& authority = va_start->ap_authority->local_pointer;
+                const auto pointer = source_values.find(authority.pointer_definition.value);
+                const auto owner = imported_link_names.find(authority.owner);
+                if (pointer == source_values.end() || owner == imported_link_names.end()) {
+                  edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction,
+                      name, block.label, "validated va_start pointer authority disappeared"};
+                  return Result<void, BuildError>::failure(BuildError::InvalidValue);
+                }
+                auto appended = function_builder.append(
+                    blocks.at(block.id.value), VaStartAuthoritySpec{
+                        SourceValueId{function_ids[function_index], ap->value},
+                        SourceValueId{function_ids[function_index], authority.pointer_definition.value},
+                        SourceObjectId{function_ids[function_index], authority.object.value}, owner->second,
+                        *lower_lir_type(module, authority.pointer_type),
+                        *lower_lir_type(module, authority.pointee_type), authority.live});
+                if (!appended) {
+                  edit_error = builder_failure(name, block.label,
+                                               "append va_start authority", appended.error());
                   return Result<void, BuildError>::failure(appended.error());
                 }
                 continue;

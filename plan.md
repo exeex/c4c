@@ -1,6 +1,6 @@
 # LIR-To-New-BIR Direct-Local VaStart Receiver Runbook
 
-Status: Active
+Status: Exhausted - Pending Plan-Owner Decision
 Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
 Activated from: docs/lir_memory_va_object_lifetime_authority/handoff_to_734.md
 
@@ -78,6 +78,8 @@ memory/VA/object/lifetime rows fail closed until their own handoff is accepted.
 
 ### Step 7.52 - Receive selected direct-local LirVaStartOp destination va_list authority
 
+Status: Complete
+
 Goal: consume the 867 `LirVaStartOp.ap_authority` handoff in typed Raw BIR.
 
 Primary targets:
@@ -106,3 +108,15 @@ Completion check:
   publication.
 - Fresh build, focused backend receiver proof, `git diff --check`, and any
   supervisor-selected broader backend proof pass.
+
+Result:
+- Added `VaStartAuthority` Raw-BIR opcode/payload/spec/view support.
+- Added importer validation and dispatch for only selected direct-local
+  `LirVaStartOp` rows whose `ap_ptr.value_id()` matches the authority pointer
+  definition.
+- Added FoundationVerifier checks requiring a matching live alloca authority
+  with exact owner, object, pointer type, pointee type, and liveness.
+- Added focused positive and malformed receiver coverage in
+  `backend_lir_to_bir_interface`.
+- Proof passed with the focused receiver/producer command, `git diff --check`,
+  and monotonic regression guard.

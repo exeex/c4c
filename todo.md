@@ -1,22 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/734_lir_to_new_bir_container_completeness.md
 Source Plan Path: plan.md
-Current Step ID: 7.52
-Current Step Title: Receive selected direct-local LirVaStartOp destination va_list authority
+Current Step ID: COMPLETE
+Current Step Title: Runbook exhausted; awaiting plan-owner close/repair decision
 
 # Current Packet
 
 ## Just Finished
 
-Lifecycle activated idea 734 from the accepted 867 handoff for one bounded
-receiver row. No implementation has started in this runbook.
+Implemented Step 7.52 for the accepted 867 handoff receiver row. Raw BIR now
+receives selected direct-local `LirVaStartOp` destination `va_list` authority
+as a typed `VaStartAuthority` node/spec/accessor, imports only the structured
+`ap_authority` tuple when `ap_ptr.value_id()` matches the pointer definition,
+and verifies the result against the matching live current-function alloca
+authority.
+
+Focused receiver coverage was added to
+`backend_lir_to_bir_interface_test.cpp` for the positive receipt and malformed
+selected/unselected boundaries: missing authority, non-SSA or mismatched
+`ap_ptr`, mismatched pointer definition, foreign owner, object mismatch,
+pointer/pointee type mismatch, dead authority, and authority on unselected
+`va_start`.
 
 ## Suggested Next
 
-Execute `plan.md` Step 7.52 only: receive selected direct-local
-`LirVaStartOp` destination `va_list` authority into typed Raw BIR using the
-structured tuple documented in
-`docs/lir_memory_va_object_lifetime_authority/handoff_to_734.md`.
+Route the exhausted runbook to plan-owner for an explicit close, repair,
+replace, or conclude decision for
+`ideas/open/734_lir_to_new_bir_container_completeness.md`.
 
 ## Watchouts
 
@@ -30,7 +40,12 @@ identity.
 
 ## Proof
 
-Required for the implementation packet: fresh build, focused backend receiver
-proof selected by the supervisor/executor, `git diff --check`, and broader
-backend proof if shared Raw-BIR container, verifier, or importer helpers are
-touched.
+Completed proof:
+
+```sh
+{ cmake --build build && ctest --test-dir build -R '^backend_lir_to_bir_interface$|^backend_lir_selected_pointer_authority$' --output-on-failure; } > test_after.log 2>&1
+git diff --check
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: PASS, 2/2 focused tests before and after, no regression delta.
