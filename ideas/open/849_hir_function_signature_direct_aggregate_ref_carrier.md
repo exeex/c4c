@@ -74,10 +74,10 @@ occurrence population and not LIR lowering.
   acceptance, or a renamed abstraction that still resolves identity from
   forbidden metadata.
 
-## Resumption Record: upstream producer/order blocker
+## Resumption Record: 850 no-change conclusion
 
-Status: parked by lifecycle switch to
-`ideas/open/850_hir_signature_aggregate_ref_producer_order.md`.
+Status: resumed after the intentional no-change conclusion of
+`ideas/closed/850_hir_signature_aggregate_ref_producer_order.md`.
 
 - Last accepted progress: Step 1 — **Locate the signature semantic carrier
   seam** — is accepted at `109ea13f4` (`plan: locate direct signature aggregate
@@ -89,16 +89,21 @@ Status: parked by lifecycle switch to
   null carrier. A carrier that merely validates then holds/discards an input
   cannot deliver a definition-backed fact to either lowering site and is not
   capability progress.
-- Blocker outside this source's API-delivery scope: no production
-  semantic/order path provides an already definition-backed, module-issued
-  `HirAggregateRef` at function-signature construction before
-  `lower_function` is called. That producer/order work must precede this
-  carrier delivery route.
-- Exact return point: after 850 accepts a production direct fact and focused
-  evidence, reactivate 849 at Step 2 and wire that fact into the already
-  identified `lower_function` carrier/API boundary. Do not redo Step 1 and do
-  not add parser/`TypeSpec`/owner/tag/text lookup, a `Node*` map,
-  `qtype_from` attachment, or LIR work.
+- 850 conclusion: tracing `src/frontend/hir/hir_build.cpp` established that
+  every production caller supplies only `Node`/template inputs to
+  `Lowerer::lower_function`; no caller has a semantic aggregate fact to pass.
+  The only module-issued direct refs are on registered `HirStructDef` objects.
+  Without the carrier/API delivery owned here, a fact cannot reach the seam
+  without forbidden `Node`/`TypeSpec`/record/tag/owner lookup, maps, or
+  reconstruction. Therefore 850's purported independent pre-carrier producer
+  route is intentionally concluded with no code change, not accepted as a
+  capability.
+- Exact return point: resume at Step 2 — **Add the bounded direct carrier/API**.
+  Define the carrier and make the production `hir_build.cpp` callers pass an
+  already-issued definition/ref when their construction context has one (else
+  no fact); then forward it through `lower_function` to both signature
+  positions. Do not redo Step 1 and do not add parser/`TypeSpec`/owner/tag/text
+  lookup, a `Node*` map, `qtype_from` attachment, or LIR work.
 - Parent record: 848 remains parked. Its accepted Step 2a implementation and
   focused `frontend_hir_tests` proof are `359a9b94b`; 849 has no accepted code
   or proof to add to that record.
