@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/857_lir_next_body_parameter_authority_handoff.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish and verify the selected authority tuple
+Current Step ID: 3
+Current Step Title: Record the handoff back to 734
 你該做code review了
 你該做test baseline review了
 
@@ -10,41 +10,33 @@ Current Step Title: Publish and verify the selected authority tuple
 
 ## Just Finished
 
-Completed `plan.md` Step 1 by tracing the remaining current LIR
-body-parameter authority matrix after accepted 734 Step 7.45 receiver commit
-`2b7e897ce`.
+Completed `plan.md` Step 2 by proving the selected
+`LirBinOp.scalar_lhs_parameter_authority` DirectScalar floating LHS row for a
+binary `fadd` consumer.
 
-Selected exactly one next currently valid producer row:
-`LirBinOp.scalar_lhs_parameter_authority` for a current-function
-`DirectScalar` floating parameter used as the LHS of binary floating add
-`fadd`, e.g. a producer shape equivalent to `return x + 2.0;`.
+The existing emitter already publishes the native LHS carrier for a producer
+shape equivalent to `return x + 2.0;`. The verifier now admits that tuple only
+for selected floating `fadd` LHS authority, requires a nonselected scalar RHS,
+and rejects duplicate selected floating-`fadd` LHS consumers in the current
+function.
 
-The native tuple is already representable without presentation recovery:
-original parameter `LirValueId`, current `LirFunction.link_name_id` owner,
-parameter index, matching floating `LirTypeRef`,
-`LirNativeBodyParameterAbi::DirectScalar`, and explicit
-`LirScalarBinaryParameterRole::Lhs`. The selected consumer relation is
-`LirBinOp` opcode `fadd`; `lhs` is the same parameter SSA/value as the
-authority tuple; `type_str` matches the authority type; and `rhs` is a
-nonselected scalar operand.
-
-The row is distinct from accepted DirectScalar integer add LHS/RHS rows,
-unary `fneg`, binary `fmul` LHS, and binary `fmul` RHS. Current producer code
-can populate the same LHS carrier, but the LIR verifier still fail-closes
-floating LHS authority to selected `fmul` and `fneg` consumers, so Step 2 must
-prove the `fadd` LHS row explicitly rather than broadening generic floating
-binary authority.
+Focused coverage asserts the positive producer tuple: original parameter
+`LirValueId`, current `LirFunction.link_name_id` owner, parameter index,
+matching floating `LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`, and
+explicit `LirScalarBinaryParameterRole::Lhs`. Malformed coverage rejects
+omitted/missing, invalid, duplicate definition, foreign owner, wrong index,
+wrong type, wrong ABI, wrong role, non-`fadd`, LHS mismatch, type mismatch,
+selected-RHS incoherence, and duplicate selected consumer forms. Neighboring
+`fmul` malformed coverage now uses nonselected `fsub` as the rejected opcode
+because `fadd` is the newly selected row.
 
 ## Suggested Next
 
-Execute `plan.md` Step 2 for only the selected binary-`fadd` LHS row. Add or
-tighten producer/verifier coverage proving the selected
-`LirBinOp.scalar_lhs_parameter_authority` DirectScalar floating LHS tuple and
-its `fadd` consumer coherence, with focused positive and malformed coverage for
-omitted/missing, invalid, duplicate, foreign, owner/index/type/ABI/role,
-non-`fadd`, LHS mismatch, result/type mismatch, RHS selected-parameter
-incoherence, RHS nonselected scalar mismatch/type mismatch, and duplicate
-selected-consumer forms as applicable. Do not start Raw-BIR receiver work.
+Execute `plan.md` Step 3: record the exact 734 handoff in the source idea and
+close or switch lifecycle state as appropriate. The handoff row is
+`LirBinOp.scalar_lhs_parameter_authority` for a current-function DirectScalar
+floating parameter used as the LHS of binary `fadd`; future 734 work should
+receive only this row into typed Raw BIR.
 
 ## Watchouts
 
@@ -67,4 +59,15 @@ or testcase shape.
 
 ## Proof
 
-Analysis and todo-only selection. Required check: `git diff --check`.
+Focused proof and broader frontend-LIR guard:
+
+```
+( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_function_signature_type_ref$' ) > test_after.log 2>&1 && git diff --check
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+
+( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_' ) > test_before.log 2>&1
+( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_' ) > test_after.log 2>&1 && git diff --check
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Both matching before/after guards passed with no new or unresolved failures.
