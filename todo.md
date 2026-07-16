@@ -5,7 +5,6 @@ Source Idea Path: ideas/open/848_hir_aggregate_occurrence_canonical_ref_populati
 Source Plan Path: plan.md
 Current Step ID: 2b
 Current Step Title: Populate canonical refs for aggregate function signatures
-你該做code review了
 
 ## Just Finished
 
