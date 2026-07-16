@@ -8,19 +8,20 @@ Current Step Title: Retire selected legacy type mirrors only with parity
 
 ## Just Finished
 
-Completed plan.md Step 3 for the selected global aggregate target. The global
-printer now renders aggregate global type names from `LirGlobal.llvm_type_ref`
-`StructNameId` authority when present, while preserving normal final LLVM
-output. Focused coverage proves stale `LirGlobal.llvm_type` and stale
-`LirGlobal.llvm_type_ref` text cannot drive aggregate global printer output
-when the structured name id remains valid.
+Completed plan.md Step 4 for the selected global aggregate target as a bounded
+no-code retirement conclusion. No safe deletion remains inside the selected
+global aggregate slice: `LirGlobal.llvm_type` is no longer semantic authority
+for declared aggregate global verifier/printer behavior when a valid
+`llvm_type_ref` exists, but it still remains compatibility/output text and a
+fallback for unselected scalar, pointer, array, stale owner-key-miss, and
+receiver/backend paths.
 
 ## Suggested Next
 
-Execute plan.md Step 4 for the same global aggregate target. Retire only the
-exact selected legacy global type mirror if all named verifier/printer/consumer
-parity is proven; otherwise record a bounded no-code conclusion that
-`LirGlobal.llvm_type` must remain compatibility/output text for now.
+Send the exhausted runbook to plan-owner for semantic disposition of idea 844:
+close the bounded selected global aggregate slice, repair the current route
+for another in-scope global/extern target, or switch to a separately scoped
+successor if remaining durable intent should continue elsewhere.
 
 ## Watchouts
 
@@ -42,6 +43,13 @@ selected carrier is complete only for declared aggregate globals; scalar,
 pointer, array, and stale owner-key-miss global rows are compatibility or
 later-family work unless a later packet names them explicitly.
 
+Potential later targets remain extern return facts, direct extern parameter
+surface design, and collector/import-preparation migration, but those were not
+selected by this runbook route and should be decided by lifecycle disposition
+rather than silently absorbed after Step 4.
+
 ## Proof
 
-Step 3 proof command: `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_global_type_ref$|^frontend_lir_global_label_address_initializer$|^frontend_lir_extern_decl_type_ref$'; } > test_after.log 2>&1`
+Step 4 proof command: `git diff --check`. The last code proof for this selected
+global aggregate route remains `test_after.log` from Step 3:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_global_type_ref$|^frontend_lir_global_label_address_initializer$|^frontend_lir_extern_decl_type_ref$'; } > test_after.log 2>&1`
