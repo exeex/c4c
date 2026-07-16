@@ -1,6 +1,6 @@
 # LIR Universal Model and String Escape-Hatch Deletion
 
-Status: Open
+Status: Closed
 Type: terminal universal-model convergence and disposition handoff
 Matrix Rows: M16
 Dependencies: accepted deletion gates from 838--846; terminal handoff to 797
@@ -30,6 +30,37 @@ disposition to 797.
   adapter; all focused deletion gates have accepted evidence.
 - Deliver the complete valid-LIR disposition to 797, not a claim that 797 is
   complete.
+
+## Closure Disposition
+
+Closed as capability complete for the 847 terminal deletion route after Step 5
+handoff.
+
+Accepted evidence:
+- Deleted implicit LIR opcode/operand string conversions and the mutable LIR
+  operand string accessor.
+- Replaced selected semantic string authority with typed facts for comparison,
+  arithmetic, call, and ternary operands.
+- Threaded LIR type refs through BIR lowering paths for PHI, aggregate
+  slots/allocas/loads, `va_arg` slots, params, sret/copy layouts, call aliases,
+  stores, local memory identity, and provenance scalar checks.
+- Classified the remaining call ABI, global aggregate, aggregate layout,
+  memory projection, and local memory/provenance/central-layout text bridges as
+  deliberate no-id, legacy, or owner-specific compatibility boundaries rather
+  than unfinished 847 deletion work.
+
+Accepted proof:
+- `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure; } > test_after.log 2>&1`
+- Result: `100% tests passed, 0 tests failed out of 3038`.
+
+Downstream ownership remains unchanged. Idea 797 owns terminal coverage
+convergence after accepted handoffs and receipts; this closure does not claim
+797 is complete. Ideas 812 and 813 retain residual non-type/string semantic
+authority routes. Ideas 821 and 822 retain switch selector surfaces. Idea 734
+and receiver receipts remain downstream dependencies where applicable.
+
+Optional stale code-comment cleanup in `memory/intrinsics.cpp` was classified
+as non-blocking housekeeping, not unfinished 847 acceptance work.
 
 ## 866 Reconciliation And 734 Return
 
