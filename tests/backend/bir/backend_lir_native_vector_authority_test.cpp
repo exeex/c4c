@@ -1,4 +1,6 @@
 #include "src/codegen/lir/ir.hpp"
+#include "src/codegen/lir/hir_to_lir.hpp"
+#include "src/codegen/lir/hir_to_lir/lowering.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -450,10 +452,55 @@ void test_module_owned_aggregate_ref_store() {
   }
 }
 
+void test_aggregate_definition_lowering_uses_module_owned_ref_store() {
+  c4c::hir::Module hir_module;
+  c4c::hir::HirStructDef definition;
+  definition.tag = "ProducerAggregate";
+  definition.size_bytes = 4;
+  definition.fields.push_back({.name = "member", .elem_type = c4c::TypeSpec{.base = c4c::TB_INT},
+                               .llvm_idx = 0, .size_bytes = 4});
+  const auto [it, inserted] = hir_module.struct_defs.emplace(definition.tag, std::move(definition));
+  if (!inserted) fail("aggregate producer test must install its HIR definition");
+
+  const lir::LirModule lowered = lir::lower(hir_module);
+  const std::optional<c4c::hir::HirAggregateRef> source_ref =
+      hir_module.aggregate_ref_for_definition(it->second);
+  if (!source_ref || !source_ref->complete() || lowered.aggregate_store.size() != 1 ||
+      !(lowered.aggregate_store.front().hir_ref == *source_ref) ||
+      lowered.find_aggregate_ref(hir_module, *source_ref).value != 0) {
+    fail("aggregate definition lowering must intern its module-owned HIR ref exactly once");
+  }
+
+  lir::LirModule repeated_store;
+  repeated_store.link_name_texts = hir_module.link_name_texts;
+  repeated_store.struct_names.attach_text_table(repeated_store.link_name_texts.get());
+  lir::build_type_decls(hir_module, &repeated_store);
+  lir::build_type_decls(hir_module, &repeated_store);
+  if (repeated_store.aggregate_store.size() != 1 ||
+      !(repeated_store.aggregate_store.front().hir_ref == *source_ref)) {
+    fail("repeated aggregate declaration lowering must preserve one canonical store entry");
+  }
+
+  c4c::hir::Module unregistered_hir_module;
+  c4c::hir::HirStructDef unregistered_definition;
+  unregistered_definition.tag = "UnregisteredAggregate";
+  unregistered_hir_module.struct_defs.emplace(unregistered_definition.tag,
+                                              std::move(unregistered_definition));
+  lir::LirModule unregistered_store;
+  unregistered_store.link_name_texts = unregistered_hir_module.link_name_texts;
+  unregistered_store.struct_names.attach_text_table(unregistered_store.link_name_texts.get());
+  try {
+    lir::build_type_decls(unregistered_hir_module, &unregistered_store);
+    fail("aggregate definition lowering must reject a missing HIR aggregate ref");
+  } catch (const std::runtime_error&) {
+  }
+}
+
 }  // namespace
 
 int main() {
   test_native_vector_authority_verifier_boundary();
   test_module_owned_aggregate_ref_store();
+  test_aggregate_definition_lowering_uses_module_owned_ref_store();
   return 0;
 }

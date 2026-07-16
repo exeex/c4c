@@ -874,6 +874,16 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
     LirStructDecl structured_decl;
     structured_decl.name_id =
         lir_module ? lir_module->struct_names.intern(sty) : kInvalidStructName;
+    if (lir_module) {
+      const std::optional<c4c::hir::HirAggregateRef> hir_ref =
+          mod.aggregate_ref_for_definition(sd);
+      if (!hir_ref || !hir_ref->complete()) {
+        throw std::runtime_error(
+            "aggregate definition lowering requires a registered complete HIR aggregate ref");
+      }
+      lir_register_aggregate_ref(mod, *lir_module, *hir_ref, structured_decl.name_id,
+                                 sd.is_union);
+    }
     structured_decl.is_packed = sd.pack_align > 0;
     auto record_structured_decl = [&]() {
       if (lir_module) lir_module->record_struct_decl(std::move(structured_decl));
@@ -1778,6 +1788,12 @@ LirModule lower(const c4c::hir::Module& hir_mod, const LowerOptions& options) {
   module.link_name_texts = hir_mod.link_name_texts;
   module.link_names = hir_mod.link_names;
   module.struct_names.attach_text_table(module.link_name_texts.get());
+  // Register every HIR aggregate definition before lowering its declarations
+  // or any later aggregate occurrences. This is the producer-side handoff;
+  // build_type_decls consumes these refs without consulting legacy adapters.
+  for (const auto& [_, definition] : hir_mod.struct_defs) {
+    (void)hir_mod.register_aggregate_definition(definition);
+  }
   module.type_decls = build_type_decls(hir_mod, &module);
   module.prefer_semantic_va_ops = options.preserve_semantic_va_ops;
 

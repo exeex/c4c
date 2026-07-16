@@ -8,22 +8,23 @@ Current Step Title: Establish the canonical aggregate identity and store seam
 
 ## Just Finished
 
-- Plan Step 1: added a HIR-module-issued, fail-closed `HirAggregateRef` and
-  module-owned LIR aggregate ref/store. Re-registering an owned ref returns
-  its original LIR ref; invalid/incomplete and foreign-source refs are
-  rejected by both registration and lookup. Legacy owner-key/tag lowering
-  remains an adapter.
+- Plan Step 2 packet: migrated real aggregate declaration lowering through
+  `build_type_decls`. `lower()` now registers each HIR aggregate definition
+  before lowering, and `build_type_decls` consumes that definition-owned HIR
+  ref to intern the owning LIR module's aggregate store. Repeated declaration
+  lowering reuses the store entry; missing refs and incomplete/foreign refs
+  fail closed. Legacy owner-key/tag occurrence adapters remain untouched.
 
 ## Suggested Next
 
-- Migrate the first aggregate-bearing lowering occurrence to populate and use
-  the canonical HIR ref/store seam, with focused valid and invalid coverage.
+- Select the next bounded aggregate occurrence producer for migration; retain
+  this declaration producer as the registration-before-use precedent.
 
 ## Watchouts
 
-- The new seam deliberately has no producer migration yet: existing lowering
-  still uses owner-key/tag compatibility paths. Do not recover canonical refs
-  from tags, parser pointers, rendered text, or owner keys.
+- `build_type_decls` is now the only migrated producer. Do not recover refs
+  from tags, parser pointers, rendered text, or owner keys when migrating
+  later aggregate occurrences.
 
 ## Proof
 

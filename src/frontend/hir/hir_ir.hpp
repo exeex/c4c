@@ -21,6 +21,7 @@
 #include <string_view>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -2581,7 +2582,13 @@ struct Module {
   uint32_t next_local_id = 0;
   uint32_t next_block_id = 0;
   uint32_t next_expr_id = 0;
-  uint32_t next_aggregate_id = 0;
+  mutable uint32_t next_aggregate_id = 0;
+  // Definition-owned aggregate refs are intentionally keyed by the stable HIR
+  // definition object, not by a rendered tag or compatibility owner key.
+  // Lowering registers definitions before it lowers aggregate occurrences.
+  mutable std::unordered_map<const HirStructDef*, HirAggregateRef>
+      aggregate_ref_by_definition;
+  mutable std::unordered_set<uint32_t> issued_aggregate_ids;
 
   [[nodiscard]] FunctionId alloc_function_id() { return FunctionId{next_function_id++}; }
   [[nodiscard]] GlobalId alloc_global_id() { return GlobalId{next_global_id++}; }
@@ -2589,14 +2596,30 @@ struct Module {
   [[nodiscard]] BlockId alloc_block_id() { return BlockId{next_block_id++}; }
   [[nodiscard]] ExprId alloc_expr_id() { return ExprId{next_expr_id++}; }
   [[nodiscard]] HirModuleId aggregate_identity() const { return aggregate_module_id; }
-  [[nodiscard]] HirAggregateRef issue_aggregate_ref() {
+  [[nodiscard]] HirAggregateRef issue_aggregate_ref() const {
     if (next_aggregate_id == std::numeric_limits<uint32_t>::max()) {
       throw std::overflow_error("HIR aggregate identity space exhausted");
     }
-    return HirAggregateRef{aggregate_module_id, HirAggregateId{next_aggregate_id++}};
+    const HirAggregateRef ref{aggregate_module_id, HirAggregateId{next_aggregate_id++}};
+    issued_aggregate_ids.insert(ref.aggregate.value);
+    return ref;
   }
   [[nodiscard]] bool owns_aggregate_ref(HirAggregateRef ref) const {
-    return ref.complete() && ref.module.value == aggregate_module_id.value;
+    return ref.complete() && ref.module.value == aggregate_module_id.value &&
+           issued_aggregate_ids.count(ref.aggregate.value) != 0;
+  }
+  [[nodiscard]] HirAggregateRef register_aggregate_definition(
+      const HirStructDef& definition) const {
+    const auto [it, inserted] = aggregate_ref_by_definition.emplace(&definition,
+                                                                      HirAggregateRef{});
+    if (inserted) it->second = issue_aggregate_ref();
+    return it->second;
+  }
+  [[nodiscard]] std::optional<HirAggregateRef> aggregate_ref_for_definition(
+      const HirStructDef& definition) const {
+    const auto it = aggregate_ref_by_definition.find(&definition);
+    return it == aggregate_ref_by_definition.end() ? std::nullopt
+                                                     : std::optional(it->second);
   }
 
   void index_function_decl(const Function& fn) {
