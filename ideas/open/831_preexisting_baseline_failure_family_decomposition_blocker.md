@@ -105,3 +105,18 @@ Status: parked by lifecycle switch to
   Step 2 to collect both accepted proofs, then execute Step 3 comparable full
   suite and return 830 unchanged at Step 3. Do not claim baseline clearance
   until that full-suite gate is accepted.
+
+## Resumption Update: closed 832 and active ordered 833 successor
+
+- 832 is capability-complete for the bounded HIR aggregate-owner crash and is
+  archived at
+  `ideas/closed/832_hir_aggregate_owner_function_parameter_crash_repair.md`.
+  Accepted repair `b556c6c9f`, matching 0/1-to-1/1 focused guard, checker, and
+  Step 3 record `b31cfa6ec` establish only that family; no full baseline pass
+  is claimed.
+- This lifecycle return immediately switches to ordered open successor
+  `ideas/open/833_lir_truthiness_lhs_parameter_authority_completion.md` at
+  its Step 1 direct-scalar truthiness-LHS authority diagnosis packet.
+- Exact next return: after 833 has accepted focused proof, reactivate 831 at
+  Step 2 solely to collect 832 and 833 evidence, then run Step 3 comparable
+  full-suite proof before returning 830 unchanged at Step 3.

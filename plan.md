@@ -1,71 +1,73 @@
-# HIR Aggregate-Owner Function-Parameter Crash Repair Runbook
+# LIR Truthiness-LHS Parameter Authority Completion Runbook
 
 Status: Active
-Source Idea: ideas/open/832_hir_aggregate_owner_function_parameter_crash_repair.md
-Switched from: 831 Step 1 ordered-successor decision
+Source Idea: ideas/open/833_lir_truthiness_lhs_parameter_authority_completion.md
+Activated from: 831 ordered successor after closed 832 HIR repair
 
 ## Purpose
 
-Repair only the pre-existing HIR aggregate-owner/function-parameter crash
-before 831 activates the separately owned truthiness-authority route.
+Complete only the native authority relation missing from the selected
+direct-scalar truthiness-LHS failures, after 832's HIR crash repair accepted
+focused proof.
 
 ## Core Rule
 
-Preserve native aggregate ownership and type-specification invariants. Do not
-hide the crash with a fallback or widen into truthiness, direct-call, or 830.
+Use native LIR identity, owner, parameter, and type facts. Do not recover
+truthiness authority from text or weaken the verifier for named torture cases.
 
 ## Read First
 
 - `ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md`
-- `test_hir_to_lir_object_helper_callees_prefer_link_name_ids`
-- `typespec_aggregate_owner_key`, `lir_owned_type_spec`, and
-  `populate_lir_function_params`
+- `verify_truthiness_lhs_parameter_authority`
+- `LirCmpOp.truthiness_lhs_parameter_authority`
+- The 13-case exact subset command in 831
 
 ## Non-Goals
 
-- Truthiness-LHS authority, GCC torture work, direct-call identity, 830/829,
-  Raw-BIR, generic calls, and broad type-system or signature redesign.
+- HIR aggregate-owner work, 832 changes, direct-call identity, 830/829,
+  Raw-BIR, generic compare/call rewrites, other truthiness forms, or ABI
+  redesign.
 
 ## Ordered Steps
 
-### Step 1 - State the aggregate-owner parameter-lowering invariant
+### Step 1 - Trace the direct-scalar truthiness-LHS authority seam
 
-Goal: identify exactly why the named HIR test reaches
-`typespec_aggregate_owner_key` without a valid aggregate owner.
-
-Actions:
-
-- trace the selected function-parameter path through `lir_owned_type_spec`
-  and `populate_lir_function_params` to the first invalid ownership fact;
-- distinguish valid aggregate-owned parameter construction from missing,
-  foreign, and type-incoherent owner cases; and
-- select the smallest construction or verifier seam that can repair this
-  ownership relation without a null/default fallback.
-
-Completion check: a native ownership/type-specification contract and bounded
-repair seam are explicit; no truthiness or 830 work is admitted.
-
-### Step 2 - Repair and verify the selected owner relation
-
-Goal: prevent the crash through coherent native ownership enforcement.
+Goal: specify the smallest producer/verifier contract for the missing native
+truthiness-LHS parameter authority in the 13 identified cases.
 
 Actions:
 
-- implement only the Step 1 selected construction/verifier correction; and
-- add nearby positive and malformed/foreign/missing/incoherent coverage.
+- trace the direct-scalar truthiness LHS from construction to
+  `verify_truthiness_lhs_parameter_authority`;
+- identify existing native identity, owner, parameter, and type facts and the
+  exact missing relation; and
+- select one bounded producer/verifier seam, distinguishing missing, foreign,
+  owner-incoherent, parameter-incoherent, and type-incoherent authority.
 
-Completion check: valid aggregate-owned parameters lower without a crash and
-invalid ownership fails closed.
+Completion check: the selected structural relation and fail-closed verifier
+contract are explicit without text/signature/diagnostic recovery.
 
-### Step 3 - Prove the HIR route and return to 831
+### Step 2 - Produce and verify the selected authority relation
 
-Goal: provide accepted focused evidence for the first ordered successor.
+Goal: implement the native relation at its narrow construction seam.
 
 Actions:
 
-- run a fresh build and focused `frontend_hir_tests` proof selected by the
-  supervisor; and
-- record the accepted result, then reactivate 831 solely to activate 833.
+- populate only the selected direct-scalar truthiness-LHS authority; and
+- add nearby positive and malformed/foreign/incoherent authority coverage.
 
-Completion check: the named test clears the former crash with accepted focused
-proof; no full baseline clearance is claimed.
+Completion check: the verifier accepts coherent native authority and rejects
+malformed authority without a named-case exception.
+
+### Step 3 - Prove the truthiness route and return to 831
+
+Goal: provide accepted focused proof for the second ordered successor.
+
+Actions:
+
+- run a fresh build and supervisor-selected focused proof including the 13
+  identified torture cases; and
+- record accepted evidence, then reactivate 831 at Step 2 for proof collection.
+
+Completion check: the cases no longer stop at the missing truthiness-authority
+relation; no full-suite baseline clearance is claimed.
