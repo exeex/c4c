@@ -1,32 +1,24 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/813_lir_string_semantic_authority_completion_umbrella.md
+Source Idea Path: ideas/open/852_hir_canonical_semantic_aggregate_ref_binding.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Assign first owners and bounded evidence routes
+Current Step ID: 1
+Current Step Title: Prove the semantic-to-HIR materialization seam
 
 ## Just Finished
 
-- Step 1 — Validate the accepted 812 input and refresh lifecycle state: recorded
-  the accepted 812 evidence revision, refreshed at
-  `ce1984a661b79c40f21e5ec203e5fe4d8521585b`, and confirmed all three stable
-  keys remain insufficient evidence with no exact current owner or superseding
-  closure. Preserved `836 -> 831 Step 4 -> 830 Step 3 -> 829 Step 2`.
+- No implementation packet completed; lifecycle switched from 813 to 852.
 
 ## Suggested Next
 
-- Step 2 — assign each validated key exactly once to an exact existing owner or
-  a bounded evidence route, without creating implementation scope from missing
-  evidence.
+- Execute plan Step 1 and record the exact production materialization seam.
 
 ## Watchouts
 
-- Do not treat validation as implementation; preserve the 836 return chain and
-  create no implementation successor before its first owner and
-  missing-evidence boundary are proved.
+- Do not start LIR migration or recover identity through parser, key, tag,
+  text, `record_def`, or `Node*` authority.
 
 ## Proof
 
-- `git diff --check > test_after.log` (Step 1 documentation/lifecycle-refresh
-  packet).
+- Pending first execution packet.

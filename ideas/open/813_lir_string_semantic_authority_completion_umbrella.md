@@ -235,6 +235,43 @@ draft/open disposition of 837, and the final 734/797 handoff. Closure is
 rejected while any unfinished semantic route lacks an exact executable owner
 or evidence route.
 
+## Resumption Record: user-priority switch to HIR aggregate binding
+
+Status: parked by lifecycle switch to
+`ideas/open/852_hir_canonical_semantic_aggregate_ref_binding.md`; 813 is not
+concluded or superseded.
+
+- Last accepted completed step: Step 1 — **Validate the accepted 812 input and
+  refresh lifecycle state**. `docs/lir_string_semantic_authority_completion/input_validation.md`
+  records accepted 812 evidence revision
+  `d58b8d44c9b64d2005d2b3760a0592b1b47ebd03`, selected and closed through
+  `f374ab3f5`, and the lifecycle refresh at
+  `ce1984a661b79c40f21e5ec203e5fe4d8521585b`. It confirms exactly three stable
+  insufficient-evidence keys remain and preserves
+  `836 -> 831 Step 4 -> 830 Step 3 -> 829 Step 2`.
+- Accepted Step 1 commit and proof: `1a58beed1` (`docs: validate 813 routing
+  input`); `git diff --check > test_after.log` was the recorded documentation
+  proof.
+- Interrupted step: Step 2 — **Assign first owners and bounded evidence
+  routes**. Commit `78e921953` (`idea: add 813 evidence routes`) created the
+  three bounded evidence sources `848_lir_global_policy_identity_evidence.md`,
+  `849_lir_intrinsic_binding_evidence.md`, and
+  `850_lir_cfg_phi_raw_bindings_evidence.md`; this is partial Step 2 progress,
+  not Step 2 completion or semantic capability.
+- Switch reason: the user explicitly prioritized 852's upstream HIR semantic
+  aggregate-ref materialization binding so blocked aggregate convergence can
+  resume. This is separate implementation work and does not satisfy, replace,
+  or invalidate 813's three 812 routing keys.
+- Exact return point: resume 813 at unchanged Step 2. Reconcile the three
+  generated evidence sources against their exact stable keys, create
+  `row_to_owner_map.md` and `existing_owner_dependencies.md`, confirm every key
+  maps exactly once, and only then mark Step 2 complete.
+- Remaining work: finish Step 2's exact owner/dependency acceptance; then run
+  Step 3 to publish `successor_queue.md`, `architecture_alignment.md`,
+  `handoff_to_734_and_797.md`, and `closure_trace.md`. Preserve all existing
+  owner scopes and the 836 return chain; do not treat 852 or aggregate progress
+  as evidence that any 813 routing key is complete.
+
 ## Reviewer Reject Signals
 
 - Reject implementation, tests, active lifecycle changes, or draft-837
