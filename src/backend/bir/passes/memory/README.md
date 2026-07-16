@@ -26,6 +26,12 @@ publish `CanonicalBir`.
 
 One exact B4 checkpoint with cumulative properties through `SsaCanonical`,
 whole-graph SSA proof, typed memory operands/results, and no later-stage facts.
+The B4 checkpoint must carry a verified exact-revision
+`CompletePromotionPolicyV1` plan and exact planned/actual accounting. B5 does
+not admit a partial-promotion marker, an eligible object retained merely because
+B4 exhausted resources, or a half-promoted object with mixed SSA and implicit
+memory state. Explicit memory forms are admitted only when the closed B4 matrix
+classified them as non-promotable independently of the resource budget.
 
 ## Input NodeKind/Tag Vocabulary
 
@@ -108,6 +114,10 @@ is admitted. The framework advances only the complete green checkpoint.
 Each non-local boundary must also have complete retained-object/effect coverage,
 explicit pre-checkpoint ordering, legal post-return accesses, and no hidden
 register-only observable state.
+Admission also proves that the B4 promotion-plan key matches the exact input
+revision, that complete selected promotion was verified, and that no resource
+fallback marker or incomplete eligible object is present. Failure is rejection,
+never B5 repair or implicit demotion.
 
 ## Analysis Preservation and Invalidation
 

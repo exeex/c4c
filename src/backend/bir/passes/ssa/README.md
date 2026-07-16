@@ -43,6 +43,73 @@ Fresh exact-B3 `Cfg`, `Dominance`, and `PublicationValueFlow` products with
 complete dependency fingerprints. Unknown dominance or incomplete value-flow
 is failure, not a reason to publish partial SSA.
 
+### Bounded complete-promotion plan
+
+B4 uses the versioned `CompletePromotionPolicyV1` documentation contract. It
+does not select a profitable subset: every eligible semantic object and value
+in the exact B3 input belongs to one complete promotion set. Deterministic
+partial promotion is rejected for this contract because the closed B4 output
+vocabulary has no distinct retained-object memory alternative or total mapping
+by which B5 could distinguish a deliberately unselected object from an
+incomplete promotion. Adding such a form is a future schema change, not a
+resource fallback inside B4.
+
+Before creating or mutating a graph candidate, B4 derives one immutable
+`CompletePromotionPlan`. Its exact key contains the B3 module and ordered
+function revisions, CFG, dominance, and publication/value-flow fingerprints,
+the NodeKind schema fingerprint, and the complete promotion-policy version.
+Equal semantic hashes, compatible policies, or stale analysis handles are not
+keys. Enumeration uses stable function, block, instruction, semantic-object,
+value, and exact `EdgeKey` occurrence identity; storage addresses, rendered
+names, traversal accidents, and hash-table order are forbidden. All ties are
+resolved lexicographically by those stable identities.
+
+The plan records these checked unsigned metrics, both per function and for the
+module: eligible objects, eligible definitions, uses to rename, dominance-
+frontier visits, phi sites, phi results, phi incoming occurrences, typed
+rename/copy operations, and total candidate nodes and operands after
+construction. A phi incoming is counted
+once per exact predecessor occurrence, so duplicate same-destination edges
+remain separate costs. Each addition and multiplication is checked before it
+is performed. Overflow is resource failure. `CompletePromotionPolicyV1`
+provides an explicit finite hard maximum for every metric and for total plan
+bytes; an absent, zero-meaning-unknown, dynamically enlarged, or platform-
+implicit maximum is invalid. The policy also versions the metric definitions,
+ordering, tie rules, arithmetic width, and diagnostic priority. Thus the same
+exact graph and policy version produce the same plan and first failure.
+
+All counters are unsigned 64-bit checked values. V1's inclusive maxima are:
+
+| Metric | Per function | Per module |
+| --- | ---: | ---: |
+| eligible objects | 1,048,576 | 4,194,304 |
+| eligible definitions | 4,194,304 | 16,777,216 |
+| uses to rename | 16,777,216 | 67,108,864 |
+| dominance-frontier visits | 33,554,432 | 134,217,728 |
+| phi sites | 4,194,304 | 16,777,216 |
+| phi results | 4,194,304 | 16,777,216 |
+| exact phi incoming occurrences | 33,554,432 | 134,217,728 |
+| typed rename/copy operations | 33,554,432 | 134,217,728 |
+| projected candidate nodes | 16,777,216 | 67,108,864 |
+| projected candidate operands | 67,108,864 | 268,435,456 |
+| encoded plan bytes | 268,435,456 | 1,073,741,824 |
+
+The table is part of the policy version; changing a value creates a new policy
+version rather than silently admitting a different graph.
+
+Planning computes the full phi closure and all rename/copy/edge-occurrence
+costs against immutable B3. It succeeds only after every metric and projected
+candidate size is within its hard bound. Only then may B4 build one private
+candidate. Candidate construction must realize the entire admitted plan and
+must match every planned phi site, result, incoming occurrence, and typed
+rename/copy operation. Allocation failure, cancellation, an unplanned required
+phi or operand,
+a metric mismatch, or any construction/verifier failure discards the entire
+candidate and publishes no plan, analysis, proof, checkpoint, or partially
+promoted graph. B4 never retries with fewer objects, deletes selected phis to
+fit a budget, or treats the original memory state as successful mid-pass
+fallback.
+
 ### Non-local control-transfer safety
 
 For every call whose closed `CallEffects` says `ReturnsTwice`, and every other
@@ -117,8 +184,9 @@ not claims of landed APIs or `NodeKind` entries.
 ## Ordered Behavior
 
 1. Validate B3 capability and all exact analysis keys.
-2. Inventory every eligible definition/use and compute dominance frontiers in
-   stable block/edge/value order.
+2. Inventory every eligible object, definition, and use; compute the complete
+   dominance-frontier/phi closure and accept one exact-revision bounded
+   `CompletePromotionPlan` in stable identity order before graph mutation.
 3. Derive exactly one `AsmGotoSsaSnapshot` for each registered pair from the
    immutable B3 instruction point and exact successor occurrences; assign every
    node one matrix row and reject non-eligible ordinary SSA use.
@@ -165,6 +233,14 @@ SSA value, complete reciprocal def-use, definition dominance, same-block order,
 one typed phi incoming per exact predecessor edge including multiplicity, no
 hidden special-value path, and unchanged CFG topology. Only this whole-graph
 proof establishes dynamic SSA.
+The gate also requires the exact current complete-promotion policy and plan,
+recomputes its key and checked metrics, and proves that every eligible object
+was selected and completely realized. Planned and actual phi sites, results,
+incoming edge occurrences, typed rename/copy operations, node counts, and
+operand counts must agree exactly and remain within all versioned hard limits.
+A partial selection,
+unchecked or saturated arithmetic, collapsed duplicate occurrence, stale plan,
+unplanned growth, or post-mutation budget decision rejects the whole candidate.
 For every registered non-local checkpoint it additionally proves unique
 instruction-point coverage, exact continuation order, no post-checkpoint-only
 definition visible after non-local return, no forbidden register-only promotion,
@@ -200,6 +276,10 @@ and may rely on dynamic SSA because it names B4's proof, never because a kind
 has `SsaEligible`. D5 later owns SSA removal.
 It also receives exact-revision `NonLocalSsaBoundary` records; B5 may strengthen
 their memory consequences but cannot change their value visibility or topology.
+B5 receives no partial-promotion marker and performs no promotion repair: every
+eligible B3 object has a complete B4 SSA realization, while only forms already
+classified as non-promotable by the closed B4 matrix may enter B5 in their
+ordinary explicitly admitted form.
 
 ## Implementation State
 
@@ -220,6 +300,11 @@ same-destination occurrences, critical-edge normalization, exact phi inputs,
 label-edge rejection of post-asm/later definitions, fallthrough output
 visibility, stale/missing/duplicate snapshots, and absence of name/text/block
 identity.
+Prove exact-policy replay, every checked-arithmetic overflow, every per-function
+and module hard bound, stable-order and tie determinism, complete phi closure,
+duplicate edge-occurrence cost, pre-mutation rejection, exact planned/actual
+accounting, cancellation/allocation rollback, and rejection of partial or
+mid-pass fallback.
 
 ## Open Questions
 

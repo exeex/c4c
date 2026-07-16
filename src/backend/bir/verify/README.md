@@ -181,7 +181,12 @@ group and the complete P07-to-B8 handoff must account for every node.
    deterministic unreachable-region removal.
 4. P04 explicit-`Phi` canonical SSA form and exact phi incoming `EdgeKey`
    coverage, complete def-use, dominance, alias normalization, and exact-current
-   asm-goto instruction-point snapshot coverage hold.
+   asm-goto instruction-point snapshot coverage hold. The exact-revision
+   `CompletePromotionPolicyV1` plan must predate mutation, use checked arithmetic
+   and every finite hard metric bound, deterministically enumerate stable
+   identities and duplicate edge occurrences, and exactly match the completely
+   promoted candidate. Partial selection, stale keys, unplanned growth,
+   collapsed occurrences, or any mid-pass resource fallback rejects P04.
 5. P05 memory, address/GEP, access, atomic, stack-state, and memory-intrinsic
    descriptors have their unique semantic forms and preserve P03/P04.
 6. P06 aggregate values, copies, paths, complex/multivalue operations, and
