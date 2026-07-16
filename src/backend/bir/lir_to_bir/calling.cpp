@@ -1606,6 +1606,10 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     return fail_call_family(kCallReturnFamily);
   }
   std::string call_return_storage_type = std::string(call.return_type.str());
+  std::optional<c4c::codegen::lir::LirTypeRef> call_return_storage_type_ref =
+      call.return_type.has_struct_name_id()
+          ? std::optional<c4c::codegen::lir::LirTypeRef>{call.return_type}
+          : std::nullopt;
   if (!return_info->returned_via_sret &&
       call.result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
     const auto result_name = call.result.str();
@@ -1626,6 +1630,10 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
             aggregate_return_info->returned_via_sret) {
           return_info = *aggregate_return_info;
           call_return_storage_type = std::string(store->type_str.str());
+          call_return_storage_type_ref =
+              store->type_str.has_struct_name_id()
+                  ? std::optional<c4c::codegen::lir::LirTypeRef>{store->type_str}
+                  : std::nullopt;
         }
         break;
       }
@@ -2087,6 +2095,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     }
     sret_slot_name = call.result.str();
     if (!declare_local_aggregate_slots(call_return_storage_type,
+                                       call_return_storage_type_ref,
                                        *sret_slot_name,
                                        return_info->align_bytes)) {
       return fail_call_family(kCallReturnFamily);

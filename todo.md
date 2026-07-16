@@ -8,34 +8,30 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed Step 4 aggregate parameter alias slot metadata handoff.
+Completed Step 4 call-return sret aggregate slot metadata handoff.
 
-`collect_aggregate_params()` now preserves an optional
-`StructNameId`-bearing `function_.signature_param_type_refs[index]` on
-`AggregateParamInfo`, and `materialize_aggregate_param_aliases(...)` passes
-that ref into the existing layout-supplied
-`declare_local_aggregate_slots(...)` overload. Metadata-bearing aggregate
-parameters now attach structured type identity to their generated local
-aggregate slots; legacy/no-id parameters stay on the existing text/layout
-fallback.
+`lower_call_inst()` now tracks the selected sret storage type with both the
+rendered storage text and an optional `StructNameId`-bearing `LirTypeRef`.
+Direct sret returns carry `call.return_type` into
+`declare_local_aggregate_slots(...)` when it has structured identity, and the
+store-derived sret correction switches both the storage text and optional ref
+to `LirStoreOp::type_str`. Legacy/no-id return paths still pass no structured
+ref and keep the existing rendered-text fallback.
 
 ## Suggested Next
 
-Suggested Next: choose the next remaining Step 4 adapter deletion packet with a
-structured ref already available at the slot declaration boundary, or move to
-supervisor review if the intended aggregate slot declaration paths are now
-covered.
+Suggested Next: supervisor review of the covered Step 4 aggregate slot
+declaration paths, or one final targeted packet if another expired adapter
+boundary remains in scope.
 
 ## Watchouts
 
-- This packet deliberately did not broaden into call returns, variadic
-  `va_arg`, loads, allocas, or subobject/view construction paths.
-- Aggregate parameter layout selection is unchanged: `StructNameId` refs use
-  structured layout selection, while no-id/legacy parameters retain the
-  existing rendered-text layout fallback.
-- The supplied-layout `declare_local_aggregate_slots(...)` overload now records
-  the optional parameter ref on `LocalAggregateSlots` without changing the
-  previously selected layout.
+- This packet deliberately did not broaden into aggregate parameters,
+  variadic `va_arg`, loads, allocas, PHI, or subobject/view paths.
+- Store-derived sret correction still detects aggregate sret from the existing
+  return-info path; the new structured ref is consumed at the local aggregate
+  slot declaration boundary, where metadata-bearing refs fail closed and
+  no-id refs retain fallback behavior.
 
 ## Proof
 
