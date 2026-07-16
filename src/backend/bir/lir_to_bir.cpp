@@ -632,25 +632,47 @@ std::optional<Type> native_floating_call_type(
 
 bool exact_direct_native_floating_call(const LirModule& module,
                                        const LirCallOp& call) {
-  const Type f64{TypeKind::F64, 64, "double"};
   const auto* result = call.result.value_id();
   if (call.result.kind() != codegen::lir::LirOperandKind::SsaValue || !result ||
       !result->valid() || call.return_ext_attr != LirExtAttr::None ||
       call.direct_callee_link_name_id == c4c::kInvalidLinkName ||
-      !call.structured_args.empty() || !call.arg_type_refs.empty() ||
-      !call.callee_signature)
+      !call.structured_args.empty() || !call.arg_type_refs.empty())
     return false;
 
   const auto return_type = native_floating_call_type(module, call.return_type);
-  const auto& signature = *call.callee_signature;
-  if (!return_type || *return_type != f64 || !signature.return_type_ref ||
-      *signature.return_type_ref != call.return_type ||
-      !native_floating_call_type(module, *signature.return_type_ref) ||
-      *native_floating_call_type(module, *signature.return_type_ref) != *return_type ||
-      signature.return_ext_attr != LirExtAttr::None || signature.is_variadic ||
-      signature.has_unspecified_params || !signature.has_void_param_list ||
-      !signature.fixed_param_types.empty() ||
-      !signature.fixed_param_type_refs.empty())
+  const auto* stored_signature = resolved_call_signature(module, call);
+  if (stored_signature != nullptr && call.callee_signature.has_value() &&
+      !retained_signature_matches_store(*call.callee_signature, *stored_signature)) {
+    return false;
+  }
+  if (stored_signature == nullptr && !call.callee_signature.has_value()) return false;
+
+  const auto return_ref = stored_signature != nullptr
+                              ? stored_signature->return_type_ref
+                              : call.callee_signature->return_type_ref;
+  const auto return_ext_attr = stored_signature != nullptr
+                                   ? stored_signature->return_ext_attr
+                                   : call.callee_signature->return_ext_attr;
+  const auto is_variadic = stored_signature != nullptr
+                               ? stored_signature->is_variadic
+                               : call.callee_signature->is_variadic;
+  const auto has_unspecified_params =
+      stored_signature == nullptr && call.callee_signature->has_unspecified_params;
+  const auto has_void_param_list = stored_signature != nullptr
+                                       ? stored_signature->has_void_param_list
+                                       : call.callee_signature->has_void_param_list;
+  const auto& fixed_param_type_refs = stored_signature != nullptr
+                                          ? stored_signature->fixed_param_type_refs
+                                          : call.callee_signature->fixed_param_type_refs;
+  const auto signature_return_type =
+      return_ref ? native_floating_call_type(module, *return_ref) : std::nullopt;
+  if (!return_type || !return_ref || *return_ref != call.return_type ||
+      !signature_return_type || *signature_return_type != *return_type ||
+      return_ext_attr != LirExtAttr::None || is_variadic ||
+      has_unspecified_params || !has_void_param_list ||
+      !fixed_param_type_refs.empty())
+    return false;
+  if (stored_signature == nullptr && !call.callee_signature->fixed_param_types.empty())
     return false;
 
   const LirFunction* resolved = nullptr;
@@ -664,8 +686,8 @@ bool exact_direct_native_floating_call(const LirModule& module,
                                    ? native_floating_call_type(
                                          module, *target.signature_return_type_ref)
                                    : std::nullopt;
-    if (!target.is_declaration || !target_return || *target_return != f64 ||
-        !target_mirror || *target_mirror != f64 ||
+    if (!target.is_declaration || !target_return || *target_return != *return_type ||
+        !target_mirror || *target_mirror != *return_type ||
         !target_params || !target_params->empty() || target.signature_is_variadic ||
         !target.signature_has_void_param_list)
       return false;

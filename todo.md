@@ -8,19 +8,19 @@ Current Step Title: Migrate call composition to signature refs
 
 ## Just Finished
 
-- Step 3 BIR store-backed direct void call slice completed: the compiled
-  monolithic `exact_direct_void_call` consumer now resolves
-  `callee_signature_ref` through the module function signature store, permits
-  retained `callee_signature` to be absent or text-stale when the store entry
-  resolves, and keeps retained/store and target signature mismatches
-  fail-closed without changing argument value identity or raw compatibility
-  outside the fixed zero-argument void direct-call shape.
+- Step 3 BIR store-backed native floating direct-call slice completed: the
+  compiled monolithic `exact_direct_native_floating_call` consumer now resolves
+  `callee_signature_ref` through the module function signature store before
+  retained `callee_signature`, permits retained signature absence or text-stale
+  mirrors when the store entry resolves, and keeps retained/store, store/call,
+  and target signature mismatches fail-closed for the bounded zero-argument
+  native F32/F64 direct-call shape.
 
 ## Suggested Next
 
-- Continue Step 3 with the next direct-call composition consumer outside the
-  migrated direct void, direct integer, and integer intrinsic call-authority
-  helpers, without touching 829/830 argument value identity.
+- Continue Step 3 with the next remaining call-composition consumer outside the
+  migrated direct void, direct integer, native floating, and integer intrinsic
+  call-authority helpers, without touching 829/830 argument value identity.
 
 ## Watchouts
 

@@ -10424,6 +10424,25 @@ lir::LirModule direct_native_floating_call_module() {
   return module;
 }
 
+void attach_direct_native_floating_function_signature_ref(
+    lir::LirModule& module) {
+  lir::LirFunctionSignatureStoreEntry caller_entry;
+  caller_entry.return_type_ref = lir::LirTypeRef("void");
+  caller_entry.has_void_param_list = true;
+  module.functions[0].function_signature_ref =
+      module.register_function_signature(std::move(caller_entry));
+
+  lir::LirFunctionSignatureStoreEntry target_entry;
+  target_entry.return_type_ref = lir::LirTypeRef("double");
+  target_entry.has_void_param_list = true;
+  const lir::LirFunctionSignatureRef target_ref =
+      module.register_function_signature(std::move(target_entry));
+  module.functions[1].function_signature_ref = target_ref;
+  auto& call =
+      std::get<lir::LirCallOp>(module.functions[0].blocks[0].insts[0]);
+  call.callee_signature_ref = target_ref;
+}
+
 lir::LirModule downstream_double_fadd_module() {
   auto module = direct_native_floating_call_module();
   auto& block = module.functions[0].blocks[0];
@@ -11369,6 +11388,43 @@ void test_direct_native_floating_call_receipt_and_rejections() {
   expect(canonical.has_value(), "resolved direct native double Call must canonicalize");
   inspect(canonical.value(), "Canonical BIR");
 
+  auto missing_retained_signature = direct_native_floating_call_module();
+  attach_direct_native_floating_function_signature_ref(missing_retained_signature);
+  auto& missing_retained_call = std::get<lir::LirCallOp>(
+      missing_retained_signature.functions[0].blocks[0].insts[0]);
+  missing_retained_call.callee =
+      lir::LirOperand::global("@direct_native_float_target",
+                              missing_retained_call.direct_callee_link_name_id);
+  missing_retained_call.callee_signature.reset();
+  const auto raw_missing_retained =
+      bir::lower_lir_to_raw_bir(missing_retained_signature);
+  expect(raw_missing_retained.has_value() &&
+             bir::FoundationVerifier::verify(raw_missing_retained.value()).ok(),
+         "direct native floating call must use module signature store when retained signature is absent");
+  inspect(raw_missing_retained.value(), "Raw BIR store-backed native floating call");
+  const auto canonical_missing_retained =
+      bir::lower_lir_to_canonical_bir(missing_retained_signature);
+  expect(canonical_missing_retained.has_value(),
+         "store-backed native floating call without retained signature must canonicalize");
+  inspect(canonical_missing_retained.value(),
+          "Canonical BIR store-backed native floating call");
+
+  auto stale_text_signature = direct_native_floating_call_module();
+  attach_direct_native_floating_function_signature_ref(stale_text_signature);
+  auto& stale_text_call = std::get<lir::LirCallOp>(
+      stale_text_signature.functions[0].blocks[0].insts[0]);
+  stale_text_call.callee =
+      lir::LirOperand::global("@direct_native_float_target",
+                              stale_text_call.direct_callee_link_name_id);
+  stale_text_call.callee_signature->fixed_param_types = {"float stale text only"};
+  stale_text_call.callee_type_suffix = "(ptr stale suffix)";
+  stale_text_call.args_str = "i64 stale mirror";
+  const auto raw_stale_text = bir::lower_lir_to_raw_bir(stale_text_signature);
+  expect(raw_stale_text.has_value() &&
+             bir::FoundationVerifier::verify(raw_stale_text.value()).ok(),
+         "direct native floating call must ignore retained text when signature ref resolves");
+  inspect(raw_stale_text.value(), "Raw BIR stale-text native floating call");
+
   const auto rejected = [](auto mutate, const std::string& message) {
     auto candidate = direct_native_floating_call_module();
     auto& call = std::get<lir::LirCallOp>(candidate.functions[0].blocks[0].insts[0]);
@@ -11421,6 +11477,42 @@ void test_direct_native_floating_call_receipt_and_rejections() {
              duplicate.signature_return_type_ref = lir::LirTypeRef("float");
              module.functions.push_back(std::move(duplicate));
            }, "duplicate native callee identity with conflicting return must reject");
+
+  const auto store_rejected = [](auto mutate, const std::string& message) {
+    auto candidate = direct_native_floating_call_module();
+    attach_direct_native_floating_function_signature_ref(candidate);
+    auto& call =
+        std::get<lir::LirCallOp>(candidate.functions[0].blocks[0].insts[0]);
+    mutate(candidate, call);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() && raw_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value() && canonical_rejected.error().code ==
+               bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Canonical rollback)");
+  };
+  store_rejected([](auto&, auto& call) {
+                   call.callee_signature->return_type_ref =
+                       lir::LirTypeRef("float");
+                 },
+                 "retained/store native floating return mismatch must reject");
+  store_rejected([](auto& module, auto& call) {
+                   module.function_signature_store[call.callee_signature_ref.value]
+                       .return_type_ref = lir::LirTypeRef("float");
+                 },
+                 "signature-store native floating return mismatch must reject");
+  store_rejected([](auto& module, auto& call) {
+                   module.function_signature_store[call.callee_signature_ref.value]
+                       .fixed_param_type_refs = {lir::LirTypeRef("double")};
+                 },
+                 "signature-store native floating parameter mismatch must reject");
+  store_rejected([](auto& module, auto&) {
+                   module.functions[1].signature_return_type_ref =
+                       lir::LirTypeRef("float");
+                 },
+                 "target native floating signature mismatch must reject with store-backed call");
 }
 
 // Native intrinsics deliberately use a link-name payload rather than CallNode.
