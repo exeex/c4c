@@ -1,91 +1,86 @@
-# Pre-existing Baseline Failure-Family Decomposition Blocker Runbook
+# LIR Aggregate-Owner Module-Owner Canonicalization Blocker Runbook
 
 Status: Active
-Source Idea: ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md
-Resumed from: closed 833 capability-complete successor
+Source Idea: ideas/open/834_lir_owned_type_spec_module_owner_canonicalization_blocker.md
+Activated from: 831 Step 3 provenance decision
 
 ## Purpose
 
-Collect the accepted independent repair evidence, preserve their distinct
-ownership, and then establish comparable full-suite baseline status before
-returning 830 to its unchanged acceptance gate.
+Repair the native LIR aggregate key-to-module-owner lookup contract that
+causes the shared 516-test diagnostic, without widening into closed 832/833
+routes or accepting baseline state.
 
 ## Core Rule
 
-Keep the HIR aggregate-owner and truthiness-LHS authority families separate.
-Focused successor proof is not comparable full-suite or baseline clearance.
+Repair the canonical owner relation, not individual tests or diagnostic text.
+Focused repair proof is not comparable full-suite clearance.
 
 ## Read First
 
+- `ideas/open/834_lir_owned_type_spec_module_owner_canonicalization_blocker.md`
 - `ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md`
-- `ideas/closed/832_hir_aggregate_owner_function_parameter_crash_repair.md`
-- `ideas/closed/833_lir_truthiness_lhs_parameter_authority_completion.md`
+- `src/codegen/lir/hir_to_lir/hir_to_lir.cpp`
 
 ## Non-Goals
 
-- Any 830 direct-call, 829 authority, Raw-BIR, generic-call, test-contract, or
-  harness change.
-- Claiming baseline clearance from either focused successor proof.
+- Reopening closed 832 or 833, or changing 830/829 work.
+- Test filtering, unsupported markers, expectation weakening, or harness work.
+- Declaring a new full-suite baseline or returning 830.
 
 ## Ordered Steps
 
-### Step 1 - Establish first-owner decomposition from exact reproductions
+### Step 1 - Diagnose the aggregate key/module-tag ownership mismatch
 
-Status: Complete.
-
-Completion record: `ba7958ee4` established separate first-owner seams and the
-ordered 832 then 833 repair routes. No shared implementation seam exists.
-
-### Step 2 - Collect accepted successor evidence and confirm family boundaries
-
-Goal: record 832 and 833 accepted focused proof under this blocker without
-merging their scope or treating either result as baseline clearance.
+Goal: establish the smallest native relation that loses the valid module owner.
 
 Actions:
 
-- collect the accepted 832 HIR aggregate-owner proof and 833 truthiness-LHS
-  authority proof, including commits and before/after results;
-- preserve the residual four aggregate-owner-family failures as visible
-  evidence outside 833; and
-- confirm the two completed successor routes satisfy their focused contracts
-  without mixed implementation or weakened test/harness contracts.
+- Trace representative failing C and C++ cases through `lir_owned_type_spec`,
+  structured-key construction, and `find_struct_def_tag_by_owner`.
+- Compare a valid resolving aggregate path with a failing one; identify the
+  exact owner/canonicalization invariant rather than test names.
+- Select focused multi-suite coverage and an invalid/missing-owner guard.
 
-Completion check: both successor proofs and their ownership boundaries are
-durably recorded; the remaining action is only Step 3 comparable full-suite
-proof.
+Completion check: a bounded owner relation and implementation target are
+recorded; no code or test-contract workaround is proposed.
 
-### Step 3 - Classify the rejected comparable full-suite gate
+### Step 2 - Repair the native owner canonicalization relation
 
-Goal: determine the first owner of the rejected full-suite delta without
-changing baseline state or silently widening either completed successor.
+Goal: make valid LIR aggregate keys resolve their matching module tag.
 
 Actions:
 
-- preserve the accepted `test_baseline.log` (3038/3038 at `8418036b`) and the
-  canonical rejected `test_after.log` (2520 passed / 518 failed after a
-  successful fresh build) without replacement or acceptance;
-- compare their inventories, group the 516 newly failing tests by suite
-  category and earliest common owner, and explicitly distinguish the 831 HIR
-  aggregate-owner and truthiness-LHS families from unrelated failures; and
-- decide the route from that ledger: make an in-scope repair only if the
-  evidence identifies an uncompleted 831-owned family; otherwise create a
-  separately scoped blocker and switch before further work.
+- Implement the smallest ownership/provenance correction at the diagnosed
+  lookup relation.
+- Preserve legitimate missing-owner rejection and avoid broad metadata or HIR
+  rewrites.
 
-Completion check: a bounded provenance ledger names the first owner and an
-executable route.  No fresh baseline is claimed, no 830 return occurs, and the
-closed 832/833 contracts remain unchanged unless direct evidence links a
-specific failure to them.
+Completion check: a fresh build succeeds and the native relation, not a
+testcase-shaped exception, owns the repair.
 
-### Step 4 - Obtain comparable baseline proof and return 830
+### Step 3 - Prove representative same-feature behavior
 
-Goal: clear the rejected 3038/3038 baseline gate with supervisor-owned,
-comparable full-suite evidence.
+Goal: verify repaired aggregate owner lookup across affected paths.
 
 Actions:
 
-- after Step 3's owner route has been resolved and accepted, run the
-  supervisor-selected comparable full suite against the accepted baseline; and
-- if accepted, record the result and reactivate 830 at unchanged Step 3 only.
+- Run focused coverage from at least two affected suite categories and the
+  selected malformed/missing-owner guard.
+- Confirm no expectation, filtering, or diagnostic-text workaround hides the
+  previous failure.
 
-Completion check: accepted comparable proof shows no new baseline problem; no
-capability work is attributed to 830 by this blocker.
+Completion check: fresh build plus focused multi-suite and negative-contract
+proof are accepted by the supervisor.
+
+### Step 4 - Hand evidence back to 831
+
+Goal: preserve the bounded acceptance record and resume the parent correctly.
+
+Actions:
+
+- Record accepted implementation/proof references in the source resumption
+  record.
+- Switch back to 831 Step 4 only; 831 owns the comparable full-suite gate.
+
+Completion check: lifecycle state unambiguously points to 831 Step 4, with no
+baseline-clearance or 830-return claim in this blocker.

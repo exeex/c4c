@@ -143,3 +143,33 @@ Status: parked by lifecycle switch to
   comparable full-suite baseline gate before returning 830 unchanged at Step
   3. Do not claim comparable full-suite or baseline clearance before that
   Step 3 proof is accepted.
+
+## Resumption Update: Step 3 provenance complete; separate 834 blocker active
+
+- Last accepted progress: Steps 1 and 2 are complete. Step 3 — **Classify the
+  rejected comparable full-suite gate** is complete as a read-only provenance
+  decision. The comparable gate remains rejected: accepted
+  `test_baseline.log` at `8418036b` is 3038/3038; the successful fresh-build
+  full-suite `test_after.log` is 2520 passed / 518 failed, with 516 new
+  failures and pass delta -518. No baseline replacement or clearance occurred.
+- Interrupted step: Step 4 — **Obtain comparable baseline proof and return
+  830**. It must not run until the separately scoped blocker is accepted.
+- Blocker boundary: all 516 new failures first emit `LIR-owned aggregate
+  function type requires a matching module owner` at
+  `lir_owned_type_spec` (`src/codegen/lir/hir_to_lir/hir_to_lir.cpp:106-108`),
+  blamed to `b556c6c9f`. The inventory is 297 `llvm_gcc_c_torture`, 145
+  `cpp_positive`, 66 `c_testsuite`, 3 `c_positive`, 2 `eastl_external`, 2
+  `clang`, and 1 `abi`. This native aggregate key/module-tag lookup contract
+  is outside 831's bounded completed 832/833 successor contracts.
+- Boundary confirmation: `frontend_hir_tests` passes, and no failed output
+  uses `truthiness_lhs_parameter_authority`; therefore this does not reopen
+  closed 832 or closed 833.
+- Active successor: `ideas/open/834_lir_owned_type_spec_module_owner_canonicalization_blocker.md`
+  owns only diagnosis and repair of the `lir_owned_type_spec` module-owner
+  canonicalization/provenance relation, with representative multi-suite
+  coverage. It does not perform baseline acceptance.
+- Exact return point: after 834 has accepted its bounded repair and focused
+  proof, reactivate 831 at Step 4 — **Obtain comparable baseline proof and
+  return 830**. Run 831's supervisor-owned comparable full-suite gate; only an
+  accepted gate may return 830 unchanged at Step 3. Do not return directly to
+  830 or to any earlier 831 step.
