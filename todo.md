@@ -8,20 +8,19 @@ Current Step Title: Migrate call composition to signature refs
 
 ## Just Finished
 
-- Step 3 direct-call verifier consumer slice completed: the fixed direct-call
-  type-authority gate and `verify_call_callee_signature` now consume the
-  module-owned function signature store when `callee_signature_ref` is valid,
-  while retained `callee_signature` stays a compatibility shadow checked for
-  disagreement. Nearby coverage proves an aggregate direct call verifies with
-  the retained signature mirror removed and ignores stale retained parameter
-  text while the signature ref names the store facts.
+- Step 3 direct void fixed-integer verifier slice completed: the immediate and
+  SSA direct void fixed-integer call helpers now consume the module-owned
+  function signature store when `callee_signature_ref` resolves, with retained
+  `callee_signature` left as the compatibility fallback for unmigrated calls.
+  Nearby coverage proves supported immediate and SSA direct void integer calls
+  verify with the retained signature mirror removed, while existing structured
+  retained-signature disagreement checks continue to reject stale mirrors.
 
 ## Suggested Next
 
-- Continue Step 3 with one remaining direct-call composition consumer that still
-  reads retained call text or argument type mirrors, preferably the next verifier
-  helper that can be moved to `callee_signature_ref` without touching 829/830
-  argument value identity.
+- Continue Step 3 with another direct-call composition consumer that still reads
+  retained call text or argument type mirrors, without touching 829/830 argument
+  value identity.
 
 ## Watchouts
 
@@ -40,5 +39,5 @@ Current Step Title: Migrate call composition to signature refs
 
 ## Proof
 
-- Passed focused proof plus shared LIR backend checkpoint in `test_after.log`:
+- Passed delegated proof in `test_after.log`:
   `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_function_signature_type_ref|frontend_lir_call_type_ref|frontend_hir_tests)$' && ctest --test-dir build -j --output-on-failure -R '^backend_lir_' ) > test_after.log 2>&1`

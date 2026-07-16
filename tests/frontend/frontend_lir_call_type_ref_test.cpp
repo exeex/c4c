@@ -4083,7 +4083,7 @@ void test_direct_void_immediate_arg_identity_boundary() {
   namespace lir = c4c::codegen::lir;
 
   lir::LirModule lowered = lower_lir_module_for_target(R"c(
-void lir_direct_void_immediate_arg_target(int value);
+void lir_direct_void_immediate_arg_target(int value) {}
 void lir_direct_void_immediate_arg_identity(void) {
   lir_direct_void_immediate_arg_target(7);
 }
@@ -4104,6 +4104,8 @@ void lir_direct_void_immediate_arg_identity(void) {
                   call.return_type.kind() == lir::LirTypeKind::Void,
               "void immediate call should retain native direct-target and return facts");
   expect_true(call.callee_signature &&
+                  call.callee_signature_ref.valid() &&
+                  lowered.find_function_signature(call.callee_signature_ref) &&
                   call.callee_signature->fixed_param_type_refs.size() == 1 &&
                   call.callee_signature->fixed_param_type_refs[0].kind() ==
                       lir::LirTypeKind::Integer &&
@@ -4153,6 +4155,10 @@ void lir_direct_void_immediate_arg_identity(void) {
   misleading_call.structured_args[0].operand.str() = "@rendered-not-immediate";
   misleading_call.callee_signature->fixed_param_types[0] = "rendered-param-type";
   lir::verify_module(misleading);
+
+  lir::LirModule missing_retained_signature = lowered;
+  require_focused_call(missing_retained_signature).callee_signature.reset();
+  lir::verify_module(missing_retained_signature);
 
   lir::LirModule missing_payload = lowered;
   require_focused_call(missing_payload).structured_args[0].operand =
@@ -4234,7 +4240,7 @@ void test_direct_void_ssa_arg_identity_boundary() {
 
   lir::LirModule lowered = lower_lir_module_for_target(R"c(
 int lir_direct_void_ssa_arg_source;
-void lir_direct_void_ssa_arg_target(int value);
+void lir_direct_void_ssa_arg_target(int value) {}
 void lir_direct_void_ssa_arg_identity(void) {
   lir_direct_void_ssa_arg_target(lir_direct_void_ssa_arg_source);
 }
@@ -4262,6 +4268,8 @@ void lir_direct_void_ssa_arg_identity(void) {
   expect_true(call.direct_callee_link_name_id != c4c::kInvalidLinkName &&
                   call.return_type.kind() == lir::LirTypeKind::Void &&
                   call.callee_signature &&
+                  call.callee_signature_ref.valid() &&
+                  lowered.find_function_signature(call.callee_signature_ref) &&
                   call.callee_signature->fixed_param_type_refs.size() == 1 &&
                   call.callee_signature->fixed_param_type_refs[0].kind() ==
                       lir::LirTypeKind::Integer &&
@@ -4312,6 +4320,10 @@ void lir_direct_void_ssa_arg_identity(void) {
   misleading_call.callee_signature->fixed_param_types[0] =
       "rendered-param-type";
   lir::verify_module(misleading);
+
+  lir::LirModule missing_retained_signature = lowered;
+  require_focused_call(missing_retained_signature).callee_signature.reset();
+  lir::verify_module(missing_retained_signature);
 
   lir::LirModule missing_authority = lowered;
   require_focused_call(missing_authority).structured_args[0].operand =
