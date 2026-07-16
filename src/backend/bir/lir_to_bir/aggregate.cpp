@@ -88,12 +88,12 @@ BirFunctionLowerer::AggregateTypeLayout selected_aggregate_type_layout(
     std::string_view type_text,
     const BirFunctionLowerer::TypeDeclMap& type_decls,
     const lir_to_bir_detail::BackendStructuredLayoutTable& structured_layouts) {
-  // Step 4 no-id compatibility bridge: aggregate.cpp still threads rendered
-  // type text through local aggregate slot declaration, leaf discovery, and
-  // byval copy helpers. Structured layouts remain authoritative when the text
-  // names one, while metadata-bearing byval params must use the LirTypeRef
-  // lookup path below and fail closed there. Remove this bridge once local
-  // aggregate slot state and byval copy state carry structured type refs.
+  // Step 4 no-id compatibility bridge: aggregate.cpp still offers rendered
+  // text layout resolution for callers that have no StructNameId-bearing type
+  // ref. Metadata-bearing local slot, byval parameter, and copy paths use the
+  // LirTypeRef lookup path and fail closed before reaching this fallback.
+  // Remove this bridge once every remaining aggregate layout caller carries
+  // structured type identity or an explicit no-id legacy marker.
   return lookup_backend_aggregate_type_layout_result(type_text, type_decls, structured_layouts)
       .layout;
 }
@@ -150,7 +150,8 @@ std::optional<BirFunctionLowerer::AggregateTypeLayout> BirFunctionLowerer::lower
   // byval/aggregate layout entrypoint for callers that do not yet carry
   // LirTypeRef/StructNameId metadata. Structured-layout callers still resolve
   // through selected_aggregate_type_layout(), while metadata-bearing byval
-  // params must use selected_aggregate_type_ref_layout() and fail closed there.
+  // params, local slots, and aggregate copy paths must use the type-ref route
+  // and fail closed there.
   // Remove this raw-text entrypoint once all aggregate/byval lowering sites
   // thread structured type identity or an explicit no-id legacy marker.
   auto layout = structured_layouts != nullptr

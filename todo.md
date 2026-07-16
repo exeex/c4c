@@ -8,22 +8,20 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed the second Step 4 residual bridge repair after the aggregate-slot
+Completed a Step 4 residual bridge classification after the aggregate-slot
 adapter cleanup series.
 
-Call lowering aggregate-value alias layout now uses
-`LocalAggregateSlots::type_ref` when present before falling back to rendered
-slot text for no-id aliases. Metadata-bearing aggregate aliases passed by
-address now resolve layout through structured type-ref lookup and fail closed on
-misses. This follows the previous aggregate-copy repair, which moved copy-size
-validation and copy-to-pointer/global leaf discovery onto the same slot-state
-lookup.
+The remaining aggregate.cpp shared rendered-text layout helpers are now
+documented as no-id fallbacks only. Their comments no longer claim local slot,
+byval parameter, or aggregate copy paths are waiting on structured refs; those
+metadata-bearing paths now route through type-ref lookup and fail closed before
+reaching the raw-text fallback.
 
 Unmet Step 4 criteria:
 - Residual no-id bridge comments remain outside the direct aggregate-slot
   declaration packet, including memory/provenance, memory/addressing,
   memory/intrinsics, `local_gep`, globals, call ABI raw signature/byval routes,
-  aggregate helper layout, type raw lookup, and global initializers.
+  type raw lookup, and global initializers.
 - These are still potentially within 847's compile-time separation and expired
   adapter deletion scope until classified with evidence as already safe,
   deleted, or owned by a separate source idea.
