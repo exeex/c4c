@@ -1,40 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/847_lir_universal_model_string_escape_hatch_deletion.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Remove expired adapters and prove compile-time separation
+Current Step ID: 5
+Current Step Title: Handoff final valid-LIR disposition to 797
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 provenance boundary repair for scalar subobject
-addressability.
+Completed Step 4 after the local memory identity and provenance type-ref
+repairs.
 
-`memory/provenance.cpp` now threads `LocalSlotAddress::type_ref` and
-`PointerAddress::type_ref` into the scalar subobject classifier. When a
-StructNameId-bearing type ref reaches that boundary, the classifier uses the
-structured backend layout table and rejects structured lookup misses instead
-of falling back through rendered type spelling. The rendered
-`TypeDeclMap` scalar-facts bridge remains only for provenance callers that
-still have no metadata-bearing type ref, such as globals and legacy/no-id
-local or pointer address state.
+Accepted Step 4 progress includes:
+- `f0427e92e`: local aggregate memory identity now threads LIR type refs into
+  local slot and intrinsic aggregate layout paths.
+- `c78ff20c5`: scalar subobject provenance now uses metadata-bearing local and
+  pointer type refs, and the rendered `TypeDeclMap` scalar-facts bridge is
+  fenced to callers with no StructNameId-bearing type ref, such as globals and
+  legacy/no-id local or pointer address state.
+
+The remaining Step 4 bridge comments are classified as deliberate no-id,
+legacy, or owner-specific compatibility boundaries rather than unmet 847
+deletion criteria. `memory/intrinsics.cpp` has stale wording that says
+intrinsic helpers do not yet receive LirTypeRef/StructNameId metadata; after
+`f0427e92e`, metadata-bearing local aggregate slots do use a type-ref lookup
+path and the raw helper is only the no-ref rendered-text bridge. That comment
+can be repaired as housekeeping, but it does not require another Step 4
+implementation packet.
 
 ## Suggested Next
 
-Suggested Next: supervisor review/commit for the Step 4 local aggregate
-provenance slice, then decide whether any remaining no-id-only global or
-legacy provenance paths need separate source intent before continuing the
-universal model string escape-hatch deletion.
+Suggested Next: execute Step 5 by preparing the final valid-LIR disposition
+handoff to 797. The handoff should summarize deleted/fenced surfaces, accepted
+proof, and residual owners without claiming that 797 itself is complete.
 
 ## Watchouts
 
-- The central `types.cpp` raw `TypeDeclMap` fallback is still indirectly
-  exercised by this helper only when no StructNameId-bearing type ref reaches
-  provenance. Metadata-bearing local and pointer addresses bypass that route.
 - Do not reopen already classified call ABI, global, aggregate-parameter,
-  memory/addressing, or local GEP comments unless this local memory repair
-  exposes a direct contradiction.
+  memory/addressing, local GEP, local slot, intrinsic, provenance, or central
+  types bridge comments unless Step 5 evidence exposes a direct contradiction.
+- Optional code-comment cleanup in `memory/intrinsics.cpp` may clarify the
+  post-`f0427e92e` state, but it is not Step 4 capability work.
 
 ## Proof
 
