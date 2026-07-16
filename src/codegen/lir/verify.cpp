@@ -4556,13 +4556,7 @@ void verify_extern_decl_shadows(const LirModule& mod) {
           }
           continue;
         }
-
-        if (const auto mismatch =
-                type_ref_struct_name_mismatch_detail(mod.struct_names,
-                                                     decl.return_type);
-            mismatch.has_value()) {
-          fail_verify("LirExternDecl.return_type", *mismatch);
-        }
+        continue;
       } else if (return_struct_name_id != kInvalidStructName) {
         fail_verify("LirExternDecl.return_type",
                     "known struct return type must carry matching StructNameId");

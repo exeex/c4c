@@ -66,6 +66,17 @@ std::string render_global_type(const LirModule& mod, const LirGlobal& global) {
   return type.render_llvm();
 }
 
+std::string render_extern_return_type(const LirModule& mod,
+                                      const LirExternDecl& decl) {
+  if (decl.return_type.empty()) return decl.return_type_str;
+  if (decl.return_type.has_struct_name_id()) {
+    const std::string_view name =
+        mod.struct_names.spelling(decl.return_type.struct_name_id());
+    if (!name.empty()) return std::string(name);
+  }
+  return decl.return_type.render_llvm();
+}
+
 const LirTypeRef& require_phi_boundary_render_type(const LirPhiOp& op) {
   if (!op.boundary_value_type) {
     throw LirVerifyError(LirVerifyErrorKind::Malformed,
@@ -847,7 +858,7 @@ std::string print_llvm(const LirModule& mod) {
   // External function declarations.
   for (const auto& ed : mod.extern_decls) {
     out << "declare " << render_ext_attr(ed.return_ext_attr)
-        << ed.return_type_str << " "
+        << render_extern_return_type(mod, ed) << " "
         << llvm_global_sym(resolve_extern_decl_name(ed, mod.link_names))
         << "(...)\n";
   }

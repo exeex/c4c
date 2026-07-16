@@ -190,6 +190,20 @@ int main() {
       "%struct.StaleMirrorText";
   c4c::codegen::lir::verify_module(structured_identity);
 
+  c4c::codegen::lir::LirModule printer_identity = module;
+  printer_identity.extern_decls.front().return_type_str =
+      "%struct.StaleReturnText";
+  printer_identity.extern_decls.front().return_type.str() =
+      "%struct.StaleMirrorText";
+  const std::string identity_ir =
+      c4c::codegen::lir::print_llvm(printer_identity);
+  expect_true(identity_ir.find("declare %struct.Pair @extern_pair(...)") !=
+                  std::string::npos,
+              "printer should render extern aggregate returns from StructNameId authority");
+  expect_true(identity_ir.find("%struct.StaleReturnText") == std::string::npos &&
+                  identity_ir.find("%struct.StaleMirrorText") == std::string::npos,
+              "printer should not recover extern return authority from stale text");
+
   c4c::codegen::lir::LirModule mismatched_shadow = module;
   mismatched_shadow.type_decls.front() = "%struct.Pair = type { i64 }";
   try {
@@ -219,6 +233,8 @@ int main() {
 
   c4c::codegen::lir::LirModule text_fallback = module;
   text_fallback.extern_decls.front().return_type_str = "%struct.NotDeclared";
+  text_fallback.extern_decls.front().return_type =
+      c4c::codegen::lir::LirTypeRef("%struct.Pair");
   try {
     c4c::codegen::lir::verify_module(text_fallback);
     fail("verifier should reject an extern return text mismatch without declared struct boundary");
