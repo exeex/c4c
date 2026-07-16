@@ -8,34 +8,32 @@ Current Step Title: Remove expired adapters and prove compile-time separation
 
 ## Just Finished
 
-Completed Step 4 owner-boundary conversion for local aggregate slot state.
+Completed Step 4 aggregate alloca slot-state conversion.
 
-`LocalAggregateSlots` now carries optional structured aggregate type identity
-as `LirTypeRef`. The aggregate PHI declaration path threads
-`PhiLoweringPlan::boundary_type_ref` into the generated local aggregate slots,
-and `collect_sorted_leaf_slots(...)` now prefers
-`lookup_backend_aggregate_type_ref_layout_result(...)` for metadata-bearing
-slots. The retained rendered-text layout fallback is documented as legacy/no-id
-compatibility for slots whose construction site still lacks structured type
-metadata.
+`lower_memory_alloca_inst(...)` now threads the existing `LirAllocaOp::type_str`
+`LirTypeRef` into `declare_local_aggregate_slots(...)` for the aggregate alloca
+construction path. StructNameId-bearing aggregate allocas now populate
+`LocalAggregateSlots::type_ref` and use the structured layout lookup/fail-closed
+route; scalar, local array, vector, and unrelated text-only callers remain on
+their existing paths.
 
 ## Suggested Next
 
-Suggested Next: choose one remaining local aggregate slot construction path
-that already has structured type metadata available, thread `LirTypeRef` into
-the slot state there, and keep text-only callers on the explicit no-id fallback.
+Suggested Next: choose one remaining non-alloca local aggregate slot
+construction path that already has structured type metadata available, thread
+that `LirTypeRef` into the slot state, and leave no-id/text-only callers on the
+explicit legacy fallback.
 
 ## Watchouts
 
-- `module.cpp` was touched only for the direct aggregate PHI slot declaration
-  site, so the structured ref captured in `cfg.cpp` reaches
-  `LocalAggregateSlots`.
-- Most `declare_local_aggregate_slots(...)` callers still create text-only
-  slot state by design for this packet. Do not treat the new optional field as
-  a reason to migrate every memory path in one slice.
-- Metadata-bearing local aggregate slots now fail closed in the leaf-slot
-  consumer if the structured layout lookup cannot resolve; absent/no-id slots
-  continue through the documented rendered-text fallback.
+- This packet deliberately did not broaden into load/store, call return, or
+  variadic aggregate construction paths.
+- `LirAllocaOp::type_str` may still be a no-id/text-only ref for legacy inputs;
+  those allocas continue through the documented no-id fallback in
+  `declare_local_aggregate_slots(...)`.
+- StructNameId-bearing aggregate alloca slots now rely on the structured lookup
+  before any later leaf-slot collection, so unresolved structured metadata fails
+  closed.
 
 ## Proof
 
@@ -48,7 +46,3 @@ out of 6`.
 Supervisor regression guard:
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 reported before 6/6, after 6/6, result PASS.
-
-Supplemental PHI producer/verifier smoke also passed:
-`ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|verify_tests_)'`
-reported 12/12 passing after the fresh backend proof.

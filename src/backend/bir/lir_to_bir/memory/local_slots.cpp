@@ -892,7 +892,10 @@ bool BirFunctionLowerer::lower_local_memory_alloca_inst(
     return true;
   }
 
-  return declare_local_aggregate_slots(alloca.type_str.str(), slot_name, align_bytes);
+  return declare_local_aggregate_slots(alloca.type_str.str(),
+                                       alloca.type_str,
+                                       slot_name,
+                                       align_bytes);
 }
 
 bool BirFunctionLowerer::lower_memory_store_inst(
