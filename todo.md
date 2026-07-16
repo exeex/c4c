@@ -8,20 +8,19 @@ Current Step Title: Select One Carrier-Backed Collector Seam
 
 ## Just Finished
 
-Close rejected after accepted commit `a16666851`: durable in-scope collector
-migration work remains.
+Completed the ninth one-field collector migration for plan Steps 1-3:
+`LirCmpOp.lhs` in `collect_inst_refs` now uses
+`collect_operand_ref(op.lhs, refs)`.
 
-Repaired the current route to target `LirCmpOp.lhs` in `collect_inst_refs`.
+Added focused dead-internal reachability coverage proving lhs `LinkNameId`
+identity keeps the semantic helper before stale rendered text, while legacy raw
+lhs text still scans for compatibility.
 
 ## Suggested Next
 
-Execute the next one-field collector migration for plan Steps 1-3:
-`LirCmpOp.lhs` in `collect_inst_refs`.
-
-Step 1 should confirm `LirCmpOp.lhs` has the existing semantic carrier needed
-to replace raw `S(op.lhs)` scanning with `collect_operand_ref(op.lhs, refs)`.
-If confirmed, keep the implementation packet limited to that exact field and
-leave every other raw scanner path unchanged.
+Supervisor should decide whether the repaired runbook has another bounded
+one-field collector migration remaining or should enter the lifecycle
+close/blocker loop.
 
 ## Watchouts
 
@@ -33,9 +32,11 @@ from rendered names or text. Preserve legacy raw compatibility for
 
 ## Proof
 
-Required proof for the next packet:
+Proof run for this packet:
 
 ```
 { cmake --build build && ctest --test-dir build -R '^frontend_hir_tests$' --output-on-failure; } > test_after.log 2>&1
 git diff --check
 ```
+
+Both passed. Log path: `test_after.log`.
