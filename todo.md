@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/846_lir_family_overloaded_verifier_dispatch_printer.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Decide Next 846 Packet Or 847 Handoff
+Current Step ID: 2
+Current Step Title: Add The Bounded Family Overload
 
 # Current Packet
 
@@ -41,12 +41,27 @@ Completed the selected `LirAbsOp.int_type` packet:
 - Added focused stale-display coverage proving scalar abs verification and
   printing use native integer width authority, not mutable display text.
 
+Completed Step 5 inventory for the next 846 packet. 846 still owns generic
+family consumers, so the next selected surface is `LirSelectOp.type_str`
+verifier/printer:
+
+- `src/codegen/lir/verify.cpp` still verifies the selected field with
+  `require_module_type_ref(mod, op->type_str, "LirSelectOp.type_str")`.
+- `src/codegen/lir/lir_printer.cpp` still renders the selected field with
+  `require_type_ref(op->type_str, "LirSelectOp.type_str")`.
+- `verify_select_op_authority` already treats `op.type_str.kind() ==
+  LirTypeKind::Integer` as the scalar integer authority claim and rejects a
+  native scalar select result when the selected type is not integer.
+- Focused scalar select coverage exists in
+  `tests/frontend/frontend_lir_call_type_ref_test.cpp`, with backend BIR
+  receipt/rejection coverage in `backend_lir_to_bir_interface`.
+
 ## Suggested Next
 
-Execute `plan.md` Step 5: inventory remaining universal classifier, renderer,
-mutable semantic string, and implicit conversion callers. Classify the next
-exact 846-owned consumer or record the handoff/blocker decision if no 846
-consumer is ready.
+Execute `plan.md` Step 2 and Step 3 for the selected
+`LirSelectOp.type_str` surface. Reuse or extend the bounded scalar integer
+type-ref requirement as appropriate, then migrate only the selected select
+verifier/printer callsites.
 
 ## Watchouts
 
@@ -58,7 +73,8 @@ Raw-BIR receipt, 734 receiver repair, or 797 convergence.
 Non-goals for the next packet: no broad verifier/printer rewrite, no generic
 helper deletion unless no semantic callers remain, no dispatch migration beyond
 one selected surface, no producer/carrier repair, and no expectation downgrade
-or testcase-shaped special case.
+or testcase-shaped special case. Do not migrate `LirCmpOp`, `LirBinOp`, vector,
+aggregate, load/store, or cast type refs in the select packet.
 
 ## Proof
 
@@ -72,5 +88,10 @@ Completed Step 2 through Step 4 proof:
 - `ctest --test-dir build -R '^backend_lir_to_bir_interface$' --output-on-failure`
 - `git diff --check`
 
-Step 5 is a trace/lifecycle decision unless it selects and records another
-bounded implementation packet.
+Step 5 trace selected `LirSelectOp.type_str` for the next bounded packet.
+Expected code-changing proof for that packet:
+
+- `cmake --build build`
+- `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
+- `ctest --test-dir build -R '^backend_lir_to_bir_interface$' --output-on-failure`
+- `git diff --check`
