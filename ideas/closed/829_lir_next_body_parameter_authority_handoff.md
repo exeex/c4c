@@ -1,6 +1,6 @@
 # LIR Next Body-Parameter Authority Handoff
 
-Status: Open
+Status: Closed
 Type: bounded LIR producer/schema/verifier authority publication
 Predecessor: `ideas/open/734_lir_to_new_bir_container_completeness.md`
 Consumer: `ideas/open/734_lir_to_new_bir_container_completeness.md`
@@ -97,3 +97,30 @@ signatures, rendered operands, diagnostics, or compatibility fields.
 - Preserved evidence: no 829 code commit exists. `test_before.log` remains the
   focused 1/1 before baseline; do not replace either canonical regression log
   during this lifecycle switch.
+
+## Completion Record
+
+Disposition: capability complete.
+
+Step 2 was implemented and committed as `d7f6ebcc8` (`Publish argument one body
+parameter authority`). The accepted handoff to 734 is exactly one receiver
+tuple: the current-function `DirectScalar` parameter 1 value, owner, parameter
+index, type, ABI, and explicit `FixedDirectCallArgument1` role, used unchanged
+as fixed direct-call argument 1 at `LirCallOp.structured_args[1]` of a direct,
+non-variadic, specified two-parameter call. The call argument/type/signature
+coherence prerequisite was established by closed 830, and 829 verified the
+body-parameter authority tuple itself.
+
+Accepted proof:
+
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$' ) > test_before.log 2>&1`
+
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$' ) > test_after.log 2>&1 && git diff --check`
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: before 1/1, after 1/1, no new failures; `git diff --check` passed.
+
+734 return action: consume the exact tuple above as the next body-parameter
+authority handoff. Raw-BIR receipt, importer, container, builder, and verifier
+changes remain separate 734 work and are not claimed by this closure.
