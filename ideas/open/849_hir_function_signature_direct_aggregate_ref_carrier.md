@@ -73,3 +73,32 @@ occurrence population and not LIR lowering.
 - Reject named-test-only routing, expectation downgrades, malformed-case
   acceptance, or a renamed abstraction that still resolves identity from
   forbidden metadata.
+
+## Resumption Record: upstream producer/order blocker
+
+Status: parked by lifecycle switch to
+`ideas/open/850_hir_signature_aggregate_ref_producer_order.md`.
+
+- Last accepted progress: Step 1 — **Locate the signature semantic carrier
+  seam** — is accepted at `109ea13f4` (`plan: locate direct signature aggregate
+  ref carrier seam`). It identified the `lower_function` carrier/API boundary
+  and the direct HIR-definition validation contract.
+- Interrupted step: Step 2 — **Add the bounded direct carrier/API**. No Step 2
+  implementation is accepted, and there is no accepted 849 code or proof.
+- Rejected fact: every production `lower_function` caller supplies the default
+  null carrier. A carrier that merely validates then holds/discards an input
+  cannot deliver a definition-backed fact to either lowering site and is not
+  capability progress.
+- Blocker outside this source's API-delivery scope: no production
+  semantic/order path provides an already definition-backed, module-issued
+  `HirAggregateRef` at function-signature construction before
+  `lower_function` is called. That producer/order work must precede this
+  carrier delivery route.
+- Exact return point: after 850 accepts a production direct fact and focused
+  evidence, reactivate 849 at Step 2 and wire that fact into the already
+  identified `lower_function` carrier/API boundary. Do not redo Step 1 and do
+  not add parser/`TypeSpec`/owner/tag/text lookup, a `Node*` map,
+  `qtype_from` attachment, or LIR work.
+- Parent record: 848 remains parked. Its accepted Step 2a implementation and
+  focused `frontend_hir_tests` proof are `359a9b94b`; 849 has no accepted code
+  or proof to add to that record.
