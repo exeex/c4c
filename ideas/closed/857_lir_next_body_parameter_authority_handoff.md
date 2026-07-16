@@ -1,6 +1,6 @@
 # LIR Next Body-Parameter Authority Handoff
 
-Status: Open
+Status: Closed
 Type: bounded LIR producer/schema/verifier authority publication
 Predecessor: `ideas/open/734_lir_to_new_bir_container_completeness.md`
 Consumer: `ideas/open/734_lir_to_new_bir_container_completeness.md`
@@ -73,3 +73,48 @@ producer/schema/verifier layer before Raw-BIR receipt is authorized.
   rejection, or fail-closed behavior for nonselected rows.
 - Reject absorbing memory/VA, aggregate/vector, module/type/global/metadata,
   residual instruction/terminator, inline-assembly, or any second row.
+
+## Closure Record
+
+Disposition: capability complete for this bounded producer/schema/verifier
+handoff. Implementation commit `6c11a15c1` proves exactly one selected row:
+`LirBinOp.scalar_lhs_parameter_authority` for a current-function
+`DirectScalar` floating parameter used as the LHS of binary `fadd`, with
+producer shape equivalent to `return x + 2.0;`.
+
+The handed-off native tuple is the original parameter `LirValueId`, current
+`LirFunction.link_name_id` owner, parameter index, matching floating
+`LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`, and explicit
+`LirScalarBinaryParameterRole::Lhs`. The consumer relation is `LirBinOp`
+opcode `fadd`; `lhs` is the same parameter SSA/value as the authority tuple;
+`type_str` matches the authority type; and `rhs` is a nonselected scalar
+operand.
+
+The verifier admits only the selected floating `fadd` LHS authority, requires
+a nonselected scalar RHS, and rejects duplicate selected floating-`fadd` LHS
+consumers in the current function. Malformed coverage rejects
+omitted/missing, invalid, duplicate definition, foreign owner, wrong index,
+wrong type, wrong ABI, wrong role, non-`fadd`, LHS mismatch, type mismatch,
+selected-RHS incoherence, and duplicate selected consumer forms. Neighboring
+`fmul` negative coverage uses nonselected `fsub` instead of now-selected
+`fadd`.
+
+Accepted proof:
+
+```
+( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_function_signature_type_ref$' ) > test_after.log 2>&1 && git diff --check
+```
+
+The focused regression guard passed 1/1. The broader shared-verifier matching
+before/after guard
+
+```
+( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_' )
+```
+
+passed 7/7 before and after.
+
+Return to `ideas/open/734_lir_to_new_bir_container_completeness.md` for a
+future bounded Raw-BIR receiver packet that receives only this selected
+binary-`fadd` LHS DirectScalar parameter-use row into typed Raw BIR. Raw-BIR
+receiver implementation did not start here.

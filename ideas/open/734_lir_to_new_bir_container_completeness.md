@@ -2025,3 +2025,42 @@ runbook only for that matching typed Raw-BIR receiver row. Do not repeat Step
 7.45 or receive another parameter, memory/VA, aggregate/vector,
 module/type/global, instruction/terminator, or inline-assembly form without
 its separately scoped first-owner handoff.
+
+## Resumption Record: binary fadd LHS parameter authority completion
+
+Closed idea 857 completed the next body-parameter producer prerequisite with
+accepted implementation `6c11a15c1`. It publishes only
+`LirBinOp.scalar_lhs_parameter_authority` for a current-function
+`DirectScalar` floating parameter used as the LHS of binary floating add
+`fadd`, with producer shape equivalent to `return x + 2.0;`.
+
+The native authority tuple includes the original parameter `LirValueId`,
+current `LirFunction.link_name_id` owner, parameter index, matching floating
+`LirTypeRef`, `LirNativeBodyParameterAbi::DirectScalar`, and explicit
+`LirScalarBinaryParameterRole::Lhs`. The consumer relation is binary
+`LirBinOp` opcode `fadd`, with `lhs` equal to the same parameter SSA/value,
+`type_str` matching the authority type, and `rhs` a nonselected scalar
+operand.
+
+Malformed coverage rejects omitted/missing, invalid, duplicate definition,
+foreign owner, wrong index, wrong type, wrong ABI, wrong role, non-`fadd`, LHS
+mismatch, type mismatch, selected-RHS incoherence, and duplicate selected
+consumer forms. The neighboring `fmul` negative now uses nonselected `fsub`
+instead of the newly selected `fadd` row.
+
+Accepted proof is the focused
+`^frontend_lir_function_signature_type_ref$` producer/verifier proof with
+regression guard and `git diff --check`, plus the broader shared-verifier
+`^frontend_lir_` before/after guard with 7/7 passing on both sides.
+
+Exact return action: repair and execute one bounded Raw-BIR receiver packet
+for this selected binary-`fadd` LHS DirectScalar parameter-use row only.
+Consume only the handed-off `DirectScalar` binary-`fadd` LHS parameter
+authority row; preserve the parameter tuple and binary consumer coherence in
+typed Raw BIR, importer dispatch, reachable verifier path, and transactional
+positive/negative coverage. Do not repeat Step 7.45, claim Raw-BIR receipt
+from 857 before that receiver packet, receive floating binary-`fadd` RHS,
+other floating binary parameter uses, memory/VA, aggregate/vector,
+module/type/global/metadata, residual instruction/terminator, inline-assembly,
+ABI-expanded or aggregate parameters, direct-call argument positions beyond
+the bounded accepted slots, generic parameter sweeps, or any other family.
