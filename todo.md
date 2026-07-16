@@ -8,16 +8,19 @@ Current Step Title: Retire Duplicate Vector Mirrors For Migrated Consumers
 
 ## Just Finished
 
-Step 3 is complete for the currently named migrated consumers: required
-scalar-to-vector `LirInsertElementOp`, direct vector-index `LirExtractElementOp`,
-and required scalar-splat `LirShuffleVectorOp`.
+Completed the first bounded `plan.md` Step 4 packet. Required
+scalar-to-vector `LirInsertElementOp` no longer treats row-local
+`result_shape` / `first_vector_shape` mirrors as semantic authority; it reads
+the module-owned vector store for lane and element facts and still checks
+`vec_type` / `elem_type` as compatibility mirrors. Nearby verifier coverage now
+accepts a stale insert shape mirror when the vector-store fact and operation
+mirrors remain coherent.
 
 ## Suggested Next
 
-Start Step 4 with one narrow retirement gate. First candidate: demote or remove
-one row-local vector shape mirror for a fully migrated consumer only where the
-verifier already reads the module-owned vector store with equivalent malformed
-coverage.
+Select the next Step 4 retirement gate only after supervisor review. Likely
+bounded candidates are row-local shape mirror demotion for direct
+`LirExtractElementOp` or required scalar-splat `LirShuffleVectorOp`.
 
 ## Watchouts
 
@@ -29,12 +32,16 @@ coverage.
   mask lane-count/`mask_type` and poison second-shape paths, plus direct
   `LirExtractElementOp` vector index shape. Nonselected producers are
   intentionally unchanged.
+- Required `LirInsertElementOp` row-local shape mirrors are now demoted; do not
+  reintroduce rejection based on those mirrors while vector-store facts remain
+  coherent.
 - Aggregate vector elements now fail closed unless their typed element ref is
   backed by an accepted aggregate-store fact from the 838 route; do not add a
   separate aggregate owner for vector work.
 
 ## Proof
 
-Step 3 final packet passed:
-`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_native_vector_authority|llvm_gcc_c_torture_src_(pr60960_c|scal_to_vec1_c|scal_to_vec2_c))$' ) > test_after.log 2>&1`.
-Regression guard against matching `test_before.log`: PASS.
+Passed focused proof:
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_native_vector_authority$' ) > test_after.log 2>&1`.
+Additional guard passed:
+`ctest --test-dir build -j --output-on-failure -R 'llvm_gcc_c_torture_src_(pr60960_c|scal_to_vec1_c|scal_to_vec2_c)$'`.

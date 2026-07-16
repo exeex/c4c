@@ -3310,7 +3310,8 @@ void verify_function_value_ownership(const LirModule& mod,
                                            const LirOperand& first, const LirOperand* second,
                                            const LirOperand* element, const LirOperand* index,
                                            const LirTypeRef* index_type,
-                                           const LirTypeRef& vector_type) {
+                                           const LirTypeRef& vector_type,
+                                           bool check_vector_shapes = true) {
     if (!op.native_vector_authority) return;
     const LirNativeVectorAuthority& authority = *op.native_vector_authority;
     if (authority.owner != function.link_name_id || authority.owner == kInvalidLinkName ||
@@ -3340,13 +3341,15 @@ void verify_function_value_ownership(const LirModule& mod,
           mirror.str() != "<" + std::to_string(shape.lane_count) + " x " + shape.element_type.str() + ">")
         fail_verify(std::string(name) + ".native_vector_authority." + std::string(field), "must have a coherent vector display mirror");
     };
-    check_shape(authority.result_shape, vector_type, "result_shape");
-    if (!authority.first_vector_shape) fail_verify(std::string(name) + ".native_vector_authority.first_vector_shape", "must be present");
-    check_shape(*authority.first_vector_shape, vector_type, "first_vector_shape");
-    if (second) {
-      if (!authority.second_vector_shape)
-        fail_verify(std::string(name) + ".native_vector_authority.second_vector_shape", "must be present");
-      check_shape(*authority.second_vector_shape, vector_type, "second_vector_shape");
+    if (check_vector_shapes) {
+      check_shape(authority.result_shape, vector_type, "result_shape");
+      if (!authority.first_vector_shape) fail_verify(std::string(name) + ".native_vector_authority.first_vector_shape", "must be present");
+      check_shape(*authority.first_vector_shape, vector_type, "first_vector_shape");
+      if (second) {
+        if (!authority.second_vector_shape)
+          fail_verify(std::string(name) + ".native_vector_authority.second_vector_shape", "must be present");
+        check_shape(*authority.second_vector_shape, vector_type, "second_vector_shape");
+      }
     }
     if (index) {
       if (!authority.index || !index_type ||
@@ -3401,16 +3404,6 @@ void verify_function_value_ownership(const LirModule& mod,
             op.elem_type.str() != vector->element_type.str()) {
           fail_verify("LirInsertElementOp.elem_type",
                       "must match the scalar-to-vector splat vector store element type");
-        }
-        if (authority.result_shape.lane_count != vector->lane_count ||
-            authority.result_shape.element_type != vector->element_type ||
-            authority.result_shape.element_type.str() != vector->element_type.str() ||
-            !authority.first_vector_shape ||
-            authority.first_vector_shape->lane_count != vector->lane_count ||
-            authority.first_vector_shape->element_type != vector->element_type ||
-            authority.first_vector_shape->element_type.str() != vector->element_type.str()) {
-          fail_verify("LirInsertElementOp.native_vector_authority.vector_ref",
-                      "must agree with the compatibility vector shape mirrors");
         }
       };
   const auto verify_extract_vector_store =
@@ -3507,7 +3500,9 @@ void verify_function_value_ownership(const LirModule& mod,
         fail_verify("LirInsertElementOp.native_vector_authority",
                     "is required for the scalar-to-vector splat precursor");
       }
-      verify_vector_authority(*op, "LirInsertElementOp", op->vec, nullptr, &op->elem, &op->index, &index_type, op->vec_type);
+      const bool check_vector_shapes = !op->requires_native_vector_authority;
+      verify_vector_authority(*op, "LirInsertElementOp", op->vec, nullptr, &op->elem,
+                              &op->index, &index_type, op->vec_type, check_vector_shapes);
       if (op->requires_native_vector_authority) {
         const auto& authority = *op->native_vector_authority;
         if (!authority.index || !op->index.integer_immediate() ||

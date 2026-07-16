@@ -203,10 +203,10 @@ void test_native_vector_authority_verifier_boundary() {
       .native_vector_authority->element_use = lir::LirValueId{4};
   expect_rejected(std::move(selected_foreign_element), "selected splat must reject a foreign element ID");
 
-  auto selected_bad_shape = selected_scalar_to_vector_splat_module();
-  std::get<lir::LirInsertElementOp>(selected_bad_shape.functions[0].blocks[0].insts[0])
+  auto selected_stale_shape_mirror = selected_scalar_to_vector_splat_module();
+  std::get<lir::LirInsertElementOp>(selected_stale_shape_mirror.functions[0].blocks[0].insts[0])
       .native_vector_authority->first_vector_shape->lane_count = 5;
-  expect_rejected(std::move(selected_bad_shape), "selected splat must reject a store-mismatched vector shape");
+  lir::verify_module(selected_stale_shape_mirror);
 
   auto selected_missing_vector_ref = selected_scalar_to_vector_splat_module();
   std::get<lir::LirInsertElementOp>(selected_missing_vector_ref.functions[0].blocks[0].insts[0])
