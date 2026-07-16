@@ -75,3 +75,33 @@ and improperly widen 830.
   or presentation-derived change as part of this blocker.
 - Reject closing or returning to 830 from focused proof alone without accepted
   comparable full-suite evidence.
+
+## Resumption Record: ordered repair successors after Step 1
+
+Status: parked by lifecycle switch to
+`ideas/open/832_hir_aggregate_owner_function_parameter_crash_repair.md`.
+
+- Last accepted progress: Step 1 is complete, recorded in `ba7958ee4`.
+  Fresh exact-subset proof failed 14/14, preserving one `frontend_hir_tests`
+  segfault and the 13 truthiness-authority rejections.
+- Completed step: Step 1 — **Establish first-owner decomposition from exact
+  reproductions**.
+- Decomposition result: the HIR crash first owns at
+  `typespec_aggregate_owner_key`, reached through `lir_owned_type_spec` and
+  `populate_lir_function_params` in
+  `test_hir_to_lir_object_helper_callees_prefer_link_name_ids`; the separate
+  torture family first owns at unchanged
+  `verify_truthiness_lhs_parameter_authority`, missing native
+  `LirCmpOp.truthiness_lhs_parameter_authority` for a direct-scalar truthiness
+  LHS. A clean backend-enabled `f0fc85e4f^` reproduces the HIR crash. No common
+  implementation seam exists.
+- Ordered successors: first
+  `ideas/open/832_hir_aggregate_owner_function_parameter_crash_repair.md`,
+  then
+  `ideas/open/833_lir_truthiness_lhs_parameter_authority_completion.md`.
+  The routes must not be combined.
+- Exact return point: after 832 completes accepted focused proof, reactivate
+  831 solely to switch/activate 833. After 833 completes, reactivate 831 at
+  Step 2 to collect both accepted proofs, then execute Step 3 comparable full
+  suite and return 830 unchanged at Step 3. Do not claim baseline clearance
+  until that full-suite gate is accepted.

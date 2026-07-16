@@ -1,77 +1,71 @@
-# Pre-existing Baseline Failure-Family Decomposition Blocker Runbook
+# HIR Aggregate-Owner Function-Parameter Crash Repair Runbook
 
 Status: Active
-Source Idea: ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md
-Switched from: 830 Step 3 rejected-baseline gate
+Source Idea: ideas/open/832_hir_aggregate_owner_function_parameter_crash_repair.md
+Switched from: 831 Step 1 ordered-successor decision
 
 ## Purpose
 
-Keep 830's accepted direct-call argument-1 slice parked while independently
-pre-existing baseline failures are assigned to their first owning layer.
+Repair only the pre-existing HIR aggregate-owner/function-parameter crash
+before 831 activates the separately owned truthiness-authority route.
 
 ## Core Rule
 
-Treat the HIR segfault and truthiness-parameter verifier failures as separate
-implementation families unless concrete evidence proves one shared first-owner
-seam. Do not modify 830 while this blocker is active.
+Preserve native aggregate ownership and type-specification invariants. Do not
+hide the crash with a fallback or widen into truthiness, direct-call, or 830.
 
 ## Read First
 
-- `ideas/open/830_lir_direct_call_structured_argument_identity_prerequisite.md`
-- `test_baseline.log` and `test_baseline.new.log`
-- `f0fc85e4f^` provenance evidence supplied with this switch
+- `ideas/open/831_preexisting_baseline_failure_family_decomposition_blocker.md`
+- `test_hir_to_lir_object_helper_callees_prefer_link_name_ids`
+- `typespec_aggregate_owner_key`, `lir_owned_type_spec`, and
+  `populate_lir_function_params`
 
 ## Non-Goals
 
-- Direct-call argument identity/type production, 829 authority publication,
-  Raw-BIR, generic calls, or any repair by expectation/harness weakening.
-- A mixed implementation patch for the two failure families.
+- Truthiness-LHS authority, GCC torture work, direct-call identity, 830/829,
+  Raw-BIR, generic calls, and broad type-system or signature redesign.
 
 ## Ordered Steps
 
-### Step 1 - Establish first-owner decomposition from exact reproductions
+### Step 1 - State the aggregate-owner parameter-lowering invariant
 
-Goal: preserve the supplied pre-830 provenance and determine whether the HIR
-segfault and truthiness-parameter verifier failures can share an honest repair
-owner.
-
-Actions:
-
-- run the exact 14-failure subset and inspect only the first owning
-  failure/provenance seam for each family;
-- confirm the HIR segfault independently on clean `f0fc85e4f^` with backend
-  enabled and confirm the torture diagnostics use the unchanged truthiness
-  verifier route; and
-- if the owners differ, have lifecycle create ordered, separately scoped repair
-  successors before any implementation. If a shared seam is evidenced, record
-  that seam and narrow the next packet to it.
-
-Completion check: each family has an evidenced first owner and either a proven
-shared bounded repair seam or named separate repair successors.
-
-### Step 2 - Repair the selected owner route(s) without contract weakening
-
-Goal: obtain accepted focused proof for each separately scoped owner route.
+Goal: identify exactly why the named HIR test reaches
+`typespec_aggregate_owner_key` without a valid aggregate owner.
 
 Actions:
 
-- execute only the successor route(s) authorized by Step 1; and
-- preserve test/harness contracts and return their accepted proof to this
-  blocker.
+- trace the selected function-parameter path through `lir_owned_type_spec`
+  and `populate_lir_function_params` to the first invalid ownership fact;
+- distinguish valid aggregate-owned parameter construction from missing,
+  foreign, and type-incoherent owner cases; and
+- select the smallest construction or verifier seam that can repair this
+  ownership relation without a null/default fallback.
 
-Completion check: every failure family has accepted focused owner proof; no
-mixed or testcase-shaped baseline workaround was used.
+Completion check: a native ownership/type-specification contract and bounded
+repair seam are explicit; no truthiness or 830 work is admitted.
 
-### Step 3 - Obtain comparable baseline proof and return 830
+### Step 2 - Repair and verify the selected owner relation
 
-Goal: clear the rejected baseline gate without claiming 830 capability work.
+Goal: prevent the crash through coherent native ownership enforcement.
 
 Actions:
 
-- obtain supervisor-owned comparable full-suite evidence against the accepted
-  3038/3038 baseline; and
-- record clearance, then reactivate 830 at unchanged Step 3 solely to accept
-  that gate, followed by its existing Step 4 and 829 Step 2 return.
+- implement only the Step 1 selected construction/verifier correction; and
+- add nearby positive and malformed/foreign/missing/incoherent coverage.
 
-Completion check: accepted comparable proof shows no new baseline problem and
-the parent return point is durable.
+Completion check: valid aggregate-owned parameters lower without a crash and
+invalid ownership fails closed.
+
+### Step 3 - Prove the HIR route and return to 831
+
+Goal: provide accepted focused evidence for the first ordered successor.
+
+Actions:
+
+- run a fresh build and focused `frontend_hir_tests` proof selected by the
+  supervisor; and
+- record the accepted result, then reactivate 831 solely to activate 833.
+
+Completion check: the named test clears the former crash with accepted focused
+proof; no full baseline clearance is claimed.
