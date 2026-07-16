@@ -9733,6 +9733,35 @@ lir::LirModule direct_void_call_module() {
   return module;
 }
 
+void attach_direct_void_function_signature_ref(lir::LirModule& module) {
+  lir::LirFunctionSignatureStoreEntry caller_entry;
+  caller_entry.return_type_ref = lir::LirTypeRef("void");
+  caller_entry.has_void_param_list = true;
+  module.functions[0].function_signature_ref =
+      module.register_function_signature(std::move(caller_entry));
+
+  lir::LirFunctionSignatureStoreEntry recursive_entry;
+  recursive_entry.return_type_ref = lir::LirTypeRef("void");
+  recursive_entry.has_void_param_list = true;
+  const lir::LirFunctionSignatureRef recursive_ref =
+      module.register_function_signature(std::move(recursive_entry));
+  module.functions[1].function_signature_ref = recursive_ref;
+  auto& recursive_call =
+      std::get<lir::LirCallOp>(module.functions[1].blocks[0].insts[0]);
+  recursive_call.callee_signature_ref = recursive_ref;
+
+  lir::LirFunctionSignatureStoreEntry target_entry;
+  target_entry.return_type_ref = lir::LirTypeRef("void");
+  target_entry.has_void_param_list = true;
+  const lir::LirFunctionSignatureRef target_ref =
+      module.register_function_signature(std::move(target_entry));
+  module.functions[2].function_signature_ref = target_ref;
+  module.functions[3].function_signature_ref = target_ref;
+  auto& forward_call =
+      std::get<lir::LirCallOp>(module.functions[0].blocks[0].insts[0]);
+  forward_call.callee_signature_ref = target_ref;
+}
+
 void expect_direct_void_call_view(const bir::ModuleView& view,
                                   std::size_t caller_index,
                                   bir::FunctionId expected_target,
@@ -9781,6 +9810,41 @@ void test_direct_zero_argument_void_call_receipt() {
   expect_direct_void_call_view(canonical.value().view(), 1,
                                canonical_functions[1],
                                "Canonical recursive call");
+
+  auto store_backed = direct_void_call_module();
+  attach_direct_void_function_signature_ref(store_backed);
+  auto& missing_retained_call =
+      std::get<lir::LirCallOp>(store_backed.functions[0].blocks[0].insts[0]);
+  missing_retained_call.callee =
+      lir::LirOperand::global("@direct_void_target",
+                              missing_retained_call.direct_callee_link_name_id);
+  missing_retained_call.callee_signature.reset();
+  auto raw_missing_retained = bir::lower_lir_to_raw_bir(store_backed);
+  expect(raw_missing_retained.has_value() &&
+             bir::FoundationVerifier::verify(raw_missing_retained.value()).ok(),
+         "direct void call must use module signature store when retained signature is absent");
+  const auto raw_store_functions = raw_missing_retained.value().view().functions();
+  expect_direct_void_call_view(raw_missing_retained.value().view(), 0,
+                               raw_store_functions[2],
+                               "Raw store-backed forward call");
+  auto canonical_missing_retained = bir::lower_lir_to_canonical_bir(store_backed);
+  expect(canonical_missing_retained.has_value(),
+         "store-backed direct void call without retained signature must canonicalize");
+
+  auto stale_text = direct_void_call_module();
+  attach_direct_void_function_signature_ref(stale_text);
+  auto& stale_text_call =
+      std::get<lir::LirCallOp>(stale_text.functions[0].blocks[0].insts[0]);
+  stale_text_call.callee =
+      lir::LirOperand::global("@direct_void_target",
+                              stale_text_call.direct_callee_link_name_id);
+  stale_text_call.callee_type_suffix = "(i32 stale text only)";
+  stale_text_call.args_str = "i64 stale text only";
+  stale_text_call.callee_signature->fixed_param_types = {"i32 stale text"};
+  auto raw_stale_text = bir::lower_lir_to_raw_bir(stale_text);
+  expect(raw_stale_text.has_value() &&
+             bir::FoundationVerifier::verify(raw_stale_text.value()).ok(),
+         "direct void call must ignore retained text when signature ref resolves");
 }
 
 void test_direct_zero_argument_void_call_builder_contract() {
@@ -10039,6 +10103,11 @@ void test_direct_zero_argument_void_call_rejections() {
   rejected([](auto&, auto& call) { call.callee_signature.reset(); },
            "missing structured callee signature must reject");
   rejected([](auto&, auto& call) {
+             call.callee_signature_ref = lir::LirFunctionSignatureRef{999};
+             call.callee_signature.reset();
+           },
+           "missing retained callee signature without a resolved store entry must reject");
+  rejected([](auto&, auto& call) {
              call.callee_signature->return_type_ref.reset();
            },
            "missing typed callee return must reject");
@@ -10068,6 +10137,43 @@ void test_direct_zero_argument_void_call_rejections() {
                  lir::LirTypeRef::integer(32);
            },
            "target signature disagreement must reject atomically");
+
+  const auto store_rejected = [](auto mutate, const std::string& message) {
+    auto module = direct_void_call_module();
+    attach_direct_void_function_signature_ref(module);
+    auto& call = std::get<lir::LirCallOp>(module.functions[0].blocks[0].insts[0]);
+    mutate(module, call);
+    const auto raw = bir::lower_lir_to_raw_bir(module);
+    expect(!raw.has_value() &&
+               raw.error().code ==
+                   bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Raw rollback)");
+    const auto canonical = bir::lower_lir_to_canonical_bir(module);
+    expect(!canonical.has_value() &&
+               canonical.error().code ==
+                   bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Canonical rollback)");
+  };
+  store_rejected([](auto&, auto& call) {
+                   call.callee_signature->return_type_ref =
+                       lir::LirTypeRef::integer(32);
+                 },
+                 "retained/store direct void return mismatch must reject");
+  store_rejected([](auto& module, auto& call) {
+                   module.function_signature_store[call.callee_signature_ref.value]
+                       .return_type_ref = lir::LirTypeRef::integer(32);
+                 },
+                 "signature-store direct void return mismatch must reject");
+  store_rejected([](auto& module, auto& call) {
+                   module.function_signature_store[call.callee_signature_ref.value]
+                       .fixed_param_type_refs = {lir::LirTypeRef::integer(32)};
+                 },
+                 "signature-store direct void parameter mismatch must reject");
+  store_rejected([](auto& module, auto&) {
+                   module.functions[3].signature_return_type_ref =
+                       lir::LirTypeRef::integer(32);
+                 },
+                 "target direct void signature mismatch must reject with store-backed call");
 }
 
 lir::LirFunction direct_integer_function(std::string name, bool declaration,

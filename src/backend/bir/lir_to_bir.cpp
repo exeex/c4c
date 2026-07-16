@@ -454,45 +454,6 @@ std::optional<std::vector<Type>> lower_function_parameter_types(
   return lowered;
 }
 
-bool exact_direct_void_call(const LirModule& module, const LirCallOp& call) {
-  if (!call.result.empty() || call.result.has_authority() ||
-      call.return_type.kind() != codegen::lir::LirTypeKind::Void ||
-      call.return_type.str() != "void" ||
-      call.return_ext_attr != LirExtAttr::None ||
-      call.direct_callee_link_name_id == c4c::kInvalidLinkName ||
-      !call.structured_args.empty() || !call.arg_type_refs.empty() ||
-      !call.callee_signature)
-    return false;
-
-  const auto return_type = lower_lir_type(module, call.return_type);
-  const auto& signature = *call.callee_signature;
-  if (!return_type || return_type->kind != TypeKind::Void ||
-      !signature.return_type_ref ||
-      signature.return_type_ref->kind() !=
-          codegen::lir::LirTypeKind::Void ||
-      signature.return_type_ref->str() != "void" ||
-      *signature.return_type_ref != call.return_type ||
-      signature.return_ext_attr != LirExtAttr::None ||
-      !signature.fixed_param_types.empty() ||
-      !signature.fixed_param_type_refs.empty() || signature.is_variadic ||
-      signature.has_unspecified_params)
-    return false;
-
-  bool resolved = false;
-  for (const auto& target : module.functions) {
-    if (target.link_name_id != call.direct_callee_link_name_id) continue;
-    const auto target_return = lower_signature_type(
-        module, target.return_type, target.signature_return_type_ref);
-    const auto target_params = lower_function_parameter_types(module, target);
-    if (!target_return || target_return->kind != TypeKind::Void ||
-        !target_params || !target_params->empty() ||
-        target.signature_is_variadic)
-      return false;
-    resolved = true;
-  }
-  return resolved;
-}
-
 const codegen::lir::LirFunctionSignatureStoreEntry* resolved_call_signature(
     const LirModule& module, const LirCallOp& call) {
   if (!call.callee_signature_ref.valid()) return nullptr;
@@ -511,6 +472,64 @@ bool retained_signature_matches_store(
          retained.is_variadic == stored.is_variadic &&
          retained.has_void_param_list == stored.has_void_param_list &&
          !retained.has_unspecified_params;
+}
+
+bool exact_direct_void_call(const LirModule& module, const LirCallOp& call) {
+  if (!call.result.empty() || call.result.has_authority() ||
+      call.return_type.kind() != codegen::lir::LirTypeKind::Void ||
+      call.return_type.str() != "void" ||
+      call.return_ext_attr != LirExtAttr::None ||
+      call.direct_callee_link_name_id == c4c::kInvalidLinkName ||
+      !call.structured_args.empty() || !call.arg_type_refs.empty())
+    return false;
+
+  const auto return_type = lower_lir_type(module, call.return_type);
+  const auto* stored_signature = resolved_call_signature(module, call);
+  if (stored_signature != nullptr && call.callee_signature.has_value() &&
+      !retained_signature_matches_store(*call.callee_signature, *stored_signature)) {
+    return false;
+  }
+  if (stored_signature == nullptr && !call.callee_signature.has_value()) return false;
+
+  const auto return_ref = stored_signature != nullptr
+                              ? stored_signature->return_type_ref
+                              : call.callee_signature->return_type_ref;
+  const auto return_ext_attr = stored_signature != nullptr
+                                   ? stored_signature->return_ext_attr
+                                   : call.callee_signature->return_ext_attr;
+  const auto is_variadic = stored_signature != nullptr
+                               ? stored_signature->is_variadic
+                               : call.callee_signature->is_variadic;
+  const auto has_unspecified_params =
+      stored_signature == nullptr && call.callee_signature->has_unspecified_params;
+  const auto has_void_param_list = stored_signature != nullptr
+                                       ? stored_signature->has_void_param_list
+                                       : call.callee_signature->has_void_param_list;
+  const auto& fixed_param_type_refs = stored_signature != nullptr
+                                          ? stored_signature->fixed_param_type_refs
+                                          : call.callee_signature->fixed_param_type_refs;
+  if (!return_type || return_type->kind != TypeKind::Void ||
+      !return_ref || return_ref->kind() != codegen::lir::LirTypeKind::Void ||
+      return_ref->str() != "void" || *return_ref != call.return_type ||
+      return_ext_attr != LirExtAttr::None || !fixed_param_type_refs.empty() ||
+      is_variadic || has_unspecified_params || !has_void_param_list)
+    return false;
+  if (stored_signature == nullptr && !call.callee_signature->fixed_param_types.empty())
+    return false;
+
+  bool resolved = false;
+  for (const auto& target : module.functions) {
+    if (target.link_name_id != call.direct_callee_link_name_id) continue;
+    const auto target_return = lower_signature_type(
+        module, target.return_type, target.signature_return_type_ref);
+    const auto target_params = lower_function_parameter_types(module, target);
+    if (!target_return || target_return->kind != TypeKind::Void ||
+        !target_params || !target_params->empty() ||
+        target.signature_is_variadic)
+      return false;
+    resolved = true;
+  }
+  return resolved;
 }
 
 bool exact_direct_integer_call(

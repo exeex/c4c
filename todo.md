@@ -8,12 +8,13 @@ Current Step Title: Migrate call composition to signature refs
 
 ## Just Finished
 
-- Step 3 BIR store-backed direct integer call slice completed: the compiled
-  monolithic `exact_direct_integer_call` consumer now resolves
+- Step 3 BIR store-backed direct void call slice completed: the compiled
+  monolithic `exact_direct_void_call` consumer now resolves
   `callee_signature_ref` through the module function signature store, permits
   retained `callee_signature` to be absent or text-stale when the store entry
-  resolves, and keeps retained/store, argument, and target signature mismatches
-  fail-closed.
+  resolves, and keeps retained/store and target signature mismatches
+  fail-closed without changing argument value identity or raw compatibility
+  outside the fixed zero-argument void direct-call shape.
 
 ## Suggested Next
 
