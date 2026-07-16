@@ -1,6 +1,6 @@
 # LIR String Semantic Authority Completion And Successor-Routing Umbrella
 
-Status: Open
+Status: Closed
 Type: Umbrella semantic completion router and follow-up idea generator
 Parent Evidence Classifier: `ideas/closed/812_lir_string_authority_remaining_routes_umbrella.md` (accepted evidence-only closure at `f374ab3f5`)
 Handoff Directory: `docs/lir_string_semantic_authority_completion/`
@@ -234,6 +234,75 @@ and 812 keys, dependency order, rows excluded as completed or intentional text,
 draft/open disposition of 837, and the final 734/797 handoff. Closure is
 rejected while any unfinished semantic route lacks an exact executable owner
 or evidence route.
+
+## Closure Note
+
+Status: closed as completed routing and handoff package.
+
+Accepted 812 evidence revision:
+`d58b8d44c9b64d2005d2b3760a0592b1b47ebd03`, closed by 812 at
+`f374ab3f5`.
+
+Lifecycle refresh revision: 813 Step 1 validation refreshed lifecycle state at
+`ce1984a661b79c40f21e5ec203e5fe4d8521585b`; 813 later resumed from the
+reactivation recorded after closure commit `bae8bf4ae`.
+
+Accepted completion evidence:
+
+- Step 1: `1a58beed1` recorded
+  `docs/lir_string_semantic_authority_completion/input_validation.md`.
+- Step 2: `7ae733dfb` recorded
+  `row_to_owner_map.md` and `existing_owner_dependencies.md`.
+- Step 3: `953a348b3` recorded
+  `successor_queue.md`, `architecture_alignment.md`,
+  `handoff_to_734_and_797.md`, and `closure_trace.md`.
+
+Final 812/813 key disposition:
+
+1. `global.policy-identity-evidence`: completed evidence through closed 848;
+   no direct 734 handoff. Future work, if selected, must publish or disprove an
+   exact structured global policy producer/verifier route before receiver
+   ownership.
+2. `instruction.intrinsic-binding-evidence`: completed evidence through closed
+   849; no direct 734 handoff. Future singular residual instruction,
+   terminator, or inline-assembly value/type handoffs return first to exact
+   796 or 846 scope as applicable.
+3. `cfg.phi-raw-bindings-evidence`: completed evidence through closed 850; no
+   new direct 734 handoff because accepted bounded 734 receipts already cover
+   the modeled Raw-BIR CFG/PHI receiver rows.
+
+Generated successors: none. 813 generated no new source under `ideas/open/`.
+The evidence records identify possible future owner classes only; any later
+route must be selected by its own exact source scope.
+
+Reused and downstream owner disposition:
+
+- 734 remains receiver/import/verifier owner only after exact accepted handoffs
+  or already accepted bounded receipts; 813 gives it no new direct row from
+  848, 849, or 850.
+- 795 keeps its bounded body-parameter authority scope.
+- 796 remains first owner for future singular residual instruction,
+  terminator, inline-assembly value/type handoffs where exact source scope
+  proves native facts.
+- 846 remains first owner for verifier/dispatch/printer migration of already
+  published native facts.
+- 821 and 822 keep switch selector authority routes.
+- 847 is carried only as deletion-route evidence to 797.
+- 797 remains the downstream terminal convergence owner and is not closed,
+  activated, or assigned repair ownership by 813.
+
+Dependency order:
+
+1. completed evidence routes 848, 849, and 850;
+2. no 813-generated successors;
+3. no new direct 734 receiver handoff;
+4. carry 847 deletion-route evidence plus 813's completed-evidence
+   dispositions to 797 for its own terminal convergence proof.
+
+Rows excluded as completed or intentional text are recorded in
+`closure_trace.md`, `row_to_owner_map.md`, and `handoff_to_734_and_797.md`.
+Draft 837 remains parked architecture input only; it is not executable, not
+promoted, and not an owner or blocker for 813 closure.
 
 ## Resumption Record: user-priority switch to HIR aggregate binding
 
