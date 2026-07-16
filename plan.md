@@ -54,7 +54,25 @@ Actions:
 Completion check: the relation is structural and verifier-checked without any
 829 authority tuple or presentation recovery.
 
-### Step 3 - Prove the prerequisite and return to 829
+### Step 3 - Diagnose and repair the rejected post-commit baseline
+
+Goal: resolve the rejected full-suite acceptance gate before 830 can continue
+or produce another commit.
+
+Actions:
+
+- diagnose the post-`f0fc85e4f` candidate regression from 3038/3038 to
+  3024/3038, including the `frontend_hir_tests` segfault and 13
+  `llvm_gcc_c_torture` failures;
+- determine whether the new failures are caused by the 830 slice and repair
+  only an in-scope cause, without broadening the native relation contract; and
+- rerun a comparable full-suite baseline and obtain supervisor acceptance that
+  no new baseline problem remains before any further commit.
+
+Completion check: the rejected candidate is replaced by accepted comparable
+proof of no new baseline problem. Focused proof alone cannot clear this gate.
+
+### Step 4 - Prove the prerequisite and return to 829
 
 Goal: establish focused same-feature positive and malformed proof, then
 document the exact parent return condition.
@@ -66,5 +84,5 @@ Actions:
 - record the resulting relation and reactivate 829 only if it can support its
   existing parameter-definition tuple without recovery.
 
-Completion check: 830 can conclude as a producer prerequisite and 829's exact
-Step 2 return action is durable.
+Completion check: after Step 3 clears the baseline gate, 830 can conclude as
+a producer prerequisite and 829's exact Step 2 return action is durable.
