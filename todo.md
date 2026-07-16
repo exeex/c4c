@@ -1,79 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/847_lir_universal_model_string_escape_hatch_deletion.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Delete semantic string escape hatches
+Current Step ID: 4
+Current Step Title: Remove expired adapters and prove compile-time separation
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 packet to delete ternary incoming operand native preservation
-that used direct `source.str() == coerced.str()` display-text equality as
-semantic authority in `src/codegen/lir/hir_to_lir/expr/misc.cpp`.
+Completed Step 3: semantic string escape-hatch packets have been accepted and
+committed through the operand, comparison, arithmetic, call argument, and
+ternary preservation slices. Mutable `str()` accessors, implicit LIR operand
+string conversions, and selected frontend display-text equality gates are no
+longer used as valid-LIR semantic authority.
 
-Ternary PHI incoming preservation now keeps native value authority only when
-the source operand already has a native value ID and the source expression type
-matches the ternary result type. Otherwise it uses the coerced operand without
-treating matching rendered text as authority.
+Remaining `.str()` checks are classified as verifier/signature/call formatting
+mirror or output-boundary consistency surfaces, not selected mutable,
+implicit-conversion, or semantic preservation gates.
 
 ## Suggested Next
 
-Supervisor should review and commit this Step 3 ternary incoming operand
-authority slice if accepted, then select the next remaining Step 3 semantic
-string escape hatch candidate. Do not widen the next packet into Step 4 adapter
-removal.
+Begin Step 4 with a narrow adapter/fallback audit packet: inspect receiver,
+dispatcher, verifier, printer, construction, and HIR-to-LIR boundary paths for
+expired M1--M15 adapters or universal fallbacks that can still re-enter deleted
+compatibility. Record each candidate as removable, already absent, or preserved
+with an explicit out-of-scope owner before making code changes.
 
 ## Watchouts
 
-- `src/codegen/lir/hir_to_lir/expr/misc.cpp` no longer contains direct
-  `source.str() == coerced.str()` authority checks for ternary PHI incoming
-  source retention. Do not reintroduce display-text equality as semantic
-  authority there.
-- Ternary same-type source retention intentionally keys only on native value ID
-  plus source/result typed facts. `coerce_operand(...)` may return raw
-  display-only text for no-op/non-cast coercions, so requiring coerced native
-  authority would drop valid fneg/xor producer IDs from same-type PHI inputs.
-- `src/codegen/lir/hir_to_lir/call/args.cpp` no longer contains direct
-  `arg == source_operand.str()` or `call_operand.str() != arg` authority
-  checks. Do not reintroduce display-text equality as semantic authority for
-  call argument preservation.
-- The display-only fallback intentionally uses `LirOperand(arg)` rather than
-  native factories, so integer-looking compatibility text can remain classified
-  as an immediate spelling without receiving `LirIntegerImmediate` authority.
-- Fixed direct integer calls may preserve native SSA/immediate argument
-  authority only after the fixed integer path and typed call argument type agree.
-- The two-argument structural/current-function path remains restricted to
-  `LirNativeBodyParameterAbi::DirectScalar` definitions with matching typed
-  argument facts.
-- Scalar arithmetic preservation now depends on source TypeSpec snapshots taken
-  before usual arithmetic conversion. Preserve that distinction if later
-  packets refactor the conversion flow.
-- `preserve_exact_binary_operand(...)` no longer contains direct display-text
-  equality authority checks; do not reintroduce `source.str() == normalized` or
-  `source.str() != normalized` as semantic authority.
-- Do not restore a mutable `LirTypeRef::str()` accessor or add a test-only
-  backdoor.
-- Do not restore mutable `operator std::string&()` or replace it with another
-  mutable text escape hatch.
-- Do not restore const `LirTypeRef` implicit text conversions; use `.str()` or
-  typed/native access at direct users.
-- Do not restore implicit `std::string` or `std::string_view` conversions on
-  `LirBinaryOpcodeRef` or `LirCmpPredicateRef`; direct users should call
-  `.str()` or use `typed()` as appropriate.
-- Do not restore implicit `std::string&`, `const std::string&`, or
-  `std::string_view` conversions on `LirOperand`; direct users should call
-  `.str()` or use native operand authority access as appropriate.
-- Do not restore mutable `LirOperand::str()`; tests that need stale display
-  text should use explicit reconstruction while preserving native authority.
-- Do not add a renamed generic runtime-text factory; remaining text-backed
-  constructions should stay behind named compatibility factories or explicit
-  constructors until their own packet deletes them.
-- Do not delete const `str()`, additional named compatibility factories,
-  non-`LirTypeRef` wrapper conversions, or equality/classification helpers in
-  the same packet.
-- Step 3 owns verifier-side textual reparsing and textual
-  equality/classification authority. Do not mix it with Step 4 adapter removal.
+- Step 4 should remove expired adapters and universal fallbacks only after the
+  audit identifies their accepted M1--M15 replacement evidence.
+- Resolve compile errors with native-specific facts, not new compatibility
+  shims, generic runtime-text factories, or renamed universal bags.
+- Preserve residual owner-specific strings by documenting their owner in this
+  file; do not silently move 812/813 non-type strings, 821/822 switch selector
+  surfaces, or 797 coverage convergence into this deletion packet.
+- Do not restore mutable `LirTypeRef::str()`, mutable `LirOperand::str()`, or
+  implicit LIR string conversions while removing adapters.
 - Signature-store mirror text equality is intentionally preserved at the
   function signature store boundary; it is output-boundary consistency, not
   semantic type authority.
@@ -89,26 +52,14 @@ removal.
   `aggregate_signature_param_mirror_matches_type(...)` byval fragment checks,
   and direct aggregate signature mirror checks are compatibility/output
   validation surfaces; leave them alone unless separately selected.
-- The remaining `LirTypeRef("double")` hit in
-  `src/codegen/lir/hir_to_lir/call/target.cpp` is direct double-call authority
-  output construction, not the selected-route semantic test.
-- Clean-search checks in `target.cpp` found no remaining
-  `return_type.str() == "double"/"float"/"x86_fp80"/"fp128"` selected direct
-  scalar floating classification, and no remaining local `LirTypeRef("double")`
-  selected-route probes.
-- `collect_inst_refs(...)` now routes affected `LirOperand` fields through
-  `collect_operand_ref(...)`, so structured link-name authority is preferred
-  before fallback text scanning.
-- `clang-format` was not available in this environment, so no automatic
-  formatting pass was run.
+- Step 3 accepted commits: `199974299`, `7ade00edd`, `613c40c28`,
+  `c7274edf3`, `f05f8d806`, and `7338180ee`.
 
 ## Proof
 
-Baseline captured before edits with:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'; } > test_before.log 2>&1`.
-
-Proof run passed after edits:
+Accepted Step 3 packet proof for each slice:
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'; } > test_after.log 2>&1`.
-`test_after.log` contains the delegated build plus focused CTest output with
-`frontend_lir_call_type_ref` passing.
-The supervisor-selected proof was sufficient for this packet.
+
+Accepted Step 3 checkpoint proof:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(frontend_lir_|verify_tests_)'`
+passed 12/12.
