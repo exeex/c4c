@@ -8,18 +8,16 @@ Current Step Title: Delete mutable LIR type text escape hatches in small packets
 
 ## Just Finished
 
-Completed Step 2 packet to delete the two const implicit text conversions from
-`LirTypeRef`: `operator const std::string&() const` and
-`operator std::string_view() const`. No direct callsite edits were required
-because existing users already compile through `.str()`, typed/native access,
-or retained non-`LirTypeRef` wrapper conversions.
+Completed Step 2 packet to delete the single named deprecated factory
+`LirTypeRef::stored_extern_declaration_return_text`. Updated the direct
+`LirModule::extern_return_type_ref` fallback callsite to construct
+`LirTypeRef(ret_ty)` after the existing struct-name-aware branch.
 
 ## Suggested Next
 
-Continue Step 2 with the next narrow `LirTypeRef` compatibility surface. A good
-next packet is to classify one remaining named deprecated compatibility factory
-family and either delete or replace that family without touching
-equality/classification helpers in the same slice.
+Continue Step 2 with one remaining named deprecated compatibility factory
+family in a separate narrow packet. Keep the packet limited to that factory and
+its direct callsites.
 
 ## Watchouts
 
@@ -32,9 +30,11 @@ equality/classification helpers in the same slice.
 - Do not add a renamed generic runtime-text factory; remaining text-backed
   constructions should stay behind named compatibility factories or explicit
   constructors until their own packet deletes them.
-- Do not delete const `str()`, remaining named compatibility factories,
+- Do not delete const `str()`, additional named compatibility factories,
   non-`LirTypeRef` wrapper conversions, or equality/classification helpers in
   the same packet.
+- `rg -n "stored_extern_declaration_return_text" src tests/frontend tests/backend`
+  is now clean.
 - Required scalar-to-vector splat shuffles now reject incoherent native
   `mask_type` mirrors against vector-store lane count; do not weaken that
   baseline repair.
@@ -52,7 +52,7 @@ equality/classification helpers in the same slice.
 
 Proof run passed:
 `cmake --build build && ctest --test-dir build -R
-'^(frontend_lir_call_type_ref|frontend_lir_extern_decl_type_ref|backend_lir_to_bir_interface)$'
---output-on-failure > test_after.log 2>&1`.
-`test_after.log` contains the focused CTest subset output with 3/3 tests
+'^frontend_lir_extern_decl_type_ref$' --output-on-failure > test_after.log
+2>&1`.
+`test_after.log` contains the focused CTest subset output with 1/1 tests
 passing. The supervisor-selected proof was sufficient for this packet.

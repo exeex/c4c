@@ -109,15 +109,6 @@ class LirTypeRef {
     return LirTypeRef(std::move(text));
   }
 
-  // Extern declarations retain return-type text from their external/stored
-  // declaration payload. This is runtime text, not a closed builtin set: it
-  // may spell dynamic aggregate, vector, struct, or function returns.
-  [[nodiscard, deprecated(
-      "stored/re-owned extern-declaration return text: audit this runtime-text compatibility boundary")]]
-  static LirTypeRef stored_extern_declaration_return_text(std::string text) {
-    return LirTypeRef(std::move(text));
-  }
-
   // Inline-assembly operands and results retain LLVM type text rendered from
   // HIR TypeSpec. That text is runtime-derived rather than a closed builtin
   // set, so keep this deprecated inventory boundary local to inline assembly.

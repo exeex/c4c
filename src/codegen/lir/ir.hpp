@@ -1327,7 +1327,7 @@ struct LirModule {
     if (struct_name_id != kInvalidStructName && find_struct_decl(struct_name_id)) {
       return LirTypeRef::struct_type(ret_ty, struct_name_id);
     }
-    return LirTypeRef::stored_extern_declaration_return_text(ret_ty);
+    return LirTypeRef(ret_ty);
   }
 
   void merge_extern_decl_info(ExternDeclInfo& info, const std::string& name,
