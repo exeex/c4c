@@ -8,15 +8,15 @@ Current Step Title: Select One Carrier-Backed Collector Seam
 
 ## Just Finished
 
-Completed plan Step 1 one-field packet for `LirExtractElementOp.vec` in
-`collect_inst_refs`: raw `S(op.vec)` scanning was replaced with
-`collect_operand_ref(op.vec, refs)` only.
+Completed plan Step 1 one-field packet for `LirInsertElementOp.elem` in
+`collect_inst_refs`: raw `S(op.elem)` scanning was replaced with
+`collect_operand_ref(op.elem, refs)` only.
 
 ## Suggested Next
 
-Select the next one-field carrier-backed aggregate/vector collector seam and
-migrate only that field after confirming the collector has a raw scanner
-consumer and the producer records semantic carrier data.
+Select the next one-field carrier-backed aggregate/vector collector seam; a
+natural follow-up is `LirInsertElementOp.vec`, but migrate only that field after
+supervisor selection confirms the producer records semantic carrier data.
 
 ## Watchouts
 
@@ -34,4 +34,6 @@ Required implementation proof for this packet passed:
 git diff --check
 ```
 
-Both commands passed. Proof log: `test_after.log`.
+Proof log path: `test_after.log`.
+
+Both commands passed.
