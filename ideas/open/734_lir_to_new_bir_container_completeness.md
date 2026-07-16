@@ -2564,3 +2564,54 @@ row. Do not repeat Step 7.50, reopen fixed direct-call arguments 0/1, receive
 any body-parameter row, or generalize to other call-result, memory/VA,
 aggregate/vector, module/type/global/metadata, CFG/PHI, inline-assembly, or
 instruction/terminator families.
+
+## Runbook Exhaustion Decision: post-Step 7.51 direct double(double) call-result receipt
+
+Close rejected. Commit `750b6b3ba` receives exactly closed 864's
+`LirCallOp.direct_one_double_arg_scalar_floating_call_authority` tuple into
+typed Raw BIR for the selected direct nonvariadic `double(double)` call-result
+row. The accepted receiver preserves the native result `LirValueId`,
+current-function owner `LinkNameId`, direct callee `LinkNameId`, exact
+`double(double)` type tuple, and explicit `DirectCallResult` role. Downstream
+consumer coherence is deliberately out of scope for this row. LIR producer
+authority remains owned by closed 864 and was not edited.
+
+The supervisor accepted the fresh matching focused before/after receiver proof
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$'; } > test_before.log/test_after.log 2>&1`
+with `1/1` passing before and after, `git diff --check`, and the broader
+backend proof
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > /tmp/c4c_backend_after_751.log 2>&1`
+with `6/6` backend tests passing.
+
+This bounded receiver row does not satisfy the source completion gate. The
+checked no-omission coverage matrix and its per-row typed authority,
+destination, importer, verifier, and proof disposition remain incomplete;
+lossless verified receipt of every valid current-LIR semantic fact, complete
+explicit dispatcher and neighboring coverage, whole-module transactional
+proof, documentation convergence, and source-wide focused/broader proof are
+still unmet. Valid unreceived families include memory/VA, aggregate/vector,
+module/type/global/metadata, CFG/PHI residuals, residual
+instruction/terminator, inline-assembly, and any other current-LIR semantic
+facts not yet covered by accepted typed Raw-BIR receiver dispositions. They
+remain fail closed; no receiver may recover authority from text, names,
+rendered operands, signatures, compatibility mirrors, `monostate`, or
+unclassified values.
+
+Classification: `separate-blocker`. New open idea
+`ideas/open/865_lir_next_non_body_parameter_authority_handoff.md` owns exactly
+one next producer-side non-body-parameter handoff after the accepted
+`double(double)` direct call-result receipt. It must not edit Raw-BIR/importer
+code, reopen accepted call-result or body-parameter receipts, select from
+presentation fields, or absorb a generic residual sweep.
+
+Resumption record: Steps 1 through 7.51 remain accepted historical work, most
+recently receiver commit `750b6b3ba` with the fresh focused before/after
+proof, broader backend proof, and `git diff --check` stated above.
+Interrupted point: source completion reassessment after Step 7.51; no further
+734 receiver row is authorized. After 865 closes with one exact structured
+non-body-parameter handoff and accepted focused producer proof, reactivate 734
+and repair its runbook only for that matching typed Raw-BIR receiver row. Do
+not repeat Step 7.51 or receive another call-result row, parameter-use row,
+memory/VA, aggregate/vector, module/type/global/metadata, CFG/PHI, residual
+instruction/terminator, inline-assembly, generic residual sweep, or any other
+form without its separately scoped first-owner handoff.
