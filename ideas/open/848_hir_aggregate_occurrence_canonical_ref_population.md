@@ -91,10 +91,10 @@ identity.
 - Reject retaining the existing unset-`aggregate_ref` failure mode behind a new
   helper name or claiming completion without definition-backed occurrence facts.
 
-## Resumption Record: direct function-signature carrier blocker
+## Resumption Record: function-signature definition-provenance architecture blocker
 
 Status: parked by lifecycle switch to
-`ideas/open/849_hir_function_signature_direct_aggregate_ref_carrier.md`.
+`ideas/open/851_hir_function_signature_definition_provenance_architecture_blocker.md`.
 
 - Last accepted progress: Step 1 discovery and Step 2a are complete. HIR
   construction now retains the issued `HirAggregateRef` on module-owned
@@ -107,15 +107,19 @@ Status: parked by lifecycle switch to
   passed; evidence is `test_after.log`.
 - Interrupted step: Step 2b — **Populate canonical refs for aggregate function
   signatures**. No Step 2b implementation or proof is accepted.
-- Blocker outside this idea's current scope: the function-signature semantic
-  construction sites receive only normalized `TypeSpec`. The existing callable
-  definition resolver reaches candidates through `record_def`, structured
-  owner metadata, and legacy tag routes; each is forbidden as canonical
-  identity recovery by this source. Propagating `HirStructDef::aggregate_ref`
-  therefore needs an upstream, already-definition-backed direct semantic
-  carrier/API, rather than a type-derived lookup in this occurrence route.
-- Exact return point: after 849 accepts its bounded carrier/API and proof,
-  reactivate 848 at unchanged Step 2b and thread that new direct carrier into
-  `qtype_from` at function return and parameter lowering call sites only.
-- Remaining action: complete existing Steps 2b and 3 with no parser/`TypeSpec`/
-  owner/tag/text recovery and no LIR changes.
+- Conclusive failed premise: 849 Step 2 established that every production
+  `lower_function` caller has only `Node*`/name/template/NTTP inputs; none has
+  a `HirAggregateRef`, `HirStructDef`, or module-issued direct fact. Such refs
+  arise only after HIR struct registration, and method lowering bypasses
+  `lower_function`. A carrier here would validate/hold/discard only, while
+  delivery would require forbidden `Node`/`TypeSpec`/record/tag/owner lookup or
+  a map. No 849 code, test, todo, or post-change proof exists.
+- Exact return-or-conclude decision: 851 must determine whether an earlier,
+  legal HIR definition-provenance architecture can produce a direct fact before
+  signature normalization. Only an approved separately scoped successor that
+  supplies that fact may reactivate 848 at unchanged Step 2b. If 851 finds no
+  such architecture, 848 must intentionally conclude this bounded
+  function-signature route no-change; it must not retry Step 2b or claim
+  canonical occurrence population.
+- Remaining action: await 851's architecture decision. Preserve the no
+  parser/`TypeSpec`/owner/tag/text recovery and no-LIR boundaries.

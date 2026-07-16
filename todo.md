@@ -1,34 +1,33 @@
 # Current Packet
 
 Status: Active
-Source Idea Path: ideas/open/849_hir_function_signature_direct_aggregate_ref_carrier.md
+Source Idea Path: ideas/open/851_hir_function_signature_definition_provenance_architecture_blocker.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add the bounded direct carrier/API
+Current Step ID: 1
+Current Step Title: Confirm the production provenance timeline
 
 ## Just Finished
 
-- 850 Step 1 concluded no-change: production callers have only `Node`/template
-  inputs, so no pre-carrier aggregate fact can reach `lower_function` without
-  the carrier/API owned by 849. No code or tests changed.
+- 849 Step 2 was intentionally concluded no-change before edits. Production
+  `lower_function` callers have no module-issued aggregate fact; no code,
+  tests, todo update, or post-change proof resulted.
 
 ## Suggested Next
 
-- Execute Plan 849 Step 2 from the accepted `109ea13f4` seam: implement the
-  direct carrier and make production callers deliver only existing
-  module-issued facts (or no fact) through `lower_function`.
+- Execute 851 Step 1: verify the caller/registration timeline and determine
+  whether any earlier legal definition-provenance owner exists.
 
 ## Watchouts
 
-- A carrier that only validates then holds/discards input is not capability
-  progress; production callers must use the carrier to deliver an existing
-  direct fact where their construction context provides one.
-- Do not use parser/`TypeSpec`/owner/tag/text lookup, a `Node*` map,
-  `qtype_from` attachment, or LIR.
-- 848 remains parked; its Step 2a proof is `359a9b94b` / `frontend_hir_tests`.
+- Do not retry 848 Step 2b unless a separately scoped successor supplies a
+  direct fact before signature normalization.
+- Do not use parser/`TypeSpec`/record/tag/owner/text recovery, a `Node*` map,
+  test-only injection, `qtype_from` attachment, or LIR work.
+- Preserve accepted evidence: 849 Step 1 `109ea13f4`; 848 Step 2a
+  `359a9b94b`; 850 lifecycle conclusion `1723df997` with its fresh-build and
+  `frontend_hir_tests` baseline.
 
 ## Proof
 
-- 850 no-change probe already passed a fresh `cmake --build --preset default`
-  and `ctest --test-dir build -j --output-on-failure -R '^frontend_hir_tests$'`.
-  Step 2 is code-bearing and requires a fresh build plus focused HIR proof.
+- Lifecycle/architecture transition only. No new build or test claim is made;
+  851 may use read-only traces to make its decision.

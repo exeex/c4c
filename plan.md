@@ -1,76 +1,49 @@
-# HIR Function-Signature Direct Aggregate-Ref Carrier Runbook
+# HIR Function-Signature Definition-Provenance Architecture Blocker Runbook
 
 Status: Active
-Source Idea: ideas/open/849_hir_function_signature_direct_aggregate_ref_carrier.md
-Resumes: Step 2 after 850's intentionally concluded no-change route
+Source Idea: ideas/open/851_hir_function_signature_definition_provenance_architecture_blocker.md
+Supersedes: 849 Step 2 after its intentionally concluded no-change route
 
 ## Purpose
 
-Provide the direct, definition-backed HIR aggregate carrier that 848 needs to
-populate function-signature occurrence refs without identity recovery.
+Resolve the architecture decision that 849 and 848 cannot resolve within their
+bounded forwarding and occurrence-population scopes.
 
 ## Core Rule
 
-Canonical aggregate authority must arrive directly from HIR definition-backed
-semantic construction. Never recover it from parser, `TypeSpec`, owner, tag,
-text, `Node*`, or LIR state.
-
-## Read First
-
-- `ideas/open/849_hir_function_signature_direct_aggregate_ref_carrier.md`
-- `ideas/open/848_hir_aggregate_occurrence_canonical_ref_population.md`
-- `ideas/closed/850_hir_signature_aggregate_ref_producer_order.md`
-- `src/frontend/hir/hir_build.cpp` production callers and
-  `src/frontend/hir/hir_functions.cpp` lowering boundary
-- HIR aggregate definition registration and `HirStructDef::aggregate_ref`
-
-## Non-Goals
-
-- Do not edit `qtype_from`, attach occurrence refs, or alter LIR.
-- Do not recover canonical identity from any parser or normalized-type metadata.
+Canonical aggregate authority must originate as a direct HIR definition-backed
+fact. Never recover it from parser, `TypeSpec`, record, owner, tag, text,
+`Node*`, or LIR state.
 
 ## Ordered Steps
 
-### Step 1 - Locate the signature semantic carrier seam (accepted)
+### Step 1 - Confirm the production provenance timeline
 
-Accepted at `109ea13f4`. The carrier boundary is `Lowerer::lower_function`;
-direct HIR definition/ref facts must travel in parallel with normalized types.
-
-Actions:
-
-- Do not repeat this discovery packet.
-
-Completion check: preserved accepted seam and validation contract.
-
-### Step 2 - Add the bounded direct carrier/API
-
-Goal: retain and deliver an already definition-backed aggregate fact through
-production function-signature construction.
+Goal: make the negative premise durable and check whether any earlier legal HIR
+semantic-construction owner was omitted from the 849 trace.
 
 Actions:
 
-- Implement the smallest carrier/API at `lower_function` and its forwarding
-  boundaries for return and explicit parameter lowering.
-- Update its production `hir_build.cpp` callers to pass an existing
-  module-issued fact only when their construction context has one; absent,
-  incomplete, invalid, or foreign facts remain empty and fail closed.
-- Do not derive a fact from parser/`TypeSpec`/owner/tag/text/record data or use
-  a `Node*` map; do not edit `qtype_from` or LIR.
+- Inspect only production function-signature construction and HIR aggregate
+  definition registration timing.
+- Record the complete caller and registration evidence in the source decision.
+- Do not change C++ or tests.
 
-Completion check: both lowering sites receive a direct valid carrier through
-production callers, while invalid states fail closed with no metadata recovery.
+Completion check: either identify an omitted legal direct-fact owner or confirm
+that no caller has such a fact before signature normalization.
 
-### Step 3 - Prove carrier delivery and return to 848
+### Step 2 - Decide the legal successor or no-feasible-route conclusion
 
-Goal: establish focused evidence and the precise parent handoff.
+Goal: make the current architecture's outcome executable rather than leaving
+848 parked.
 
 Actions:
 
-- Add nearby coverage for return and parameter carrier delivery through the
-  production path plus malformed-boundary behavior.
-- Run a fresh build and focused HIR proof; widen proportionally if the semantic
-  API has shared callers.
-- Record accepted proof and return 848 at unchanged Step 2b only.
+- If Step 1 identifies a legal direct-fact owner, create a separately scoped
+  implementation successor with exact boundaries and return conditions.
+- Otherwise record a no-feasible-route conclusion and route 848 to its own
+  bounded no-change disposition; retain 838 as blocked.
+- Do not implement, recover identity, or adjust expectations.
 
-Completion check: accepted evidence proves the bounded carrier; no occurrence
-attachment or LIR work is claimed.
+Completion check: a new agent can tell exactly whether 848 may resume and, if
+so, which approved successor owns the required implementation.
