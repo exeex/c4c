@@ -1,109 +1,99 @@
-# LIR-To-New-BIR Container Completeness Runbook
+# LIR Next Body Parameter Authority Handoff Runbook
 
 Status: Active
-Source Idea: ideas/open/734_lir_to_new_bir_container_completeness.md
-Resumed After: closed 857 DirectScalar binary-`fadd` LHS parameter-authority handoff
+Source Idea: ideas/open/858_lir_next_body_parameter_authority_handoff.md
+Activated From: ideas/open/734_lir_to_new_bir_container_completeness.md post-Step 7.46 separate-blocker decision
 
 ## Purpose
 
-Resume idea 734 from its accepted post-Step 7.45 state and receive exactly the
-closed 857 body-parameter handoff into typed Raw BIR.
+Select and publish exactly one next structured LIR body-parameter authority row
+so idea 734 can later receive that row into typed Raw BIR without presentation
+recovery.
 
 ## Goal
 
-Implement one bounded Raw-BIR receiver packet for the selected
-`LirBinOp.scalar_lhs_parameter_authority` floating `fadd` LHS DirectScalar
-parameter-use row.
+Implement one bounded producer/schema/verifier handoff for the next valid
+function-body parameter-use row after accepted 734 Step 7.46.
 
 ## Core Rule
 
-Receive only structured LIR authority from the accepted 857 handoff. Do not
-recover semantic identity from text, names, rendered operands, signatures,
-diagnostics, compatibility mirrors, `monostate`, or testcase shape.
+Publish native structured LIR authority only. Do not derive parameter identity,
+role, type, opcode, operand relation, or consumer coherence from text, names,
+rendered operands, signatures, diagnostics, compatibility mirrors,
+`monostate`, or testcase shape.
 
 ## Read First
 
+- `ideas/open/858_lir_next_body_parameter_authority_handoff.md`
 - `ideas/open/734_lir_to_new_bir_container_completeness.md`
-- `ideas/closed/857_lir_next_body_parameter_authority_handoff.md`
-- Accepted 734 Step 7.45 receiver commit `2b7e897ce`
-- 857 implementation commit `6c11a15c1`
-- 857 lifecycle close commit `8531a9572`
-- Existing Raw-BIR body-parameter receiver patterns for Steps 7.34 through
-  7.45
+- Accepted 734 receiver commit `d5a301ec9`
+- Closed 857 producer handoff `ideas/closed/857_lir_next_body_parameter_authority_handoff.md`
+- Existing LIR body-parameter authority producer/verifier patterns for the
+  accepted DirectPointer and DirectScalar rows through 734 Step 7.46
 
 ## Current Targets And Scope
 
-- Preserve accepted 734 Steps 1 through 7.45 as historical work.
-- Add only the typed Raw-BIR destination, importer dispatch, reachable verifier
-  path, and transactional coverage needed for the 857-authorized row.
-- The selected row is a current-function `DirectScalar` floating parameter used
-  as LHS of binary `fadd` through `LirBinOp.scalar_lhs_parameter_authority`.
-- Preserve original parameter identity, owner, parameter index, floating type,
-  DirectScalar ABI, explicit `Lhs` role, `fadd` opcode, LHS value coherence,
-  matching operation type, and nonselected scalar RHS.
+- Preserve accepted 734 Steps 1 through 7.46 as historical receiver work.
+- Inspect current LIR body-parameter use sites and choose exactly one next
+  valid parameter-use row that can carry native structured authority.
+- Add only the producer/schema/verifier support for that selected row.
+- Hand off the exact tuple, malformed matrix, proof, and 734 return action.
 
 ## Non-Goals
 
-- Do not edit LIR producer/schema/verifier authority for this row; 857 owns
-  that producer-side prerequisite.
-- Do not repeat Step 7.45 or reopen accepted DirectPointer or DirectScalar
-  body-parameter receipts.
-- Do not receive floating binary-`fadd` RHS or any other parameter row.
-- Do not absorb memory/VA, aggregate/vector, module/type/global/metadata,
-  residual instruction/terminator, inline-assembly, ABI-expanded or aggregate
-  parameters, direct-call argument positions beyond bounded accepted slots,
-  generic parameter sweeps, or any other family.
-- Do not weaken unsupported diagnostics, expectation contracts, or no-partial-
-  publication behavior.
+- Do not edit Raw-BIR containers, builders, views, importer dispatch,
+  verifier, or backend receiver tests.
+- Do not reopen any accepted DirectPointer or DirectScalar body-parameter row.
+- Do not select multiple rows or perform a generic parameter sweep.
+- Do not absorb ABI-expanded or aggregate parameters, memory/VA,
+  aggregate/vector, module/type/global/metadata, residual
+  instruction/terminator, inline-assembly, target-lowering, or later backend
+  work.
+- Do not weaken unsupported diagnostics or expectation contracts.
 
 ## Execution Rules
 
-- Keep the packet receiver-side only and tied to the exact 857 handoff tuple.
-- Reuse existing typed Raw-BIR body-parameter receiver conventions where they
-  match the selected LHS row.
-- Reject malformed authority before any partial Raw-BIR publication.
-- Add nearby same-feature positive and malformed receiver coverage for
-  omitted or missing authority, invalid value, duplicate definition, foreign
-  owner, wrong index, wrong type, wrong ABI, wrong role, non-`fadd`, LHS
-  mismatch, type mismatch, selected-RHS incoherence, duplicate selected
-  consumer forms, and a neighboring nonselected-operator negative such as
-  `fsub` where appropriate.
-- For code changes, run a fresh build, focused receiver proof, and
-  `git diff --check`. Escalate to broader backend proof if shared importer or
-  verifier code is touched.
+- Keep the packet producer-side only and tied to one selected current-LIR row.
+- Reuse the established native body-parameter authority conventions where they
+  fit the selected row.
+- Reject malformed authority before printing or downstream consumption.
+- Add focused positive and malformed producer/verifier coverage for the
+  selected tuple and consumer relation.
+- For code changes, run a fresh build, focused producer/verifier proof, and
+  `git diff --check`. Escalate to the matching broader guard when shared LIR
+  verifier or producer code is touched.
 
 ## Steps
 
-### Step 7.46 - Receive the one 857-authorized DirectScalar binary-fadd-LHS parameter authority row
+### Step 1 - Select and publish one next body-parameter authority row
 
-Goal: consume exactly the 857 `fadd` LHS DirectScalar parameter-use handoff in
-typed Raw BIR.
+Goal: choose exactly one next valid function-body parameter-use row and give it
+native LIR authority.
 
 Primary targets:
 
-- Raw-BIR body-parameter receiver container/builder/view surface for the
-  selected LHS relation.
-- LIR-to-Raw-BIR importer dispatch for `LirBinOp.scalar_lhs_parameter_authority`.
-- Reachable Raw-BIR verifier checks and transactional malformed-input coverage.
+- LIR producer/schema surface for the selected row.
+- LIR verifier checks for the selected authority tuple and consumer relation.
+- Focused producer/verifier coverage and handoff documentation.
 
 Actions:
 
-- Inspect the accepted Step 7.45 RHS receiver and adjacent body-parameter
-  receiver patterns before editing.
-- Add only the destination and importer handling needed for
-  `LirBinOp.scalar_lhs_parameter_authority` with `Lhs` role and binary `fadd`.
-- Preserve and verify the original parameter `LirValueId`, owner
-  `LinkNameId`, parameter index, matching floating `LirTypeRef`,
-  `LirNativeBodyParameterAbi::DirectScalar`, explicit `Lhs` role, LHS operand
-  identity, operation type, and nonselected scalar RHS coherence.
-- Add positive and malformed receiver coverage matching the 857 handoff's
-  malformed matrix.
-- Keep all nonselected rows fail-closed without presentation recovery.
+- Inspect the accepted body-parameter authority rows through 734 Step 7.46 and
+  exclude all already received rows.
+- Select one next valid current-LIR parameter-use row that can be expressed
+  with native value identity, owner, parameter index, `LirTypeRef`, ABI, role,
+  and selected consumer coherence.
+- Add only the required authority carrier, producer population, verifier
+  validation, and focused malformed coverage for that row.
+- Document the exact handoff back to 734, including fields, malformed cases,
+  accepted proof, and unsupported/nonselected rows.
+- Keep Raw-BIR receiver work out of this idea.
 
 Completion check:
 
 - Fresh build passes.
-- Focused receiver proof passes for the body-parameter Raw-BIR importer path.
+- Focused producer/verifier proof passes.
 - `git diff --check` passes.
-- The packet does not modify LIR producer authority, repeat accepted Steps 1
-  through 7.45, or admit any row beyond the selected 857 handoff.
+- Any required matching regression guard is non-regressive.
+- The handoff names one exact 734 receiver return action and does not claim
+  Raw-BIR receipt.
