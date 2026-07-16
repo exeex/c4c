@@ -3,32 +3,29 @@
 Status: Active
 Source Idea Path: ideas/open/837_lir_nominal_type_family_architecture.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Generate ordered successor ideas and handoff documents
+Current Step ID: 5
+Current Step Title: Record closure trace and exact downstream routing
 
 ## Just Finished
 
-- Completed plan.md Step 3: recorded the ordered, non-overlapping first-owner
-  successor contracts in
-  `docs/lir_nominal_type_family_architecture/dependency_ordering.md`. Every
-  M1--M16 row is assigned once; A1 canonical aggregate convergence is first,
-  universal deletion is terminal, and 812 then 813 follow accepted
-  type-family capabilities. No successor or implementation was generated.
+- Completed plan.md Step 4: generated the ordered A1/F1/V1/S1/U1/P1/G1/R1/C1/T1
+  source ideas 838--847 and `successor_queue.md`. Every M1--M16 row has one
+  first owner; A1 is first, T1 terminally hands valid-LIR disposition to 797,
+  and 836's three residual groups and 831 Step 4 return remain distinct.
 
 ## Suggested Next
 
-- Execute Step 4 only: generate one ordered open source idea per accepted
-  first-owner scope and the successor queue; do not activate or implement one.
+- Execute Step 5 only: create the closure trace and request explicit
+  plan-owner close/switch judgment; do not activate or implement a successor.
 
 ## Watchouts
 
-- Keep the three 836 groups and the parked 836 -> 831 Step 4 obligation
-  distinct. Preserve exact row ownership from the Step 3 assignment check;
-  existing open ideas are dependencies, not duplicate successors.
+- Do not infer type-family capability completion from successor creation. Keep
+  836 parked and distinct, and run 812 refresh then 813 non-type routing only
+  after accepted type-family capabilities.
 
 ## Proof
 
-- Documentation proof: `git diff --check --
-  docs/lir_nominal_type_family_architecture/dependency_ordering.md todo.md`;
-  passed. No build or broad test was run for this docs-only packet. The
-  delegated proof does not write `test_after.log`.
+- Documentation proof required: `git diff --check -- ideas/open
+  docs/lir_nominal_type_family_architecture/successor_queue.md todo.md`.
+  No build or broad test is required for this docs-only packet.
