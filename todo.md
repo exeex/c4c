@@ -8,20 +8,24 @@ Current Step Title: Establish the evidence baseline and inventory
 
 ## Just Finished
 
-- Activated the 812 evidence-inventory route after 848 was intentionally
-  concluded no-change. No 812 execution packet has completed.
+- Step 1 completed: captured revision `d58b8d44c9b64d2005d2b3760a0592b1b47ebd03`,
+  reconciled exact bounded closures, recorded current/open parked-owner return
+  chains, and registered intrinsic/final-render text without semantic changes.
 
 ## Suggested Next
 
-- Execute Step 1: establish the current evidence baseline, closure inventory,
-  and open-owner map without modifying semantic code or lifecycle ownership.
+- Execute Step 2: trace every discovered producer/consumer into the exhaustive
+  disposition matrix, preserving this baseline's bounded closure credits and
+  open-owner chains.
 
 ## Watchouts
 
-- Do not create successors, alter existing owner chains, or treat bounded
-  closure evidence as family-wide completion.
+- Do not infer family closure from bounded records or classify compatibility
+  call/global/type text as intrinsic when a parser, collector, verifier, or
+  lowering consumer still uses it.
 
 ## Proof
 
-- Documentation/evidence route: verify required documents, complete row
-  dispositions, and a clean scope diff before requesting closure.
+- Documentation-only Step 1: inspected required closure/open-owner/source
+  evidence and will run `git diff --check`; no build/test subset applies and
+  no `test_after.log` was created.
