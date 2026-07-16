@@ -1983,7 +1983,7 @@ static void collect_inst_refs(const LirInst& inst, LirGlobalRefs& refs) {
     } else if constexpr (std::is_same_v<T, LirCastOp>) {
       collect_operand_ref(op.operand, refs);
     } else if constexpr (std::is_same_v<T, LirBinOp>) {
-      collect_operand_ref(op.lhs, refs); S(op.rhs);
+      collect_operand_ref(op.lhs, refs); collect_operand_ref(op.rhs, refs);
     } else if constexpr (std::is_same_v<T, LirCmpOp>) {
       S(op.lhs); S(op.rhs);
     } else if constexpr (std::is_same_v<T, LirPhiOp>) {
