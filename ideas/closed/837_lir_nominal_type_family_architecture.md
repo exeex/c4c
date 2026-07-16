@@ -351,6 +351,25 @@ dependency order, deletion conditions, unresolved/deferred evidence, and final
 797 relationship. It must explicitly state that 837 implemented no type-family
 code and that classification/successor creation is not migration completion.
 
+## Closure Disposition
+
+Closed as **capability complete for its bounded umbrella scope** on 2026-07-16.
+The required evidence and handoff artifacts are recorded in
+`docs/lir_nominal_type_family_architecture/`: `evidence_baseline.md`,
+`historical_blocker_root_model_map.md`,
+`current_lir_type_ref_responsibility_matrix.md`,
+`nominal_family_boundary_decisions.md`, `dependency_ordering.md`,
+`successor_queue.md`, and `closure_trace.md`. The matrix assigns M1--M16
+exactly once to unactivated successors 838--847; 838 (A1, M4--M6) is the
+ordered next activation.
+
+Accepted documentation evidence is `da06fe48f1a8b534d29be14357b865035082cdf3`,
+`54bdc37ba`, `3b020947e`, and `8cc12cadc`. The umbrella made no implementation,
+test, runtime, or type-family capability change. Parked 836 remains unchanged
+at Step 1 with its later return to 831 Step 4; 797 remains the terminal
+valid-LIR handoff; 812 may refresh only after accepted type-family capabilities,
+followed by 813's residual non-type string routing.
+
 ## Reviewer Reject Signals
 
 - Reject direct implementation, tests, schema/store/union code, producer or
