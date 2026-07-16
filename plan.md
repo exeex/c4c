@@ -3,7 +3,7 @@
 Status: Active
 Source Idea: ideas/open/845_lir_typed_reference_carriers_collector_migration.md
 Activated after: ideas/closed/850_lir_cfg_phi_raw_bindings_evidence.md
-Repaired after: nine accepted one-field migration packets through `LirCmpOp.lhs`
+Repaired after: ten accepted one-field migration packets through `LirCmpOp.rhs`
 
 ## Purpose
 
@@ -39,11 +39,12 @@ spurious references versus compatibility.
 - One exact producer-published semantic callee, argument, signature, or global
   reference carrier per packet.
 - Compatibility parity for the replaced source field.
-- Current repair target: `collect_inst_refs` migration for `LirCmpOp.rhs`
-  from raw `S(op.rhs)` scanning to `collect_operand_ref(op.rhs, refs)`.
+- Current repair target: `collect_inst_refs` migration for `LirSelectOp.cond`
+  from raw `S(op.cond)` scanning to `collect_operand_ref(op.cond, refs)`.
 - Already accepted under this route: `LirStoreOp.val`, `LirStoreOp.ptr`,
   `LirLoadOp.ptr`, `LirGepOp.ptr`, `LirPhiOp.incoming[].value`, and
-  `LirCastOp.operand`, `LirBinOp.lhs`, `LirBinOp.rhs`, and `LirCmpOp.lhs`.
+  `LirCastOp.operand`, `LirBinOp.lhs`, `LirBinOp.rhs`, `LirCmpOp.lhs`, and
+  `LirCmpOp.rhs`.
 
 ## Non-Goals
 
@@ -80,12 +81,13 @@ carrier and an existing raw scanner/collector consumer.
 Actions:
 - Inspect named call/global collector and LIR-to-BIR preparation code.
 - Trace candidate source fields to their producer-published semantic carriers.
-- Select `LirCmpOp.rhs` only unless inspection disproves its carrier readiness.
+- Select `LirSelectOp.cond` only unless inspection disproves its carrier
+  readiness.
 - Record the selected field, scanner consumer, proof target, and non-goals in
   `todo.md`.
 
 Completion check:
-- `todo.md` confirms `LirCmpOp.rhs` and `collect_inst_refs` as the one-field
+- `todo.md` confirms `LirSelectOp.cond` and `collect_inst_refs` as the one-field
   packet, or records a lifecycle blocker/no-ready-field decision with
   evidence.
 
@@ -95,8 +97,8 @@ Goal: replace scanner recovery for the selected field with its semantic
 carrier in the named collector/preparation consumer.
 
 Actions:
-- Change only the selected consumer path: replace `S(op.rhs)` in the
-  `LirCmpOp` arm with `collect_operand_ref(op.rhs, refs)`.
+- Change only the selected consumer path: replace `S(op.cond)` in the
+  `LirSelectOp` arm with `collect_operand_ref(op.cond, refs)`.
 - Preserve compatibility fallback where unselected fields still require it.
 - Leave compare, select, aggregate/vector ops, inline asm, and
   residual raw/global text on their current scanner paths.
