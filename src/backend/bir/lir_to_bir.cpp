@@ -2651,6 +2651,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
       selected_switch_selector_parameter_authority = nullptr;
   const codegen::lir::LirTruthinessComparisonLhsParameterAuthority*
       selected_truthiness_lhs_parameter_authority = nullptr;
+  const codegen::lir::LirPointerTruthinessParameterAuthority*
+      selected_pointer_truthiness_parameter_authority = nullptr;
   const codegen::lir::LirFixedDirectCallArgumentParameterAuthority*
       selected_fixed_direct_call_argument_authority = nullptr;
   for (const auto& block : function.blocks) {
@@ -2787,6 +2789,68 @@ Result<void, ImportError> validate_function(const LirModule& module,
       return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
                         "direct scalar truthiness comparison requires one exact typed current-function authority row");
     selected_truthiness_lhs_parameter_authority = &authority;
+  }
+  for (const auto& block : function.blocks) for (std::size_t index = 0; index < block.insts.size(); ++index) {
+    const auto* cast = std::get_if<codegen::lir::LirCastOp>(&block.insts[index]);
+    if (!cast || cast->kind != codegen::lir::LirCastKind::PtrToInt ||
+        cast->from_type.kind() != codegen::lir::LirTypeKind::Pointer ||
+        cast->to_type != codegen::lir::LirTypeRef::integer(64) ||
+        cast->operand.kind() != codegen::lir::LirOperandKind::SsaValue ||
+        !cast->operand.value_id() || !cast->result.value_id()) {
+      continue;
+    }
+    const auto* compare = index + 1 < block.insts.size()
+        ? std::get_if<LirCmpOp>(&block.insts[index + 1])
+        : nullptr;
+    const auto selected_definition = std::find_if(
+        function.native_body_parameter_definitions.begin(),
+        function.native_body_parameter_definitions.end(),
+        [&](const auto& definition) {
+          return definition.value == *cast->operand.value_id() &&
+                 definition.type == cast->from_type &&
+                 definition.abi == codegen::lir::LirNativeBodyParameterAbi::DirectPointer;
+        });
+    if (!compare || compare->is_float ||
+        compare->predicate.typed() != std::optional{codegen::lir::LirCmpPredicate::Ne} ||
+        compare->type_str != codegen::lir::LirTypeRef::integer(64) ||
+        compare->lhs.kind() != codegen::lir::LirOperandKind::SsaValue ||
+        !compare->lhs.value_id() || *compare->lhs.value_id() != *cast->result.value_id() ||
+        !compare->rhs.integer_immediate() ||
+        compare->rhs.integer_immediate()->value != 0) {
+      if (selected_definition != function.native_body_parameter_definitions.end())
+        return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                          "direct pointer truthiness parameter requires its one typed PtrToInt comparison authority row");
+      continue;
+    }
+    if (!compare->pointer_truthiness_parameter_authority) {
+      if (selected_definition != function.native_body_parameter_definitions.end())
+        return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                          "direct pointer truthiness parameter requires its one typed PtrToInt comparison authority row");
+      continue;
+    }
+    const auto& authority = *compare->pointer_truthiness_parameter_authority;
+    const auto matches = std::count_if(
+        function.native_body_parameter_definitions.begin(),
+        function.native_body_parameter_definitions.end(), [&](const auto& definition) {
+          return definition.value == authority.value &&
+                 definition.parameter_index == authority.parameter_index &&
+                 definition.type == authority.type && definition.owner == authority.owner &&
+                 definition.abi == authority.abi;
+        });
+    if (selected_pointer_truthiness_parameter_authority || !authority.value.valid() ||
+        authority.owner != function.link_name_id ||
+        authority.parameter_index >= function.params.size() ||
+        authority.parameter_index >= function.signature_param_type_refs.size() ||
+        authority.abi != codegen::lir::LirNativeBodyParameterAbi::DirectPointer ||
+        authority.role != codegen::lir::LirPointerTruthinessParameterRole::PointerTruthiness ||
+        authority.type.kind() != codegen::lir::LirTypeKind::Pointer ||
+        *cast->operand.value_id() != authority.value ||
+        cast->from_type != authority.type ||
+        function.signature_param_type_refs[authority.parameter_index] != authority.type ||
+        matches != 1)
+      return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, block.label,
+                        "direct pointer truthiness parameter requires one exact typed current-function authority row");
+    selected_pointer_truthiness_parameter_authority = &authority;
   }
   for (const auto& block : function.blocks) for (const auto& instruction : block.insts) {
     const auto* call = std::get_if<LirCallOp>(&instruction);
@@ -3040,6 +3104,14 @@ Result<void, ImportError> validate_function(const LirModule& module,
       return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
                         "direct scalar truthiness parameter identity collided in the current-function source registry");
   }
+  if (selected_pointer_truthiness_parameter_authority) {
+    const auto type = lower_lir_type(module, selected_pointer_truthiness_parameter_authority->type);
+    const auto existing =
+        source_values.find(selected_pointer_truthiness_parameter_authority->value.value);
+    if (!type || existing == source_values.end() || existing->second != *type)
+      return fail<void>(ImportErrorCode::UnsupportedFunctionParameters, name, {},
+                        "direct pointer truthiness parameter identity collided in the current-function source registry");
+  }
   if (selected_fixed_direct_call_argument_authority) {
     const auto type = lower_lir_type(module,
                                      selected_fixed_direct_call_argument_authority->type);
@@ -3105,6 +3177,7 @@ Result<void, ImportError> validate_function(const LirModule& module,
   std::size_t selected_body_parameter_gep_count = 0;
   std::size_t selected_scalar_body_parameter_lhs_count = 0;
   std::size_t selected_scalar_body_parameter_rhs_count = 0;
+  std::size_t selected_pointer_truthiness_parameter_count = 0;
   labels.reserve(function.blocks.size());
   block_ids.reserve(function.blocks.size());
   block_labels_by_id.reserve(function.blocks.size());
@@ -3875,7 +3948,19 @@ Result<void, ImportError> validate_function(const LirModule& module,
             compare->lhs.value_id() && compare->rhs.integer_immediate() &&
             compare->rhs.integer_immediate()->value == 0 &&
             source_values.count(compare->lhs.value_id()->value) == 1;
-        if ((!slt && !olt && !ffs_zero && !truthiness_ne) ||
+        const bool pointer_truthiness_ne = compare->pointer_truthiness_parameter_authority &&
+            !compare->is_float &&
+            compare->predicate.typed() == std::optional{codegen::lir::LirCmpPredicate::Ne} &&
+            compare->type_str == codegen::lir::LirTypeRef::integer(64) &&
+            compare->lhs.kind() == codegen::lir::LirOperandKind::SsaValue &&
+            compare->lhs.value_id() && compare->rhs.integer_immediate() &&
+            compare->rhs.integer_immediate()->value == 0 &&
+            source_values.count(compare->lhs.value_id()->value) == 1;
+        if (pointer_truthiness_ne && ++selected_pointer_truthiness_parameter_count != 1)
+          return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
+                            name, block.label,
+                            "direct pointer truthiness parameter requires the one exact typed authority row");
+        if ((!slt && !olt && !ffs_zero && !truthiness_ne && !pointer_truthiness_ne) ||
             !source_values.emplace(compare->result.value_id()->value,
                                    Type{TypeKind::I1, 1, "i1"}).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
@@ -3932,7 +4017,17 @@ Result<void, ImportError> validate_function(const LirModule& module,
             module, *cast, source_values, downstream_double_fadd_results);
         const bool wide_ffs_trunc = exact_wide_ffs_trunc(
             module, *cast, source_values, wide_ffs_select_results);
-        if ((!intrinsic_trunc && !scalar_sext && !scalar_fptrunc && !scalar_fpext && !scalar_sitofp && !scalar_uitofp && !scalar_fptosi && !scalar_fptoui && !wide_ffs_trunc) ||
+        const auto* cast_operand = cast->operand.value_id();
+        const auto cast_operand_value = cast_operand
+            ? source_values.find(cast_operand->value)
+            : source_values.end();
+        const bool pointer_truthiness_ptrtoint =
+            cast->kind == codegen::lir::LirCastKind::PtrToInt &&
+            cast->from_type.kind() == codegen::lir::LirTypeKind::Pointer &&
+            cast->to_type == codegen::lir::LirTypeRef::integer(64) &&
+            cast_operand && cast_operand_value != source_values.end() &&
+            cast_operand_value->second == Type{TypeKind::Pointer};
+        if ((!intrinsic_trunc && !scalar_sext && !scalar_fptrunc && !scalar_fpext && !scalar_sitofp && !scalar_uitofp && !scalar_fptosi && !scalar_fptoui && !wide_ffs_trunc && !pointer_truthiness_ptrtoint) ||
             !source_values.emplace(cast->result.value_id()->value,
                                    scalar_sext ? Type{TypeKind::Integer, 64, "i64"}
                                    : scalar_fptrunc ? Type{TypeKind::F32, 32, "float"}
@@ -3942,7 +4037,8 @@ Result<void, ImportError> validate_function(const LirModule& module,
                                    : scalar_fptosi ? Type{TypeKind::Integer, 32, "i32"}
                                    : scalar_fptoui ? Type{TypeKind::Integer, 32, "i32"}
                                    : wide_ffs_trunc ? Type{TypeKind::Integer, 32, "i32"}
-                                                    : Type{TypeKind::Integer, 32, "i32"}).second)
+                                    : pointer_truthiness_ptrtoint ? Type{TypeKind::Integer, 64, "i64"}
+                                                                 : Type{TypeKind::Integer, 32, "i32"}).second)
           return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction,
                             name, block.label,
                             "cast requires an exact admitted current-function typed receipt");
@@ -4266,11 +4362,13 @@ Result<void, ImportError> validate_function(const LirModule& module,
         block.terminator);
     if (!checked) return checked;
   }
-  if (direct_pointer_parameter_count != 0 && selected_body_parameter_gep_count != 1)
+  if (direct_pointer_parameter_count != 0 &&
+      selected_body_parameter_gep_count + selected_pointer_truthiness_parameter_count != 1)
     return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
-                      "direct body-parameter authority requires exactly one selected getelementptr receipt");
+                      "direct body-parameter authority requires exactly one selected pointer receipt");
   if (selected_body_parameter_gep_count + selected_scalar_body_parameter_lhs_count +
-          selected_scalar_body_parameter_rhs_count > 1)
+          selected_scalar_body_parameter_rhs_count +
+          selected_pointer_truthiness_parameter_count > 1)
     return fail<void>(ImportErrorCode::UnsupportedOrdinaryInstruction, name, {},
                       "only one selected body-parameter authority receipt is supported");
   return Result<void, ImportError>::success();
@@ -4742,6 +4840,14 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                   return &*compare->truthiness_lhs_parameter_authority;
             return static_cast<const codegen::lir::LirTruthinessComparisonLhsParameterAuthority*>(nullptr);
           }();
+          const auto selected_pointer_truthiness_authority = [&]() {
+            for (const auto& block : function.blocks)
+              for (const auto& instruction : block.insts)
+                if (const auto* compare = std::get_if<LirCmpOp>(&instruction);
+                    compare && compare->pointer_truthiness_parameter_authority)
+                  return &*compare->pointer_truthiness_parameter_authority;
+            return static_cast<const codegen::lir::LirPointerTruthinessParameterAuthority*>(nullptr);
+          }();
           const auto selected_fixed_direct_call_argument_authority = [&]()
               -> std::pair<
                   const codegen::lir::LirFixedDirectCallArgumentParameterAuthority*,
@@ -4813,6 +4919,18 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                    parameter.abi == codegen::lir::LirNativeBodyParameterAbi::DirectScalar;
                              })
               : function.native_body_parameter_definitions.end();
+          const auto selected_pointer_truthiness_body_parameter =
+              selected_pointer_truthiness_authority
+              ? std::find_if(function.native_body_parameter_definitions.begin(),
+                             function.native_body_parameter_definitions.end(),
+                             [&](const auto& parameter) {
+                               return parameter.value == selected_pointer_truthiness_authority->value &&
+                                   parameter.parameter_index == selected_pointer_truthiness_authority->parameter_index &&
+                                   parameter.type == selected_pointer_truthiness_authority->type &&
+                                   parameter.owner == selected_pointer_truthiness_authority->owner &&
+                                   parameter.abi == codegen::lir::LirNativeBodyParameterAbi::DirectPointer;
+                             })
+              : function.native_body_parameter_definitions.end();
           const auto selected_fixed_direct_call_argument_body_parameter =
               selected_fixed_direct_call_argument_authority.first
               ? std::find_if(function.native_body_parameter_definitions.begin(),
@@ -4875,6 +4993,17 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                                   parameter.value()).second) {
               edit_error = ImportError{ImportErrorCode::UnsupportedFunctionParameters, name, {},
                                        "direct scalar truthiness parameter failed authoritative Raw-BIR receipt"};
+              return Result<void, BuildError>::failure(BuildError::InvalidParameter);
+            }
+          }
+          if (selected_pointer_truthiness_body_parameter != function.native_body_parameter_definitions.end()) {
+            auto parameter = function_builder.parameter(
+                selected_pointer_truthiness_body_parameter->parameter_index);
+            if (!parameter || !source_values.emplace(
+                                  selected_pointer_truthiness_body_parameter->value.value,
+                                  parameter.value()).second) {
+              edit_error = ImportError{ImportErrorCode::UnsupportedFunctionParameters, name, {},
+                                       "direct pointer truthiness parameter failed authoritative Raw-BIR receipt"};
               return Result<void, BuildError>::failure(BuildError::InvalidParameter);
             }
           }
@@ -5972,7 +6101,13 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 const auto* truthiness_authority =
                     compare->truthiness_lhs_parameter_authority
                         ? &*compare->truthiness_lhs_parameter_authority : nullptr;
+                const auto* pointer_truthiness_authority =
+                    compare->pointer_truthiness_parameter_authority
+                        ? &*compare->pointer_truthiness_parameter_authority
+                        : nullptr;
                 const bool truthiness_ne = truthiness_authority != nullptr;
+                const bool pointer_truthiness_ne =
+                    pointer_truthiness_authority != nullptr;
                 ValueId lhs_value{};
                 if (compare->lhs.kind() == codegen::lir::LirOperandKind::SsaValue) {
                   const auto lhs = source_values.find(compare->lhs.value_id()->value);
@@ -6019,7 +6154,7 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                     return Result<void, BuildError>::failure(reserved.error());
                   }
                   auto defined = function_builder.define_int_constant(reserved.value(),
-                                                                       (ffs_zero || truthiness_ne) ? 0 : 7);
+                                                                       (ffs_zero || truthiness_ne || pointer_truthiness_ne) ? 0 : 7);
                   if (!defined) {
                     edit_error = builder_failure(name, block.label,
                                                  "define compare immediate-seven", defined.error());
@@ -6029,6 +6164,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                 }
                 std::optional<DirectScalarBodyParameterTruthinessComparisonLhs>
                     direct_scalar_truthiness_lhs;
+                std::optional<DirectPointerBodyParameterTruthiness>
+                    direct_pointer_truthiness;
                 if (truthiness_authority) {
                   const auto owner = imported_link_names.find(truthiness_authority->owner);
                   if (owner == imported_link_names.end()) {
@@ -6042,14 +6179,31 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                           truthiness_authority->parameter_index,
                           *lower_lir_type(module, truthiness_authority->type), owner->second};
                 }
+                if (pointer_truthiness_authority) {
+                  const auto owner =
+                      imported_link_names.find(pointer_truthiness_authority->owner);
+                  if (owner == imported_link_names.end()) {
+                    edit_error = ImportError{ImportErrorCode::UnsupportedOrdinaryInstruction, name,
+                                             block.label, "validated pointer truthiness parameter owner disappeared"};
+                    return Result<void, BuildError>::failure(BuildError::InvalidNameId);
+                  }
+                  direct_pointer_truthiness =
+                      DirectPointerBodyParameterTruthiness{
+                          pointer_truthiness_authority->value.value,
+                          pointer_truthiness_authority->parameter_index,
+                          *lower_lir_type(module, pointer_truthiness_authority->type),
+                          owner->second};
+                }
                 auto appended = function_builder.append(
                     blocks.at(block.id.value),
                     CompareSpec{olt ? ComparePredicate::OLt : ffs_zero ? ComparePredicate::Eq :
-                                                   truthiness_ne ? ComparePredicate::Ne : ComparePredicate::Slt,
+                                                   (truthiness_ne || pointer_truthiness_ne) ? ComparePredicate::Ne : ComparePredicate::Slt,
                                 olt ? Type{TypeKind::F64, 64, "double"}
                                     : *lower_lir_type(module, compare->type_str),
                                lhs_value, rhs_value,
-                                compare->result.value_id()->value, direct_scalar_truthiness_lhs});
+                                compare->result.value_id()->value,
+                                direct_scalar_truthiness_lhs,
+                                direct_pointer_truthiness});
                 if (!appended || appended.value().results.size() != 1 ||
                     !source_values.emplace(compare->result.value_id()->value,
                                            appended.value().results[0]).second) {
@@ -6108,6 +6262,8 @@ Result<RawBir, ImportError> lower_lir_to_raw_bir(const LirModule& module,
                     blocks.at(block.id.value),
                     CastSpec{cast->kind == codegen::lir::LirCastKind::SExt
                                  ? CastKind::SExt
+                                 : cast->kind == codegen::lir::LirCastKind::PtrToInt
+                                     ? CastKind::PtrToInt
                                  : cast->kind == codegen::lir::LirCastKind::FPTrunc
                                      ? CastKind::FPTrunc
                                      : cast->kind == codegen::lir::LirCastKind::FPExt

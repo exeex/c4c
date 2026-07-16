@@ -29,6 +29,12 @@ names, diagnostics, compatibility mirrors, or testcase shape.
 
 ## Proof
 
-No Step 7.42 proof has run yet. Required after implementation: fresh build,
-focused backend receiver proof, matching regression guard, and
-`git diff --check`.
+Passed matching focused regression proof:
+
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$' ) > test_before.log 2>&1`
+
+`( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$' ) > test_after.log 2>&1 && git diff --check`
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: before 1/1, after 1/1, no new failures; `git diff --check` passed.

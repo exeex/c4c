@@ -1809,6 +1809,23 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       lhs.value().get().type == spec.type && rhs.value().get().type == spec.type &&
       integer && integer->value == 0;
   const auto* lhs_parameter = lhs ? std::get_if<ParameterDef>(&lhs.value().get().definition) : nullptr;
+  const auto* lhs_inst = lhs ? std::get_if<InstResultDef>(&lhs.value().get().definition) : nullptr;
+  const auto lhs_cast_producer = lhs_inst
+      ? function_data.insts_.get(function_, lhs_inst->instruction)
+      : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(ResolveError::OutOfRange);
+  const auto* lhs_cast = lhs_cast_producer
+      ? std::get_if<CastNode>(&lhs_cast_producer.value().get().payload)
+      : nullptr;
+  const auto* ptrtoint_operand = lhs_cast && lhs_cast->kind == CastKind::PtrToInt &&
+          lhs_cast_producer.value().get().operands.size() == 1
+      ? &lhs_cast_producer.value().get().operands[0]
+      : nullptr;
+  const auto ptrtoint_source = ptrtoint_operand
+      ? function_data.values_.get(function_, *ptrtoint_operand)
+      : Result<std::reference_wrapper<const ValueDef>, ResolveError>::failure(ResolveError::OutOfRange);
+  const auto* ptrtoint_parameter = ptrtoint_source
+      ? std::get_if<ParameterDef>(&ptrtoint_source.value().get().definition)
+      : nullptr;
   const bool truthiness_ne = spec.predicate == ComparePredicate::Ne && integer_type(spec.type) &&
       lhs && rhs && lhs.value().get().type == spec.type && rhs.value().get().type == spec.type &&
       lhs_parameter && integer && integer->value == 0 && spec.direct_scalar_truthiness_lhs &&
@@ -1816,13 +1833,24 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
       spec.direct_scalar_truthiness_lhs->parameter_index == lhs_parameter->ordinal &&
       spec.direct_scalar_truthiness_lhs->scalar_type == spec.type &&
       spec.direct_scalar_truthiness_lhs->owner.valid();
-  if (!function_data.blocks_.contains(function_, block) || (!slt && !olt && !ffs_eq_zero && !truthiness_ne) ||
+  const bool pointer_truthiness_ne = spec.predicate == ComparePredicate::Ne &&
+      spec.type == i64 && lhs && rhs && lhs.value().get().type == i64 &&
+      rhs.value().get().type == i64 && integer && integer->value == 0 &&
+      spec.direct_pointer_truthiness && lhs_cast && lhs_cast->kind == CastKind::PtrToInt &&
+      lhs_cast->from_type == Type{TypeKind::Pointer} && lhs_cast->to_type == i64 &&
+      ptrtoint_parameter &&
+      spec.direct_pointer_truthiness->source_value_id != 0 &&
+      spec.direct_pointer_truthiness->parameter_index == ptrtoint_parameter->ordinal &&
+      spec.direct_pointer_truthiness->pointer_type == Type{TypeKind::Pointer} &&
+      spec.direct_pointer_truthiness->owner.valid();
+  if (!function_data.blocks_.contains(function_, block) || (!slt && !olt && !ffs_eq_zero && !truthiness_ne && !pointer_truthiness_ne) ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   detail::InstData instruction;
   instruction.opcode = Opcode::Compare;
   instruction.payload = CompareNode{spec.predicate, spec.type,
-                                    spec.direct_scalar_truthiness_lhs};
+                                    spec.direct_scalar_truthiness_lhs,
+                                    spec.direct_pointer_truthiness};
   instruction.operands = {spec.lhs, spec.rhs};
   auto inserted = function_data.insts_.emplace(function_, std::move(instruction));
   if (!inserted) return Result<BuildResult, BuildError>::failure(storage_error(inserted.error()));
@@ -2132,12 +2160,20 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block, CastSpec 
       spec.kind == CastKind::FPToSI && spec.from_type == f64 && spec.to_type == i32;
   const bool scalar_fptoui =
       spec.kind == CastKind::FPToUI && spec.from_type == f64 && spec.to_type == i32;
-  if ((!intrinsic_trunc && !scalar_sext && !scalar_fptrunc && !scalar_fpext && !scalar_sitofp && !scalar_uitofp && !scalar_fptosi && !scalar_fptoui) || !operand ||
+  const bool pointer_truthiness_ptrtoint =
+      spec.kind == CastKind::PtrToInt &&
+      spec.from_type == Type{TypeKind::Pointer} && spec.to_type == i64;
+  if ((!intrinsic_trunc && !scalar_sext && !scalar_fptrunc && !scalar_fpext && !scalar_sitofp && !scalar_uitofp && !scalar_fptosi && !scalar_fptoui && !pointer_truthiness_ptrtoint) || !operand ||
       operand.value().get().type != spec.from_type ||
       function_data.values_by_source_id_.count(spec.source_result_id) != 0)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   const auto* operand_def = std::get_if<InstResultDef>(&operand.value().get().definition);
-  if (!operand_def)
+  const auto* operand_parameter = std::get_if<ParameterDef>(&operand.value().get().definition);
+  if (!operand_def && !operand_parameter)
+    return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  if (pointer_truthiness_ptrtoint && !operand_parameter)
+    return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
+  if (!pointer_truthiness_ptrtoint && !operand_def)
     return Result<BuildResult, BuildError>::failure(BuildError::UnsupportedOpcode);
   if (intrinsic_trunc) {
     const auto producer = function_data.insts_.get(function_, operand_def->instruction);

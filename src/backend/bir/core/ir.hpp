@@ -286,6 +286,15 @@ struct DirectScalarBodyParameterTruthinessComparisonLhs {
   LinkNameId owner{};
 };
 
+// Receipt of the one producer-authorized direct-pointer parameter used through
+// PtrToInt as the LHS of an integer truthiness comparison.
+struct DirectPointerBodyParameterTruthiness {
+  std::uint32_t source_value_id = 0;
+  std::uint32_t parameter_index = 0;
+  Type pointer_type{TypeKind::Pointer};
+  LinkNameId owner{};
+};
+
 // Receipt of one producer-authorized direct-scalar current-function parameter
 // passed as a selected structured argument of a fixed direct call.
 struct DirectScalarBodyParameterFixedDirectCallArgument {
@@ -318,6 +327,8 @@ struct CompareNode {
   Type type{};
   std::optional<DirectScalarBodyParameterTruthinessComparisonLhs>
       direct_scalar_truthiness_lhs;
+  std::optional<DirectPointerBodyParameterTruthiness>
+      direct_pointer_truthiness;
 };
 
 // This is intentionally a receipt of the producer-verified wide ffs select
@@ -369,7 +380,7 @@ struct IntrinsicCallNode {
   std::optional<bool> zero_count_is_undef;
 };
 
-enum class CastKind : std::uint8_t { Trunc, SExt, FPTrunc, FPExt, SIToFP, UIToFP, FPToSI, FPToUI };
+enum class CastKind : std::uint8_t { Trunc, SExt, FPTrunc, FPExt, SIToFP, UIToFP, FPToSI, FPToUI, PtrToInt };
 
 struct CastNode {
   CastKind kind = CastKind::Trunc;

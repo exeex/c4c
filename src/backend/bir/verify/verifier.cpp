@@ -1281,7 +1281,9 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
             (compare->type == i32 || compare->type == i64);
         const bool truthiness_ne = compare->predicate == ComparePredicate::Ne &&
             integer_type(compare->type) && compare->direct_scalar_truthiness_lhs.has_value();
-        bool exact = (slt || olt || ffs_eq_zero || truthiness_ne) && instruction.operands.size() == 2 &&
+        const bool pointer_truthiness_ne = compare->predicate == ComparePredicate::Ne &&
+            compare->type == i64 && compare->direct_pointer_truthiness.has_value();
+        bool exact = (slt || olt || ffs_eq_zero || truthiness_ne || pointer_truthiness_ne) && instruction.operands.size() == 2 &&
             instruction.results.size() == 1;
         if (exact) {
           const auto lhs = function.values_.get(function_id, instruction.operands[0]);
@@ -1295,7 +1297,21 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
               : Result<std::reference_wrapper<const detail::InstData>, ResolveError>::failure(ResolveError::OutOfRange);
           const auto* lhs_parameter = exact
               ? std::get_if<ParameterDef>(&lhs.value().get().definition) : nullptr;
-          exact = exact && (truthiness_ne || ffs_eq_zero || (lhs_producer && (slt
+          const auto* lhs_cast = lhs_producer
+              ? std::get_if<CastNode>(&lhs_producer.value().get().payload)
+              : nullptr;
+          const auto* ptrtoint_operand = lhs_cast &&
+                  lhs_cast->kind == CastKind::PtrToInt &&
+                  lhs_producer.value().get().operands.size() == 1
+              ? &lhs_producer.value().get().operands[0]
+              : nullptr;
+          const auto ptrtoint_source = ptrtoint_operand
+              ? function.values_.get(function_id, *ptrtoint_operand)
+              : Result<std::reference_wrapper<const ValueDef>, ResolveError>::failure(ResolveError::OutOfRange);
+          const auto* ptrtoint_parameter = ptrtoint_source
+              ? std::get_if<ParameterDef>(&ptrtoint_source.value().get().definition)
+              : nullptr;
+          exact = exact && (truthiness_ne || pointer_truthiness_ne || ffs_eq_zero || (lhs_producer && (slt
               ? std::holds_alternative<LoadNode>(lhs_producer.value().get().payload)
               : [&] {
                   const auto* binary = std::get_if<BinaryNode>(&lhs_producer.value().get().payload);
@@ -1320,7 +1336,21 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
                   module.link_names_[compare->direct_scalar_truthiness_lhs->owner.slot].spelling ==
                       function.link_name_ &&
                   instruction.operands[0] ==
-                      function.parameters_[compare->direct_scalar_truthiness_lhs->parameter_index]));
+                      function.parameters_[compare->direct_scalar_truthiness_lhs->parameter_index])) &&
+              (!pointer_truthiness_ne || (integer && integer->value == 0 &&
+                  lhs_cast && lhs_cast->kind == CastKind::PtrToInt &&
+                  lhs_cast->from_type == Type{TypeKind::Pointer} &&
+                  lhs_cast->to_type == compare->type && ptrtoint_parameter &&
+                  compare->direct_pointer_truthiness->source_value_id != 0 &&
+                  compare->direct_pointer_truthiness->parameter_index == ptrtoint_parameter->ordinal &&
+                  compare->direct_pointer_truthiness->pointer_type == Type{TypeKind::Pointer} &&
+                  compare->direct_pointer_truthiness->owner.valid() &&
+                  compare->direct_pointer_truthiness->owner.epoch == module.epoch_ &&
+                  compare->direct_pointer_truthiness->owner.slot < module.link_names_.size() &&
+                  module.link_names_[compare->direct_pointer_truthiness->owner.slot].spelling ==
+                      function.link_name_ &&
+                  *ptrtoint_operand ==
+                      function.parameters_[compare->direct_pointer_truthiness->parameter_index]));
           const auto result_value = exact
               ? function.values_.get(function_id, instruction.results[0])
               : Result<std::reference_wrapper<const ValueDef>, ResolveError>::failure(ResolveError::OutOfRange);
@@ -1375,13 +1405,19 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
             cast->from_type == f64 && cast->to_type == i32;
         const bool scalar_fptoui = cast->kind == CastKind::FPToUI &&
             cast->from_type == f64 && cast->to_type == i32;
-        bool exact = (intrinsic_trunc || scalar_sext || scalar_fptrunc || scalar_fpext || scalar_sitofp || scalar_uitofp || scalar_fptosi || scalar_fptoui) &&
+        const bool pointer_truthiness_ptrtoint =
+            cast->kind == CastKind::PtrToInt &&
+            cast->from_type == Type{TypeKind::Pointer} && cast->to_type == i64;
+        bool exact = (intrinsic_trunc || scalar_sext || scalar_fptrunc || scalar_fpext || scalar_sitofp || scalar_uitofp || scalar_fptosi || scalar_fptoui || pointer_truthiness_ptrtoint) &&
             instruction.operands.size() == 1 && instruction.results.size() == 1;
         if (exact) {
           const auto operand = function.values_.get(function_id, instruction.operands[0]);
           exact = operand && operand.value().get().type == cast->from_type;
           const auto* def = exact ? std::get_if<InstResultDef>(&operand.value().get().definition) : nullptr;
-          if (!def) exact = false;
+          const auto* parameter = exact ? std::get_if<ParameterDef>(&operand.value().get().definition) : nullptr;
+          if (!def && !parameter) exact = false;
+          if (exact && pointer_truthiness_ptrtoint) exact = parameter != nullptr;
+          if (exact && !pointer_truthiness_ptrtoint && !def) exact = false;
           if (exact && intrinsic_trunc) {
             const auto producer = function.insts_.get(function_id, def->instruction);
             exact = producer && (std::holds_alternative<IntrinsicCallNode>(producer.value().get().payload) ||
