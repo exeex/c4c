@@ -8,16 +8,16 @@ Current Step Title: Prove Parity And Fail-Closed Behavior
 
 ## Just Finished
 
-Completed the second 845 migration packet for `LirStoreOp.ptr`.
-`collect_inst_refs` now routes store pointers through `collect_operand_ref`, so
+Completed the third 845 migration packet for `LirLoadOp.ptr`.
+`collect_inst_refs` now routes load pointers through `collect_operand_ref`, so
 `LirOperand::global` semantic `LinkNameId` identity preempts stale rendered
-text. Raw `LirStoreOp.ptr` operands still scan text for compatibility.
+text. Raw `LirLoadOp.ptr` operands still scan text for compatibility.
 
 ## Suggested Next
 
 Ask plan-owner whether to close 845, repair with another one-field migration,
-or route a successor. Remaining scanner fields include loads, GEPs, PHIs,
-inline asm, and residual raw/global text; this packet did not claim them.
+or route a successor. Remaining scanner fields include GEPs, PHIs, inline asm,
+and residual raw/global text; this packet did not claim them.
 
 ## Watchouts
 
