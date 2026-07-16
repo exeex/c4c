@@ -10166,6 +10166,75 @@ void test_insert_element_required_native_vector_printer_authority() {
               "required insert-element printer must not emit stale element display text");
 }
 
+void test_extract_element_native_vector_printer_authority() {
+  namespace lir = c4c::codegen::lir;
+
+  lir::LirModule module;
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  const c4c::LinkNameId owner = module.link_names.intern("extract_element_authority");
+  const lir::LirVectorRef vector_ref = module.register_vector(
+      lir::LirVectorStoreEntry{4, lir::LirTypeRef::integer(32)});
+
+  lir::LirFunction function;
+  function.name = "extract_element_authority";
+  function.link_name_id = owner;
+  function.signature_text = "define void @extract_element_authority() {";
+  function.signature_return_type_ref = lir::LirTypeRef(lir::LirBuiltinType::Void);
+  function.entry = lir::LirBlockId{0};
+
+  lir::LirBlock block;
+  block.label = "entry";
+  block.id = function.entry;
+
+  lir::LirNativeVectorAuthority authority;
+  authority.owner = owner;
+  authority.result = lir::LirValueId{1};
+  authority.result_shape = {4, lir::LirTypeRef::integer(32)};
+  authority.first_vector_shape = lir::LirNativeVectorShape{4, lir::LirTypeRef::integer(32)};
+  authority.index =
+      lir::LirNativeVectorIndex{lir::LirOperand::integer("2", 2),
+                                lir::LirTypeRef::integer(32)};
+  authority.vector_ref = vector_ref;
+
+  block.insts.push_back(lir::LirExtractElementOp{
+      lir::LirOperand::ssa("%elem", authority.result),
+      lir::LirTypeRef("<4 x i32>"),
+      lir::LirOperand::special_token(lir::LirSpecialToken::Poison),
+      lir::LirTypeRef::integer(32),
+      lir::LirOperand::integer("2", 2),
+      authority});
+  block.terminator = lir::LirRet{std::nullopt,
+                                 lir::LirTypeRef(lir::LirBuiltinType::Void)};
+  function.blocks.push_back(std::move(block));
+  module.functions.push_back(std::move(function));
+
+  expect_true(owner != c4c::kInvalidLinkName,
+              "synthetic extract-element fixture should have a valid owner ID");
+  expect_true(module.functions.size() == 1 &&
+                  module.functions[0].link_name_id == owner,
+              "synthetic extract-element fixture should have one matching owner");
+  lir::verify_module(module);
+
+  const std::string ir = lir::print_llvm(module);
+  expect_contains(ir, "extractelement <4 x i32> poison, i32 2",
+                  "extract-element printer should render vector store authority");
+
+  auto& extract = std::get<lir::LirExtractElementOp>(
+      module.functions[0].blocks[0].insts[0]);
+  extract.vec_type.str() = "<99 x double>";
+  lir::verify_module(module);
+  const std::string stale_ir = lir::print_llvm(module);
+  expect_contains(stale_ir, "extractelement <4 x i32> poison, i32 2",
+                  "extract-element printer should ignore stale vector display text");
+  expect_true(stale_ir.find("<99 x double>") == std::string::npos,
+              "extract-element printer must not emit stale vector display text");
+
+  extract.native_vector_authority->result_shape.lane_count = 99;
+  expect_identity_verification_rejected(
+      module, "extract-element native vector store shape mismatch should be rejected");
+}
+
 }  // namespace
 
 int main() {
@@ -10726,6 +10795,7 @@ int read_nested_indirect_return(int *(*(*chooser)(int))(int)) {
   test_lir_binop_compact_scalar_type_authority_boundary();
   test_lir_phi_restricted_boundary_value_type_authority();
   test_insert_element_required_native_vector_printer_authority();
+  test_extract_element_native_vector_printer_authority();
 
   std::cout << "PASS: frontend_lir_call_type_ref\n";
   return 0;

@@ -3919,10 +3919,11 @@ void verify_function_value_ownership(const LirModule& mod,
           fail_verify("LirExtractElementOp.native_vector_authority.vector_ref",
                       "aggregate element vectors must consume an accepted aggregate store fact");
         }
-        if (op.vec_type.str() != "<" + std::to_string(vector->lane_count) + " x " +
-                                 vector->element_type.str() + ">") {
-          fail_verify("LirExtractElementOp.vec_type",
-                      "must mirror the direct vector index vector store fact");
+        if (authority.result_shape.lane_count != vector->lane_count ||
+            !same_native_type_fact(authority.result_shape.element_type,
+                                   vector->element_type)) {
+          fail_verify("LirExtractElementOp.native_vector_authority.result_shape",
+                      "must match the direct vector index vector store fact");
         }
       };
   const auto verify_required_shuffle_vector_store =

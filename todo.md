@@ -8,20 +8,21 @@ Current Step Title: Decide Next 846 Packet Or 847 Handoff
 
 ## Just Finished
 
-Completed `plan.md` Step 5 selected consumer repair for `LirInsertElementOp`
-required native-vector authority.
+Completed `plan.md` Step 5 selected consumer repair for `LirExtractElementOp`
+native-vector printer/verifier rendering.
 
-- Updated required native-vector insert-element printing to render vector and
-  element types from the module-owned `LirVectorStoreEntry` reached through
+- Updated native-vector extract-element printing to render the vector type from
+  the module-owned `LirVectorStoreEntry` reached through
   `native_vector_authority.vector_ref`.
-- Repaired required native-vector insert-element verification so stale
-  `vec_type.str()` / `elem_type.str()` display mirrors are check-only when the
-  module-owned vector store fact, native element type fact, vector shape,
-  owner/result/use facts, and zero index all match.
+- Repaired native-vector extract-element verification so stale `vec_type.str()`
+  display text is check-only when the module-owned vector store fact,
+  native result shape, index type, owner/result/use facts, and vector operand
+  facts remain valid.
 - Preserved the generic `require_type_ref` path for legacy/unselected
-  insert-element instructions without required native-vector authority.
-- Added focused stale-display coverage proving required insert-element printing
-  emits the vector-store shape/element type after mutating stale display text.
+  extract-element instructions without native vector authority.
+- Added focused stale-display coverage proving extract-element printing emits
+  the vector-store type after mutating stale display text, plus a same-feature
+  rejection for vector-store/result-shape mismatch.
 
 ## Suggested Next
 
@@ -32,15 +33,15 @@ if no bounded 846 consumer remains.
 ## Watchouts
 
 This packet intentionally did not broaden vector verifier policy, vector
-lowering, extract/shuffle/select/cmp/ret consumers, Raw-BIR, generic helper
+lowering, insert/shuffle/select/cmp/ret consumers, Raw-BIR, generic helper
 deletion, or idea 847 deletion work. The stale-display allowance is limited to
-the selected `requires_native_vector_authority` insert-element path with a
-module-owned complete `native_vector_authority.vector_ref`; legacy
-insert-element validation still treats display mirrors as semantic input.
+`LirExtractElementOp` instances with complete module-owned
+`native_vector_authority.vector_ref`; legacy extract-element validation still
+treats display mirrors as semantic input.
 
 ## Proof
 
-Completed selected required insert-element packet proof:
+Completed selected extract-element packet proof:
 
 - `cmake --build build`
 - `ctest --test-dir build -R '^frontend_lir_call_type_ref$' --output-on-failure`
