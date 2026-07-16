@@ -56,11 +56,35 @@ std::string render_type_ref_for_signature(const LirTypeRef& type) {
   return type.str();
 }
 
-std::optional<std::string> render_declaration_signature_from_store(
+std::string_view signature_header_line(const LirFunction& function) {
+  std::string_view signature = function.signature_text;
+  while (!signature.empty()) {
+    const std::size_t line_end = signature.find('\n');
+    const std::string_view line =
+        line_end == std::string_view::npos ? signature : signature.substr(0, line_end);
+    if (line.rfind(function.is_declaration ? "declare " : "define ", 0) == 0) {
+      return line;
+    }
+    if (line_end == std::string_view::npos) break;
+    signature.remove_prefix(line_end + 1);
+  }
+  return {};
+}
+
+std::string_view signature_suffix_after_param_list(const LirFunction& function) {
+  const std::string_view line = signature_header_line(function);
+  const std::size_t open_paren = line.find('(');
+  if (open_paren == std::string_view::npos) return {};
+  const std::size_t close_paren = line.rfind(')');
+  if (close_paren == std::string_view::npos || close_paren < open_paren) return {};
+  return line.substr(close_paren + 1);
+}
+
+std::optional<std::string> render_function_signature_from_store(
     const LirModule& mod,
     const LirFunction& function,
     std::string_view resolved_name) {
-  if (!function.is_declaration || !function.function_signature_ref.valid()) {
+  if (!function.function_signature_ref.valid()) {
     return std::nullopt;
   }
   const LirFunctionSignatureStoreEntry* signature =
@@ -70,16 +94,23 @@ std::optional<std::string> render_declaration_signature_from_store(
   }
 
   std::ostringstream out;
-  out << "declare " << render_ext_attr(signature->return_ext_attr)
+  out << (function.is_declaration ? "declare " : "define ")
+      << (function.is_internal ? "internal " : "")
+      << render_ext_attr(signature->return_ext_attr)
       << render_type_ref_for_signature(*signature->return_type_ref) << " "
       << llvm_global_sym(std::string(resolved_name.empty() ? function.name
                                                            : resolved_name))
       << "(";
   bool need_comma = false;
   if (!signature->has_void_param_list) {
-    for (const LirTypeRef& param_type : signature->fixed_param_type_refs) {
+    for (std::size_t index = 0; index < signature->fixed_param_type_refs.size();
+         ++index) {
       if (need_comma) out << ", ";
-      out << render_type_ref_for_signature(param_type);
+      out << render_type_ref_for_signature(signature->fixed_param_type_refs[index]);
+      if (!function.is_declaration) {
+        if (index >= function.signature_params.size()) return std::nullopt;
+        out << " " << function.signature_params[index].name;
+      }
       need_comma = true;
     }
     if (signature->is_variadic) {
@@ -88,6 +119,9 @@ std::optional<std::string> render_declaration_signature_from_store(
     }
   }
   out << ")";
+  if (!function.is_declaration) {
+    out << signature_suffix_after_param_list(function);
+  }
   return out.str();
 }
 
@@ -584,7 +618,7 @@ std::string render_fn(const LirModule& mod, const LirFunction& f,
                       std::string_view resolved_name,
                       const c4c::LinkNameTable& link_names) {
   const std::string signature =
-      render_declaration_signature_from_store(mod, f, resolved_name)
+      render_function_signature_from_store(mod, f, resolved_name)
           .value_or(render_signature_with_link_name(f.signature_text,
                                                    resolved_name));
   if (f.is_declaration) return signature;

@@ -8,18 +8,20 @@ Current Step Title: Migrate declarations to signature refs
 
 ## Just Finished
 
-- Step 2 verifier slice completed: declaration and definition verification now
-  explicitly requires a valid `LirFunctionSignatureRef` whenever the module has
-  signature-store facts, then compares return type, return extension ABI,
-  ordered fixed params, byval facts, variadic state, and void-list state
-  against the module-owned store entry. Nearby coverage now rejects stale and
-  missing declaration/definition signature refs plus wrong-store facts.
+- Step 2 definition-printer slice completed: `lir_printer` now renders
+  declarations and definitions with `LirFunctionSignatureRef` store facts for
+  return type, return extension ABI, fixed params, variadic state, and void-list
+  state. Definition rendering now takes parameter names from structured
+  signature params and preserves retained header suffix attributes while
+  ignoring stale `signature_text` return/parameter spelling. Nearby coverage
+  now asserts stale definition `signature_text` cannot control printed
+  signature types once a store ref exists.
 
 ## Suggested Next
 
 - Continue Step 2 with the next bounded declaration/definition producer or
-  remaining declaration consumer migration through `LirFunctionSignatureRef`;
-  do not move into call composition yet.
+  remaining consumer migration through `LirFunctionSignatureRef`; do not move
+  into call composition yet.
 
 ## Watchouts
 

@@ -1246,6 +1246,15 @@ int defined_void_params(void) {
   require_mutable_function(stale_rendered_param_text, "defined_pair", false)
       .signature_text = "define void @defined_pair(void) {";
   c4c::codegen::lir::verify_module(stale_rendered_param_text);
+  const std::string stale_rendered_def_ir =
+      c4c::codegen::lir::print_llvm(stale_rendered_param_text);
+  expect_true(stale_rendered_def_ir.find(
+                  "define %struct.Pair @defined_pair(%struct.Pair %p.input)") !=
+                  std::string::npos,
+              "definition printer should render from the module-owned function signature store");
+  expect_true(stale_rendered_def_ir.find("define void @defined_pair(void)") ==
+                  std::string::npos,
+              "definition printer should ignore stale signature_text once a store ref exists");
 
   c4c::codegen::lir::LirModule missing_return_name = lir_module;
   require_mutable_function(missing_return_name, "declared_pair", true)
