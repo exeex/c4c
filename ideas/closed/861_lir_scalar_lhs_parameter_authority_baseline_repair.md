@@ -1,6 +1,6 @@
 # LIR Scalar LHS Parameter Authority Baseline Repair
 
-Status: Open
+Status: Closed
 Type: baseline blocker repair for current-LIR scalar LHS parameter authority
 Parent Source: ideas/open/860_lir_next_body_parameter_authority_handoff.md
 
@@ -83,6 +83,37 @@ producer-side next-row selection scope.
 - Fresh full-suite baseline passes or is accepted by the supervisor as no
   worse than the current canonical baseline.
 - `git diff --check` passes.
+
+## Closure
+
+Disposition: capability complete.
+
+Implementation commit: `df0e29445` (`Repair scalar parameter authority
+publication`).
+
+Accepted evidence:
+
+- Focused proof passed:
+  `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_function_signature_type_ref$'; } > test_after.log 2>&1`.
+- Full-suite guard passed: pre-patch `test_before.log` had `3026/3038`, and
+  post-patch `test_after.log` had `3038/3038` with no new failures.
+- Hook baseline candidate at `df0e29445` was green:
+  `100% tests passed, 0 tests failed out of 3038`.
+- Supervisor accepted the baseline with
+  `scripts/plan_review_state.py accept-baseline`.
+
+Completion notes:
+
+- The old scalar LHS parameter authority failure family no longer appears for
+  valid nonselected scalar RHS forms with selected floating binary LHS
+  authority.
+- DirectScalar selected LHS authority remains fail-closed for malformed and
+  incoherent authority.
+- Focused tests cover valid nonselected RHS, unsupported suppression, duplicate
+  selected rows, and malformed explicit selected RHS authority.
+- Parent return point is preserved in
+  `ideas/open/860_lir_next_body_parameter_authority_handoff.md`: resume at
+  Step 1, `Select and publish one next body-parameter authority row`.
 
 ## Reviewer Reject Signals
 
