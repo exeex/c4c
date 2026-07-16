@@ -54,15 +54,37 @@ Completion check: both successor proofs and their ownership boundaries are
 durably recorded; the remaining action is only Step 3 comparable full-suite
 proof.
 
-### Step 3 - Obtain comparable baseline proof and return 830
+### Step 3 - Classify the rejected comparable full-suite gate
+
+Goal: determine the first owner of the rejected full-suite delta without
+changing baseline state or silently widening either completed successor.
+
+Actions:
+
+- preserve the accepted `test_baseline.log` (3038/3038 at `8418036b`) and the
+  canonical rejected `test_after.log` (2520 passed / 518 failed after a
+  successful fresh build) without replacement or acceptance;
+- compare their inventories, group the 516 newly failing tests by suite
+  category and earliest common owner, and explicitly distinguish the 831 HIR
+  aggregate-owner and truthiness-LHS families from unrelated failures; and
+- decide the route from that ledger: make an in-scope repair only if the
+  evidence identifies an uncompleted 831-owned family; otherwise create a
+  separately scoped blocker and switch before further work.
+
+Completion check: a bounded provenance ledger names the first owner and an
+executable route.  No fresh baseline is claimed, no 830 return occurs, and the
+closed 832/833 contracts remain unchanged unless direct evidence links a
+specific failure to them.
+
+### Step 4 - Obtain comparable baseline proof and return 830
 
 Goal: clear the rejected 3038/3038 baseline gate with supervisor-owned,
 comparable full-suite evidence.
 
 Actions:
 
-- run the supervisor-selected comparable full suite against the accepted
-  baseline; and
+- after Step 3's owner route has been resolved and accepted, run the
+  supervisor-selected comparable full suite against the accepted baseline; and
 - if accepted, record the result and reactivate 830 at unchanged Step 3 only.
 
 Completion check: accepted comparable proof shows no new baseline problem; no
