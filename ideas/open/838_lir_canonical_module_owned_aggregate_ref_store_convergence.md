@@ -66,16 +66,19 @@ reference and intern it once into its owning LIR module's aggregate store.
   enforcement breaks supported aggregate function signatures. Populating the
   definition-backed HIR occurrence fact is an upstream HIR producer migration,
   outside this idea's LIR M4--M6 scope.
-- Active blocker successor: `ideas/open/848_hir_aggregate_occurrence_canonical_ref_population.md`.
-  It must provide definition-backed canonical `HirAggregateRef` values for
-  aggregate `QualType` occurrences with explicit invalid, foreign, and missing
-  behavior. It must not absorb this idea's LIR producer migration.
-- Exact return point: after the blocker is accepted, resume Step 2 and retry
-  only the bounded `lir_owned_type_spec` function-signature occurrence-producer
-  migration using populated canonical HIR refs and module store facts.
-- Remaining next action on return: retain the captured declaration facts and
-  migrate that one LIR occurrence producer; do not add owner-key, tag, or
-  rendered-text fallback.
+- Blocker disposition: 848's Step 2b is deliberately no-change under the
+  current contract. 851's accepted `fb3b74fee` trace found no legal earlier
+  direct-fact producer, so neither 848 nor 851 unblocks this idea and neither
+  provides a returnable implementation route.
+- Exact return condition: remain blocked. Do not resume Step 2 or retry the
+  bounded `lir_owned_type_spec` function-signature occurrence-producer
+  migration unless a future separately scoped and explicitly approved
+  architecture first establishes a legal direct definition fact before
+  signature normalization. No such successor is named or authorized by this
+  no-change conclusion.
+- Remaining action if that condition is ever satisfied: retain the captured
+  declaration facts and migrate that one LIR occurrence producer; do not add
+  owner-key, tag, or rendered-text fallback.
 - Accepted proof/commit references: `8eca000c9` has the accepted fresh
   `cmake --build --preset default` and
   `ctest --test-dir build -j --output-on-failure -R '^backend_'` proof (6/6).

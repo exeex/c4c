@@ -123,3 +123,20 @@ Status: parked by lifecycle switch to
   canonical occurrence population.
 - Remaining action: await 851's architecture decision. Preserve the no
   parser/`TypeSpec`/owner/tag/text recovery and no-LIR boundaries.
+
+## No-Change Disposition Route (2026-07-16)
+
+851's accepted `fb3b74fee` production-provenance decision found no legal
+earlier owner that can issue a direct definition-backed fact before free
+function-signature normalization. Therefore Step 2b has no permitted
+implementation route under this idea's current supported contract.
+
+This idea is activated only for a lifecycle-only deliberate conclusion. Its
+accepted Step 1 and Step 2a result (`359a9b94b` with the recorded focused
+proof) remain valid, but they do not establish populated function-signature
+occurrence refs. The closure must archive this idea as intentionally no-change:
+do not retry Step 2b, do not claim canonical occurrence population or a return
+to 838, and do not create a parser/`TypeSpec`/owner/tag/text/`Node*` recovery
+path. 838 remains blocked unless a future separately scoped, explicitly
+approved architecture changes the supported contract and establishes a legal
+direct-fact producer; no such successor is created or approved here.

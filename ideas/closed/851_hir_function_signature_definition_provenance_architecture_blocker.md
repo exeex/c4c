@@ -86,6 +86,23 @@ route, rather than carrying an issued definition fact. Step 2 must record the
 deliberate no-change disposition for 848 Step 2b and retain 838 Step 2 as
 blocked; it must not create an implementation successor.
 
+## Closure Disposition (2026-07-16)
+
+Status: intentionally concluded — no feasible route under the bounded current
+function-signature contract.
+
+Step 1's complete production trace was accepted in `fb3b74fee`; no C++ code,
+tests, expectations, canonical regression logs, build, or test result changed
+in this decision initiative. The source goal is satisfied by this negative
+architecture decision, not by implementation of aggregate function-signature
+support.
+
+The required 848 handoff is its own bounded no-change disposition: activate
+848 only to conclude/archive its unimplemented Step 2b. It must not resume
+that step, retry occurrence population, or claim its function-signature
+capability completed. 838 remains blocked: neither 851 nor 848 supplies an
+approved direct definition fact, and no implementation successor is created.
+
 ## Reviewer Reject Signals
 
 - Reject a renamed carrier or test-only injection asserted as production
