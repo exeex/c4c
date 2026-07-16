@@ -412,6 +412,14 @@ union Slot slot_global = {.int_value = 3};
   } catch (const c4c::codegen::lir::LirVerifyError&) {
   }
 
+  c4c::codegen::lir::LirModule missing_carrier = lir_module;
+  require_global(missing_carrier, "pair_global").llvm_type_ref.reset();
+  try {
+    c4c::codegen::lir::verify_module(missing_carrier);
+    fail("verifier should reject a declared aggregate global without a type ref");
+  } catch (const c4c::codegen::lir::LirVerifyError&) {
+  }
+
   test_lookup_structured_layout_rejects_stale_rendered_compatibility();
   test_global_type_ref_owner_key_precedes_stale_rendered_names();
   test_fp128_literals_match_llvm_text_order();

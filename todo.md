@@ -1,46 +1,27 @@
 Status: Active
 Source Idea Path: ideas/open/844_lir_global_extern_initializer_family_facts.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add or complete the selected family-ref carrier
+Current Step ID: 3
+Current Step Title: Migrate selected verifier, printer, and collection consumers
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan.md Step 1 inventory for idea 844. Global type facts currently
-lower from `hir::GlobalVar.type.spec` into `LirGlobal.type`,
-`LirGlobal.llvm_type`, and the optional aggregate-only
-`LirGlobal.llvm_type_ref`; verifier parity is
-`verify_global_type_ref_shadows`, printer output still reads `llvm_type`, and
-initializer reachability uses `initializer_function_link_name_ids` with
-`init_text` as a legacy fallback. Extern declaration return facts flow through
-`record_extern_decl` / `ExternDeclInfo.return_type_str` /
-`ExternDeclInfo.return_type`, then finalize into `LirExternDecl.return_type_str`
-and `LirExternDecl.return_type`; verifier parity is
-`verify_extern_decl_shadows`, printer output still reads `return_type_str`, and
-extern parameter facts live in the module function-signature store rather than
-as direct `LirExternDecl` fields.
-
-Selected Step 2 target: complete the bounded global aggregate type carrier for
-`LirGlobal.llvm_type_ref` first. The accepted authority input is the
-producer-owned global `TypeSpec` plus structured aggregate identity from the
-module struct-name/declaration store. The compatibility mirror is
-`LirGlobal.llvm_type`, and it must remain final-rendering text until selected
-printer/consumer migration proves parity. Rejected authority inputs are
-`LirGlobal.init_text`, initializer payload spelling, `qualifier`,
-`linkage_vis`, `is_const`, `is_internal`, `is_extern_decl`, raw global names,
-extern `return_type_str`, and function-signature/extern parameter facts.
+Completed plan.md Step 2 for the selected global aggregate target. Declared
+aggregate global types must now carry `LirGlobal.llvm_type_ref` with matching
+`StructNameId`; absent refs still remain allowed for stale owner-key misses and
+unselected scalar/pointer/array globals. Added focused coverage proving a
+declared aggregate global without the carrier is rejected while preserving the
+existing stale compatibility text, wrong `StructNameId`, and initializer output
+coverage.
 
 ## Suggested Next
 
-Execute plan.md Step 2 for the selected global aggregate target. Add or
-complete the minimal family-ref carrier/API around `LirGlobal.llvm_type_ref`
-without moving extern declarations, initializer payload semantics, global
-policy identity, or collector-only receiver work. Focus coverage on positive
-struct/union globals plus missing carrier, stale `llvm_type` text, wrong
-StructNameId, missing struct declaration, pointer/array/scalar wrong-family
-exclusions, and preservation of initializer compatibility.
+Execute plan.md Step 3 for the same global aggregate target. Migrate one
+selected consumer that still treats `LirGlobal.llvm_type` as semantic input to
+prefer `LirGlobal.llvm_type_ref`, while preserving final LLVM output and
+initializer scanner compatibility.
 
 ## Watchouts
 
@@ -56,12 +37,11 @@ owned by `function_signature_store` rather than direct extern declaration
 fields. A coherent extern-parameter packet likely needs a separate direct
 extern signature surface or a deliberately store-backed consumer migration.
 
-Missing evidence for Step 2: whether the selected global carrier should remain
-optional for scalar/pointer/array globals in this slice, or whether Step 2
-should introduce a named global family-ref wrapper while preserving the
-existing optional aggregate carrier as its compatibility implementation.
+Do not widen Step 3 into extern declaration returns or direct extern parameter
+surfaces. The selected carrier is complete only for declared aggregate globals;
+scalar, pointer, array, and stale owner-key-miss global rows are compatibility
+or later-family work unless a later packet names them explicitly.
 
 ## Proof
 
-Inventory proof command: `git diff --check`. Suggested focused code-packet
-proof: `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_global_type_ref$|^frontend_lir_global_label_address_initializer$|^frontend_lir_extern_decl_type_ref$'; } > test_after.log 2>&1`
+Step 2 proof command: `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_global_type_ref$|^frontend_lir_global_label_address_initializer$|^frontend_lir_extern_decl_type_ref$'; } > test_after.log 2>&1`

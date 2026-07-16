@@ -4580,7 +4580,15 @@ void verify_extern_decl_shadows(const LirModule& mod) {
 
 void verify_global_type_ref_shadows(const LirModule& mod) {
   for (const auto& global : mod.globals) {
-    if (!global.llvm_type_ref.has_value()) continue;
+    const StructNameId global_struct_name_id =
+        find_declared_struct_name_id(mod, global.llvm_type);
+    if (!global.llvm_type_ref.has_value()) {
+      if (global_struct_name_id != kInvalidStructName) {
+        fail_verify("LirGlobal.llvm_type_ref",
+                    "known aggregate global type must carry matching StructNameId");
+      }
+      continue;
+    }
     const LirTypeRef& mirror = *global.llvm_type_ref;
     const std::string& shadow =
         require_type_ref(mirror, "LirGlobal.llvm_type_ref");
@@ -4601,8 +4609,6 @@ void verify_global_type_ref_shadows(const LirModule& mod) {
                     "StructNameId mirror must resolve to a declared struct");
       }
 
-      const StructNameId global_struct_name_id =
-          find_declared_struct_name_id(mod, global.llvm_type);
       if (global_struct_name_id != kInvalidStructName) {
         if (mirror.struct_name_id() != global_struct_name_id) {
           std::ostringstream detail;
