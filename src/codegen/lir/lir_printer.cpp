@@ -608,7 +608,8 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
     os << "\n";
   } else if (const auto* op = std::get_if<LirCmpOp>(&inst)) {
     const auto type = op->is_float
-                          ? require_type_ref(op->type_str, "LirCmpOp.type_str")
+                          ? render_floating_type_ref(op->type_str,
+                                                     "LirCmpOp.type_str")
                           : render_integer_type_ref(op->type_str,
                                                     "LirCmpOp.type_str");
     os << "  " << op->result << " = " << (op->is_float ? "fcmp " : "icmp ")

@@ -2185,7 +2185,7 @@ void verify_inst(const LirModule& mod, const LirInst& inst,
     verify_result_operand(op->result, "LirCmpOp.result");
     (void)render_cmp_predicate(op->predicate, "LirCmpOp.predicate");
     if (op->is_float) {
-      require_module_type_ref(mod, op->type_str, "LirCmpOp.type_str");
+      (void)render_floating_type_ref(op->type_str, "LirCmpOp.type_str");
     } else {
       (void)render_integer_type_ref(op->type_str, "LirCmpOp.type_str");
     }
@@ -5378,6 +5378,23 @@ std::string render_integer_type_ref(const LirTypeRef& type,
     fail_verify(field, "integer type authority requires a bit width");
   }
   return "i" + std::to_string(*width);
+}
+
+std::string render_floating_type_ref(const LirTypeRef& type,
+                                     std::string_view field) {
+  if (type.empty()) fail_verify(field, "must not be empty");
+  if (type.kind() != LirTypeKind::Floating) {
+    fail_verify(field, "requires floating type authority");
+  }
+  switch (type.builtin_type().value_or(LirBuiltinType::Void)) {
+    case LirBuiltinType::Half: return "half";
+    case LirBuiltinType::Float: return "float";
+    case LirBuiltinType::Double: return "double";
+    case LirBuiltinType::Fp128: return "fp128";
+    case LirBuiltinType::X86Fp80: return "x86_fp80";
+    default:
+      fail_verify(field, "floating type authority requires a builtin type");
+  }
 }
 
 std::string_view render_binary_opcode(const LirBinaryOpcodeRef& opcode,

@@ -7632,6 +7632,17 @@ int lir_scalar_floating_compare_result_use_identity(void) {
       conflicting_type,
       "verifier should reject integer type on floating compare mode");
 
+  lir::LirModule stale_display_type = lowered;
+  require_focused_compare(stale_display_type).first.type_str.str() = "float";
+  lir::verify_module(stale_display_type);
+  const std::string stale_display_ir = lir::print_llvm(stale_display_type);
+  expect_true(stale_display_ir.find(" = fcmp olt double ") !=
+                  std::string::npos,
+              "floating compare printer should render type from native builtin authority");
+  expect_true(stale_display_ir.find(" = fcmp olt float ") ==
+                  std::string::npos,
+              "floating compare printer must not recover type semantics from stale display text");
+
   lir::LirModule conflicting_mode = lowered;
   require_focused_compare(conflicting_mode).first.is_float = false;
   expect_identity_verification_rejected(

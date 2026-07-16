@@ -1700,6 +1700,9 @@ const std::string& require_type_ref(const LirTypeRef& type,
 std::string render_integer_type_ref(const LirTypeRef& type,
                                     std::string_view field);
 
+std::string render_floating_type_ref(const LirTypeRef& type,
+                                     std::string_view field);
+
 std::string_view render_binary_opcode(const LirBinaryOpcodeRef& opcode,
                                       std::string_view field);
 
