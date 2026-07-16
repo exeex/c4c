@@ -65,3 +65,24 @@ owner must identify one native row before a receiver can proceed.
   type, role, or consumer coherence.
 - Reject retaining the exact missing authority behind a renamed carrier, or
   accepting a row without malformed/foreign/duplicate rejection coverage.
+
+## Closure Disposition
+
+Closed as capability complete for this bounded producer/schema/verifier route.
+The implemented handoff is exactly one native LIR body-parameter authority row:
+a current-function `DirectPointer` parameter used by pointer truthiness
+lowering, carrying the original parameter `LirValueId`, owner, parameter
+index, pointer type, `DirectPointer` ABI, and explicit `PointerTruthiness`
+role, verified against the existing `PtrToInt` plus `icmp ne i64 <ptr-int>, 0`
+consumer shape.
+
+Accepted proof:
+
+- `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$' ) > test_before.log 2>&1`
+- `( cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$' ) > test_after.log 2>&1 && git diff --check`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Return action: hand this exact one-row producer fact back to
+`ideas/open/734_lir_to_new_bir_container_completeness.md` for future typed
+Raw-BIR receipt. Raw-BIR receipt remains separate and was not implemented or
+edited in 853.
