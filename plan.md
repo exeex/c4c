@@ -1,6 +1,6 @@
 # LIR CFG And PHI Raw-Binding Evidence Runbook
 
-Status: Active
+Status: Exhausted - Pending Plan-Owner Decision
 Source Idea: ideas/open/850_lir_cfg_phi_raw_bindings_evidence.md
 Activated after: ideas/closed/849_lir_intrinsic_binding_evidence.md
 
@@ -68,6 +68,8 @@ receiver owner.
 
 ### Step 1 - Inventory PHI And Terminator Forms
 
+Status: Complete
+
 Goal: enumerate every `LirPhi` and terminator form in the LIR model.
 
 Actions:
@@ -82,6 +84,8 @@ Completion check:
 
 ### Step 2 - Trace Verifier And Receiver Boundaries
 
+Status: Complete
+
 Goal: map each form to verifier and Raw-BIR receiver behavior.
 
 Actions:
@@ -94,6 +98,8 @@ Completion check:
 - The numbered answer separates accepted 734 receipts from unproved raw seams.
 
 ### Step 3 - Write Dependency And Return Conclusions
+
+Status: Complete
 
 Goal: define the exact downstream path without claiming implementation.
 
@@ -108,6 +114,8 @@ Completion check:
 
 ### Step 4 - Validate Documentation Shape
 
+Status: Complete
+
 Goal: prove the deliverable is complete and bounded.
 
 Actions:
@@ -121,3 +129,12 @@ Completion check:
 - Required files exist with the required shape, no extra files are present in
   the directory, `git diff --check` passes, and no implementation files are
   modified.
+
+Result:
+- Created `docs/lir_cfg_phi_raw_bindings_evidence/index.md`.
+- Created
+  `docs/lir_cfg_phi_raw_bindings_evidence/01_cfg_phi_raw_binding_route.md`.
+- Recorded that current modeled PHI and terminator forms carry native
+  block/value/type/edge authority and accepted 734 receiver coverage, while no
+  new direct 734 receiver handoff is authorized by 850.
+- Proof passed with exact required-file listing and `git diff --check`.
