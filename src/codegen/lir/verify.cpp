@@ -3041,6 +3041,7 @@ void verify_function_value_ownership(const LirModule& mod,
       fail_verify(field, "must exactly mirror one native direct-scalar parameter definition");
     }
   };
+  std::size_t selected_floating_fmul_rhs_authority_count = 0;
   const auto verify_scalar_binary_rhs_authority = [&](const LirBinOp& op) {
     const auto scalar_rhs_definition = std::find_if(
         function.native_body_parameter_definitions.begin(),
@@ -3069,6 +3070,27 @@ void verify_function_value_ownership(const LirModule& mod,
         op.rhs.kind() != LirOperandKind::SsaValue || !op.rhs.value_id() ||
         *op.rhs.value_id() != authority.value || op.type_str != authority.type) {
       fail_verify(field, "requires one native direct-scalar current-function RHS value binding");
+    }
+    if (authority.type.kind() == LirTypeKind::Floating) {
+      const std::optional<LirBinaryOpcode> opcode = op.opcode.typed();
+      if (opcode != LirBinaryOpcode::FMul) {
+        fail_verify(field,
+                    "floating RHS parameter authority is limited to the selected fmul consumer");
+      }
+      const bool lhs_is_direct_scalar_parameter =
+          op.lhs.value_id() &&
+          std::any_of(function.native_body_parameter_definitions.begin(),
+                      function.native_body_parameter_definitions.end(),
+                      [&](const auto& definition) {
+                        return definition.value == *op.lhs.value_id() &&
+                               definition.abi == LirNativeBodyParameterAbi::DirectScalar;
+                      });
+      if (op.lhs.empty() || op.scalar_lhs_parameter_authority ||
+          lhs_is_direct_scalar_parameter) {
+        fail_verify(field,
+                    "selected floating fmul RHS authority requires a nonselected scalar LHS");
+      }
+      ++selected_floating_fmul_rhs_authority_count;
     }
     const auto matches = std::count_if(
         function.native_body_parameter_definitions.begin(),
@@ -3351,6 +3373,10 @@ void verify_function_value_ownership(const LirModule& mod,
         verify_structural_direct_call_argument1_identity(*call);
       }
     }
+  }
+  if (selected_floating_fmul_rhs_authority_count > 1) {
+    fail_verify("LirBinOp.scalar_rhs_parameter_authority",
+                "current function may publish exactly one selected floating fmul RHS authority");
   }
 
   const auto verify_return_value_parameter_authority = [&](const LirRet& ret) {
