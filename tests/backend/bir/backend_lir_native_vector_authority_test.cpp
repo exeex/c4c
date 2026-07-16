@@ -496,11 +496,86 @@ void test_aggregate_definition_lowering_uses_module_owned_ref_store() {
   }
 }
 
+void test_aggregate_store_preserves_declaration_facts() {
+  c4c::hir::Module hir_module;
+
+  c4c::hir::HirStructDef child;
+  child.tag = "NestedAggregateChild";
+  child.size_bytes = 4;
+  child.align_bytes = 4;
+  child.fields.push_back({.name = "value", .elem_type = c4c::TypeSpec{.base = c4c::TB_INT},
+                          .llvm_idx = 0, .size_bytes = 4, .align_bytes = 4});
+
+  c4c::hir::HirStructDef parent;
+  parent.tag = "AggregateFactsParent";
+  parent.size_bytes = 12;
+  parent.align_bytes = 4;
+  parent.base_tags.push_back(child.tag);
+  parent.fields.push_back({.name = "tail", .elem_type = c4c::TypeSpec{.base = c4c::TB_INT},
+                           .llvm_idx = 1, .offset_bytes = 8, .size_bytes = 4,
+                           .align_bytes = 4});
+
+  c4c::hir::HirStructDef byte_union;
+  byte_union.tag = "AggregateFactsUnion";
+  byte_union.is_union = true;
+  byte_union.size_bytes = 8;
+  byte_union.fields.push_back({.name = "integer", .elem_type = c4c::TypeSpec{.base = c4c::TB_INT},
+                               .llvm_idx = 0, .size_bytes = 4, .align_bytes = 4});
+
+  c4c::hir::HirStructDef packed_storage;
+  packed_storage.tag = "AggregateFactsPackedStorage";
+  packed_storage.pack_align = 1;
+  packed_storage.size_bytes = 4;
+
+  hir_module.struct_defs.emplace(child.tag, std::move(child));
+  hir_module.struct_defs.emplace(parent.tag, std::move(parent));
+  hir_module.struct_defs.emplace(byte_union.tag, std::move(byte_union));
+  hir_module.struct_defs.emplace(packed_storage.tag, std::move(packed_storage));
+  hir_module.struct_def_order = {"NestedAggregateChild", "AggregateFactsParent",
+                                 "AggregateFactsUnion", "AggregateFactsPackedStorage"};
+
+  const lir::LirModule lowered = lir::lower(hir_module);
+  const auto parent_ref = hir_module.aggregate_ref_for_definition(
+      hir_module.struct_defs.at("AggregateFactsParent"));
+  const auto union_ref = hir_module.aggregate_ref_for_definition(
+      hir_module.struct_defs.at("AggregateFactsUnion"));
+  const auto packed_ref = hir_module.aggregate_ref_for_definition(
+      hir_module.struct_defs.at("AggregateFactsPackedStorage"));
+  if (!parent_ref || !union_ref || !packed_ref) {
+    fail("aggregate fact test requires registered definitions");
+  }
+  const lir::LirAggregateStoreEntry* parent_entry =
+      lowered.find_aggregate(lowered.find_aggregate_ref(hir_module, *parent_ref));
+  const lir::LirAggregateStoreEntry* union_entry =
+      lowered.find_aggregate(lowered.find_aggregate_ref(hir_module, *union_ref));
+  const lir::LirAggregateStoreEntry* packed_entry =
+      lowered.find_aggregate(lowered.find_aggregate_ref(hir_module, *packed_ref));
+  if (!parent_entry || parent_entry->layout_kind != lir::LirAggregateLayoutKind::Direct ||
+      parent_entry->is_packed || parent_entry->is_opaque || parent_entry->fields.size() != 3 ||
+      !parent_entry->fields[0].type.is_named_struct() ||
+      parent_entry->fields[0].type.struct_name_id() == c4c::kInvalidStructName ||
+      parent_entry->fields[1].type.render_llvm() != "[4 x i8]" ||
+      parent_entry->fields[2].type.render_llvm() != "i32") {
+    fail("aggregate store must retain ordered direct declaration fields and nested type facts");
+  }
+  if (!union_entry || !union_entry->is_union ||
+      union_entry->layout_kind != lir::LirAggregateLayoutKind::Union ||
+      union_entry->fields.size() != 1 || union_entry->fields[0].type.render_llvm() != "[8 x i8]") {
+    fail("aggregate store must retain union byte-storage declaration facts");
+  }
+  if (!packed_entry || !packed_entry->is_packed || packed_entry->is_opaque ||
+      packed_entry->layout_kind != lir::LirAggregateLayoutKind::ByteStorage ||
+      packed_entry->fields.size() != 1 || packed_entry->fields[0].type.render_llvm() != "[4 x i8]") {
+    fail("aggregate store must retain packed byte-storage declaration facts");
+  }
+}
+
 }  // namespace
 
 int main() {
   test_native_vector_authority_verifier_boundary();
   test_module_owned_aggregate_ref_store();
   test_aggregate_definition_lowering_uses_module_owned_ref_store();
+  test_aggregate_store_preserves_declaration_facts();
   return 0;
 }

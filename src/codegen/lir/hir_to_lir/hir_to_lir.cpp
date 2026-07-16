@@ -872,6 +872,8 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
     const auto& sd = it->second;
     const std::string sty = llvm_struct_type_str(tag);
     LirStructDecl structured_decl;
+    std::optional<LirAggregateRef> aggregate_ref;
+    LirAggregateLayoutKind aggregate_layout_kind = LirAggregateLayoutKind::Direct;
     structured_decl.name_id =
         lir_module ? lir_module->struct_names.intern(sty) : kInvalidStructName;
     if (lir_module) {
@@ -881,15 +883,21 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
         throw std::runtime_error(
             "aggregate definition lowering requires a registered complete HIR aggregate ref");
       }
-      lir_register_aggregate_ref(mod, *lir_module, *hir_ref, structured_decl.name_id,
-                                 sd.is_union);
+      aggregate_ref = lir_register_aggregate_ref(mod, *lir_module, *hir_ref,
+                                                  structured_decl.name_id, sd.is_union);
     }
     structured_decl.is_packed = sd.pack_align > 0;
     auto record_structured_decl = [&]() {
-      if (lir_module) lir_module->record_struct_decl(std::move(structured_decl));
+      if (!lir_module) return;
+      if (aggregate_ref) {
+        lir_module->record_aggregate_decl_facts(*aggregate_ref, structured_decl,
+                                                aggregate_layout_kind);
+      }
+      lir_module->record_struct_decl(std::move(structured_decl));
     };
 
     if (packed_bitfield_byte_storage_record(sd)) {
+      aggregate_layout_kind = LirAggregateLayoutKind::ByteStorage;
       decls.push_back(sty + " = type <{ [" + std::to_string(sd.size_bytes) +
                       " x i8] }>");
       structured_decl.fields.push_back(
@@ -903,6 +911,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
         decls.push_back(sty + " = type " +
                          std::string(structured_decl.is_packed ? "<{}>" : "{}"));
       } else {
+        aggregate_layout_kind = LirAggregateLayoutKind::ByteStorage;
         decls.push_back(sty + " = type " +
                          std::string(structured_decl.is_packed ? "<{ " : "{ ") +
                          "[" + std::to_string(sd.size_bytes) + " x i8]" +
@@ -914,6 +923,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod,
       continue;
     }
     if (sd.is_union) {
+      aggregate_layout_kind = LirAggregateLayoutKind::Union;
       decls.push_back(sty + " = type " +
                        std::string(structured_decl.is_packed ? "<{ " : "{ ") +
                        "[" + std::to_string(sd.size_bytes) + " x i8]" +

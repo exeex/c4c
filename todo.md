@@ -8,29 +8,28 @@ Current Step Title: Preserve recursive aggregate facts and all aggregate forms
 
 ## Just Finished
 
-- Plan Step 1 completed in `a50d35d4e` (`lir: register aggregate lowering
-  refs`): `lower()` registers each HIR aggregate definition before lowering,
-  and `build_type_decls` consumes that definition-owned HIR ref to intern the
-  owning LIR module's aggregate store. Repeated declaration lowering reuses
-  the entry; missing, incomplete, and foreign refs fail closed. Legacy
-  owner-key/tag occurrence adapters remain untouched.
+- Plan Step 2 declaration/store fact capture completed: `build_type_decls`
+  snapshots each registered aggregate's ordered structured LIR field types,
+  packed/opaque flags, and direct/byte-storage/union layout kind into its
+  canonical module-owned store entry before recording the declaration. Focused
+  lowering coverage proves a nested typed aggregate child, direct padding,
+  union byte storage, packed byte storage, and the existing repeated/missing/
+  incomplete/foreign fail-closed cases.
 
 ## Suggested Next
 
-- Begin Step 2 by inventorying named, anonymous, local, template, and
-  typedef/alias aggregate occurrence producers; migrate one bounded producer
-  while preserving ordered fields, layout, projections, and recursive children.
+- Continue Step 2 with one bounded aggregate occurrence producer migration,
+  using the store's captured declaration facts without widening into consumer
+  migration.
 
 ## Watchouts
 
-- `build_type_decls` is the registration-before-use precedent and currently
-  the only migrated producer. Do not recover refs from tags, parser pointers,
-  rendered text, or owner keys; retain legitimate no-owner rendered
-  compatibility only at its named consumer.
+- Fact capture is declaration/store-only: downstream consumers and legacy
+  owner-key/tag occurrence adapters remain untouched. Do not recover refs or
+  fields from tags, parser pointers, rendered text, or owner keys.
 
 ## Proof
 
 - Fresh `cmake --build --preset default` plus
-  `ctest --test-dir build -j --output-on-failure -R '^backend_'` passed 6/6 at
-  `a50d35d4e`; the canonical guard accepted the packet with
-  `--allow-non-decreasing-passed` (log: `test_after.log`).
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'` passed 6/6;
+  `test_after.log` is the proof log.

@@ -1128,10 +1128,24 @@ struct LirAggregateRef {
   }
 };
 
+// The declaration-lowering form retained by the module-owned aggregate store.
+// Individual byte-storage fields still remain visible in `fields`; this kind
+// distinguishes a normal declaration that happens to contain padding from an
+// aggregate whose complete representation is byte storage.
+enum class LirAggregateLayoutKind : uint8_t {
+  Direct,
+  ByteStorage,
+  Union,
+};
+
 struct LirAggregateStoreEntry {
   c4c::hir::HirAggregateRef hir_ref;
   StructNameId name_id = kInvalidStructName;
   bool is_union = false;
+  std::vector<LirStructField> fields;
+  bool is_packed = false;
+  bool is_opaque = false;
+  LirAggregateLayoutKind layout_kind = LirAggregateLayoutKind::Direct;
 };
 
 struct LirStructuredLayoutObservation {
@@ -1337,6 +1351,19 @@ struct LirModule {
     aggregate_store.push_back({hir_ref, name_id, is_union});
     aggregate_ref_by_hir_ref.emplace(aggregate_store_key(hir_ref), ref);
     return ref;
+  }
+
+  void record_aggregate_decl_facts(LirAggregateRef ref, const LirStructDecl& decl,
+                                   LirAggregateLayoutKind layout_kind) {
+    if (!ref.valid() || ref.value >= aggregate_store.size() ||
+        aggregate_store[ref.value].name_id != decl.name_id) {
+      throw std::runtime_error("cannot record aggregate facts for a mismatched LIR declaration");
+    }
+    LirAggregateStoreEntry* entry = &aggregate_store[ref.value];
+    entry->fields = decl.fields;
+    entry->is_packed = decl.is_packed;
+    entry->is_opaque = decl.is_opaque;
+    entry->layout_kind = layout_kind;
   }
 
   LirStructDecl* find_struct_decl(StructNameId name_id) {
