@@ -9765,6 +9765,11 @@ void test_lir_phi_restricted_boundary_value_type_authority() {
   stale_phi.type_str = lir::LirTypeRef::integer(64);
   expect_identity_verification_rejected(
       stale_text, "stale LirPhiOp.type_str must not override PHI boundary authority");
+  try {
+    (void)lir::print_llvm(stale_text);
+    fail("PHI printer must reject stale type_str instead of rendering through stale text");
+  } catch (const lir::LirVerifyError&) {
+  }
 }
 
 }  // namespace

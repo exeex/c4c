@@ -56,6 +56,22 @@ std::string render_type_ref_for_signature(const LirTypeRef& type) {
   return type.str();
 }
 
+const LirTypeRef& require_phi_boundary_render_type(const LirPhiOp& op) {
+  if (!op.boundary_value_type) {
+    throw LirVerifyError(LirVerifyErrorKind::Malformed,
+                         "LirPhiOp.boundary_value_type is required for PHI rendering");
+  }
+  const auto selected =
+      LirPhiBoundaryValueType::from_type_ref(op.boundary_value_type->type);
+  if (!selected || selected->kind != op.boundary_value_type->kind ||
+      op.boundary_value_type->type != op.type_str) {
+    throw LirVerifyError(
+        LirVerifyErrorKind::Malformed,
+        "LirPhiOp.boundary_value_type must mirror LirPhiOp.type_str for PHI rendering");
+  }
+  return op.type_str;
+}
+
 std::string_view signature_header_line(const LirFunction& function) {
   std::string_view signature = function.signature_text;
   while (!signature.empty()) {
@@ -535,7 +551,9 @@ void render_inst(std::ostringstream& os, const LirModule& mod,
     os << "  "
        << require_operand_kind(op->result, "LirPhiOp.result",
                                {LirOperandKind::SsaValue})
-       << " = phi " << require_type_ref(op->type_str, "LirPhiOp.type_str");
+       << " = phi "
+       << require_type_ref(require_phi_boundary_render_type(*op),
+                           "LirPhiOp.boundary_value_type");
     for (size_t i = 0; i < op->incoming.size(); ++i) {
       os << (i == 0 ? " " : ", ");
       os << "[ " << op->incoming[i].value.str() << ", %" << op->incoming[i].label << " ]";

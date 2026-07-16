@@ -1,39 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/842_lir_restricted_first_class_value_unions.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Migrate named boundary consumers
+Current Step ID: 4
+Current Step Title: Retire accepted universal boundary escape hatches
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan.md Step 2 for the selected PHI value boundary.
+Completed plan.md Step 3 for the selected PHI value boundary.
 
-Added `LirPhiBoundaryValueType` as a PHI-local restricted carrier with explicit
-scalar, vector, aggregate, and pointer alternatives. Attached it only to
-`LirPhiOp` as `boundary_value_type`, initialized from `type_str` as a
-compatibility mirror. The verifier now treats the carrier as selected PHI
-boundary authority, requires it to mirror `LirPhiOp.type_str`, and rejects
-function, void, opaque, and runtime-text-only/wrong-family carriers.
+Migrated the selected PHI verifier/printer consumer path so modeled PHI result
+type queries read `LirPhiOp.boundary_value_type` as the semantic boundary
+authority. PHI rendering now requires the same carrier and verifies it mirrors
+`LirPhiOp.type_str` before using that field as compatibility/rendering text.
 
-Focused tests prove admitted integer scalar, floating scalar, vector,
-anonymous aggregate, and pointer PHI alternatives; reject function, void,
-opaque, runtime-text, and stale `type_str` cases; and preserve printer parity
-through `LirPhiOp.type_str`.
+Focused coverage now proves stale or misleading `LirPhiOp.type_str` cannot
+override the selected PHI boundary carrier for verification or rendering, while
+valid PHI alternatives still verify and render with their parity text intact.
 
 ## Suggested Next
 
-Execute plan.md Step 3 for PHI only: migrate the selected PHI verifier/printer
-consumer path to read the restricted `LirPhiBoundaryValueType` authority
-directly while keeping `LirPhiOp.type_str` as parity text.
+Execute plan.md Step 4 for the selected PHI boundary only: retire the accepted
+PHI universal escape hatch only if every selected PHI consumer has migrated,
+while leaving call, select, return, Raw-BIR, and unrelated families untouched.
 
 ## Watchouts
 
-PHI now has a selected carrier, but `LirPhiOp.type_str` still owns rendering
-parity. Step 3 should stay PHI-only and avoid call, select, return, Raw-BIR,
-universal value bags, generic IDs, RTTI/vtables, and deletion of
-`LirPhiOp.type_str`.
+PHI rendering intentionally still emits `LirPhiOp.type_str` as parity text, but
+the printer now validates `LirPhiOp.boundary_value_type` before rendering. Step
+4 must not delete `LirPhiOp.type_str` unless the supervisor selects that exact
+retirement and proves no remaining PHI consumer depends on it.
 
 The Step 2 wrong-kind test covers runtime-text-only refs as the feasible local
 surface for metadata-like/unbounded payload rejection. Partially parsed call
@@ -42,10 +39,10 @@ were not introduced into PHI.
 
 ## Proof
 
-Step 2 proof command:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_lir_call_type_ref$'; } > test_after.log 2>&1`
+Step 3 proof command:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^frontend_|^backend_'; } > test_after.log 2>&1`
 
-Result: passed, 1/1 focused test passing.
+Result: passed, 19/19 frontend/backend tests passing.
 
 Additional proof: `git diff --check` passed.
 

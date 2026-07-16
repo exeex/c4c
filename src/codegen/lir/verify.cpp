@@ -2394,7 +2394,9 @@ const LirTypeRef* modeled_scalar_result_type(const LirInst& inst) {
     static const LirTypeRef kBooleanType = LirTypeRef::integer(1);
     return &kBooleanType;
   }
-  if (const auto* op = std::get_if<LirPhiOp>(&inst)) return &op->type_str;
+  if (const auto* op = std::get_if<LirPhiOp>(&inst)) {
+    return &phi_boundary_value_type(*op, "LirPhiOp.boundary_value_type").type;
+  }
   if (const auto* op = std::get_if<LirSelectOp>(&inst)) return &op->type_str;
   if (const auto* op = std::get_if<LirVaArgOp>(&inst)) return &op->type_str;
   return nullptr;
