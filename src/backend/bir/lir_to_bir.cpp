@@ -1205,22 +1205,46 @@ bool exact_integer_intrinsic_call(
       !call.callee.link_name_id() ||
       *call.callee.link_name_id() != call.direct_callee_link_name_id ||
       module.link_names.spelling(call.direct_callee_link_name_id).empty() ||
-      !call.callee_type_suffix.empty() || !call.callee_signature)
+      !call.callee_type_suffix.empty())
     return false;
   const auto type = lower_lir_type(module, call.return_type);
-  const auto& signature = *call.callee_signature;
+  const auto* stored_signature = resolved_call_signature(module, call);
+  if (stored_signature != nullptr && call.callee_signature.has_value() &&
+      !retained_signature_matches_store(*call.callee_signature, *stored_signature)) {
+    return false;
+  }
+  if (stored_signature == nullptr && !call.callee_signature.has_value()) return false;
+
   const bool count_flag = call.intrinsic_kind == LirIntrinsicKind::Cttz ||
                           call.intrinsic_kind == LirIntrinsicKind::Ctlz;
   const std::size_t count = count_flag ? 2 : 1;
-  if (!type || !is_integer_type(*type) || !signature.return_type_ref ||
-      *signature.return_type_ref != call.return_type ||
-      signature.return_ext_attr != LirExtAttr::None || signature.is_variadic ||
-      signature.has_unspecified_params || signature.has_void_param_list ||
-      signature.fixed_param_types.size() != count ||
-      signature.fixed_param_type_refs.size() != count ||
+  const auto return_ref = stored_signature != nullptr
+                              ? stored_signature->return_type_ref
+                              : call.callee_signature->return_type_ref;
+  const auto return_ext_attr = stored_signature != nullptr
+                                   ? stored_signature->return_ext_attr
+                                   : call.callee_signature->return_ext_attr;
+  const auto is_variadic = stored_signature != nullptr
+                               ? stored_signature->is_variadic
+                               : call.callee_signature->is_variadic;
+  const auto has_unspecified_params =
+      stored_signature == nullptr && call.callee_signature->has_unspecified_params;
+  const auto has_void_param_list = stored_signature != nullptr
+                                       ? stored_signature->has_void_param_list
+                                       : call.callee_signature->has_void_param_list;
+  const auto& fixed_param_type_refs = stored_signature != nullptr
+                                          ? stored_signature->fixed_param_type_refs
+                                          : call.callee_signature->fixed_param_type_refs;
+  if (!type || !is_integer_type(*type) || !return_ref ||
+      *return_ref != call.return_type || return_ext_attr != LirExtAttr::None ||
+      is_variadic || has_unspecified_params || has_void_param_list ||
+      fixed_param_type_refs.size() != count ||
       call.arg_type_refs.size() != count || call.structured_args.size() != count ||
-      signature.fixed_param_types[0] != call.return_type.str() ||
-      signature.fixed_param_type_refs[0] != call.return_type ||
+      (stored_signature == nullptr &&
+       call.callee_signature->fixed_param_types.size() != count) ||
+      (stored_signature == nullptr &&
+       call.callee_signature->fixed_param_types[0] != call.return_type.str()) ||
+      fixed_param_type_refs[0] != call.return_type ||
       call.arg_type_refs[0] != call.return_type ||
       call.structured_args[0].type != call.return_type.str() ||
       call.structured_args[0].type_ref != call.return_type ||
@@ -1245,8 +1269,9 @@ bool exact_integer_intrinsic_call(
         codegen::lir::LirZeroCountBehavior::Undefined ? 1 : 0;
     const auto& flag = call.structured_args[1];
     const auto* immediate = flag.operand.integer_immediate();
-    if (signature.fixed_param_types[1] != "i1" ||
-        signature.fixed_param_type_refs[1] != codegen::lir::LirTypeRef::integer(1) ||
+    if ((stored_signature == nullptr &&
+         call.callee_signature->fixed_param_types[1] != "i1") ||
+        fixed_param_type_refs[1] != codegen::lir::LirTypeRef::integer(1) ||
         call.arg_type_refs[1] != codegen::lir::LirTypeRef::integer(1) ||
         flag.type != "i1" || flag.type_ref != codegen::lir::LirTypeRef::integer(1) ||
         flag.ext_attr != LirExtAttr::None || !immediate || immediate->value != expected)

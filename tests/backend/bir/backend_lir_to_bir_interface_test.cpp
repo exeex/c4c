@@ -11562,6 +11562,28 @@ lir::LirModule native_intrinsic_module() {
   return module;
 }
 
+void attach_native_intrinsic_function_signature_refs(lir::LirModule& module) {
+  auto& cttz =
+      std::get<lir::LirCallOp>(module.functions[0].blocks[0].insts[1]);
+  auto& ctlz =
+      std::get<lir::LirCallOp>(module.functions[0].blocks[0].insts[2]);
+
+  lir::LirFunctionSignatureStoreEntry caller_entry;
+  caller_entry.return_type_ref = lir::LirTypeRef::integer(32);
+  module.functions[0].function_signature_ref =
+      module.register_function_signature(std::move(caller_entry));
+
+  lir::LirFunctionSignatureStoreEntry count_entry;
+  count_entry.return_type_ref = lir::LirTypeRef::integer(32);
+  count_entry.fixed_param_type_refs = {lir::LirTypeRef::integer(32),
+                                       lir::LirTypeRef::integer(1)};
+  count_entry.fixed_param_is_byval = {false, false};
+  const lir::LirFunctionSignatureRef count_ref =
+      module.register_function_signature(std::move(count_entry));
+  cttz.callee_signature_ref = count_ref;
+  ctlz.callee_signature_ref = count_ref;
+}
+
 void test_native_intrinsic_receipt_and_rejections() {
   const auto inspect = [](const auto& graph, const std::string& layer) {
     const auto view = graph.view();
@@ -11599,6 +11621,41 @@ void test_native_intrinsic_receipt_and_rejections() {
   const auto canonical = bir::lower_lir_to_canonical_bir(module);
   expect(canonical.has_value(), "native integer intrinsics must canonicalize");
   inspect(canonical.value(), "Canonical BIR");
+
+  auto missing_retained_signature = native_intrinsic_module();
+  attach_native_intrinsic_function_signature_refs(missing_retained_signature);
+  auto& missing_retained_cttz = std::get<lir::LirCallOp>(
+      missing_retained_signature.functions[0].blocks[0].insts[1]);
+  missing_retained_cttz.callee_signature.reset();
+  const auto raw_missing_retained =
+      bir::lower_lir_to_raw_bir(missing_retained_signature);
+  expect(raw_missing_retained.has_value() &&
+             bir::FoundationVerifier::verify(raw_missing_retained.value()).ok(),
+         "native integer intrinsic must use module signature store when retained signature is absent" +
+             (raw_missing_retained.has_value()
+                  ? std::string{}
+                  : ": " + raw_missing_retained.error().detail));
+  inspect(raw_missing_retained.value(), "Raw BIR store-backed native intrinsic");
+  const auto canonical_missing_retained =
+      bir::lower_lir_to_canonical_bir(missing_retained_signature);
+  expect(canonical_missing_retained.has_value(),
+         "store-backed native integer intrinsic without retained signature must canonicalize");
+  inspect(canonical_missing_retained.value(),
+          "Canonical BIR store-backed native intrinsic");
+
+  auto stale_text_signature = native_intrinsic_module();
+  attach_native_intrinsic_function_signature_refs(stale_text_signature);
+  auto& stale_text_cttz = std::get<lir::LirCallOp>(
+      stale_text_signature.functions[0].blocks[0].insts[1]);
+  stale_text_cttz.callee_signature->fixed_param_types = {
+      "i64 stale text only", "i8 stale text only"};
+  stale_text_cttz.args_str = "stale display only";
+  const auto raw_stale_text = bir::lower_lir_to_raw_bir(stale_text_signature);
+  expect(raw_stale_text.has_value() &&
+             bir::FoundationVerifier::verify(raw_stale_text.value()).ok(),
+         "native integer intrinsic must ignore retained text when signature ref resolves");
+  inspect(raw_stale_text.value(), "Raw BIR stale-text native intrinsic");
+
   const auto rejected = [](auto mutate, const std::string& message) {
     auto candidate = native_intrinsic_module();
     auto& call = std::get<lir::LirCallOp>(candidate.functions[0].blocks[0].insts[1]);
@@ -11613,6 +11670,38 @@ void test_native_intrinsic_receipt_and_rejections() {
   rejected([](auto&, auto& call) { call.structured_args[0].operand = lir::LirOperand::global("@bad", 1); }, "unsupported intrinsic operands must reject atomically");
   rejected([](auto&, auto& call) { call.structured_args.pop_back(); }, "wrong intrinsic operand count must reject atomically");
   rejected([](auto&, auto& call) { call.intrinsic_kind = static_cast<lir::LirIntrinsicKind>(99); }, "other intrinsic kinds must remain fail-closed");
+
+  const auto store_rejected = [](auto mutate, const std::string& message) {
+    auto candidate = native_intrinsic_module();
+    attach_native_intrinsic_function_signature_refs(candidate);
+    auto& call =
+        std::get<lir::LirCallOp>(candidate.functions[0].blocks[0].insts[1]);
+    mutate(candidate, call);
+    const auto raw_rejected = bir::lower_lir_to_raw_bir(candidate);
+    expect(!raw_rejected.has_value() &&
+               raw_rejected.error().code ==
+                   bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Raw rollback)");
+    const auto canonical_rejected = bir::lower_lir_to_canonical_bir(candidate);
+    expect(!canonical_rejected.has_value() &&
+               canonical_rejected.error().code ==
+                   bir::ImportErrorCode::UnsupportedOrdinaryInstruction,
+           message + " (Canonical rollback)");
+  };
+  store_rejected([](auto&, auto& call) {
+                   call.callee_signature->fixed_param_type_refs[1] =
+                       lir::LirTypeRef::integer(32);
+                 },
+                 "retained/store native intrinsic flag mismatch must reject");
+  store_rejected([](auto& module, auto& call) {
+                   module.function_signature_store[call.callee_signature_ref.value]
+                       .fixed_param_type_refs[1] = lir::LirTypeRef::integer(32);
+                 },
+                 "signature-store native intrinsic flag mismatch must reject");
+  store_rejected([](auto&, auto& call) {
+                   call.arg_type_refs[1] = lir::LirTypeRef::integer(32);
+                 },
+                 "argument native intrinsic flag mismatch must reject");
 }
 
 lir::LirModule builtin_ffs_cttz_add_one_module(unsigned width) {
@@ -11902,6 +11991,40 @@ void test_builtin_popcount_call_narrow_final_use_receipt_and_rejections() {
            "builtin popcount final-use chain must publish verified Raw BIR");
     expect(bir::lower_lir_to_canonical_bir(module).has_value(),
            "builtin popcount final-use chain must canonicalize");
+    auto store_backed = builtin_popcount_final_use_module(width);
+    auto& store_backed_ctpop =
+        std::get<lir::LirCallOp>(store_backed.functions[0].blocks[0].insts[1]);
+    lir::LirFunctionSignatureStoreEntry store_backed_entry;
+    store_backed_entry.return_type_ref = store_backed_ctpop.return_type;
+    store_backed_entry.fixed_param_type_refs = {store_backed_ctpop.return_type};
+    store_backed_entry.fixed_param_is_byval = {false};
+    store_backed_ctpop.callee_signature_ref =
+        store_backed.register_function_signature(std::move(store_backed_entry));
+    store_backed_ctpop.callee_signature.reset();
+    const auto raw_store_backed = bir::lower_lir_to_raw_bir(store_backed);
+    expect(raw_store_backed.has_value() &&
+               bir::FoundationVerifier::verify(raw_store_backed.value()).ok(),
+           "store-backed popcount must accept absent retained one-parameter signature");
+    expect(bir::lower_lir_to_canonical_bir(store_backed).has_value(),
+           "store-backed popcount without retained signature must canonicalize");
+
+    auto stale_store_backed = builtin_popcount_final_use_module(width);
+    auto& stale_store_backed_ctpop = std::get<lir::LirCallOp>(
+        stale_store_backed.functions[0].blocks[0].insts[1]);
+    lir::LirFunctionSignatureStoreEntry stale_store_backed_entry;
+    stale_store_backed_entry.return_type_ref = stale_store_backed_ctpop.return_type;
+    stale_store_backed_entry.fixed_param_type_refs = {
+        stale_store_backed_ctpop.return_type};
+    stale_store_backed_entry.fixed_param_is_byval = {false};
+    stale_store_backed_ctpop.callee_signature_ref =
+        stale_store_backed.register_function_signature(
+            std::move(stale_store_backed_entry));
+    stale_store_backed_ctpop.callee_signature->fixed_param_types = {
+        "i1 stale text only"};
+    stale_store_backed_ctpop.args_str = "stale display only";
+    expect(bir::lower_lir_to_raw_bir(stale_store_backed).has_value(),
+           "store-backed popcount must ignore retained text for one-parameter signature");
+
     const auto rejected = [width](auto mutate, const std::string& message) {
       auto candidate = builtin_popcount_final_use_module(width);
       auto& block = candidate.functions[0].blocks[0];
@@ -11935,6 +12058,14 @@ void test_builtin_popcount_call_narrow_final_use_receipt_and_rejections() {
                ctpop.structured_args.push_back({"i1", lir::LirOperand::integer("extra", 1),
                                                 lir::LirTypeRef::integer(1)});
              }, "wrong popcount argument count must reject atomically");
+    rejected([](auto& candidate, auto& ctpop, auto*, auto&) {
+               lir::LirFunctionSignatureStoreEntry entry;
+               entry.return_type_ref = ctpop.return_type;
+               entry.fixed_param_type_refs = {lir::LirTypeRef::integer(1)};
+               entry.fixed_param_is_byval = {false};
+               ctpop.callee_signature_ref =
+                   candidate.register_function_signature(std::move(entry));
+             }, "store-backed popcount one-parameter mismatch must reject atomically");
     rejected([](auto&, auto&, auto*, auto& add) {
                add.lhs = lir::LirOperand::ssa("%unknown", lir::LirValueId{77});
              }, "unresolved popcount final use must reject atomically");
