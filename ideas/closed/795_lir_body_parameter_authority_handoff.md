@@ -1,6 +1,6 @@
 # LIR Function-Body Parameter Authority Handoff
 
-Status: Open
+Status: Closed
 Type: bounded LIR producer/schema/verifier authority publication
 Predecessor: `ideas/closed/793_lir_to_new_bir_remaining_coverage_umbrella.md`
 Evidence predecessor: `ideas/closed/742_lir_function_parameter_authority_publication.md`
@@ -57,6 +57,14 @@ return 810 at unchanged Step 3.
   `backend_lir_selected_pointer_authority`; and successful
   `./build/c4cll --codegen llvm tests/c/external/gcc_torture/src/pr21173.c`.
 - Disposition: the bounded parameter-index handoff is complete. Its required
-  return-control action is this lifecycle switch: resume the already-open 810
-  blocker unchanged at Step 3 for a fresh comparable full baseline. This does
-  not establish 3037/3037 clearance or return control to 801.
+  return-control action was to resume 810 at Step 3 for a fresh comparable
+  full baseline. That return target is now archived under
+  `ideas/closed/810_lir_gep_producer_result_authority_baseline_blocker.md`.
+
+## Closure
+
+Close accepted as stale capability-complete handoff cleanup. This source's
+bounded parameter-index publication and proof were already accepted, and the
+only recorded return target, idea 810, is closed. This closure does not claim
+new Raw-BIR receipt, reopen later body-parameter rows, satisfy 734/797 by
+itself, or authorize ABI/byval/HFA/vector/variadic forms.
