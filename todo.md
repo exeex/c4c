@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/797_lir_to_new_bir_final_coverage_convergence.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair only matrix-proven dispatcher and verifier gaps
+Current Step ID: 3
+Current Step Title: Prove whole-module transactional behavior
 
 # Current Packet
 
@@ -29,8 +29,7 @@ instruction/terminator, switch-selector, or opaque/render text families.
 
 ## Suggested Next
 
-Supervisor should review and, if accepted, commit the Step 2 no-op audit
-record, then dispatch Step 3 from `plan.md`: select and run the narrow
+Supervisor should dispatch Step 3 from `plan.md`: select and run the narrow
 whole-module transactional proof for the accepted disposition set.
 
 ## Watchouts
