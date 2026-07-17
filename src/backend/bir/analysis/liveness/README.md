@@ -40,6 +40,32 @@ including every value/def/use, call/asm clobber, `ParallelCopy`, `EdgeCopy`,
 Exact CFG, value-flow, memory/effects, current projection, C2 alias units/pools,
 call/clobber requirements, D5 edge-copy plan, and E3 spill state when present.
 
+### Versioned allocation fact schema
+
+E1 is the sole producer of immutable `AllocationFactsV1`. The exact product key
+is `(graph revision, target/layout fingerprint, C2 pool and alias-rule version,
+C3/C4 call-rule version, C9 projection key, D5/E3 lineage, profile revision or
+explicit NoProfileV1, AllocationFactSchemaV1)`. Every value entry records stable
+identity, ordered def/use points, live-range segments and holes, loop depth and
+loop identity, checked profile/use/def frequency, peak and local pressure,
+legal/fixed/tied/group homes, call crossing and clobbers, rematerialization
+recipe identity and legality (never a choice), copy affinities, prior spill/
+reload state, spillability, and exceptional-boundary obligations.
+
+All counts and weights are finite unsigned quantities with checked arithmetic.
+Absent profile data is the explicit `NoProfileV1` input and uses the schema's
+deterministic structural frequencies; it is not reconstructed from iteration
+order. Copy affinities are keyed by exact copy occurrence and endpoint IDs.
+Rematerialization records only whether and where a proved recipe is legal and
+its versioned structural inputs. E1 never converts these facts into a score,
+preferred home, coalescing, victim, or eviction request.
+
+Correctness facts (domains, interference, alias exclusion, fixed/tied/group
+relations, clobbers, nonspillability, simultaneous-copy rules, and required
+memory residency) are mandatory predicates. Frequencies, loop/profile weight,
+copy affinity, rematerialization cost, and spill history are profitability
+inputs only. A policy may never trade away a correctness predicate.
+
 ### Exceptional-boundary allocation facts
 
 E1 consumes exact B4/B5 non-local boundary products plus the current C3/C4
@@ -62,8 +88,10 @@ stale, or overlapping classifications reject E1.
 
 1. Validate the exact revision and all predecessor keys.
 2. Enumerate every allocation identity/role in stable graph order.
-3. Derive use/def/clobber points, simultaneous-copy semantics, scratch live
-   intervals, interference edges, alias-unit occupancy, and pressure.
+3. Derive the complete `AllocationFactsV1` entries, simultaneous-copy
+   semantics, scratch live intervals, interference edges, alias-unit occupancy,
+   and pressure in stable `(function, block, node, operand, edge occurrence,
+   value)` identity order.
 4. Validate total coverage and atomically publish one immutable E1 product.
 
 ## NodeKind/Tag Lowering Matrix
@@ -88,8 +116,9 @@ back to stable IDs; they cannot escape as allocation or diagnostic authority.
 
 ## Outputs
 
-One immutable `LivenessInterference` product keyed by exact graph revision,
-target/layout, projection, D5/E3 lineage, algorithms, and total coverage digest.
+One immutable `LivenessInterference` product containing `AllocationFactsV1`,
+keyed by the exact inputs above and a total coverage digest. It contains no E2
+policy version, score, assignment, coalescing, victim, or eviction choice.
 
 ## Verification and Publication
 
@@ -103,7 +132,9 @@ explicit memory/reload route exposed to E2/E3/E4.
 ## Analysis Preservation and Invalidation
 
 Any graph revision, operand/role/order/CFG/effect/copy/scratch/spill/projection/
-pool change invalidates E1. A retry always recomputes; no result is retagged.
+pool/profile/fact-schema/call-rule change invalidates E1. A retry always
+recomputes; no result is retagged. Changing only E2 policy invalidates E2 but
+does not alter a still-exact E1 fact product.
 
 ## Failure and Diagnostics
 

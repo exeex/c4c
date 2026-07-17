@@ -3,36 +3,35 @@
 Status: Active
 Source Idea Path: ideas/open/803_bir_exceptional_control_allocation_and_frame_design_completion.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Define allocation facts and deterministic choice policy
+Current Step ID: 6
+Current Step Title: Define the E4 frame-object and packing contract
 
 ## Just Finished
 
-- Completed plan Step 4: selected versioned fail-closed complete promotion,
-  defined deterministic pre-mutation checked resource planning and exact
-  duplicate-edge accounting, required atomic candidate rollback, and aligned
-  B5/P04 admission without inventing a retained partial-promotion form.
+- Completed plan Step 5: defined complete immutable versioned E1 allocation
+  facts, correctness-before-profitability E2 policy with stable total orders
+  and finite bounds, and exact E3 realization with sole bounded `E3 -> E1`
+  retry. Added a fact-to-decision-to-rewrite trace.
 
 ## Suggested Next
 
-- Execute plan Step 5 and separate immutable E1 allocation cost facts from
-  versioned deterministic E2 allocation/coalescing/eviction choices.
+- Execute plan Step 6 and define the closed E4 frame-object taxonomy, packing,
+  storage-sharing legality, reachability, and verifier evidence.
 
 ## Watchouts
 
 - Documentation-only: do not modify code, tests, build files, scripts,
   generated artifacts, binaries, canonical regression logs, or unrelated
   lifecycle sources.
-- Preserve Step 4's fail-closed complete-promotion decision. Partial promotion
-  requires a future explicit B4/B5 schema change and is not an allocator or
-  memory-pass fallback.
+- Keep frame packing in Step 6. Step 5 defines allocation choices and spill
+  requests only; it does not choose spill offsets, frame regions, or sharing.
 
 ## Proof
 
 - Documentation-only proof: `git diff --check`; Markdown-only changed-path
-  audit; introduced relative-link validation; and focused audits for the
-  selected/rejected policy rationale, versioned metrics, checked arithmetic,
-  finite hard bounds, stable identity ordering/ties, exact-revision keys,
-  pre-mutation planning, duplicate edge-occurrence accounting, complete
-  realization, atomic rollback, B5 admission, and absence of mid-pass fallback.
-  No build/runtime test applies; canonical logs were untouched.
+  audit; introduced relative-link validation; and focused audits for exact
+  revision/policy keys, complete E1 facts, correctness versus profitability,
+  stable ordering/ties, finite pools, coalescing legality, victim/eviction
+  progress and bounds, exact E3 realization, invalidation, verifier failures,
+  and the sole `E3 -> E1` retry. No build/runtime test applies; canonical logs
+  were untouched.

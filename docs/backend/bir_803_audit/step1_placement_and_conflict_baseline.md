@@ -73,9 +73,11 @@ to invent behavior:
    rollback. Deterministic partial promotion is deferred because the closed B4
    and B5 vocabulary has no explicit retained-object alternative or total
    admission mapping for deliberately unselected eligible objects.
-4. E1/E2 state coverage, correctness, and determinism at category level but do
-   not close the cost schema, policy version, profitability weights, stable tie
-   breaks, or bounded eviction decision contract. Step 5 owns that closure.
+4. Resolved by [Step 5](step5_allocation_facts_and_choice_policy.md): E1 owns
+   complete immutable `AllocationFactsV1` without choices; E2 alone interprets
+   them under `DeterministicAllocationPolicyV1`, with correctness-before-cost,
+   stable total orders, finite bounds, and a traceable eviction request that E3
+   must realize without re-decision.
 5. E4 owns frame work but lacks a subordinate closed object taxonomy, sharing
    proof, deterministic packing order, reachability contract, and class-local
    failure bounds. Step 6 must add or converge that subordinate authority.

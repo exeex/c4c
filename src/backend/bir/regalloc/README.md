@@ -38,6 +38,52 @@ is unchanged. Any admitted graph identity absent from E1 is failure.
 Exact E1, C2, projection, call/asm constraints, D5 scratch rules, and on retry
 E3 spill state. No compatible or reconstructed pool/pressure input.
 
+### Deterministic allocation policy
+
+E2 is the sole interpreter of `AllocationFactsV1` under
+`DeterministicAllocationPolicyV1`. Its exact key adds the policy version and
+finite tuning table to the complete E1 key. The policy fixes checked integer
+weights for loop/profile/use/def frequency, range length and holes, pressure,
+call crossing, rematerialization, copy benefit, and prior spill cost. Floating
+point, pointer values, hash iteration, allocator addresses, wall-clock state,
+randomness, and incidental traversal order are forbidden inputs.
+
+Correctness is filtered before profitability: legal domain, interference and
+alias units, fixed/tied/group requirements, clobbers, scratch
+nonspillability/nonalias, simultaneous-copy semantics, and exceptional memory
+obligations cannot be outweighed. Within the legal set, V1 uses checked
+saturating-free integer score tuples and the following total order:
+
+1. fixed/nonspillable/group obligations, then stable allocation identity;
+2. legal copy pairs by descending computed benefit, then source ID,
+   destination ID, and copy-occurrence ID; coalesce only when the merged domain
+   is nonempty and every interference/alias/tie/group predicate remains true;
+3. assignments by descending constrainedness and spill cost, then stable value
+   ID; candidate homes by preference tuple then abstract pool/category/class/
+   slot ID;
+4. victims by lowest eviction-cost tuple, then highest prior-eviction count,
+   then stable value ID; an eviction request names exactly one ordinary
+   spillable victim and its complete rewrite obligations.
+
+Every input collection is normalized into these stable orders before use.
+Equal score tuples therefore still have one result. E2 returns a
+`PolicyDecisionTraceV1` containing the policy/key, normalized candidates,
+correctness rejections, score tuples, tie-break fields, accepted coalesces,
+assignments, and the sole selected eviction or success result.
+
+### Progress and finite bounds
+
+The policy version declares finite checked maxima for identities, pool slots,
+copy pairs, score operations, coalescing attempts, assignment attempts, and E3
+retries. An eviction is legal only with a lexicographic progress witness over
+`(remaining unassigned identities, unresolved pressure conflicts,
+not-yet-explicit spill obligations, stable victim ID)` that the E3 realization
+is required to improve on the new revision. The retry lineage records every
+`(revision digest, victim ID, obligation digest)`; repetition is a cycle and
+fails. Bound exhaustion, arithmetic overflow, no improving victim, or an empty
+legal domain for a nonspillable identity is terminal, never a heuristic
+fallback.
+
 E1's exact `ExceptionalBoundaryAllocationFacts` are correctness constraints,
 not profitability hints. E2 rejects an assignment that keeps a value only in a
 clobbered register unit across a non-local boundary, coalesces identities across
@@ -51,9 +97,10 @@ boundary outside versioned policy and stable tie-break rules.
 ## Ordered Behavior
 
 1. Validate all keys and total E1-to-graph identity coverage.
-2. Build legal domains and interference over finite alias units.
-3. Assign nonspillable/fixed/group/scratch identities first, then ordinary
-   identities deterministically with registered coalescing.
+2. Apply every correctness predicate and build legal domains over finite alias
+   units; this precedes every profitability comparison.
+3. Score, coalesce, assign, and if needed select one victim using only
+   `DeterministicAllocationPolicyV1` and its stable total orders.
 4. Return a complete valid assignment, one progress-ranked ordinary eviction
    request for E3, or structured unsatisfiable failure; never mutate the graph.
 
@@ -77,8 +124,9 @@ does not merge values. Abstract slot IDs are not concrete register spellings.
 
 ## Outputs
 
-Exactly one of: complete immutable `AssignmentPlan`; one deterministic ordinary
-eviction request with progress witness for E3; or structured failure. No graph.
+Exactly one of: complete immutable `AssignmentPlanV1`; one deterministic
+`EvictionRequestV1` with progress witness for E3; or structured failure. Every
+successful outcome includes `PolicyDecisionTraceV1`; no partial plan or graph.
 
 ## Verification and Publication
 
@@ -91,8 +139,9 @@ E3 realization route.
 
 ## Analysis Preservation and Invalidation
 
-Any E1/graph/pool/projection/constraint/spill change invalidates E2. E3 mutation
-destroys the assignment candidate and restarts at E1.
+Any E1/graph/pool/projection/constraint/spill/policy-version/tuning change
+invalidates E2. E3 mutation destroys the assignment and trace and restarts at
+E1. A policy-only change cannot reuse an old E2 choice under a new key.
 
 ## Failure and Diagnostics
 

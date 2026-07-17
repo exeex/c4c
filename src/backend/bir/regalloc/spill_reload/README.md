@@ -40,6 +40,14 @@ The requested victim must be an ordinary spillable identity.
 Exact E1/E2/current projection, CFG/value-flow/effects, D5 edge-copy plan, and
 bounded retry state. Missing/stale/compatible-looking inputs reject.
 
+E3 consumes the exact `EvictionRequestV1` and `PolicyDecisionTraceV1`; it does
+not rescore, substitute a victim, change a coalescing/assignment decision, or
+consult profitability facts. The request is a closed rewrite recipe naming the
+victim, spill object role, all store/reload obligations and use rewrites, exact
+program points, and the pre/post progress witness. If any named realization is
+illegal on the exact input revision, E3 rejects the candidate instead of
+asking E2 for a locally preferable alternative.
+
 For an E2 request rooted in an exceptional-boundary obligation, the request
 names the exact E1 boundary entry and all required store/reload program points.
 E3 inserts explicit stores before the checkpoint and reload definitions at the
@@ -52,8 +60,9 @@ Failure to find legal explicit placements is terminal for that candidate.
 ## Ordered Behavior
 
 1. Validate exact keys, victim spillability, progress witness, and retry bound.
-2. Allocate one deterministic abstract spill-object ID and plan all required
-   stores/reloads/RAUW without touching scratch or parallel-copy semantics.
+2. Allocate one deterministic abstract spill-object ID and realize exactly all
+   request-named stores/reloads/RAUW without touching scratch, parallel-copy,
+   assignment, coalescing, victim, or profitability decisions.
 3. Build one private candidate with explicit nodes and total mappings.
 4. Verify graph/copy/scratch rules, request fresh C9 projection, and atomically
    stage the retry candidate.
@@ -81,7 +90,8 @@ not encoded. All source/victim/use relationships are explicit provenance.
 ## Outputs
 
 One private fully verified retry revision with explicit spill state, fresh
-projection, mutation summary, increased progress metric, and unchanged explicit
+projection, mutation summary, strictly improved request-defined progress
+metric, updated finite retry/cycle lineage, and unchanged explicit
 parallel-copy/scratch semantics. It carries no current E1/E2 product.
 
 ## Verification and Publication
@@ -102,9 +112,11 @@ fresh E1, followed by new E2.
 
 ## Failure and Diagnostics
 
-Nonspillable victim, no legal placement, missing progress, repeated victim/
-state cycle, bound exhaustion, stale products, projection/verifier failure,
-cancellation, or resource exhaustion stages nothing and terminates explicitly.
+Nonspillable or substituted victim, incomplete/extra realization, no legal
+placement, missing or non-improving progress, repeated revision/victim/
+obligation cycle, bound exhaustion, stale products, projection/verifier
+failure, cancellation, or resource exhaustion stages nothing and terminates
+explicitly. There is no E3-side reselection or retry-to-E2 edge.
 
 ## Adjacent-Stage Contract
 

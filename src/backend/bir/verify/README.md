@@ -411,6 +411,19 @@ repair `PseudoBir`.
 
 ### Allocated profile and E4 publication
 
+Before E4 work, the private allocation gate requires an exact
+`AllocationFactsV1` key and replays its complete factual coverage without
+accepting E1 choices. It then requires an exact
+`DeterministicAllocationPolicyV1` decision trace and replays
+correctness-before-profitability filtering, finite-pool domains, stable
+normalization/ties, coalescing legality, assignment or the single victim/
+eviction decision, checked arithmetic, progress, cycle lineage, and hard
+bounds. Pointer/hash/traversal order is never verifier evidence. For an E3
+candidate the gate additionally proves exact request realization, no E3
+re-decision, strict witness improvement, complete invalidation, and the sole
+`E3 -> E1` retry. Missing, stale, mixed-version, nondeterministic, partial, or
+non-improving evidence rejects the candidate.
+
 Non-local-return verification is cumulative and stage-local. B4 requires one
 exact `NonLocalSsaBoundary` per registered checkpoint and rejects forbidden
 post-return visibility or invented CFG/phi facts. B5 requires matching
