@@ -7,6 +7,10 @@
 The devcontainer defaults to `Ninja` with `CMAKE_BUILD_PARALLEL_LEVEL=8`, and
 the project default build type is `Release`.
 
+The c4c host implementation and native tests require strict C++20. See the
+[host toolchain contract](docs/host_toolchain.md) before adding a build target
+or selecting a compiler.
+
 ```bash
 cmake --preset default
 cmake --build --preset default

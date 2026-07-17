@@ -1,146 +1,154 @@
-# Allocated BIR
+# E4 Allocated and MIR-Readiness Publication Contract
 
-Status: scaffold (unimplemented).
+Contract-Status: converged planned contract under idea 732
+Implementation-Status: absent
+Phase-ID: E4
+Upstream: exact private post-stable-E3 D5-resolved candidate and product lineage
+Downstream: owning Allocated capability plus distinct borrowing MIR-readiness view
+
+## Purpose
+
+E4 materializes every remaining frame action as an explicit bounded one-record
+node, recomputes/validates all exact-current products, and atomically publishes
+the Allocated graph plus a separate MIR-readiness capability over that same
+revision. It performs no allocation repair or retry.
 
 ## Owns
 
-E4 owns one private `AllocatedPublicationTransaction`. It consumes the stable
-E3 candidate, lets D5 resolve all copy bundles, materializes every required
-frame action as an explicit BIR node, rebuilds every exact-current product, and
-only then freezes and publishes the final revision. Success atomically mints
-one owning `AllocatedBir`, one `PreparedBir` readiness capability bound to it,
-and borrowing `MirReadyBirView` instances. All capabilities name the same
-immutable module/function revisions and product fingerprints; none clones the
-graph. These names are prospective while the scaffold remains unimplemented.
+Private frame-action draft, deterministic action materialization,
+`FrameActionFingerprint`, final projection/E1 recomputation, non-mutating E2/E3
+validation, final frame plan/target realizability, and atomic E4 publication.
 
-E4 does not select machine instructions, spell concrete registers, encode
-frame offsets, parse assembly, repair allocation, or reinterpret constraints.
-F1 is an apply-only consumer of the already explicit graph and verified plans.
+## Does Not Own
 
-## Input and private ordering
+E4 does not change assignments, choose new spills, retry allocation, resolve
+parallel copies, perform hidden frame work in F1, create machine records,
+encode instructions, or reinterpret source-semantic stack operations.
 
-The transaction begins with the exact stable E3 candidate and its current
-projection, `LivenessInterferenceKey`, `AssignmentKey`, `SpillStateKey`, D2
-call obligations, C2 layout, C3/C4 plans, C6 address facts, target mapping
-tables, and preparation fingerprints. D5 first runs its bounded
-`CopyResolutionTransaction`; no `ParallelCopy` or `CopyScratch` survives.
+## Inputs
 
-The rest of the enclosing transaction has one mandatory order:
+One exact private D5-resolved candidate after stable E3 with current projection,
+`CopyResolutionFingerprint`, E1/E2 assignments, E3 spill state, C1-C9/D1-D5
+lineage, and all target/layout/call/frame requirement identities.
 
-1. build a private deterministic frame-action draft from the exact
-   D5-resolved graph and the named E3/C2/C3/C4/D2/C6/target facts;
-2. run `FrameActionMaterializationTransaction`, producing the final graph;
-3. run the sole `ConstraintProjectionTransaction` for that final revision;
-4. recompute E1 and install its final `LivenessInterferenceKey`;
-5. have E2 validate and install the unchanged assignments without allocation;
-6. have E3 validate and install the unchanged spill state without mutation;
-7. derive the non-mutating final `FrameRealizationPlan` and
-   `FrameRealizationKey` over the materialized graph; and
-8. run the target registry and install the final `TargetRealizabilityKey`.
+## Input NodeKind/Tag Vocabulary
 
-Every product names the final `PipelineStageStamp`,
-`CopyResolutionFingerprint`, `FrameActionFingerprint`, exact upstream keys,
-and applicable schema/target fingerprints. The draft and every predecessor or
-pre-materialization product are lineage only. Stable IDs, structural equality,
-or a preservation record cannot rekey them. Installation occurs only after all
-eight steps succeed.
+Exactly prospective assigned directly realizable ordinary pseudo nodes,
+`EdgeCopy`, explicit `Spill`/`Reload`, opaque inline asm, and admitted control/
+effect forms. Pending phi, expansion placeholder, `GenericCall`,
+`ParallelCopy`, `CopyScratch`, premature frame actions, and machine kinds reject.
 
-## Frame-action materialization
+## Required Analyses and Products
 
-`FrameActionMaterializationTransaction` is the sole graph-mutating E4
-subordinate. Its private draft deterministically fixes frame regions, object
-placements, bases, offsets, displacements, stack size/alignment, action points,
-and registered mapping-rule IDs for E3 spill objects, D2 call objects and
-hidden carriers, C6 address obligations, static and dynamic lifetimes, and
-callee-save obligations. For callee saves it intersects the D2 abstract
-function-level obligation set with exact post-allocation used units; only that
-result may produce `FrameCalleeSave`/`FrameCalleeRestore`. D2
-`AbiPreserve`/`AbiRestore` remain per-call value transport and cannot satisfy or
-duplicate these entry/exit actions. The draft is neither a product nor an F1
-instruction source.
+Exact current projection, copy-resolution fingerprint, C2 layout, C3-C8 plans,
+C9 binding, E1/E2/E3, D5 lineage, and deterministic frame-action requirement
+draft inputs. No predecessor-only or equal-looking product is accepted.
 
-The transaction inserts only the closed E4-candidate frame-action family:
+### Non-local-return homes and frame obligations
 
-- `FrameAdjust`, with one fixed stack-pointer input/output role;
-- `FrameBaseSetup` and `FrameBaseRestore`, with fixed ABI frame/base roles;
-- `FrameCalleeSave` and `FrameCalleeRestore`, with one fixed callee-save role
-  and one exact frame-object reference; and
-- `FrameProbe`, when required by the selected supported ABI/target rule, with
-  fixed stack/frame roles.
+E4 consumes the final exact `ExceptionalBoundaryAllocationFacts`, assignment,
+and explicit E3 spill state. Every memory-resident exceptional survivor maps to
+one stable frame object or an already-authoritative B5 semantic object whose
+lifetime covers the checkpoint and continuation. The frame draft records object
+class, size/alignment, non-overlap/sharing proof, base/region, lifetime, and the
+exact store/reload actions that use it. A volatile or escaped semantic object
+cannot be silently merged with a compiler spill object.
 
-Each variant has one registered direct mapping to exactly one machine record,
-fixed effects and ABI/frame roles, and no allocatable result, temporary, or
-scratch request. The materializer may emit a deterministic sequence of
-multiple one-record nodes, including chunked `FrameAdjust` or `FrameProbe`
-sequences, but no node expands later. Any additional action required by a
-supported ABI/target must first be added as another finite reviewed variant;
-an action needing allocatable scratch or lacking a direct mapping fails before
-publication.
+Any frame base, adjustment, save/restore, or dynamic-stack action required to
+keep those homes addressable across the non-local transfer must already be in
+the bounded E4 action draft and materialized before final projection/E1.
+Unwind/non-local incompatibility, unstable addressability, absent lifetime,
+missing home, or a request for another spill/reassignment fails E4. E4 cannot
+repair E2/E3 or defer an action to F1.
 
-Action points are exact entry, normal/exceptional exit, dynamic-lifetime, and
-call-required positions derived from the draft. Inserted nodes receive fresh
-deterministically reserved instruction IDs, exact effect and stack-object
-references, and ordinary origin records. The transaction advances the
-revision/stage stamp and emits a complete mutation summary,
-`FrameActionFingerprint`, replacement map, and tombstones. Existing IDs remain
-stable. Cancellation, ID exhaustion, inconsistent placement, or any node or
-action failure rolls back the complete enclosing transaction; neither a draft,
-partial sequence, fingerprint, product, nor capability is published.
+## Ordered Behavior
 
-Core `StackSave`/`StackRestore`, `DynamicAlloc`, and lifetime nodes remain
-source-semantic operations with their original token, dominance, and lifetime
-meaning. E4 `FrameBaseSetup`/`FrameBaseRestore` and `FrameAdjust` are target
-frame establishment/teardown actions derived from final placement; they cannot
-replace, consume, reinterpret, or suppress a semantic stack operation. When
-both are required, both remain with distinct IDs and exact coverage.
+1. Freeze/validate the exact D5-resolved candidate and all predecessor keys.
+2. Derive one deterministic private frame-action draft from actual assignments,
+   spill objects, calls, dynamic stack semantics, and target requirements.
+3. Materialize only bounded prospective `FrameAdjust`, `FrameBaseSetup`,
+   `FrameBaseRestore`, `FrameCalleeSave`, `FrameCalleeRestore`, and `FrameProbe`
+   nodes at exact planned points; derive mutation summary/fingerprint.
+4. Request final C9 projection, recompute E1 on the materialized revision, run
+   E2 assignment and E3 spill validation without mutation, then derive final
+   frame plan and target realizability.
+5. Run the full Allocated gate and atomically publish both capabilities, or
+   discard the complete transaction. No retry edge exists.
 
-## Final frame realization and output
+## NodeKind/Tag Lowering Matrix
 
-After materialization, exact-current projection/E1/E2/E3 closure, the
-non-mutating frame owner derives `FrameRealizationPlan` and
-`FrameRealizationKey` from the final graph. The plan covers every explicit
-frame-action node and every spill/reload, call, local/dynamic-frame, scratch,
-and address access. It contains exact placements and registered mappings but
-cannot insert a node or conceal an action. Every record-producing prologue,
-epilogue, stack adjustment, save/restore, probe, and other frame action is an
-explicit graph node before F1.
+| E4 input/output subset | Outcome | Tags retained | Tags added | Tags removed | Identity / provenance | Failure |
+|---|---|---|---|---|---|---|
+| ordinary assigned realizable node | retain as `E.AllocatedOperation` | semantic/type/effect/pseudo intent, exact assignments | Allocated admission and exact home/product references | unresolved allocation state | preserve only under identity gate | missing/illegal assignment rejects |
+| resolved `EdgeCopy` | retain as `E.AllocatedCopy` | transfer type/endpoints/edge provenance | allocated endpoints and one-record realizability | unresolved copy state | preserve | illegal move/mapping rejects |
+| explicit `Spill`/`Reload` | retain as `E.AllocatedSpillAction` | spill object/type/memory effects/def-use | Allocated admission and exact homes/frame-plan reference | unresolved spill residency | preserve | hidden/unassigned transition rejects |
+| opaque inline asm | retain as `E.AllocatedOpaque` | exact bytes/bindings/effects | exact assigned operands/clobber satisfaction | unresolved homes | preserve | parsing or incomplete assignment rejects |
+| required frame action | insert one bounded `E.FrameAction` at planned point | target/frame obligation provenance | allocation-action family, fixed roles, Allocated admission, one-record disposition | hidden/unmaterialized frame requirement | always fresh ID with requirement/point provenance | missing/duplicate action rejects |
+| source-semantic stack save/restore/dynamic allocation | retain as ordinary semantic/pseudo operation | original semantics/effects | exact allocated realization facts | none | preserve; never replaced by frame action | reinterpretation rejects |
+| residual phi/`ParallelCopy`/`CopyScratch`/placeholder/`GenericCall` | reject | none | none | none | no publication | `AllocatedResidualVocabulary` |
+| unknown/illegal/omitted/stale/premature/machine kind | reject | none | none | none | no publication | `AllocatedVocabularyInvalid` |
 
-The final target checker consumes that exact plan and proves one registered
-mapping for every non-`InlineAsm` node. Its `TargetRealizabilityKey`
-incorporates `FrameRealizationKey` and `FrameActionFingerprint`.
+## Identity and Provenance
 
-The resulting `MirReadyBirView` exposes the closed semantic/pseudo nodes,
-E3 `Spill`/`Reload`, D5-resolved `EdgeCopy`, explicit E4 frame-action nodes,
-assignments, the exact frame plan, and fingerprint lineage. Every allocatable
-identity has one legal abstract home or explicit spill residency; the new
-frame actions have only their fixed ABI/frame roles.
+Every frame action gets a fresh ID tied to exact requirement and insertion
+point. Retained nodes preserve identity only when all eight conditions hold.
+Assignments/frame locations/products are not node identity. Machine identity is
+later distinct; BIR IDs may be provenance only.
 
-## Verification and publication gate
+## Outputs
 
-`AssignedAllocationCandidateGate` admits the E4 frame-action variants only
-after materialization and requires exact coverage by the final frame and target
-products. It still forbids them before E4; `PseudoPublicationGate` always
-rejects them. The Allocated gate additionally proves:
+One owning immutable Allocated graph/capability and one distinct borrowing
+MIR-readiness capability/view. Both name the identical materialized revision,
+projection, E1/E2/E3, copy/frame fingerprints, frame plan, and target
+realizability key. Neither borrowing capability owns or copies graph storage.
 
-- every ordinary/copy/call/inline-asm role remains legally assigned and all
-  ties, aliases, groups, clobbers, and interference are satisfied;
-- every spill object and transition remains complete, with no implicit
-  residency change or allocation repair;
-- no `ParallelCopy` or `CopyScratch` remains and every `EdgeCopy` preserves its
-  resolved simultaneous-copy semantics;
-- every required frame action appears exactly once at its planned point as an
-  admitted one-record node, and every admitted node has exact plan coverage;
-- projection, E1, E2, E3, frame realization, and target realizability all name
-  the materialized final revision and the same `FrameActionFingerprint`; and
-- no hidden frame work, active editor, mixed key, or missing mapping
-  remains.
+## Verification and Publication
 
-Any failure discards the complete `AllocatedPublicationTransaction` and mints
-none of `AllocatedBir`, `PreparedBir`, `MirReadyBirView`, a partial function
-token, or a reusable green report.
+The Allocated gate proves complete legal assignments/spill residency, no
+pressure deficit, resolved copies, exact frame-action coverage, no hidden frame
+work, one-record realizability, final projection/E1 keys, non-mutating E2/E3
+validation, and all products exact-current. It rejects any repair request,
+unresolved/unknown vocabulary, stale product, active editor, or partial module.
+Success atomically mints both outputs; failure mints neither.
+For every exceptional boundary the gate also proves exact-current boundary
+lineage, no live clobbered register-only value, complete explicit store/reload
+coverage, stable addressable homes with sufficient lifetime, and all required
+frame actions present exactly once.
 
-F1 accepts only `MirReadyBirView`, rechecks all keys, and emits exactly one
-machine record for each node by applying its registered mapping and concrete
-spellings. It cannot add frame records, choose placements, change assignments,
-insert spills, create scratch, schedule copies, expand a node, or repair the
-graph. Mapping failure requires a separately reviewed upstream BIR change.
+## Analysis Preservation and Invalidation
+
+Frame-action insertion invalidates projection, E1 and every observing product.
+E4 recomputes them after materialization. E2/E3 are validators only and cannot
+mutate/retry. Any later graph/key change invalidates MIR readiness entirely.
+
+## Failure and Diagnostics
+
+Missing/duplicate action, assignment/spill/copy drift, stale/mixed product,
+pressure deficit, hidden frame requirement, failed realizability, cancellation,
+or resource exhaustion rolls back copy/frame/product staging and publishes
+nothing. There is no allocation-repair fallback.
+
+## Adjacent-Stage Contract
+
+Only subordinate post-E3 D5 supplies the private resolved input. F1 consumes
+only the borrowing MIR-readiness view and applies one mapping per explicit node;
+it cannot insert frame work, expand, allocate, spill, or return repair.
+
+## Implementation State
+
+Absent. Prospective frame-action names are planning vocabulary, not production
+`NodeKind` claims. Existing legacy prepared/frame emission is not E4.
+
+## Proof Requirements
+
+Prove every assigned/copy/spill/opaque/frame row, exact action multiplicity,
+materialize-before-project/E1 order, non-mutating E2/E3, stale products,
+failure atomicity, no repair, and same-revision dual capability binding.
+Include non-local-return home lifetime/addressability, semantic-object versus
+spill-object separation, exact store/reload/action coverage, and strict F1
+apply-only rejection of any missing realization.
+
+## Open Questions
+
+New frame actions require reviewed schema/admission/realizability rows before
+implementation; no hidden F1 action is allowed.

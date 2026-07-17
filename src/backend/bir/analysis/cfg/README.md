@@ -137,7 +137,12 @@ may consume only that post-P03 result and its exact-key dependents.
 - Stable IDs and canonical edge order escape; dense indices, pointers, names,
   vector positions, layout adjacency and rendered text do not.
 - `MayUnwind` without a local successor is an escape effect, not an invented
-  local edge. Typed asm-goto slots remain ordinary exact occurrences.
+  local edge. Typed asm-goto label slots and its explicitly present optional
+  fallthrough slot remain ordinary exact occurrences; absence of fallthrough
+  is known absence, not layout inference.
+- Zero, one, or multiple asm-goto label slots are represented exactly.
+  Same-destination label slots remain distinct by role/index, and instruction
+  outputs or clobbers never affect topology.
 - The result contains no editor, mutation plan, phi value, property stamp,
   stage token or target/preparation fact.
 

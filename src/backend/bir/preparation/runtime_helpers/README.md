@@ -1,51 +1,104 @@
-# Runtime Helper Plan
+# C8 Immutable Runtime-Helper Requirement and Cumulative Bundle Contract
 
-Status: converged design contract (unimplemented).
+Contract-Status: converged planned contract under idea 732
+Implementation-Status: absent
+Phase-ID: C8
+Upstream: exact Canonical/C1/C2/C3/C4/C5/C6/C7 tuple
+Downstream: immutable `VerifiedPreparationBundle` for C9 and D1/D2
 
-## Contract
+## Purpose
 
-Runtime-helper planning is `C8`, the final preparation dependency. It consumes
-the exact `VerifiedPreparationInput` borrow, matching `VerifiedTargetLayout`,
-and the published ABI, call, variadic, address, and inline-assembly-table
-products. It selects a declared helper interface only for a Canonical semantic
-operation whose target profile explicitly requires that helper route.
+C8 selects declared runtime-helper interface requirements for eligible
+Canonical semantics and atomically publishes the cumulative C2-C8 bundle. It
+does not replace operations with calls or perform call lowering.
 
-C8 is the sole eligibility owner. Its closed table maps admitted canonical
-semantic operation descriptors to eligible helper families and required target
-profile predicates. Absence from that table means ineligible, not an invitation
-for P02, P07, pseudo lowering, or a symbol-name heuristic to select a helper.
-An eligible operation still fails closed unless exactly one declared interface
-satisfies the selected target profile and the checks below.
+## Owns
 
-The immutable `RuntimeHelperPlan` records semantic operation identity, helper
-interface/symbol identity, typed arguments and results, ABI/call requirements,
-abstract clobber requirements, recursion guards, and required generic pseudo-
-call formation. Shared pseudo and call lowering later create the explicit
-nodes. This planner does not pattern-match a testcase, emit a call, choose
-general assignments, create spill state, or select machine instructions.
+Versioned helper-registry selection, eligibility-to-interface requirements,
+total helper/no-helper coverage, cumulative predecessor binding, validation,
+fingerprinting, and bundle publication.
 
-## Binding and consumers
+## Does Not Own
 
-The product key contains the complete Canonical `PipelineStageStamp`, exact
-`TargetFingerprint`, layout and helper schema fingerprints, and exact ordered
-ABI/call/variadic/address/inline-assembly-table fingerprints. The preparation
-publication gate is the immediate consumer. Pseudo lowering and shared call
-lowering consume the helper plan only through the verified cumulative bundle.
+C8 does not rewrite nodes, insert calls, lower ABI transport, create symbols,
+assign locations, bind constraints, allocate, or emit helper bodies.
 
-## Publication
+## Inputs
 
-All eligible operations are processed in one transaction. Missing declarations,
-signature or calling-convention mismatch, helper recursion, ambiguous routes,
-unsupported semantics, stale identities, predecessor/key mismatch, or
-diagnostics publish no `RuntimeHelperPlan` and therefore no cumulative bundle.
-Inputs remain unchanged.
+The unchanged Canonical owner plus exact C1 fingerprint and C2-C7 products,
+with all common schema/registry/options/coverage fingerprints.
 
-Any change to the Canonical stage stamp, target fingerprint, layout/helper
-schema, an ABI/call/variadic/address/inline-assembly-table predecessor
-fingerprint, or a named helper-eligible operation identity invalidates the
-complete plan, the cumulative bundle, and C9.
+## Input NodeKind/Tag Vocabulary
 
-Legacy coverage: i128/f128, atomic, and intrinsic helpers; declarations,
-clobbers, returns, and recursion guards. Exact audit anchors include
-`i128_runtime_helpers.*`, `f128_runtime_helpers.*`, and
-`regalloc/runtime_helpers.*`.
+All five Canonical groups by immutable reference. Registered helper-eligible
+semantic members are queried without adding helper/call/preparation node tags.
+
+## Required Analyses and Products
+
+Exact C2-C7 products plus fresh exact-Canonical CallGraph and MemoryEffects
+where helper eligibility/effects require them. Unknown facts cannot select a
+helper.
+
+## Ordered Behavior
+
+1. Validate the unchanged complete tuple and analysis keys.
+2. Select one versioned helper registry from C1/ABI identity.
+3. Derive helper-interface or explicit no-helper rows for every eligible site.
+4. Validate cross-product agreement and atomically publish the cumulative
+   C2-C8 bundle.
+
+## NodeKind/Tag Lowering Matrix
+
+| Canonical input subset | Reference outcome | Helper/bundle outcome | Node tags added/removed | Identity | Failure |
+|---|---|---|---|---|---|
+| registered helper-eligible value/effect operation | retain semantic node | exact helper interface requirement and eligibility reason | none | unchanged | unavailable/ambiguous helper rejects |
+| operation natively retained by later lowering | retain reference | explicit no-helper requirement row | none | unchanged | implicit fallback forbidden |
+| call/intrinsic member already semantic | retain reference | helper requirement only when registry explicitly owns it | none | unchanged | call insertion/lowering forbidden |
+| control/phi/opaque token | retain reference | explicit no-helper row unless a reviewed semantic rule applies | none | unchanged | asm text cannot select helper |
+| unknown/illegal/omitted/later-stage kind | reject bundle | none | none | none | `RuntimeHelperVocabularyInvalid` |
+
+## Identity and Provenance
+
+Helper rows cite exact Canonical site IDs and registry interface IDs. They are
+requirements/products, not replacement call nodes or semantic identities.
+
+## Outputs
+
+One immutable `VerifiedPreparationBundle` containing exact C2-C8 product
+fingerprints, helper/no-helper rows, total coverage, common key, and bundle
+fingerprint. Canonical storage remains unchanged.
+
+## Verification and Publication
+
+Validate all predecessor/analysis keys, helper signature/effect agreement with
+C3/C4, total eligible-site coverage, and absence of graph edits/call lowering/
+locations/pseudos. Publish one complete bundle or nothing.
+
+## Analysis Preservation and Invalidation
+
+Any Canonical/target/C2-C7/helper-registry/CallGraph/MemoryEffects/site change
+invalidates C8 and C9/D consumers. A bundle cannot be refreshed in place.
+
+## Failure and Diagnostics
+
+Stale/mixed keys, missing/ambiguous interface, analysis unknown, predecessor
+conflict, cancellation, or resource failure publishes no partial/default bundle.
+
+## Adjacent-Stage Contract
+
+C7 supplies the exact context. C9 consumes the unchanged Canonical owner,
+complete C2-C8 bundle, and original opaque constraint bytes. D1/D2 later
+materialize helper calls/transport; C8 never lowers them.
+
+## Implementation State
+
+Absent. Legacy helper selection/lowering does not implement this product.
+
+## Proof Requirements
+
+Prove helper/no-helper neighbors, signatures/effects, exact analysis/product
+keys, total coverage, unavailable helper failure, no call lowering, and atomicity.
+
+## Open Questions
+
+New helpers require a versioned registry and explicit eligibility row.

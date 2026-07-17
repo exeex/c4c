@@ -78,6 +78,8 @@ If you are asking it to execute work autonomously, the agent should follow the l
 ## Recommended Next Docs
 
 - [use_cases.md](/workspaces/c4c/docs/use_cases.md)
+- [host_toolchain.md](/workspaces/c4c/docs/host_toolchain.md) — required C++20
+  host build contract and target-author guidance
 - [AGENTS.md](/workspaces/c4c/AGENTS.md)
 
 ## Draft Scope

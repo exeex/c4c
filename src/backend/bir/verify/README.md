@@ -1,9 +1,10 @@
 # BIR verifier design
 
-Status: Raw, Canonical, Pseudo, and Allocated publication boundaries plus the
-PreparedInput gate are closed architecture contracts. The checked-in
-`verifier.hpp/.cpp` is a partial foundation implementation, not the complete
-contract described here.
+Contract-Status: Raw through MirReadyMachine verifier architecture converging
+under idea 732
+Implementation-Status: partial Raw foundation; Canonical, Prepared-admission,
+PseudoPreallocation, Allocated, and MirReadyMachine gates are unimplemented
+unless a narrower section names checked-in evidence
 
 This directory owns structural and semantic validation of published BIR. The
 first implementation target is **RawBir**: the result of LIR lowering and the
@@ -18,30 +19,42 @@ not certify target ABI, register allocation, frame layout, target opcodes,
 encodings, or final emission. The later Allocated gate certifies E4's exact
 private frame placements and explicit actions.
 
-## Confirmed current inline-assembly verifier boundary
+The [root authority spine](../README.md#common-contract-authority-spine)
+assigns ownership. The
+[normative NodeKind/tag contract](../../../../docs/backend/bir_node_kind_tag_algebra_and_phase_vocabulary.md)
+owns the six published-stage meanings, kind admission, identity gate, and
+common rejection obligations. This file owns concrete graph/product validity
+rules and unforgeable publication results; it does not redefine a tag table,
+schedule a pass, mutate a candidate, or decide analysis preservation.
 
-The checked-in `FoundationVerifier` recognizes the one current opcode,
-`Opcode::InlineAsm`, and requires its closed payload alternative to be
-`InlineAsmNode`. Inline-asm operands must be live values owned by the same
-function. Each result must resolve to a live instruction-result `ValueId` whose
-`InstResultDef` names that exact instruction and ordered result index; the
-reverse value-to-instruction check is also enforced. The generic verifier also
-checks known value types, exact instruction membership in one block, function
-ownership, storage/order integrity, and publication through the builder.
+Every gate first rejects an unknown kind/tag/stage, illegal admission,
+schema/payload/arity mismatch, unhandled transition row, unresolved/stale
+identity, or stale/foreign/mixed revision/target/product key. It then applies
+the stage-specific structural and semantic rules. A false schema query is not
+a diagnostic and cannot distinguish unknown from known-negative input. Failure
+publishes no token or partial capability.
 
-It does not currently parse or semantically validate `asm_text` or
-`constraint_text`, reconstruct roles/ties from them, validate clobber
-interactions, or prove target constraint/register legality. Input/output and
-read/write shape is rejected at the LIR importer boundary before construction;
-core verification then protects the resulting generic value graph. The
-`InlineAsmStructureInvalid` through `InlineAsmEffectInvalid` rules described
-later are target contract, not implemented `VerificationRule` alternatives.
+## Checked-in Raw foundation and deferred final reconciliation
+
+The build-included `FoundationVerifier` is real shared-code infrastructure. It
+checks typed storage/order/ownership, current NodeKind schema, payload/arity,
+value-definition, terminator/CFG, module-table, and publication invariants for
+the bounded forms accepted by the current builder/importer. It does not parse
+opaque inline-assembly text into target semantics or prove C9 constraint and
+allocation legality.
+
+The old one-opcode bootstrap description is obsolete. The dated factual
+baseline is [idea 732 Step 1](../../../../docs/backend/bir_732_audit/step1_current_owners_and_factual_inputs.md).
+Idea 732 Step 8 must enumerate the final landed importer kinds, payloads,
+roles, rejection behavior, and exact Raw publication API before this document
+claims complete A2 coverage. This Step 2 correction intentionally does not
+prejudge parallel importer work.
 
 ## Profiles and stage boundary
 
 ```text
-LIR lowering -> ModuleBuilder -> frozen ModuleDraft --verify_and_publish_raw--> RawBir
-                                      \--verify_candidate(Raw)--> diagnostics only
+LIR lowering -> private Raw candidate -> Raw gate -> RawBir
+                                      \-> diagnostics-only candidate report
 ordered pass transaction --private verify-and-publish(Canonical)--> CanonicalBir
 C1 target selection + Canonical --verify_preparation_input--> VerifiedPreparationInput
 private complete D2 call-lowering candidate --verify-and-publish(Pseudo)--> PseudoBir
@@ -49,14 +62,17 @@ complete D4/D5 transaction --full verify-and-republish(Pseudo)--> PseudoBir
 private E3 rewrite --AssignedAllocationCandidateGate--> immutable E1/E2 retry input
 stable E3 candidate --D5 copy resolution--> private resolved candidate
 resolved candidate --E4 frame-action materialization + final exact-current closure--> final candidate
-final candidate --AssignedAllocationCandidateGate + Allocated gate--> AllocatedBir + PreparedBir
+final candidate --AssignedAllocationCandidateGate + Allocated gate--> AllocatedBir
+                                                     \--> E4 MIR-readiness capability
                                                      \--> borrowed MirReadyBirView
 ```
 
-The arrow from `ModuleDraft` to `RawBir` is an unforgeable publication boundary,
-not a verifier that receives an already-created `RawBir`. Only
-`verify_and_publish_raw(ModuleDraft&&)` may freeze one exact draft revision, run
-full Raw verification, and consume it into `RawBir` after a successful report.
+The arrow from the private Raw candidate to `RawBir` is an unforgeable
+publication boundary, not a verifier that receives an already-created
+`RawBir`. The final exact candidate type/API name is deferred to Step 8; the
+currently landed adapter is `ModuleBuilder::publish() &&`. The gate must freeze
+one exact candidate revision, run full Raw verification, and consume it into
+`RawBir` only after a successful report.
 `verify_candidate` is diagnostic-only and can never manufacture a stage token,
 even when its report is green. Canonical pass publication uses the analogous
 private transaction capability. Public
@@ -148,6 +164,13 @@ equal semantic hash is not eligible for publication.
 The full Canonical check is cumulative. It runs the complete Raw registry plus
 the following closed post-pass obligations on that one frozen revision:
 
+Before the per-pass checks, the admitted node vocabulary must be exactly the
+five normative groups `B.CanonicalSsaValue`, `B.CanonicalEffect`,
+`B.CanonicalControl`, `B.CanonicalPhiMerge`, and
+`B.CanonicalOpaqueTargetToken`. This verifier derives membership from the one
+NodeKind schema authority; it owns no second table. Every node must match one
+group and the complete P07-to-B8 handoff must account for every node.
+
 1. P01 legal semantic types, constants, casts, predicates, truth uses, and
    portable opcode families hold; no `legalize`-owned Raw form remains.
 2. P02 scalar expressions, comparisons, selects, exceptional-value behavior,
@@ -157,7 +180,13 @@ the following closed post-pass obligations on that one frozen revision:
    every retained block is reachable from the function entry after P03's
    deterministic unreachable-region removal.
 4. P04 explicit-`Phi` canonical SSA form and exact phi incoming `EdgeKey`
-   coverage, complete def-use, dominance, and alias normalization hold.
+   coverage, complete def-use, dominance, alias normalization, and exact-current
+   asm-goto instruction-point snapshot coverage hold. The exact-revision
+   `CompletePromotionPolicyV1` plan must predate mutation, use checked arithmetic
+   and every finite hard metric bound, deterministically enumerate stable
+   identities and duplicate edge occurrences, and exactly match the completely
+   promoted candidate. Partial selection, stale keys, unplanned growth,
+   collapsed occurrences, or any mid-pass resource fallback rejects P04.
 5. P05 memory, address/GEP, access, atomic, stack-state, and memory-intrinsic
    descriptors have their unique semantic forms and preserve P03/P04.
 6. P06 aggregate values, copies, paths, complex/multivalue operations, and
@@ -176,12 +205,14 @@ or create a parallel assembly graph. The same opaque semantic node that entered
 the pipeline must survive P01-P07 except for typed generic-edge repair required
 by an owning earlier rewrite.
 
-Canonical facts remain target-independent. B8 rejects every stage-forbidden
-prepared, calling-placement, allocation, frame, machine-instruction, encoding,
-or MIR fact, as well as a fresh P01-P06 noncanonical form emitted by a later
-pass. A portable feature requirement is semantic metadata, not a support
-decision. Target support and constraint binding occur only after immutable
-`CanonicalBir` publication.
+Canonical facts remain target-independent. B8 rejects every unknown, illegal,
+omitted, unhandled, import-only, target-selected, preparation-owned, pseudo,
+allocation/spill, frame, machine-instruction, encoding, or MIR kind/tag/fact,
+as well as a fresh P01-P06 noncanonical form emitted by a later pass. It also
+rejects a missing/stale/foreign analysis or product key and any matrix-coverage
+hole. A portable feature requirement is semantic metadata, not a support
+decision. Target support, helper selection, and constraint binding occur only
+after immutable `CanonicalBir` publication.
 
 B8 is one fail-closed transaction:
 
@@ -206,6 +237,13 @@ new exact P07 occurrence followed by a successful B8 transaction can publish
 `CanonicalBir`.
 
 ### Pseudo publication and private assigned-candidate intervals
+
+D3 is an unconditional publication gate, not a `PassId` or cleanup rewrite.
+The pipeline freezes the exact D2 owner/revision and current
+`ProjectedConstraintSet`; the verifier may only accept or reject that same
+candidate. Prospective pseudo names in `pseudo/README.md` are documentation
+vocabulary until production registry entries land and are not accepted merely
+because Markdown names them.
 
 The public `PseudoPublicationGate` accepts only one private frozen candidate carrying a
 complete `PseudoStageKey`. That key must name the exact current
@@ -242,6 +280,13 @@ and D2 eliminated every `GenericCall` while preserving the exact plan-derived
 ABI requirements. Unassigned allocatable values are valid; no allocation
 completeness rule runs. D3 atomically mints the first immutable `PseudoBir` only
 after the full module and every function pass.
+
+D3 rejects every unknown, omitted, premature, stale, schema-unimplemented, or
+stage-illegal kind; every incomplete D1/D2 transition row; every Canonical or
+`GenericCall` leftover; and every concrete register, frame offset, general
+assignment, spill/reload, allocation, or machine fact. Failure publishes no
+partial function, projection, token, or reusable green report. D3 never repairs
+the candidate, inserts a node, refreshes a projection, or changes a key.
 
 The same allocation-free gate republishes D4 and initial-D5 `PseudoBir`.
 Initial D5 may contain only its bounded `ParallelCopy`/`CopyScratch`
@@ -366,6 +411,35 @@ repair `PseudoBir`.
 
 ### Allocated profile and E4 publication
 
+Before E4 work, the private allocation gate requires an exact
+`AllocationFactsV1` key and replays its complete factual coverage without
+accepting E1 choices. It then requires an exact
+`DeterministicAllocationPolicyV1` decision trace and replays
+correctness-before-profitability filtering, finite-pool domains, stable
+normalization/ties, coalescing legality, assignment or the single victim/
+eviction decision, checked arithmetic, progress, cycle lineage, and hard
+bounds. Pointer/hash/traversal order is never verifier evidence. For an E3
+candidate the gate additionally proves exact request realization, no E3
+re-decision, strict witness improvement, complete invalidation, and the sole
+`E3 -> E1` retry. Missing, stale, mixed-version, nondeterministic, partial, or
+non-improving evidence rejects the candidate.
+
+Non-local-return verification is cumulative and stage-local. B4 requires one
+exact `NonLocalSsaBoundary` per registered checkpoint and rejects forbidden
+post-return visibility or invented CFG/phi facts. B5 requires matching
+`NonLocalMemoryBoundary` coverage, explicit volatile/escaped memory identity,
+ordered pre-checkpoint effects, and legal post-return observation. E1 requires
+exact target/call-rule-keyed exceptional allocation coverage; E2 rejects
+clobbered register-only survivors and missing residency decisions; E3 accepts
+only explicit exact-point store/reload realization and returns to fresh E1.
+No verifier reconstructs a missing predecessor product or repairs the graph.
+
+E4 is one terminal publication transaction for phase E, not an allocation
+repair pass. After frame-action materialization, final projection and E1 are
+freshly recomputed; E2 assignment and E3 spill checks are non-mutating
+validators. Any request to evict, spill, reassign, insert a copy, or retry is
+gate failure, not an edge back into E1.
+
 The `Allocated` profile accepts only the final private candidate produced by
 D5 copy resolution followed by E4 frame-action materialization.
 Its stage key names the exact module epoch/revision and ordered function-revision
@@ -415,7 +489,7 @@ E4 freezes the candidate once and performs these checks in one transaction.
 Any diagnostic, active editor, revision/fingerprint change, missing product,
 cancellation, or deterministic resource failure discards the candidate and
 publishes no function subset or capability. Success atomically mints one
-owning `AllocatedBir`, one `PreparedBir` readiness capability bound to that
+owning `AllocatedBir`, one E4 MIR-readiness capability bound to that
 same immutable revision, and borrowing read-only `MirReadyBirView` instances.
 Neither readiness capability nor view owns graph storage or can outlive the
 owning token. Diagnostic candidate checks and public rechecks cannot mint,
@@ -433,8 +507,10 @@ requires an upstream schema/legalization change.
 
 ## Proposed public API
 
-Names are proposed and may change with the core schema. The API must consume
-read-only views, not renderer text or legacy structs.
+The fenced C++ in this section is documentation-only and proposed. Names may
+change with the core schema and do not settle idea 732 Step 8's final Raw
+boundary. The API must consume read-only views, not renderer text or legacy
+structs.
 
 `VerifyProfile::Pseudo` names only `PseudoPublicationGate`. The
 `AssignedAllocationCandidateGate` is an internal candidate verifier that takes
@@ -711,7 +787,7 @@ verify_preparation_input(const CanonicalBir& canonical,
     VerifyProfile profile, VerifyOptions options = {});
 ```
 
-`RawPublisher` is verifier-private implementation machinery used only by
+In this proposal, `RawPublisher` is verifier-private implementation machinery used only by
 `verify_and_publish_raw`; no builder, importer, or caller can construct or copy
 `PublicationFailure`. Even an early storage/build failure receives a complete
 Raw-profile report (possibly containing one quarantining rule) plus the original
@@ -748,11 +824,12 @@ verifier but represents a builder/pass transaction that has not been
 published; it is not constructible from arbitrary storage. `verify_after_edit`
 is an optimization, never a weaker contract: it expands the edit to all
 affected owners, CFG neighbors, users, and dominance dependents. Publication
-and CI run the same full Raw rule set, but only
-`verify_and_publish_raw(ModuleDraft&&)` can atomically convert its successful
-candidate to the public stage type. `verify_candidate`, `verify_function`, and
-`verify_after_edit` cannot issue a module publication proof even when their
-report is green.
+and CI run the same full Raw rule set, but only the one owning Raw publication
+entry can atomically convert its successful candidate to the public stage
+type. In the documentation-only proposal that entry is
+`verify_and_publish_raw(ModuleDraft&&)`; the current landed adapter is
+`ModuleBuilder::publish() &&`. Diagnostic entry points cannot issue a module
+publication proof even when their report is green.
 
 `VerifyProfile::PreparedInput` names the cumulative rule set reported by
 `verify_preparation_input`; it is not accepted by the target-less generic
@@ -1026,9 +1103,11 @@ struct EdgeKey {
 - `indirect_jump`: pointer/code-address operand and a nonempty ordered list of
   possible local target slots when required for analysis;
 - `asm_goto`: references a structured `InlineAsm` instruction that is the final
-  ordinary instruction in the same block, plus one explicit fallthrough slot
-  and ordered goto-target slots. Constraint label slots match terminator slots
-  one-for-one (`AsmGotoPairInvalid`); no mid-block instruction owns hidden exits;
+  ordinary instruction in the same block, plus an explicitly present or absent
+  fallthrough slot and zero or more ordered goto-target slots. At least one
+  successor occurrence must exist. Constraint label slots match goto-target
+  slots one-for-one (`AsmGotoPairInvalid`); no mid-block instruction owns hidden
+  exits;
 - `unreachable`: no operands or successors;
 
 CFG successor authority is the ordered `SuccessorSlot` sequence derived solely
@@ -1185,6 +1264,11 @@ callee or a link-name fallback (`CallCalleeInvalid`). For both:
   a `returns_twice` call are not optimized under ordinary single-return
   assumptions. Setjmp/longjmp behavior is expressed by these semantic flags,
   never inferred from a callee spelling;
+- Raw verification records only closed return behavior and ordinary instruction
+  order. It does not fabricate a local exceptional edge. B4/B5 later publish
+  exact-revision non-local visibility/memory products, and E1 combines those
+  products with target/call clobbers; missing products fail at their consuming
+  stage rather than being reconstructed by an allocator;
 - by-value aggregate intent lives in typed per-argument attributes
   (object type/size/alignment), not a register class, stack offset, copy slot,
   or move plan;
@@ -1266,6 +1350,18 @@ For every phi that does exist in Raw:
   value), not the phi instruction text position;
 - asm-goto predecessors participate exactly like other terminator predecessors;
 - critical edges and loop-carried values are legal in Raw.
+
+At B4 and every cumulative later profile, each registered asm-goto pair has
+exactly one snapshot keyed by the current function revision, instruction,
+terminator, and dependency fingerprints. Its occurrence set equals the exact
+live successor-slot multiset. Label occurrences may use only definitions
+visible before the asm; asm outputs and later definitions are forbidden there.
+The explicitly present fallthrough occurrence uses the post-output definition
+stack; absent fallthrough has no entry. Duplicate same-destination slots remain
+separate. Missing/duplicate/stale snapshots, incomplete inputs/outputs/clobbers,
+block-end leakage, occurrence mismatch, or a phi value unequal to its keyed
+snapshot entry rejects publication. Labels, rendered block names, destination
+blocks, and layout never identify snapshot entries.
 
 Non-phi use policy:
 
@@ -1382,17 +1478,18 @@ never repairs or overrides core facts.
 
 The builder/pass transaction owns mutable candidate storage; `RawBir`,
 `CanonicalBir`, and preparation input views expose only successfully published
-immutable stage snapshots. Raw publication is one atomic operation:
+immutable stage snapshots. Regardless of the final Step 8 API name, Raw
+publication is one atomic operation:
 
-1. `verify_and_publish_raw(ModuleDraft&&)` rejects active edit capabilities and
-   freezes the draft's exact revision;
-2. it creates one read-only `CandidateModuleView`, checks reservation
+1. the owning publication entry rejects active edit capabilities and freezes
+   the candidate's exact revision;
+2. it creates one read-only candidate view, checks reservation
    completeness, and runs the full Raw registry against that same revision;
 3. if any error or revision change is observed, it returns
    move-only `PublicationFailure` retaining the complete structured report plus
    any preceding `BirError`, and publishes no `RawBir`; candidate IDs cannot
    resolve through any public stage view;
-4. on success, it atomically consumes the frozen draft and uses the private
+4. on success, it atomically consumes the frozen candidate and uses the private
    verifier token to create exactly one `RawBir`. Old IDs cannot resolve in a
    replacement module merely because slot numbers were reused.
 
@@ -1413,13 +1510,11 @@ payloads. Any repair is a separate explicit transaction followed by a new full
 publication check. Concurrent mutation of the candidate invalidates the view;
 the verifier reports `RevisionChanged` rather than accepting a mixed snapshot.
 
-The checked-in bootstrap `ModuleBuilder::publish() &&` is a temporary adapter,
-not the final public boundary. The final API exposes only
-`verify_and_publish_raw(ModuleDraft&&)` for stage creation. In addition,
-`with_function` currently restores its scope state without rolling back edits
-made before a callback failure. The full Raw profile must not be declared
-implemented until the atomic draft publication path, rollback/child-transaction
-behavior, and the full verifier land together.
+The checked-in entry is `ModuleBuilder::publish() &&`; the larger
+`ModuleDraft`/`verify_and_publish_raw` surface above remains documentation-only.
+Step 8 reconciles the landed final boundary rather than assuming either name.
+The full Raw profile must not be declared implemented until the audited
+importer, rollback behavior, and full verifier obligations are proven together.
 
 ## Incremental verification and mutation contracts
 

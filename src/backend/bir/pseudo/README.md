@@ -1,178 +1,52 @@
-# Pseudo Instruction Schema
+# Prospective PseudoPreallocation Planning Vocabulary
 
-Status: converged design contract (unimplemented).
+Contract-Status: documentation-only schema plan under idea 732
+Implementation-Status: absent; no name below is claimed as a production `NodeKind`
 
-## Purpose and closure
+## Authority and extension rule
 
-This directory owns the closed, target-aware but machine-independent
-instruction schema used from `D1` through allocated publication. Pseudo BIR
-continues to use the core BIR module, function, block, instruction, value,
-terminator, def-use, and ordinary SSA ownership graph; it is a new immutable
-revision, not a parallel IR.
+The normative NodeKind/tag contract owns the six-axis algebra and stage
+semantics. This file names prospective closed planning groups required by D/E
+documents. Before implementation, every concrete kind needs a separately
+reviewed production registry entry, payload/arity/type/role schema, explicit
+stage admission, verifier rules, and positive/negative tests.
 
-An instruction is admitted only when its bounded variant and descriptor appear
-in the table below. Every descriptor fixes operand/result roles and types,
-effects, trapping behavior, abstract requirement sites, permitted stage
-interval, and direct-realizability obligation. There is no open-ended opcode,
-string-named operation, semantic-leftover carrier, compatibility payload, or
-extension namespace.
+## Closed planning groups
 
-## Closed admitted instruction table
-
-| Variant family | Exact admitted purpose | First owner | Stage legality |
+| Group | Prospective members/shape | First owner | Required disposition |
 |---|---|---|---|
-| `Copy`, `Select`, `IntegerAlu`, `FloatAlu`, `Compare`, `Convert` | typed scalar/value movement and arithmetic descriptors | `D1` | `D1` onward; must be directly realizable after `D4` |
-| `Address`, `Load`, `Store`, `Atomic`, `Fence` | typed target-aware address and memory operations with explicit effects | `D1` | `D1` onward; must be directly realizable after `D4` |
-| `AggregatePiece`, `Vector`, `Intrinsic` | bounded piece/lane/portable-feature operations retained for reviewed legalization | `D1` | `D1` through `D4`; each instance is eliminated or directly realizable after `D4` |
-| `GenericCall` | ordinary or runtime-helper call awaiting the shared ABI transport rewrite | `D1` | private D1 candidate only; forbidden at `D3` publication |
-| `AbiArgMove`, `AbiArgStore`, `AbiCall`, `AbiResultMove`, `AbiPreserve`, `AbiRestore` | explicit call-site transport; preserve/restore carries ordinary values around one call, never function entry/exit frame saves | [D2 shared call lowering](../passes/call_lowering/README.md) | `D2` onward; directly realizable after `D4` and cannot duplicate E4 callee-save coverage |
-| `InlineAsm` | one opaque template plus ordinary ordered uses/results and the exact current `ProjectedConstraintSet` record | `D1` preserves/binds | `D1` onward; one BIR node maps to one opaque MIR record |
-| `ParallelCopy`, `EdgeCopy`, `CopyScratch` | typed edge-local assignments replacing phi/block-argument transport; `ParallelCopy` reads all sources before simultaneously writing its unique destinations, `EdgeCopy` is one directly realizable move, and `CopyScratch` is an explicit allocation-only reservation identity | `D5` | `ParallelCopy` and `CopyScratch` are intermediate from initial D5 publication through the post-E3 D5 resolution closure and forbidden at E4; only resolved `EdgeCopy` survives to E4/MIR, checked against exact originating `EdgeKey` provenance |
-| `Spill`, `Reload` | explicit capacity-repair transitions using abstract spill-object identity | `E3` | allocation retry candidate onward; forbidden in D-stage publication |
-| `FrameAdjust`, `FrameBaseSetup`, `FrameBaseRestore`, `FrameCalleeSave`, `FrameCalleeRestore`, `FrameProbe` | explicit fixed-role target frame actions; callee saves cover post-allocation used units, while base/adjust actions establish final placement and never replace semantic stack operations | `E4` frame-action materialization only | E4 candidate and Allocated publication only; forbidden to `PseudoPublicationGate`, admitted by `AssignedAllocationCandidateGate` only after materialization and exact non-duplicate final-product coverage |
+| `D.GenericValue` | abstract pseudo value operations with explicit virtual defs/uses | D1 | D4 proves one-record realizability or expands explicitly |
+| `D.GenericMemoryValue` / `D.GenericEffect` | address/memory/effect pseudos with exact roles | D1 | D4/E4 realize every effect and address requirement |
+| `D.GenericCall` | temporary unresolved generic call placeholder | D1 | D2 must eliminate completely before D3 |
+| `D.CallTransport` | abstract argument/result moves, outgoing stores, call, clobber, call-site preserve/restore | D2 | all defs/uses/clobbers enter E1/E2; no concrete resource |
+| `D.PhiPending` | predecessor-qualified merge retained until out-of-SSA | D1 | D5 must eliminate completely |
+| `D.InlineAsm` | one opaque token with ordinary typed roles and C9 binding reference | D1 | remains one opaque record; bytes never parsed before assembler |
+| `D.ExpansionPlaceholder` | exact bounded target expansion obligation | D1/D4 | D4 must eliminate before post-D4 publication |
+| `D.ParallelCopy` / `D.EdgeCopy` / `D.CopyScratch` | explicit out-of-SSA transfer and allocation-visible scratch forms | D5 | parallel/scratch forms resolved before E4; edge copies may remain |
+| `E.Spill` / `E.Reload` | explicit allocation retry actions | E3 | directly realizable and exact spill-object keyed |
+| `E.FrameAction` | bounded frame adjust/base/save/restore/probe actions | E4 | one-record realizable and exact final-plan covered |
 
-Core terminators remain the sole CFG-successor authority. The admitted
-terminator set is `Return`, `Jump`, `CondJump`, `Switch`, `IndirectJump`,
-`AsmGoto`, and `Unreachable`, with the core ordered `SuccessorSlot`/`EdgeKey`
-schema. A pseudo instruction cannot carry a hidden successor.
+No group is an “all other kinds” bucket. Unknown or omitted input fails at the
+owning pass/gate. Shared `Node` storage gives no admission or retention.
 
-The family name is not a wildcard. Each family has a versioned finite
-descriptor registry; adding an operation, descriptor alternative, stage
-interval, or operand role changes the pseudo-schema fingerprint and requires
-architecture review. Target support tables may reject a descriptor but cannot
-add one.
+## Stage and product keys
 
-## InlineAsm remains ordinary BIR
+Every candidate/publication carries exact graph revision/lineage, target,
+schema, preparation bundle, Canonical binding, current C9 projection, and
+applicable pass/product fingerprints. A key is not freshness if copied,
+compatible, equal-looking, or from another target/revision.
 
-`InlineAsm` retains one instruction ID, ordinary ordered input uses, ordinary
-ordered result definitions, declared effects, ordered clobbers, and any paired
-`AsmGoto` label slots. Its original template and constraint-description bytes
-remain unchanged. Its `ProjectedConstraintSet` record for the exact current revision must cover every
-operand/result ordinal exactly once as required, preserve distinct read/write
-SSA identities, and carry valid ties, early-clobber exclusions, abstract alias
-units, and the exact source-description digest.
+## Identity and result rules
 
-No pseudo stage reparses text, guesses placeholder roles, creates an asm-only
-value graph, or derives implicit clobbers from the opaque template. A malformed
-or stale binding is rejection, never repair.
+Stage-owner/kind/shape/role/effect changes normally create fresh IDs. Every
+replacement/expansion has a total typed old-result map and ordered provenance.
+Copy destinations and scratch reservations are explicit role-governed
+identities, never hidden outputs or product-only allocation state.
 
-## Revision and stage keys
+## Publication intervals
 
-Every pseudo candidate and publication carries one `PseudoStageKey`:
-
-```text
-exact current PipelineStageStamp
-parent Canonical PipelineStageStamp
-TargetFingerprint
-target-layout schema fingerprint
-VerifiedPreparationBundle fingerprint
-Canonical BoundConstraintSet fingerprint
-exact current ProjectedConstraintKey and projection fingerprint
-pseudo-schema fingerprint
-ordered D1/D2/D4/initial-D5/E3/D5-resolution/E4-frame-action transformation fingerprints
-applicable to this stage
-```
-
-The exact current stamp includes module epoch, module revision, and the ordered
-function-revision digest. Products keyed only by module revision, target name,
-or semantic equality are stale. Every mutation exposed to a verifier invokes
-the subordinate shared `ConstraintProjectionTransaction` first. D5 copy
-resolution is a private predecessor of E4 materialization, so their mutation
-summaries are projected together only after E4 inserts frame actions. Only the
-`ProjectedConstraintSet` keyed to the final stamp is current. A mutation always creates a new exact stamp;
-unchanged entities retain their identities, while new entities receive newly
-reserved IDs
-and removed ones become tombstones. Stable IDs never allow a product from the
-parent revision to be reused without an explicit preservation proof.
-
-## Stage invariants and ownership
-
-- D1 eliminates all Canonical semantic instruction alternatives and admits
-  only the table above; D2 eliminates every `GenericCall` before D3.
-- The published Pseudo interval is D3, D4, and initial D5. Its
-  `PseudoPublicationGate` permits unassigned allocatable values and rejects
-  assignments, spill objects, and `Spill`/`Reload`. Requirements, ties,
-  clobbers, and abstract ABI slots constrain later allocation but are not
-  assignments.
-- D4 eliminates every remaining semantic one-to-many requirement. After its
-  full gate, every non-`InlineAsm` node present at D4 is directly realizable as
-  one machine instruction without introducing a new allocatable value, use,
-  definition, or CFG edge. D5's explicitly bounded copy intermediates are the
-  only later exception and must be resolved in BIR before E4.
-- D5 alone adds copy pseudos for out-of-SSA. E3 alone adds `Spill`/`Reload`.
-  E4 alone adds the bounded frame-action family.
-- E3 retry, D5-resolved, and E4-materialized candidates are not public
-  `PseudoBir` revisions.
-  Their private `AssignedAllocationCandidateGate` retains the complete graph,
-  Pseudo schema, revision, and transactional rules while admitting and
-  requiring exact-current assignments and explicit spill state. Before copy
-  resolution it admits `ParallelCopy`/`CopyScratch`; afterward it forbids both.
-  It admits the finite frame-action family only in the E4-materialized
-  candidate and requires exact `FrameActionFingerprint`, final frame-plan, and
-  target-mapping coverage. `PseudoPublicationGate` always rejects that family.
-- D5 copy destinations are explicit assignment roles for stable virtual
-  allocation identities, not new SSA definitions. A `ParallelCopy` has
-  canonical destination order, unique destinations, typed sources, and atomic
-  read-before-write semantics. Each entry in a multi-entry potential-alias
-  component has a typed, edge-local `CopyScratch` identity created at initial
-  D5 publication, made live at E1, and assigned a legal home at E2 that aliases
-  neither a transferred home nor another simultaneously needed scratch. This
-  bounded worst-case reservation set is explicit pre-E4 BIR allocation state,
-  never an implicit MIR temporary.
-- An `EdgeKey` on a D5 copy is provenance checked against terminator-derived
-  topology and the D5 placement plan. It is not a stored successor. Every copy
-  executes in a source-, destination-, or freshly split edge-local region that
-  denotes exactly that successor-slot occurrence.
-- After the final stable E3 candidate, D5's `CopyResolutionTransaction` uses
-  the exact assignments and scratch reservations to replace every
-  `ParallelCopy` with an ordered sequence of directly realizable `EdgeCopy`
-  nodes. A resolved `EdgeCopy` may use the stable `CopyScratch` identity as an
-  assigned endpoint, but the allocation-only `CopyScratch` node itself is
-  tombstoned. The transaction creates no identity, allocation, spill/reload,
-  or MIR work and fails atomically when a legal sequence cannot be proved.
-- That revision advance invalidates predecessor E1, E2, E3 spill-state,
-  projected-constraint, and realizability products. E4 then builds a private
-  deterministic frame-action draft and runs
-  `FrameActionMaterializationTransaction` on that resolved graph. It may add
-  only the finite frame-action variants above at exact entry, exit,
-  dynamic-lifetime, or call-required points, using fresh deterministic IDs;
-  none has an allocatable role. Only after that rewrite does the sole
-  `ConstraintProjectionTransaction` project the final revision, E1 recompute,
-  E2 validate unchanged assignments without reallocating, E3 validate
-  unchanged spill state without mutation, the non-mutating frame owner derive
-  `FrameRealizationPlan`/`FrameRealizationKey`, and the target registry install
-  `TargetRealizabilityKey`. Every final product names the materialized stamp,
-  `CopyResolutionFingerprint`, and `FrameActionFingerprint`; all draft and
-  predecessor products are lineage only. Any failure rolls back the enclosing
-  E4 publication transaction atomically.
-- The schema never stores machine-register identities, machine instruction
-  encodings, stack displacements, late frame layout, or assembler parse trees.
-  Exact offsets/displacements may exist only in E4's private frame-action draft
-  and immutable final `FrameRealizationPlan`, never as semantic graph fields.
-  The graph contains explicit fixed-role action nodes, not hidden placement
-  authority or an implicit prologue/epilogue.
-
-Pseudo lowering owns generic semantic disposition. The dedicated D2 shared
-call-lowering contract owns ABI transport. The target chain owns required target legalization and
-expansion. Out-of-SSA and spill/reload own only their listed variants. Shared
-BIR regalloc remains the sole home-assignment and pressure authority; MIR is a
-strict verified mapping consumer.
-
-## Transactional publication
-
-Each mutating owner forks one private candidate, completes all graph and
-derived-fact updates, invokes the shared constraint projection authority,
-freezes one exact revision, and invokes the verifier
-profile required at its boundary. Failure publishes no instruction subset,
-function subset, property, stage key, or reusable analysis result. D3 mints the
-first `PseudoBir`; D4 and initial D5 publish replacement immutable revisions
-only after their required full gates. In particular, initial D5 consumes only
-the fully reverified D4 revision and publishes its replacement only after full
-Pseudo reverification proves copy coverage and absence of phi semantics; E1
-cannot consume an incrementally checked candidate. After stable E3, the
-subordinate D5 copy-resolution closure stages a new private candidate only
-after its full pre-E4 gate proves all parallel groups resolved. E4 then
-materializes its bounded frame-action family and reruns exact-current product
-closure before publication. E4 forbids `ParallelCopy` and `CopyScratch`; the
-predecessor capability remains unchanged and cannot be relabeled as the
-successor.
+D1/D2 candidates remain private. D3 may publish the first allocation-free
+PseudoPreallocation capability only after D2 and full verification. D4 and
+initial D5 reverify/publish under the same allocation-free gate. E3 and later
+assigned candidates use a distinct private gate and cannot be relabelled as a
+second public pseudo stage.

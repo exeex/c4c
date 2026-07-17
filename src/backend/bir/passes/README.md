@@ -1,6 +1,6 @@
 # Canonical BIR Pass Framework Contract
 
-Contract-Status: under-review
+Contract-Status: common pass-authoring contract converging under idea 732
 Implementation-Status: partial-foundation
 Kind: framework
 Applies-To: B1 / P01 through B8 orchestration support
@@ -16,6 +16,56 @@ private transactions, occurrence barriers, analysis access/invalidation,
 verification hooks, deterministic execution control and structured failure for
 canonical P01-P07. It provides orchestration support but never chooses the
 ordered pipeline, mints `CanonicalBir`, or owns verifier semantics.
+
+## Shared authoring contract
+
+The [BIR root authority spine](../README.md#common-contract-authority-spine)
+assigns common ownership. In particular, the
+[normative NodeKind/tag contract](../../../../docs/backend/bir_node_kind_tag_algebra_and_phase_vocabulary.md)
+owns every tag meaning, published-stage vocabulary, transition rule, and the
+strict identity gate. This framework owns transaction mechanics and the
+required document shape; an individual pass owns only its exact local
+retain/lower/reject decisions.
+
+Every B-F pass owner uses this section order:
+
+1. `Purpose`
+2. `Owns`
+3. `Does Not Own`
+4. `Inputs`
+5. `Input NodeKind/Tag Vocabulary`
+6. `Required Analyses and Products`
+7. `Ordered Behavior`
+8. `NodeKind/Tag Lowering Matrix`
+9. `Identity and Provenance`
+10. `Outputs`
+11. `Verification and Publication`
+12. `Analysis Preservation and Invalidation`
+13. `Failure and Diagnostics`
+14. `Adjacent-Stage Contract`
+15. `Implementation State`
+16. `Proof Requirements`
+17. `Open Questions`
+
+The lowering matrix closes the complete admitted input set and gives every
+member an explicit `retain`, `replace`, `expand`, `merge`, `delete`, or
+`reject` result, including tags retained/added/removed, identity outcome,
+prerequisite products, and verifier. A referenced closed group is acceptable
+only when the normative authority mechanically fixes its membership. An
+unknown kind/tag/stage, illegal admission, missing row, stale product, or
+unhandled case is structured failure and publishes no candidate.
+
+`SsaEligible` is only a stage-qualified static schema answer. A pass cannot use
+it as proof of dominance, one-definition, phi-edge, use-def, or graph SSA; B4
+alone establishes and verifies those facts. All mutating passes apply the
+normative eight-condition identity gate. Storage reuse, equal rendering, or a
+one-to-one rewrite is insufficient to preserve `NodeId`.
+
+Implementation status is evidence vocabulary: `implemented` requires named
+checked-in code and proof; `partial` names the exact landed subset; `absent` or
+`unimplemented` means Markdown only. Proposed symbols must appear in a fenced
+block labeled documentation-only/proposed, or be named plainly as prospective
+contract vocabulary rather than an available API.
 
 ## Owns
 

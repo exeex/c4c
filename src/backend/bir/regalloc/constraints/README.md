@@ -1,182 +1,119 @@
-# Register Constraints
+# C9 Constraint Binding and Exact-Revision Projection Contract
 
-Status: converged design contract (unimplemented).
+Contract-Status: converged planned contract under idea 732
+Implementation-Status: absent
+Phase-ID: C9
+Upstream: unchanged Canonical/C1 plus exact C2-C8 bundle
+Downstream: immutable `BoundConstraintSet` and per-later-revision `ProjectedConstraintSet`
 
-## Sole interpretation authority
+## Purpose
 
-This `C9` stage is the sole constraint interpreter in BIR. It is the only
-owner that parses original source constraint descriptions, types each admitted
-form against `InlineAsmTargetTables` and `VerifiedTargetLayout`, and binds the
-result to an `InlineAsm` instruction's ordinary ordered operands and results.
-No importer, canonical pass, planner, allocation consumer, downstream builder,
-or target emitter duplicates any part of that interpretation.
+C9 is the sole owner that parses, types, and binds constraint descriptions to
+ordinary Canonical operands/results. It also owns deterministic projection of
+those bindings onto later graph revisions, but never mutates either graph.
 
-The initial RV64 vocabulary admits `r`, `=r`, `VR`, `VRM2`, `VRM4`, and
-`VRM8`, including reviewed read/write forms, numeric ties, early-clobbers, and
-explicit clobbers. `VRM1`, alternatives, named/fixed-register operands, and
-unreviewed AArch64/x86 spellings fail closed. Assembly template bytes remain
-opaque; mnemonics, directives, placeholders, `.insn`, and concrete names in
-template text are first interpreted by the late assembler.
+## Owns
 
-## Input and ordinary-value binding
+Closed constraint grammar/typing, ties/groups/clobber binding, total site
+coverage, Canonical binding fingerprint, and the sole exact-revision projection
+algorithm/product authority.
 
-The only public binding entry point is the all-module transaction:
+## Does Not Own
 
-```cpp
-[[nodiscard]] Result<BoundConstraintSet, ConstraintBindingFailure>
-bind_constraints(const CanonicalBir& canonical,
-                 const TargetProfile& validated_target,
-                 const VerifiedPreparationInput& prepared_input,
-                 const VerifiedTargetLayout& layout,
-                 const VerifiedPreparationBundle& preparation);
-```
+C9 does not parse assembly templates, mutate nodes, create ties by merging SSA
+identity, choose concrete registers, lower inline asm/calls, allocate, spill,
+or decide graph revision/transaction order.
 
-All five arguments must name the same complete Canonical `PipelineStageStamp`
-and exact `TargetFingerprint`; `preparation` must contain the exact C3-C8
-fingerprint chain and its C7 `InlineAsmTargetTables`. The API itself traverses
-the Canonical module. For every `InlineAsm` it consumes the original constraint
-descriptions, ordered clobber descriptions, and the containing instruction's
-ordinary operand/result ordinals and stable identities directly from that
-snapshot. A caller-supplied reconstructed description list or parallel value
-graph is not accepted.
+## Inputs
 
-Parsing produces a private syntax result; typing resolves admitted spelling,
-role, category/class/group, width, and target eligibility; binding attaches
-those requirements to ordinary use/result identities. A read/write operand
-retains a distinct incoming use and produced result. A numeric tie requires
-assignment equality but never merges SSA identities. Early-clobbers become
-interference exclusions, and explicit clobbers resolve to abstract alias units.
-No separate inline-assembly value family is created.
+The unchanged Canonical owner, complete C1 fingerprint, exact C2-C8 bundle,
+original opaque constraint bytes, and ordinary typed operand/result identities.
 
-## Immutable Canonical output
+## Input NodeKind/Tag Vocabulary
 
-The atomic output is one immutable `BoundConstraintSet` containing typed
-class/group requirements, roles, assignment-equality ties, early-clobber
-exclusions, resolved abstract clobber units, and complete instruction/value
-bindings. Its key contains the complete Canonical `PipelineStageStamp`, exact
-`TargetFingerprint`, layout schema fingerprint, cumulative preparation-bundle
-fingerprint, constraint-interpreter schema fingerprint, and a deterministic
-digest of every consumed original description and ordered identity binding.
+All five Canonical groups by reference. Constraint parsing applies only to
+registered opaque/call-like sites and their ordinary roles; no node tags change.
 
-`BoundConstraintSet` is permanently keyed to Canonical. It is never relabeled,
-copied, or treated as the constraint product for a D- or E-stage revision.
-Pseudo lowering consumes it only as the immutable root binding from which the
-shared projection authority below derives revision-local records. This stage
-does not classify ABI values, derive target capacity, select
-calls/helpers/address strategies, allocate general values, choose encoded
-machine names, or create spill/reload state.
+## Required Analyses and Products
 
-## Sole later-revision projection authority
+Exact C2 class/group domain, C3-C8 bundle components, and Canonical
+PublicationValueFlow. Projection additionally requires the source binding,
+exact source/target revision IDs, total lowering provenance/result map, and the
+owning mutator's completed candidate view.
 
-The subordinate `ConstraintProjectionTransaction` defined here is the one
-shared projection and preservation authority for every revision after
-Canonical. It is infrastructure invoked inside an existing mutator
-transaction, not a new A-F stage. Its only output type is an immutable
-`ProjectedConstraintSet` with one `ProjectedConstraintKey`.
+## Ordered Behavior
 
-That key contains the C9 `BoundConstraintSet` fingerprint and its Canonical
-stamp; the candidate's exact current `PipelineStageStamp`; the exact target,
-layout, constraint-interpreter, pseudo-schema, and projection-schema
-fingerprints; the ordered transformation occurrence fingerprints applicable
-to that candidate; and a deterministic projection fingerprint covering the
-complete mutation summary, replacement map, tombstone map, and every current
-constraint-bearing instruction/value occurrence.
+1. Validate unchanged Canonical/C1/C2-C8 and value-flow keys.
+2. Parse bytes with the exact C7 grammar/vocabulary; type and bind every role,
+   tie, group, early-clobber, and clobber in stable site order.
+3. Validate total coverage and atomically publish `BoundConstraintSet`.
+4. For a later mutator request, validate its exact completed candidate and
+   total provenance/result map, derive a new projection product, and return it
+   without editing or publishing the graph.
 
-For the final E4 materialized revision specifically, `ProjectedConstraintKey`
-must bind the materialized `PipelineStageStamp`,
-`CopyResolutionFingerprint`, `FrameActionFingerprint`, the complete D5 copy
-mutation/replacement/tombstone summaries, and the complete E4 frame-action
-mutation/replacement/tombstone summaries. Omitting either fingerprint or
-either summary family is a stale/incomplete key, even if all surviving stable
-IDs and requirements compare equal.
-The product records current stable identities and ordinals, their immutable C9
-source bindings where applicable, authorized pseudo requirement provenance,
-old-to-current mappings, and tombstones. It neither reparses source text nor
-chooses an ABI rule, target legalization, home, spill, or copy schedule.
+## NodeKind/Tag Lowering Matrix
 
-For an unchanged occurrence, the authority may preserve the typed requirement
-only after proving its identity, role, ordinal, type, and semantic requirement
-unchanged. It still emits a new product and key for the new revision. A
-rewritten occurrence is recomputed from the immutable C9 binding plus the
-owning D1/D2/D4/D5/E3 transformation record; a new pseudo occurrence must name
-the reviewed plan or schema rule authorizing its requirement; a removed
-occurrence receives a tombstone and cannot remain bound. Missing mappings,
-ambiguous continuations, orphan records, changed roles/types without an
-authorizing rule, or incomplete coverage reject the candidate. Stable-ID
-equality, structural equality, copied records, and predecessor keys never
-establish freshness.
+| Input subset/product | Reference outcome | C9 outcome | Node tags added/removed | Identity | Failure |
+|---|---|---|---|---|---|
+| constrained opaque inline-asm site | retain node/bytes | parsed typed bindings for ordinary operands/results, ties/groups/clobbers | none | Canonical IDs remain distinct; ties constrain homes only | grammar/type/role mismatch rejects |
+| registered constrained call/operation | retain reference | exact typed requirement binding | none | unchanged | unsupported constraint rejects |
+| unconstrained Canonical site | retain reference | explicit no-binding coverage row | none | unchanged | inferred binding forbidden |
+| later replacement with total provenance/result map | borrow candidate | `ProjectedConstraintSet` keyed to exact new revision | none | map old binding to declared new identities; no identity merge | incomplete/ambiguous map rejects |
+| later deletion/expansion | borrow candidate | remove/project/split bindings only by total registered rule | none | deleted IDs retire; outputs remain distinct | live unmapped constraint rejects |
+| unknown/illegal/omitted/later-stage kind without projection rule | reject product | none | none | none | `ConstraintVocabularyInvalid` |
 
-Each earlier published-revision mutator invokes this same authority before its
-private output can be verified, frozen, published, or consumed:
+## Identity and Provenance
 
-- D1 supplies the Canonical-to-pseudo replacement map and D1 occurrence
-  fingerprint to create the first `ProjectedConstraintSet`;
-- D2 supplies its call rewrite map and occurrence fingerprint before D3;
-- each mutating D4 occurrence, and the final D4 gate after an empty chain,
-  supplies the cumulative legalization map and exact D4 lineage;
-- initial D5 supplies its join-removal, copy, scratch, and CFG mutation map
-  before publishing the E1 input;
-- every E3 retry supplies its spill/reload and any CFG/identity mapping before
-  reverification and the next E1 attempt.
+Constraint equality is not SSA or node identity. Projection consumes the
+mutator's authoritative derivation map and creates a product for its exact
+revision; it cannot cause, repair, or bless the mutation.
 
-Post-E3 D5 copy resolution is the deliberate private exception. Its
-`CopyResolutionTransaction` stages the resolved candidate,
-`CopyResolutionFingerprint`, complete copy mutation/replacement/tombstone
-summaries, and preservation lineage inside E4's enclosing
-`AllocatedPublicationTransaction`. It invokes no projection, publishes no
-standalone `ProjectedConstraintSet`/`ProjectedConstraintKey`, and installs no
-revision or product. The predecessor E3 projection remains immutable lineage;
-it is not current for the resolved graph.
+## Outputs
 
-After `FrameActionMaterializationTransaction` has inserted every bounded frame
-action and produced the materialized stamp, `FrameActionFingerprint`, and
-complete frame-action mutation/replacement/tombstone summaries, E4 invokes
-this sole projection authority exactly once. The invocation consumes both the
-private D5 and E4 summary families and produces the only
-`ProjectedConstraintSet` current for the final materialized revision. The
-materialized graph is the first final-projection input, this C9 owner remains
-unique, and post-resolution rekeying is forbidden.
+One immutable Canonical-keyed `BoundConstraintSet`. Each later successful
+request produces a separate immutable `ProjectedConstraintSet` keyed by the C9
+fingerprint, exact target revision, source/target lineage, projection schema,
+and complete binding coverage.
 
-Projection is the first product in E4's atomic six-product closure. On its
-success, E1 produces exact-current `LivenessInterferenceKey`; E2 validates and
-produces `AssignmentKey`; E3 validates and produces `SpillStateKey`; the frame
-owner derives `FrameRealizationPlan`/`FrameRealizationKey`; and the target
-owner produces `TargetRealizabilityKey`. Each consumer binds all preceding
-exact-current keys plus both D5/E4 fingerprints. E4 installs the final revision
-and all six products only after every owner succeeds.
+## Verification and Publication
 
-D3, D4, initial D5, every E1/E2/E3 retry, and final E4 accept only the
-`ProjectedConstraintSet` whose key names their exact current input revision.
-Private post-E3 D5 resolution publishes no consumer boundary and has no
-standalone current projection.
-D1 alone may read Canonical-keyed C9 directly, and only to invoke the initial
-projection. No later consumer may read C9 or a predecessor projection as its
-revision-local constraint product.
+Validate exact tuple/grammar/type/role/tie/group/clobber coverage and C2
+eligibility. Projection validates exact candidate revision, total provenance,
+no dangling source binding, and unique output coverage. Product publication is
+atomic and cannot publish or mutate a graph.
 
-Projection is failure-atomic with its enclosing mutator. It builds privately,
-validates complete current-occurrence coverage and the entire key, and is
-committed only with the candidate revision. For E4, any projection or later
-owner failure rolls back copy resolution, frame-action materialization, all
-staged summaries, and every staged product. Projection cancellation, stale
-input, schema mismatch, invalid mapping, or validation failure publishes no
-candidate, projection, tombstone, cache entry, partial function result, or E4
-capability. Any key ingredient or covered occurrence change invalidates the
-complete product and all consumers derived from it; stable IDs, structural
-equality, preservation records, and predecessor products cannot relabel it
-current.
+## Analysis Preservation and Invalidation
 
-## Transaction, verification, and invalidation
+Any Canonical/C1/C2-C8/grammar/value-flow/site change invalidates the binding
+and every projection. Any graph revision invalidates its predecessor projection;
+the owning mutator must request a fresh exact-revision product.
 
-`bind_constraints` parses, types, and binds all module constraints in one
-private transaction.
-Publication rejects unknown or target-ineligible spellings, malformed roles,
-missing operand/result bindings, illegal or cyclic ties, incompatible
-classes/groups, absent capacity, impossible early-clobber combinations,
-unresolved clobbers, stale identities, incomplete coverage, digest mismatch,
-or any Canonical/target/layout/preparation key mismatch. One error publishes
-no `BoundConstraintSet`; all inputs remain unchanged.
+## Failure and Diagnostics
 
-Any change to the Canonical stage stamp, target fingerprint, layout schema,
-preparation-bundle fingerprint, interpreter schema, source description,
-clobber order, or operand/result identity/order invalidates the entire product.
-Facts from separate transactions cannot be combined.
+Stale/mixed keys, parse/type/role error, unsupported class, ambiguous tie,
+coverage hole, incomplete projection map, cancellation, or resource failure
+publishes no partial binding/projection and leaves graphs untouched.
+
+## Adjacent-Stage Contract
+
+D1 admission requires the unchanged B8 Canonical owner, exact C1 fingerprint,
+complete verified C2-C8 bundle, exact Canonical `BoundConstraintSet`, and the
+normative `Prepared` admission envelope. D1's private mutation requests the
+first projected set only after its complete candidate/mapping exists; C9 never
+creates that candidate or relabels Canonical facts.
+
+## Implementation State
+
+Absent. Existing parsers/allocator constraints do not implement this keyed
+binding and projection authority.
+
+## Proof Requirements
+
+Prove grammar neighbors, ordinary input/output/read-write roles, ties/groups/
+clobbers, exact keys, total coverage, projection across retain/replace/expand/
+delete, stale/mixed rejection, and no graph mutation.
+
+## Open Questions
+
+New constraint forms or projection transformations require versioned explicit
+grammar/schema rows; no fallback interpretation is allowed.

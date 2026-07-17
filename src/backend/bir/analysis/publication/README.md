@@ -22,7 +22,8 @@ terminators and exact phi occurrences remain source semantics.
 - closed `AnalysisId::PublicationValueFlow`, schema 1, function-scope traits;
 - complete exact revision/dependency/options key and checked handle;
 - stable-ID definition/use, entry/return/call, phi-edge transport, transparent
-  carrier and special-carrier facts;
+  carrier and special-carrier facts, plus instruction-point ordered definition
+  stacks requested by B4;
 - explicit `Known`, `Absent` and stable-reason `Unknown` classifications;
 - semantic equality, failure, invalidation and checked new-key installation.
 
@@ -100,16 +101,23 @@ under its closed disposition; this analysis cannot repair or publish BIR.
    CFG and dominance products.
 3. Inventory definitions, uses, parameters, returns, calls and phi transports
    in stable-ID/role/edge order.
-4. Follow only registered transparent/special carriers and emit `Known`,
+4. For each B4-requestable instruction point, derive the exact before/after
+   definition-stack observations from stable instruction order; do not attach
+   them to CFG edges or infer a block-end substitute.
+5. Follow only registered transparent/special carriers and emit `Known`,
    `Absent` or stable-reason `Unknown` facts.
-5. Validate complete def-use/edge/type coverage and semantic equality record.
-6. Publish atomically only while every result/dependency key remains current.
+6. Validate complete def-use/edge/type coverage and semantic equality record.
+7. Publish atomically only while every result/dependency key remains current.
 
 ## Invariants
 
 - Core def-use and typed nodes remain authority; facts are disposable views.
 - Each phi transport retains its exact `EdgeKey`; parallel occurrences never
   collapse to predecessor block or vector position.
+- An instruction-point observation is keyed by exact instruction identity and
+  revision. It reports ordered value visibility only; it owns no successor,
+  snapshot publication, asm-goto rule, or phi decision. B4 combines it with
+  exact CFG occurrences and rejects `Unknown` where a snapshot needs proof.
 - Call facts are semantic positions only, never ABI locations or helper routes.
 - Stable IDs/roles escape; names, text, pointers, dense indices and legacy
   publication records do not.

@@ -1,82 +1,163 @@
-# BIR Liveness and Interference Analysis
+# E1 Allocation Liveness and Interference Product Contract
 
-Status: converged design contract (unimplemented).
+Contract-Status: converged planned contract under idea 732
+Implementation-Status: absent
+Phase-ID: E1
+Upstream: exact initial-D5 publication or exact E3 retry candidate
+Downstream: immutable `LivenessInterference` product for E2 and later gates
 
-## E1 authority and input
+## Purpose
 
-`E1` is the sole shared liveness/interference analysis for RV64, AArch64, and
-x86 allocation. It consumes one immutable, fully reverified initial D5
-`PseudoBir` revision, one fully reverified E3 retry revision, or the final
-E4-materialized revision staged inside `AllocatedPublicationTransaction`, plus the exact
-`VerifiedTargetLayout` and `ProjectedConstraintSet` keyed to that revision. Its
-`LivenessInterferenceKey`
-contains the complete pseudo stage stamp, module epoch and revision, ordered
-function-revision digest, target and layout fingerprints, projected-constraint
-fingerprint, and E1 schema fingerprint. An equal graph, stable value IDs, or a
-report from an earlier revision does not establish freshness.
+E1 computes complete allocation liveness, alias-unit interference, simultaneous
+copy constraints, scratch intervals, clobbers, and pressure for one exact
+post-SSA pseudo revision. It does not assign homes or mutate BIR.
 
-E1 is analysis, not allocation policy. It does not rank homes, coalesce,
-evict, select a spill candidate, place `Spill`/`Reload`, or mutate BIR.
+## Owns
 
-## Exact facts
+Exact allocation-domain value inventory, live ranges, interference/alias-unit
+facts, pressure, copy/scratch constraints, product key, validation, and atomic
+publication.
 
-E1 uses the exhaustive BIR operand/definition visitor and terminator-derived
-CFG. It computes block live-in/live-out sets, instruction-boundary liveness,
-and one immutable interference product over every allocatable ordinary value,
-D5 copy assignment identity, D5 `CopyScratch` reservation identity, and E3
-reload result. Phi and block-argument edge uses are impossible at this
-boundary.
+## Does Not Own
 
-The product records:
+E1 does not allocate/coalesce, choose spills, insert nodes, resolve copies,
+change constraints, spell concrete registers, build frames, or publish a graph.
 
-- symmetric overlap interference, including loops and exceptional CFG shape;
-- typed category/class/group requirements without choosing a home;
-- assignment-equality ties and early-clobber exclusions from the exact current
-  projected constraint record;
-- abstract alias-unit exclusions for inline-assembly clobbers and call
-  boundaries, including values live across a call;
-- D5 `EdgeCopy` and `ParallelCopy` boundary semantics: all bundle sources are
-  read before any destination is written, destinations become live together,
-  and only a noninterfering tied source/destination pair may share a home; and
-- an edge-local interval and explicit interference set for every
-  `CopyScratch` reservation: each scratch identity is live across the
-  component it may snapshot, excludes every transferred identity whose future
-  assigned home it must protect, and excludes every other simultaneously
-  required scratch identity; and
-- explicit `Spill`/`Reload` def-use and residency transitions on E3 retry
-  revisions, with no hidden memory residency inferred by the analysis.
+## Inputs
 
-Layout data supplies the reviewed alias, class, group-width/alignment,
-reserved-unit, and call-clobber rules. E1 has no architecture-name branches and
-does not infer constraints from rendered operations or assembly bytes.
+Either the exact initial D5 allocation-free publication or one exact fully
+verified E3 retry candidate, with current C2 pools, C3/C4 call facts, C9
+projection, CFG/value-flow/effects, and complete D5 copy/scratch schema.
 
-## Publication and invalidation
+## Input NodeKind/Tag Vocabulary
 
-E1 publishes atomically only after complete function/module coverage,
-symmetry, exact def-use coverage, valid copy-boundary modeling, valid
-constraint/layout keys, and an unchanged frozen revision are proven. Missing
-uses, stale keys, mixed revisions, unsupported groups, or an unrecognized
-clobber fail closed and publish no partial facts.
+Exactly the admitted post-D5 prospective pseudo groups for the given interval,
+including every value/def/use, call/asm clobber, `ParallelCopy`, `EdgeCopy`,
+`CopyScratch`, and on retry explicit `Spill`/`Reload`. Unknown/omitted kinds fail.
 
-Any graph, operand, definition, CFG, call, copy, scratch reservation,
-constraint binding, target layout, stage-stamp, or E3 spill/reload change
-invalidates the whole E1 product and every E2 result derived from it.
-E1 cannot preserve, relabel, or reconstruct a predecessor projection. Its
-exact `ProjectedConstraintKey` and all consumed identities must match the
-current revision; stable-ID, structural, or copied-record equality is
-insufficient. The final E1 product for the stable post-E3 candidate, together
-with the matching E2 assignment and E3 spill facts, is input to D5's
-subordinate `CopyResolutionTransaction`; an earlier retry product cannot be
-used to resolve copies.
+## Required Analyses and Products
 
-Copy resolution and E4 frame-action materialization both advance the revision
-and invalidate that predecessor E1 product. Inside the enclosing
-`AllocatedPublicationTransaction`, E1 recomputes only after final constraint
-projection, using the materialized `PipelineStageStamp`, exact
-`ProjectedConstraintKey`, target/layout keys, `CopyResolutionFingerprint`, and
-`FrameActionFingerprint`. It models emitted `EdgeCopy` sequences and explicit
-fixed-role frame-action nodes rather than predecessor copy bundles or a frame
-draft, and installs one exact-final-revision `LivenessInterferenceKey`.
-No preservation record or structural equality may rekey the predecessor
-product. Recompute failure aborts the enclosing transaction and installs no E1
-product or E4 capability.
+Exact CFG, value-flow, memory/effects, current projection, C2 alias units/pools,
+call/clobber requirements, D5 edge-copy plan, and E3 spill state when present.
+
+### Versioned allocation fact schema
+
+E1 is the sole producer of immutable `AllocationFactsV1`. The exact product key
+is `(graph revision, target/layout fingerprint, C2 pool and alias-rule version,
+C3/C4 call-rule version, C9 projection key, D5/E3 lineage, profile revision or
+explicit NoProfileV1, AllocationFactSchemaV1)`. Every value entry records stable
+identity, ordered def/use points, live-range segments and holes, loop depth and
+loop identity, checked profile/use/def frequency, peak and local pressure,
+legal/fixed/tied/group homes, call crossing and clobbers, rematerialization
+recipe identity and legality (never a choice), copy affinities, prior spill/
+reload state, spillability, and exceptional-boundary obligations.
+
+All counts and weights are finite unsigned quantities with checked arithmetic.
+Absent profile data is the explicit `NoProfileV1` input and uses the schema's
+deterministic structural frequencies; it is not reconstructed from iteration
+order. Copy affinities are keyed by exact copy occurrence and endpoint IDs.
+Rematerialization records only whether and where a proved recipe is legal and
+its versioned structural inputs. E1 never converts these facts into a score,
+preferred home, coalescing, victim, or eviction request.
+
+Correctness facts (domains, interference, alias exclusion, fixed/tied/group
+relations, clobbers, nonspillability, simultaneous-copy rules, and required
+memory residency) are mandatory predicates. Frequencies, loop/profile weight,
+copy affinity, rematerialization cost, and spill history are profitability
+inputs only. A policy may never trade away a correctness predicate.
+
+### Exceptional-boundary allocation facts
+
+E1 consumes exact B4/B5 non-local boundary products plus the current C3/C4
+target/call rule versions and derives immutable
+`ExceptionalBoundaryAllocationFacts` for the same graph revision. Each entry
+names the checkpoint occurrence, continuation program point, complete live-in/
+live-out identities, exact clobbered alias units, values forbidden from
+register-only survival, required memory-resident object identities, and every
+required pre-boundary store and post-boundary reload use. It references B3 CFG
+facts but introduces no edge, reachability, or dominance authority.
+
+Every identity observable after non-local return is covered exactly once as
+unaffected, legally fixed, memory-resident, or explicitly reloaded. A value in
+a clobbered unit cannot remain live across the boundary. Volatile and escaped
+objects retain their B5 semantic memory identities; E1 may add allocation
+constraints but cannot replace them with spill objects. Missing, unknown,
+stale, or overlapping classifications reject E1.
+
+## Ordered Behavior
+
+1. Validate the exact revision and all predecessor keys.
+2. Enumerate every allocation identity/role in stable graph order.
+3. Derive the complete `AllocationFactsV1` entries, simultaneous-copy
+   semantics, scratch live intervals, interference edges, alias-unit occupancy,
+   and pressure in stable `(function, block, node, operand, edge occurrence,
+   value)` identity order.
+4. Validate total coverage and atomically publish one immutable E1 product.
+
+## NodeKind/Tag Lowering Matrix
+
+This analysis matrix creates facts only; it does not lower nodes or tags.
+
+| Input subset | Graph outcome | E1 product facts | Node tags added/removed | Identity | Failure |
+|---|---|---|---|---|---|
+| ordinary pseudo value def/use | retain graph | exact live range, allowed requirement/domain, interference | none | stable value/node IDs are keys | missing role/use rejects |
+| call/inline-asm clobber/fixed requirement | retain graph | exact blocked alias units, fixed/tied/group constraints | none | unchanged | unbound clobber/constraint rejects |
+| non-local-return boundary | retain graph | exact clobbers, live identities, memory-residency and store/reload obligations | none | exact B4/B5 boundary provenance | uncovered or register-only survivor rejects |
+| `ParallelCopy`/`EdgeCopy` | retain graph | simultaneous source-before-destination semantics and copy interference | none | transfer endpoint IDs remain distinct | sequentialized inference rejects |
+| `CopyScratch` | retain graph | finite live interval, nonspillable/nonalias/disjoint requirement and pressure | none | explicit scratch ID is allocation identity | hidden/unbounded scratch rejects |
+| retry `Spill`/`Reload` and spill objects | retain graph | explicit defs/uses/memory effects and pressure changes | none | exact E3 IDs/objects are keys | implicit spill state rejects |
+| control/effect/frame-forbidden input | retain admitted control/effect only | CFG/clobber facts as declared | none | unchanged | premature frame/machine kind rejects |
+| unknown/illegal/omitted kind or role | reject product | none | none | none | `LivenessCoverageInvalid` |
+
+## Identity and Provenance
+
+E1 never creates semantic identities. Dense indices are product-local and map
+back to stable IDs; they cannot escape as allocation or diagnostic authority.
+
+## Outputs
+
+One immutable `LivenessInterference` product containing `AllocationFactsV1`,
+keyed by the exact inputs above and a total coverage digest. It contains no E2
+policy version, score, assignment, coalescing, victim, or eviction choice.
+
+## Verification and Publication
+
+Validate every admitted def/use/clobber/copy/scratch exactly once, reciprocal
+interference, alias-unit consistency, deterministic pressure, and complete keys.
+Publish all-or-nothing; no graph capability is created.
+For non-local boundaries validation also proves complete exact-key coverage and
+that every clobbered live identity is either unavailable after return or has an
+explicit memory/reload route exposed to E2/E3/E4.
+
+## Analysis Preservation and Invalidation
+
+Any graph revision, operand/role/order/CFG/effect/copy/scratch/spill/projection/
+pool/profile/fact-schema/call-rule change invalidates E1. A retry always
+recomputes; no result is retagged. Changing only E2 policy invalidates E2 but
+does not alter a still-exact E1 fact product.
+
+## Failure and Diagnostics
+
+Coverage hole, stale/mixed product, invalid role/alias unit, resource bound, or
+cancellation publishes no partial ranges/pressure and leaves the graph unchanged.
+
+## Adjacent-Stage Contract
+
+E2 consumes only this exact complete product. E3 mutation invalidates it and
+returns exclusively to E1; no direct E3-to-E2 reuse or hidden retry exists.
+
+## Implementation State
+
+Absent. Existing liveness/legacy allocation code is not this keyed product.
+
+## Proof Requirements
+
+Prove all roles, loops/edges/calls/asm, simultaneous copies, scratch pressure,
+retry spill nodes, stale keys, deterministic bounds, and exact E3-to-E1 return.
+Include complete exceptional-boundary classification, exact target/call-rule
+keys, clobbered survivors, semantic-memory identity preservation, and missing
+store/reload routes.
+
+## Open Questions
+
+New allocation-visible roles require explicit schema and matrix coverage.

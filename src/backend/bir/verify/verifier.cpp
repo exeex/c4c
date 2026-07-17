@@ -85,6 +85,8 @@ bool opcode_matches_payload(const detail::InstData& instruction) noexcept {
     case Opcode::Call:
       return std::holds_alternative<CallNode>(instruction.payload) ||
              std::holds_alternative<IntrinsicCallNode>(instruction.payload);
+    case Opcode::Unary:
+      return std::holds_alternative<BinaryNode>(instruction.payload);
     case Opcode::Binary:
       return std::holds_alternative<BinaryNode>(instruction.payload);
     case Opcode::Compare:
@@ -648,6 +650,13 @@ VerificationResult FoundationVerifier::verify(const detail::ModuleData& module,
         report(result, VerificationRule::BoundedAlternative, function_id,
                inst_id,
                "instruction opcode and closed payload alternative disagree");
+      }
+      if (!node_kind_accepts_arity(instruction.opcode,
+                                   instruction.operands.size(),
+                                   instruction.results.size())) {
+        report(result, VerificationRule::BoundedAlternative, function_id,
+               inst_id,
+               "instruction operand/result counts violate NodeKind schema");
       }
       for (const auto operand : instruction.operands)
         if (operand.owner != function_id ||

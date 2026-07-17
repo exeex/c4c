@@ -1,101 +1,111 @@
-# Generic Pseudo Lowering Pass
+# D1 Generic Pseudo Lowering Pass Contract
 
-Status: converged design contract (unimplemented).
+Contract-Status: converged planned contract under idea 732
+Implementation-Status: absent
+Phase-ID: D1
+Upstream: exact Prepared admission tuple
+Downstream: first private PseudoPreallocation candidate plus exact projection
 
-## D1 boundary and exact input
+## Purpose
 
-`D1` is the sole generic lowering transaction from semantic `CanonicalBir` to
-the closed pseudo schema. It consumes all of the following from one Step 7
-transaction:
+D1 consumes the unchanged Canonical owner, C1 fingerprint, verified C2-C8
+bundle, and C9 binding, then lowers Canonical semantics into the closed generic
+pseudo planning vocabulary without concrete registers, frame offsets, or MIR.
 
-- the immutable `CanonicalBir` and its complete `PipelineStageStamp`;
-- `VerifiedTargetLayout` with the exact `TargetFingerprint` and layout-schema
-  fingerprint;
-- the atomic `VerifiedPreparationBundle`, including its ordered product
-  fingerprints; and
-- the complete C9 `BoundConstraintSet` keyed to that same Canonical stamp, target,
-  layout, bundle, source-description digest, and operand/result identities.
+## Owns
 
-Module-revision equality, a compatible-looking target, or equal semantic text
-is insufficient. A missing, mixed, or stale product rejects the transaction
-before mutation. D1 reads Canonical storage; it never writes target facts back
-into that published revision.
+Generic pseudo selection, complete Canonical disposition, private candidate,
+total result/provenance map, first exact-revision constraint projection, and
+D1 postconditions.
 
-## Sole lowering ownership
+## Does Not Own
 
-D1 converts every admitted Canonical semantic instruction to the corresponding
-generic pseudo family declared by the pseudo schema. It selects reviewed
-helper interfaces from `RuntimeHelperPlan`, address forms from `AddressPlan`,
-and abstract class/group requirements from the verified layout and constraint
-facts. It preserves the original bytes and ordinary value edges of
-`InlineAsm`, and projects each bound constraint onto those same identities.
+D1 does not lower ABI call transport (D2), select concrete registers/frame
+offsets, allocate/spill, remove SSA generally, perform target expansion (D4),
+or publish `PseudoBir` (D3).
 
-Helper-eligible operations become `GenericCall` nodes, not private helper
-sequences. Ordinary calls and helper calls therefore reach `D2` through the
-same call family. D1 may attach the verified ABI/call requirement handles that
-D2 needs, but it may not create argument moves, outgoing-call stores, hidden
-result transport, caller-clobber effects, or preservation operations.
+## Inputs
 
-D1 does not own shared ABI-aware call lowering (`D2`), target legalization and
-one-to-many expansion (`D4`), out-of-SSA (`D5`), home assignment, pressure
-eviction, spill/reload insertion, machine instruction selection, assembler
-parsing, or late layout. It must not encode an assignment decision in an
-instruction variant, operand, requirement, or side product.
+Exactly the D1 seam in `preparation/README.md`: unchanged B8 Canonical token,
+complete C1 target fingerprint, verified C2-C8 bundle, Canonical
+`BoundConstraintSet`, and normative Prepared admission envelope.
 
-## Closed disposition and fail-closed behavior
+## Input NodeKind/Tag Vocabulary
 
-Every input instruction has exactly one disposition: preserve `InlineAsm` as
-specified above, lower it to one admitted generic pseudo node, replace it with
-an admitted generic pseudo subgraph, route it to `GenericCall`, or reject it.
-There is no `Unknown`, `Unsupported`, opaque semantic escape node, legacy
-payload, renderer-text fallback, or allocation escape hatch. A one-to-many
-transformation must make every introduced definition, use, effect, and CFG
-edge ordinary BIR state.
+Exactly the five normative Canonical groups. Every member receives one matrix
+outcome. Prospective pseudo names are documentation vocabulary, not claims that
+production `NodeKind` enum entries exist.
 
-Lowering rejects unsupported semantics, unavailable helper interfaces,
-unrepresentable address or type shapes, absent layout capacity, incompatible
-requirements, malformed bound `InlineAsm`, and any operation for which the
-schema has no exact disposition. Failure reports stable source identities and
-publishes no pseudo revision, mapping, property, or reusable partial result.
+## Required Analyses and Products
 
-## Identity, revision, and transaction
+Exact C2-C8 products, C9 binding, Canonical value-flow/CFG/SSA proof, and
+versioned generic pseudo rule registry. No compatible-looking substitute.
 
-D1 forks one private candidate from the exact Canonical revision. An entity
-whose semantic record and ordered ownership are unchanged keeps its stable ID.
-A rewritten instruction keeps its `InstId` only when it is the unique semantic
-continuation with compatible result identities; additional nodes and results
-receive fresh IDs, and removed entities are tombstoned. Unchanged blocks,
-values, symbols, types, origins, and debug references keep their IDs. IDs never
-stand in for freshness.
+## Ordered Behavior
 
-Any mutation, including an in-place-ID rewrite, advances the appropriate
-function revision and publishes a new complete `PipelineStageStamp`. The
-candidate carries a `PseudoStageKey` containing its exact new stamp, its parent
-Canonical stamp, target fingerprint, layout fingerprint, preparation-bundle
-fingerprint, constraint-set fingerprint, pseudo-schema fingerprint, and D1
-lowering-schema fingerprint. A deterministic replacement map records old-to-
-new/tombstoned identities for diagnostics and derived-fact projection; it is
-not semantic authority.
+1. Validate the exact Prepared tuple and complete Canonical inventory.
+2. Assign every node one explicit matrix row and reserve all output IDs.
+3. Build a private candidate with total typed result/provenance mapping.
+4. Verify candidate graph/SSA and request C9 projection for its exact revision.
+5. Publish no stage; hand the candidate and projection privately to D2.
 
-Lowering, ID repair, def-use rebuild, and candidate freeze are one transaction.
-Before its output is verified or frozen, D1 invokes the sole shared
-`ConstraintProjectionTransaction` with C9, the exact new candidate stamp, D1
-occurrence fingerprint, and complete replacement/tombstone and mutation maps.
-The resulting `ProjectedConstraintSet` is keyed to the D1 revision and is the
-only constraint product D2 may consume. D1 rolls back if projection cannot
-cover every current constraint-bearing occurrence; stable IDs or copied C9
-records are not freshness proof. Cancellation, resource failure,
-diagnostics, incomplete coverage, a revision change, or failure of the D1
-schema or projection check discards the entire candidate and all derived
-facts. The exact immutable D1 candidate alone may enter `D2`; D1 does not mint the public
-`PseudoBir` capability.
+## NodeKind/Tag Lowering Matrix
 
-## D2 and D3 handoff
+| Canonical input group/subset | Outcome and D1 planning output | Tags retained | Tags added | Tags removed | Identity / provenance | Failure |
+|---|---|---|---|---|---|---|
+| arithmetic/compare/conversion/aggregate `B.CanonicalSsaValue` | replace/expand into prospective `D.GenericValue` operations | semantic/type/effect intent | Pseudo family/admission, virtual def/use roles, exact MIR disposition | Canonical owner/admission; static SSA classification when uses rewritten | fresh IDs for owner/kind/shape change; total result map | missing rule rejects |
+| memory/address value/effect | replace/expand into `D.GenericMemoryValue`/`D.GenericEffect` | access/effect/type/provenance intent | pseudo roles and target-requirement references | Canonical owner/admission | fresh IDs + ordered derivation | unrepresented effect rejects |
+| ordinary/helper-eligible call | replace with prospective `D.GenericCall` preserving semantic call site | signature/callee/args/result/effects | generic-call pseudo classification and plan references | Canonical call owner/admission | fresh ID and total result map | missing C3/C4/C8 facts reject |
+| `B.CanonicalControl` | replace/retain only through explicit pseudo-control rule | control/successor/effects | Pseudo control admission | Canonical control admission | identity preserved only if owner/semantics/roles exact; normally fresh | unknown control rejects |
+| `B.CanonicalPhiMerge` | retain semantic merge as prospective `D.PhiPending` for D5 | phi/type/predecessor roles and dynamic SSA proof | PseudoPreallocation admission | Canonical admission | preserve only if roles/result exact | altered edge map rejects |
+| `B.CanonicalOpaqueTargetToken` | replace with prospective opaque `D.InlineAsm` carrying exact bytes and C9 bindings | opaque bytes, ordinary roles, effects | pseudo admission/binding reference | Canonical admission | fresh owner ID, source provenance | parsing/changing bytes rejects |
+| Canonical node proven to disappear/merge | delete/merge only by registered rule with total result/effect realization | exact surviving semantics | output classifications | source classification | retire source; map every live result | live unmapped obligation rejects |
+| unknown/illegal/omitted/premature/later-stage kind | reject | none | none | none | no candidate | `D1VocabularyInvalid` |
 
-The exact immutable D1 candidate alone may enter the dedicated
-[`D2` shared ABI-aware call-lowering contract](../call_lowering/README.md).
-That owner consumes the complete D1 and C3/C4/product keys, eliminates every
-`GenericCall`, advances the revision, and supplies D3 with one frozen complete
-candidate. This section is only the D1 output handoff; the D2 document owns
-admitted operations, ABI-rule selection, revision and identity behavior,
-preservation/invalidation, failure atomicity, and D3/D4 adjacency.
+## Identity and Provenance
+
+Stage-owner changes normally require fresh IDs. Expansion creates fresh ordered
+outputs; deletion/merge retires source only after total typed mapping. C9
+projection consumes this derivation but cannot bless incomplete identity work.
+
+## Outputs
+
+One private exact D1 candidate containing only the prospective generic pseudo
+groups named by the matrix and one exact-current `ProjectedConstraintSet`.
+
+## Verification and Publication
+
+The private gate checks complete Canonical elimination/disposition, prospective
+pseudo schema closure, exact keys, payload/roles/types/effects, def-use/CFG/SSA,
+total mapping, and no concrete register/frame/allocation/machine facts. D1 does
+not publish `PseudoBir`.
+
+## Analysis Preservation and Invalidation
+
+The new graph revision invalidates Canonical analyses/products as graph facts;
+immutable preparation remains lineage input only. D1 recomputes required
+candidate facts and obtains a fresh projection keyed to that revision.
+
+## Failure and Diagnostics
+
+Stale/mixed Prepared input, missing rule/product, incomplete mapping,
+projection failure, unknown vocabulary, cancellation, or verifier failure
+discards the entire candidate and publishes nothing.
+
+## Adjacent-Stage Contract
+
+D2 receives exactly the D1 candidate, its parent tuple, mutation lineage, and
+exact projection. It must eliminate every `D.GenericCall` before D3.
+
+## Implementation State
+
+Absent. Prospective pseudo vocabulary is Markdown planning only.
+
+## Proof Requirements
+
+Prove every Canonical member exactly once, identity/result mapping, C9
+projection, helper/call adjacency, rollback, and absence of concrete resources.
+
+## Open Questions
+
+New pseudo kinds require a separate schema/implementation idea before code use.

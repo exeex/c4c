@@ -1858,7 +1858,9 @@ Result<BuildResult, BuildError> FunctionBuilder::append(BlockId block,
   }
 
   detail::InstData instruction;
-  instruction.opcode = Opcode::Binary;
+  instruction.opcode = spec.opcode == BinaryOpcode::FNeg
+                           ? Opcode::Unary
+                           : Opcode::Binary;
   instruction.payload = BinaryNode{spec.opcode, spec.type, spec.direct_scalar_lhs,
                                    spec.direct_scalar_rhs};
   instruction.operands = spec.opcode == BinaryOpcode::FNeg

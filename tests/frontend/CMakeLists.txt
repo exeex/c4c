@@ -53,7 +53,6 @@ endif()
 foreach(target IN LISTS frontend_test_targets)
   add_executable(${target} "${CMAKE_CURRENT_SOURCE_DIR}/${target}.cpp")
   target_link_libraries(${target} PRIVATE c4c_frontend)
-  set_target_properties(${target} PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
 endforeach()
 
 target_link_libraries(frontend_lir_global_type_ref_test PRIVATE c4c_codegen)

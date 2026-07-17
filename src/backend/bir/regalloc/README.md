@@ -1,119 +1,168 @@
-# Shared BIR Register Allocation
+# E2 Shared Abstract Pseudo-Physical Allocation Contract
 
-Status: converged design contract (unimplemented).
+Contract-Status: converged planned contract under idea 732
+Implementation-Status: absent
+Phase-ID: E2
+Upstream: exact E1 product and finite C2 pools
+Downstream: immutable assignment candidate, eviction request, or failure for E3
 
-## E2 sole allocation authority
+## Purpose
 
-`E2` is the only ordinary pseudo-home allocator for RV64, AArch64, and x86.
-It consumes one immutable reverified D5 or E3-retry revision, the exact E1
-product for that revision, the exact `ProjectedConstraintSet` keyed to that
-revision, and its reviewed
-`VerifiedTargetLayout`. Target differences enter only through layout records
-for abstract banks, alias units, eligible slots, legal groups, reserved units,
-and call-preservation/clobber rules. There are no target-specific allocator
-implementations or architecture-name policy branches.
+E2 assigns finite abstract `(category, class/group, slot)` homes to every
+allocation identity under exact constraints/interference. It is shared across
+targets and performs no graph mutation or machine construction.
 
-E2 assigns finite abstract homes of the form `(category, class/group, slot)`.
-It does not choose encoded machine names, stack displacements, instruction
-encodings, frame layout, or parse inline-assembly template bytes. Later MIR
-construction only maps a verified assignment; it cannot repair or replace
-ordinary allocation.
+## Owns
 
-## One legality relation
+One legality relation, deterministic home selection, ties/groups/fixed homes,
+alias-unit exclusion, coalescing decisions, assignment product, bounded
+eviction request, validation, and atomic return.
 
-One shared legality predicate governs initial choice, coalescing, eviction,
-retry, and final verification. It requires:
+## Does Not Own
 
-- a value's typed class and category to match an eligible layout slot;
-- every multi-slot group to use one reviewed legal, width-correct, aligned
-  group whose alias units are simultaneously free;
-- assignment-equality ties to receive the same compatible home without
-  merging their value identities;
-- interference and early-clobber exclusions never to alias;
-- inline-assembly clobbers and call-clobbered units to exclude values live
-  across the boundary unless explicit verified preservation makes the
-  interval discontinuity visible; and
-- D5 copy bundles to retain simultaneous read-before-write behavior; legal
-  coalescing may remove a later move but may not change edge coverage or
-  invent a temporary; and
-- every `CopyScratch` reservation to receive one finite legal home. The
-  reservation is non-spillable and aliases neither the component's transferred
-  homes nor any other scratch home needed simultaneously. Scratch reservations cannot be
-  coalesced with transferred values, evicted into spill state, or omitted
-  because a particular scheduling order appears to avoid them.
+E2 does not insert spills/reloads, spill scratch, resolve copies, change graph
+or constraints, select concrete machine registers/opcodes, or build frames/MIR.
 
-The allocator uses a deterministic order derived from stable identities and
-reviewed layout order. Eviction requeues the displaced value and records the
-rejected `(value, home, conflict-set)` choice. A choice cannot be retried with
-the same state. Because values and eligible homes are finite, an E2 attempt
-either assigns every pending value, returns one deterministic E3 spill request,
-or reports that no legal assignment/spill route exists.
+## Inputs
 
-An E2 request may name only a spill-eligible ordinary allocation identity;
-`CopyScratch` is never such an identity. If ordinary E3 retries cannot produce
-a candidate with legal homes for the complete reservation set, or if any
-required scratch home aliases a protected transfer or simultaneous scratch
-home, E2 fails closed. It cannot ask D5 or MIR to create scratch capacity or
-repair the alias conflict.
+Exact graph revision, E1 product, C2 finite pools/aliases/reservations, current
+C9 projection, C3/C4 call requirements, and D5/E3 lineage.
 
-## E1/E2/E3 retry protocol
+## Input NodeKind/Tag Vocabulary
 
-E2 never mutates its input. On capacity failure it returns a typed spill
-request naming the exact revision, E1 key, pressure point, conflicts, and a
-spill-eligible original allocation identity. E3 may apply that request only to
-a private fork of the named revision. After E3 inserts explicit spill state,
-the candidate advances its stage revision and invalidates CFG/def-use facts,
-E1, E2, and the predecessor constraint projection and realizability facts. E3
-must invoke the shared projection authority before reverification; the runner
-then recomputes affected structural facts, fully reverifies the complete
-candidate, freezes it, recomputes E1, and starts a fresh E2 attempt. No E1
-fact, rejected-choice set, or partial assignment crosses the revision change.
+E2 observes every allocation-visible identity represented in E1; node admission
+is unchanged. Any admitted graph identity absent from E1 is failure.
 
-Termination is explicit. Each successful E3 rewrite permanently marks one
-previously unspilled original identity spill-resident for this transaction;
-that identity cannot be selected again, and reload results are not recursive
-spill candidates. The retry budget is therefore at most the number of
-spill-eligible original identities in the initial exact revision. Each E2
-attempt also has the finite rejected-choice bound above. Budget exhaustion, a
-request for an already-spilled identity, impossible reload pressure, or lack of
-strict progress fails the whole transaction.
+## Required Analyses and Products
 
-## Candidate gate
+Exact E1, C2, projection, call/asm constraints, D5 scratch rules, and on retry
+E3 spill state. No compatible or reconstructed pool/pressure input.
 
-Before the later publication boundary, the allocation candidate must prove
-that every allocatable identity is either assigned one legal abstract home or
-is represented by verified explicit spill state whose every register-resident
-use is reached through an assigned `Reload` result. It also proves complete
-tie/group/clobber/call/copy legality, complete legal assignments for every
-non-spillable `CopyScratch` reservation, absence of forbidden overlapping
-alias units, exact E1/revision/layout/`ProjectedConstraintKey`, and no unassigned or
-implicit-spill escape.
+### Deterministic allocation policy
 
-Only the stable post-E3 candidate and its exact current E1, E2, and E3 facts
-may enter D5's subordinate `CopyResolutionTransaction`. E2 does not resolve or
-schedule a `ParallelCopy`; its assignment product supplies the already-chosen
-ordinary and scratch homes under which D5 must either emit directly realizable
-`EdgeCopy` nodes or reject the complete candidate.
+E2 is the sole interpreter of `AllocationFactsV1` under
+`DeterministicAllocationPolicyV1`. Its exact key adds the policy version and
+finite tuning table to the complete E1 key. The policy fixes checked integer
+weights for loop/profile/use/def frequency, range length and holes, pressure,
+call crossing, rematerialization, copy benefit, and prior spill cost. Floating
+point, pointer values, hash iteration, allocator addresses, wall-clock state,
+randomness, and incidental traversal order are forbidden inputs.
 
-Because D5 resolution and E4 frame-action materialization advance the revision,
-the predecessor assignment product is never current for the final output.
-After projection and E1 recomputation on the materialized graph, E2's
-allocator-owned assignment validator consumes those facts, the exact final
-`ProjectedConstraintSet`, target/layout keys, `CopyResolutionFingerprint`,
-`FrameActionFingerprint`, and the immutable predecessor assignment table.
-It proves every ordinary value, reload result, resolved-copy role, and used
-scratch endpoint remains assigned; reruns the same class/group/slot, alias,
-tie, early-clobber, call-clobber, and interference legality relation; and
-installs one new E2 `AssignmentKey` product keyed to the final materialized
-`PipelineStageStamp` and exact `LivenessInterferenceKey`. This validation does not reallocate,
-coalesce, change a home, evict, or issue a spill request. E4 frame-action nodes
-have fixed ABI/frame roles and introduce no allocatable identity. Stable identities,
-unchanged homes, and the copy preservation record alone cannot rekey the
-predecessor assignment product. Failure aborts the enclosing atomic
-publication transaction, leaves predecessor products immutable, and mints no
-E4 capability.
+Correctness is filtered before profitability: legal domain, interference and
+alias units, fixed/tied/group requirements, clobbers, scratch
+nonspillability/nonalias, simultaneous-copy semantics, and exceptional memory
+obligations cannot be outweighed. Within the legal set, V1 uses checked
+saturating-free integer score tuples and the following total order:
 
-Any stale key, incomplete assignment, missing spill transition, verifier
-failure, or retry failure discards the entire private candidate and all E1/E2/
-E3 products. No function subset, assignment table, spill identity, new
-revision, or downstream capability is published.
+1. fixed/nonspillable/group obligations, then stable allocation identity;
+2. legal copy pairs by descending computed benefit, then source ID,
+   destination ID, and copy-occurrence ID; coalesce only when the merged domain
+   is nonempty and every interference/alias/tie/group predicate remains true;
+3. assignments by descending constrainedness and spill cost, then stable value
+   ID; candidate homes by preference tuple then abstract pool/category/class/
+   slot ID;
+4. victims by lowest eviction-cost tuple, then highest prior-eviction count,
+   then stable value ID; an eviction request names exactly one ordinary
+   spillable victim and its complete rewrite obligations.
+
+Every input collection is normalized into these stable orders before use.
+Equal score tuples therefore still have one result. E2 returns a
+`PolicyDecisionTraceV1` containing the policy/key, normalized candidates,
+correctness rejections, score tuples, tie-break fields, accepted coalesces,
+assignments, and the sole selected eviction or success result.
+
+### Progress and finite bounds
+
+The policy version declares finite checked maxima for identities, pool slots,
+copy pairs, score operations, coalescing attempts, assignment attempts, and E3
+retries. An eviction is legal only with a lexicographic progress witness over
+`(remaining unassigned identities, unresolved pressure conflicts,
+not-yet-explicit spill obligations, stable victim ID)` that the E3 realization
+is required to improve on the new revision. The retry lineage records every
+`(revision digest, victim ID, obligation digest)`; repetition is a cycle and
+fails. Bound exhaustion, arithmetic overflow, no improving victim, or an empty
+legal domain for a nonspillable identity is terminal, never a heuristic
+fallback.
+
+E1's exact `ExceptionalBoundaryAllocationFacts` are correctness constraints,
+not profitability hints. E2 rejects an assignment that keeps a value only in a
+clobbered register unit across a non-local boundary, coalesces identities across
+incompatible boundary states, omits required memory residency, or evicts a
+volatile/escaped semantic object into a substitute spill identity. When an
+ordinary spillable value needs a pre-boundary store and post-boundary reload,
+E2 emits one normal progress-ranked eviction request for E3. It cannot insert
+actions, choose frame placement, weaken the obligation, or special-case the
+boundary outside versioned policy and stable tie-break rules.
+
+## Ordered Behavior
+
+1. Validate all keys and total E1-to-graph identity coverage.
+2. Apply every correctness predicate and build legal domains over finite alias
+   units; this precedes every profitability comparison.
+3. Score, coalesce, assign, and if needed select one victim using only
+   `DeterministicAllocationPolicyV1` and its stable total orders.
+4. Return a complete valid assignment, one progress-ranked ordinary eviction
+   request for E3, or structured unsatisfiable failure; never mutate the graph.
+
+## NodeKind/Tag Lowering Matrix
+
+| Allocation input subset | Graph outcome | E2 outcome | Node tags added/removed | Identity | Failure |
+|---|---|---|---|---|---|
+| fixed/tied/group-constrained identity | retain graph | exact legal abstract home satisfying all relations | none | identity keyed assignment | empty domain rejects |
+| `CopyScratch` | retain graph | finite assigned home, nonspillable, nonaliasing when simultaneous, disjoint from transfer homes | none | scratch remains explicit | any spill/alias conflict rejects |
+| ordinary spillable identity | retain graph | legal home or deterministic progress-ranked eviction request | none | unchanged | no candidate may be ordinary failure/eviction |
+| `ParallelCopy`/`EdgeCopy` endpoints | retain graph | endpoint homes/coalescing facts respecting simultaneous semantics | none | endpoints remain distinct | sequential shortcut rejects |
+| call/asm clobber-sensitive identity | retain graph | home outside exact live clobber units or fixed as required | none | unchanged | clobber conflict rejects |
+| non-local-boundary survivor | retain graph | legal unaffected home or exact memory-residency/eviction decision satisfying E1 | none | boundary identity unchanged | register-only clobbered home or missing route rejects |
+| retry spill/reload identity | retain graph | normal assignment/interference treatment | none | exact E3 identity | hidden preassignment rejects |
+| unknown/uncovered identity or premature frame/machine input | reject allocation | none | none | none | `AllocationCoverageInvalid` |
+
+## Identity and Provenance
+
+Assignments are exact-key products keyed by stable identities; home equality
+does not merge values. Abstract slot IDs are not concrete register spellings.
+
+## Outputs
+
+Exactly one of: complete immutable `AssignmentPlanV1`; one deterministic
+`EvictionRequestV1` with progress witness for E3; or structured failure. Every
+successful outcome includes `PolicyDecisionTraceV1`; no partial plan or graph.
+
+## Verification and Publication
+
+Validate total assignments, legal domains, alias/interference, ties/groups,
+clobbers, scratch nonspillability/nonalias, and exact keys. Partial assignments
+never publish or accompany eviction.
+Validation includes every exceptional boundary entry and forbids a complete
+assignment that leaves any required survivor without a legal home or explicit
+E3 realization route.
+
+## Analysis Preservation and Invalidation
+
+Any E1/graph/pool/projection/constraint/spill/policy-version/tuning change
+invalidates E2. E3 mutation destroys the assignment and trace and restarts at
+E1. A policy-only change cannot reuse an old E2 choice under a new key.
+
+## Failure and Diagnostics
+
+Unsatisfiable nonspillable/fixed/group/scratch demand fails immediately.
+Ordinary shortage yields only a bounded progress eviction. Cancellation or
+resource failure returns no partial assignment.
+
+## Adjacent-Stage Contract
+
+Success proceeds toward stable post-E3 D5 closure. An eviction request goes
+only to E3; after E3 mutation the sole edge is `E3 -> E1`, never directly E2.
+
+## Implementation State
+
+Absent. Legacy register allocation is not this shared abstract allocator.
+
+## Proof Requirements
+
+Prove finite pools, alias units, ties/groups/clobbers, scratch nonspillability,
+ordinary eviction progress, determinism, stale keys, and no concrete/MIR work.
+
+## Open Questions
+
+New allocation classes require versioned C2/E2 rule rows and proof.

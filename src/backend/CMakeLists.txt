@@ -27,7 +27,6 @@ target_include_directories(c4c_backend
 )
 target_link_libraries(c4c_backend PUBLIC c4c_frontend c4c_codegen c4c_target_profile)
 
-target_compile_features(c4c_backend PUBLIC cxx_std_17)
 set_target_properties(c4c_backend PROPERTIES
     PREFIX ""
     OUTPUT_NAME "c4c_backend"

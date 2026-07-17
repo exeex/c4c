@@ -5,6 +5,13 @@ phase, publication gate, observation helper, and MIR stage. A review compares
 both adjacent boundaries and the linked source idea. Checking one document or
 one named testcase is insufficient.
 
+Start from the [root common authority spine](README.md#common-contract-authority-spine).
+Do not review a local restatement as a second NodeKind/tag authority. The
+[normative NodeKind contract](../../../docs/backend/bir_node_kind_tag_algebra_and_phase_vocabulary.md)
+owns stage admission, tag meaning, identity, and common publication rejection;
+the pass owner supplies only its closed explicit lowering matrix. A proposed
+Markdown symbol is not implementation evidence.
+
 ## 1. Complete boundary walk
 
 Record the input/output type, owner, exact revision/key, verifier profile,
@@ -21,7 +28,7 @@ failure result, and next consumer for every row:
 | E1 -> E2 | Does E2 alone assign legal abstract category/class-or-group/slot homes using the exact E1 and target-pool keys? |
 | E2 -> E3 -> E1 retry | Does E3 alone add explicit abstract spill identities and `Spill`/`Reload`; does every mutation advance and pass the private assigned-candidate gate before fresh E1/E2 facts, without invoking the allocation-free Pseudo publication gate? |
 | stable E3 -> D5 copy resolution -> E4 -> `AllocatedBir` | Does D5 alone resolve every bundle; does E4 materialize every required frame action as a bounded fixed-role one-record node before final projection/E1/E2/E3/frame/target closure; do all final keys bind `FrameActionFingerprint`; and does E4 publish atomically? |
-| `AllocatedBir` -> `PreparedBir` / `MirReadyBirView` -> MIR | Do all capabilities name the same materialized revision and exact frame plan; does MIR apply one mapping per explicit node without choosing placement, inserting a frame record, expanding, or returning repair? |
+| `AllocatedBir` -> E4 MIR-readiness capability / `MirReadyBirView` -> MIR | Do all capabilities name the same materialized revision and exact frame plan; does MIR apply one mapping per explicit node without choosing placement, inserting a frame record, expanding, or returning repair? |
 
 For each transition, attach the predecessor fingerprint set and prove the
 consumer rejects a missing, stale, foreign, mixed-target, or cross-revision
@@ -40,8 +47,16 @@ bounded retry. No later stage may be described as repairing malformed input.
   or debug snapshot enter a stage API? Any yes is rejection.
 - Does failure publish no partial stage object, reusable green report,
   refreshed key, assignment fragment, or alternate graph?
-- Are `PreparedBir` and `MirReadyBirView` capabilities over the exact owning
+- Are the E4 MIR-readiness capability and `MirReadyBirView` over the exact owning
   `AllocatedBir`, rather than copied or rebuilt instruction storage?
+- Is C-phase `Prepared` described only as immutable Canonical admission by
+  exact-revision reference plus exact target/preparation products, never as an
+  E4 readiness alias or a mutable prepared graph?
+- Does every pass matrix close its admitted input set with explicit
+  retain/replace/expand/merge/delete/reject outcomes and fail unknown, illegal,
+  omitted, and unhandled vocabulary?
+- Does any claim of SSA validity cite B4's dynamic graph proof rather than the
+  static stage-qualified `SsaEligible` classification?
 - Does `FrameActionMaterializationTransaction` insert every required entry,
   exit, dynamic-lifetime, call, save/restore, probe, and adjustment action as a
   bounded explicit one-record node before final projection, and does the final

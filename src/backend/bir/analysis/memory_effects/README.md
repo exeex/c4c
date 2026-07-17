@@ -78,12 +78,19 @@ requires separate exact-current CFG consumers and is not smuggled into v1.
 | call effect | call `InstId`, semantic callee/declaration/bundle and declared effect set | indirect/undeclared effect is `Unknown(CallEffectUnproved)` | P05/P07 planning; call/declaration change invalidates |
 | inline-asm effect | asm `InstId` and explicit conservative semantic effect summary | missing optional declared detail yields `Unknown(AsmEffectUnproved)` | observation only; payload/declared-effect change invalidates |
 | escape effect | stable source/value/object and closed escape reason | no escape is known empty; ambiguity is `Unknown(EscapeUnproved)` | provenance/P05 preservation; use/call/return change invalidates |
+| non-local checkpoint effect | checkpoint `InstId`, closed return behavior, semantic continuation point, ordered visible-object accesses/modifications | ordinary returns-once call is `Absent`; incomplete registered semantics is `Unknown(NonLocalBoundaryUnproved)` | B4/B5 boundary derivation; call/effect/order/object change invalidates |
 | function summary | deterministic join of all exact and conservative `Unknown` facts | empty body is known none | provenance/later consumers; any contributing fact change invalidates |
 | semantic equality | complete stable fact/status/reason set | no equality inferred across keys | framework preservation only; never pass authority |
 
 `Unknown` is conservative result data and never authorizes a fold, reorder,
 deletion or narrowing. `Absent` means the optional semantic fact is not present.
 Malformed core semantics fail and are not represented as `Unknown`.
+
+The non-local result family remains path-independent: it reports explicit call
+semantics, instruction order, accesses, modifications, volatility, and escapes
+for the exact revision. B4 owns visibility, B5 owns retained memory identity,
+and B3 remains the only CFG authority. This analysis never infers `setjmp` or
+`longjmp` from symbol text and never emits allocation clobbers or frame homes.
 
 ## Adjacent-Stage Contract
 
