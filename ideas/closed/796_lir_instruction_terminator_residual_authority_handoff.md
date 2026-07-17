@@ -1,6 +1,6 @@
 # LIR Instruction, Terminator, and Inline-Assembly Residual Authority Handoff
 
-Status: Open
+Status: Closed
 Type: bounded LIR producer/schema/verifier authority publication
 Predecessor: `ideas/closed/793_lir_to_new_bir_remaining_coverage_umbrella.md`
 Related: `ideas/open/761_lir_call_signature_type_mirror_convergence.md`
@@ -130,6 +130,27 @@ does not claim 801 Step 2 acceptance.
   fresh build, focused call/frontend/backend ladder, and supervisor-accepted
   full gate. This comparable baseline enables the retry; it does not accept
   801 Step 2.
+
+## Closure Record: no current executable residual family
+
+796 is intentionally concluded as a no-change/no-executable-family route under
+the current evidence. Activation `98080e9d4` reopened the residual authority
+handoff only to reconcile whether a fresh Step 2 candidate remained after the
+accepted scalar-cast and pointer-subtraction routes plus later residual-owner
+triage. Step 1 reconciliation in `dbf1eb280` found no currently executable 796
+family after excluding accepted scalar cast and pointer-subtraction authority,
+text/monostate/printer/opaque inline-assembly payload facts, downstream Raw-BIR
+receipt, and the preserved 821/822 switch-selector routes.
+
+No successor is created from this source because the remaining evidence does
+not identify durable 796-required intent with native structured facts and a
+producer/schema/verifier publication path. Future work requires a separate
+idea only if new evidence names one exact residual family outside accepted
+cast, pointer-subtraction, switch-selector, opaque inline-assembly payload, and
+Raw-BIR receiver scope.
+
+Proof for this lifecycle-only conclusion: `git diff --check` passed for
+`dbf1eb280`; no code changed and no broad validation was required.
 
 ## Reviewer Reject Signals
 
