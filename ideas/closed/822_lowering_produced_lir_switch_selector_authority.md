@@ -1,6 +1,6 @@
 # Lowering-Produced LIR Switch Selector Authority
 
-Status: Open (resumed active route before Idea 821 Step 3)
+Status: Closed
 Type: narrow lowering-produced selector-authority correction
 Blocked Parent: `ideas/open/821_frontend_lir_manual_switch_modelled_result_authority.md`,
 Step 3
@@ -104,3 +104,25 @@ owner has separated the shared dirty worktree material.
 - Proof and commit status: `cmake --build --preset default` passed. The exact
   CTest and matching guard are diagnostic and non-accepting; there is no
   accepted proof or implementation commit for this idea.
+
+## Closure Record: superseded by accepted selector-authority handoff
+
+Status: closed as intentionally concluded stale cleanup.
+
+This source has no current executable resumption route. Its Step 2 lowering
+slice remained pending and unaccepted, and its own record required either an
+accepted Idea 825 DirectScalar switch-selector authority outcome or a separate
+shared-worktree isolation owner before any resume. Closed
+`ideas/closed/828_shared_worktree_direct_call_authority_isolation.md`
+preserved the unaccepted 821/822 material in
+`review/828_preserved_821_822_frontend_slice.patch` and removed it from the
+active shared route without accepting semantic progress. Closed
+`ideas/closed/825_lir_next_body_parameter_authority_handoff.md` then accepted
+the dedicated native `LirSwitch.selector_parameter_authority` producer/verifier
+handoff and focused proof, which supersedes this older lowering-produced
+selector patch route.
+
+Disposition: archive this source without activation. Do not reconstruct Step
+3, restore the preserved patch as accepted progress, or return to 821 from
+this route. Future lowering-produced selector work requires a new source idea
+with fresh evidence outside the accepted 825 authority contract.

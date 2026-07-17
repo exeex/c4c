@@ -1,7 +1,6 @@
 # LIR-To-New-BIR Container And Import Completeness
 
-Status: Open (active again at Step 7.50 after closed 863 direct floating
-call-result authority handoff)
+Status: Closed
 Type: target-independent new-BIR schema and LIR import completeness
 Historical Documentation Input:
 the pre-implementation phase-A acceptance recorded by
@@ -2545,6 +2544,29 @@ runbook only for that matching typed Raw-BIR receiver row. Do not repeat Step
 aggregate/vector, module/type/global/metadata, CFG/PHI, residual
 instruction/terminator, inline-assembly, generic residual sweep, or any other
 form without its separately scoped first-owner handoff.
+
+## Closure Record: superseded by final coverage convergence
+
+Status: closed as stale capability-complete cleanup after final convergence.
+
+This source's implementation route is no longer an activation candidate. Its
+accepted receiver history through Step 7.52, most recently commit
+`a680b50e8`, fed the ordered 866 successor queue and the later final coverage
+route. Closed idea
+`ideas/closed/797_lir_to_new_bir_final_coverage_convergence.md` accepted the
+terminal disposition matrix, dispatcher/proof audit, whole-module
+transactional proof, documentation convergence, and full-suite proof for the
+bounded LIR-to-new-BIR convergence route. Closed idea
+`ideas/closed/796_lir_instruction_terminator_residual_authority_handoff.md`
+then reconciled the residual authority inventory and found no current
+executable residual family requiring this source to remain open.
+
+Disposition: archive this source as completed/stale cleanup rather than
+reactivating it. Do not regenerate Step 7.53 or resume from the old post-7.52
+848/866 return text; those successor routes have already been consumed or
+concluded by the final convergence and residual reconciliation closures.
+Future LIR-to-new-BIR work requires a new source idea with fresh evidence for
+one exact unsupported family or regression, not reuse of this exhausted route.
 
 ## Resumption Record: direct one-double-argument call-result authority completion
 

@@ -1,6 +1,6 @@
 # Frontend LIR Manual Switch Modelled-Result Authority
 
-Status: Open (active blocker for Idea 820 Step 3)
+Status: Closed
 Type: narrow frontend LIR fixture/modelled-result authority correction
 Blocked Parent: `ideas/open/820_lir_directscalar_parameter_producer_verifier_publication.md`,
 Step 3
@@ -95,3 +95,25 @@ Status: parked by the active DirectScalar proof-boundary switch to
   the pending local slice. The exact focused CTest is red before and after the
   slice (0/1 failed both times), so regression comparison is non-accepting;
   there is no accepted commit.
+
+## Closure Record: stale unaccepted switch-fixture route
+
+Status: closed as intentionally concluded stale cleanup.
+
+This source has no current executable required intent. Its only durable
+implementation material was an unaccepted manual-fixture slice, and closed
+`ideas/closed/828_shared_worktree_direct_call_authority_isolation.md`
+preserved the combined 821/822 dirty material at
+`review/828_preserved_821_822_frontend_slice.patch` without accepting it.
+Closed `ideas/closed/820_lir_directscalar_parameter_producer_verifier_publication.md`
+then completed its DirectScalar proof boundary independently and explicitly did
+not accept the 821/822 selector patches. Closed
+`ideas/closed/825_lir_next_body_parameter_authority_handoff.md` supplied the
+accepted native `LirSwitch.selector_parameter_authority` route and focused
+proof for the relevant DirectScalar switch-selector authority row.
+
+Disposition: do not reactivate this source at its old Step 3, do not restore
+or accept the preserved patch as lifecycle progress, and do not use the old
+manual `make_switch()` modelled-result patch as a prerequisite for 734, 820,
+or 825. Any future manual-fixture issue requires a new source idea and fresh
+evidence that the accepted 825 selector-authority route does not cover it.
