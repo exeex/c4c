@@ -8,19 +8,18 @@ Current Step Title: Align documentation and final proof record
 
 ## Just Finished
 
-Completed plan Step 3 transactional proof packet.
+Completed plan Step 4 final documentation/proof alignment.
 
-The selected focused transactional/backend proof covered the LIR-to-BIR
-interface, selected pointer authority, pipeline identity, execution control,
-and checkpoint surfaces. The broader backend proof then passed the full
-`^backend_` subset, including the matrix-relevant selected direct-local
-`LirVaStartOp` receipt and neighboring backend identity/authority tests.
+Created `docs/lir_to_new_bir_final_coverage_convergence/final_proof_record.md`
+to align the terminal matrix, Step 2 audit, Step 3 transactional proof, and
+Step 4 final validation record. The final validation gate passed with the full
+test suite.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: align the final matrix/proof documentation,
-run `git diff --check`, and run the supervisor-selected final broader/full
-validation gate for 797 acceptance.
+Ask plan-owner for a lifecycle close decision for 797. The terminal matrix,
+dispatcher/verifier audit, transactional proof, documentation alignment, and
+full validation proof are complete.
 
 ## Watchouts
 
@@ -41,7 +40,15 @@ validation gate for 797 acceptance.
 
 ## Proof
 
-Focused proof:
+Documentation proof:
+
+```sh
+git diff --check
+```
+
+Result: passed.
+
+Focused Step 3 proof:
 
 ```sh
 { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_lir_to_bir_interface$|^backend_lir_selected_pointer_authority$|^backend_bir_pipeline_identity$|^backend_bir_execution_control$|^backend_bir_checkpoint$'; } > test_after.log 2>&1
@@ -49,7 +56,7 @@ Focused proof:
 
 Result: passed.
 
-Broader backend proof:
+Broader Step 3 backend proof:
 
 ```sh
 { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1
@@ -57,3 +64,12 @@ Broader backend proof:
 
 Result: passed. `test_after.log` contains `100% tests passed, 0 tests failed
 out of 6`.
+
+Final Step 4 validation:
+
+```sh
+{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure; } > test_after.log 2>&1
+```
+
+Result: passed. `test_after.log` contains `100% tests passed, 0 tests failed
+out of 3038`.
